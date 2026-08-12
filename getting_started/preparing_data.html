@@ -993,7 +993,7 @@ measured from the start of the recording session.</p></li>
 <p>One column per stream, one row per trial. This example covers two cameras, a
 pose file per camera, two microphones and explicit trial timing:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.io.nwb_alignment</span><span class="w"> </span><span class="kn">import</span> <span class="n">align_media_per_trial</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">ethograph</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">eto</span>
 
 <span class="n">trial_table</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span>
     <span class="s2">&quot;trial&quot;</span><span class="p">:</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">],</span>
@@ -1008,32 +1008,72 @@ pose file per camera, two microphones and explicit trial timing:</p>
     <span class="s2">&quot;stimulus&quot;</span><span class="p">:</span>    <span class="p">[</span><span class="s2">&quot;tone_A&quot;</span><span class="p">,</span> <span class="s2">&quot;tone_B&quot;</span><span class="p">],</span>
 <span class="p">})</span>
 
-<span class="n">align_media_per_trial</span><span class="p">(</span>
+<span class="n">eto</span><span class="o">.</span><span class="n">align_media_per_trial</span><span class="p">(</span>
     <span class="n">trial_table</span><span class="p">,</span>
     <span class="n">stream_rates</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;video&quot;</span><span class="p">:</span> <span class="mf">30.0</span><span class="p">,</span> <span class="s2">&quot;pose&quot;</span><span class="p">:</span> <span class="mf">30.0</span><span class="p">,</span> <span class="s2">&quot;audio&quot;</span><span class="p">:</span> <span class="mf">48000.0</span><span class="p">},</span>
     <span class="n">output_path</span><span class="o">=</span><span class="s2">&quot;.ethograph/alignment.nwb&quot;</span><span class="p">,</span>
 <span class="p">)</span>
 </pre></div>
 </div>
+<p><a class="reference internal" href="../api/nwb_alignment.html#ethograph.io.nwb_alignment.align_media_per_trial" title="ethograph.io.nwb_alignment.align_media_per_trial"><code class="xref py py-func docutils literal notranslate"><span class="pre">align_media_per_trial()</span></code></a>,
+<a class="reference internal" href="../api/nwb_alignment.html#ethograph.io.nwb_alignment.align_media_from_streams" title="ethograph.io.nwb_alignment.align_media_from_streams"><code class="xref py py-func docutils literal notranslate"><span class="pre">align_media_from_streams()</span></code></a> and
+<a class="reference internal" href="../api/nwb_alignment.html#ethograph.io.nwb_alignment.NWBAlignment" title="ethograph.io.nwb_alignment.NWBAlignment"><code class="xref py py-class docutils literal notranslate"><span class="pre">NWBAlignment</span></code></a> are all re-exported at the top
+level, so <code class="docutils literal notranslate"><span class="pre">eto.align_media_per_trial</span></code> and
+<code class="docutils literal notranslate"><span class="pre">from</span> <span class="pre">ethograph.io.nwb_alignment</span> <span class="pre">import</span> <span class="pre">align_media_per_trial</span></code> are the same
+function — use whichever you prefer.</p>
 <p>Notes:</p>
 <ul class="simple">
+<li><p><strong>Files are paired by row, not by name.</strong> Nothing scans a folder: row order
+is trial order and each <code class="docutils literal notranslate"><span class="pre">{stream}_{device}</span></code> column is that stream’s file for
+that trial. Only the basename is stored; filename matching happens later, at
+load time, when the GUI resolves each basename against the media folder you
+select.</p></li>
 <li><p><strong>Camera index pairs video with pose</strong>: device <code class="docutils literal notranslate"><span class="pre">cam-1</span></code> overlays <code class="docutils literal notranslate"><span class="pre">pose_cam-1</span></code>.</p></li>
 <li><p><strong>Extra columns</strong> (<code class="docutils literal notranslate"><span class="pre">stimulus</span></code>, <code class="docutils literal notranslate"><span class="pre">condition</span></code>, …) become trial attributes and
 flow through to label TSV exports.</p></li>
-<li><p><strong><code class="docutils literal notranslate"><span class="pre">start_time</span></code> / <code class="docutils literal notranslate"><span class="pre">stop_time</span></code> are optional</strong> — if omitted, durations are
-inferred from the media files. When present they enable session-mode
-navigation and let the GUI restrict neural data to trial windows.</p></li>
 <li><p><strong>Multi-camera NWB files</strong> need no table: each camera is already a separate
 <a class="reference external" href="https://pynwb.readthedocs.io/en/stable/pynwb.image.html#pynwb.image.ImageSeries" title="(in PyNWB v4.1.0)"><code class="xref py py-class docutils literal notranslate"><span class="pre">ImageSeries</span></code></a> in <code class="docutils literal notranslate"><span class="pre">nwb.acquisition</span></code>, discovered
 automatically.</p></li>
 </ul>
+<section id="omitting-start-time-stop-time">
+<span id="target-omitting-trial-times"></span><h4>Omitting <code class="docutils literal notranslate"><span class="pre">start_time</span></code> / <code class="docutils literal notranslate"><span class="pre">stop_time</span></code><a class="headerlink" href="#omitting-start-time-stop-time" title="Link to this heading">#</a></h4>
+<p>Both columns are optional. Leave them out and each trial’s duration is probed
+from its own media file (video first, then audio, then pose), with trials laid
+<strong>end to end</strong> starting at <code class="docutils literal notranslate"><span class="pre">0.0</span></code>:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">eto</span><span class="o">.</span><span class="n">align_media_per_trial</span><span class="p">(</span>
+    <span class="n">trial_table</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="n">columns</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;start_time&quot;</span><span class="p">,</span> <span class="s2">&quot;stop_time&quot;</span><span class="p">]),</span>
+    <span class="n">stream_rates</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;video&quot;</span><span class="p">:</span> <span class="mf">30.0</span><span class="p">,</span> <span class="s2">&quot;pose&quot;</span><span class="p">:</span> <span class="mf">30.0</span><span class="p">,</span> <span class="s2">&quot;audio&quot;</span><span class="p">:</span> <span class="mf">48000.0</span><span class="p">},</span>
+    <span class="n">output_path</span><span class="o">=</span><span class="s2">&quot;my_project/.ethograph/alignment.nwb&quot;</span><span class="p">,</span>
+    <span class="n">media_root</span><span class="o">=</span><span class="s2">&quot;my_project/video&quot;</span><span class="p">,</span>     <span class="c1"># needed to open the files for probing</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<p>Three things to know before relying on this:</p>
+<ul class="simple">
+<li><p><strong>The files must be openable at build time.</strong> Probing opens the media, so
+either give absolute paths in the table or pass <code class="docutils literal notranslate"><span class="pre">media_root</span></code>; a filename that
+doesn’t resolve to an existing file raises <code class="docutils literal notranslate"><span class="pre">ValueError</span></code>. This is the one place
+the builder needs the actual media rather than just its name.</p></li>
+<li><p><strong>Inferred trials are contiguous.</strong> Trial 2 starts exactly where trial 1
+ends, so the inter-trial gaps of the real recording are erased. Trial-relative
+time (labels, features, per-trial video) is unaffected, but session-absolute
+time is fiction — pass the real <code class="docutils literal notranslate"><span class="pre">start_time</span></code> / <code class="docutils literal notranslate"><span class="pre">stop_time</span></code> whenever you have
+ephys on a session clock, session-wide media, or session-mode navigation to
+support.</p></li>
+<li><p><strong>Pose-only tables need a rate.</strong> A pose file has no intrinsic duration, so
+probing it also requires <code class="docutils literal notranslate"><span class="pre">pose_fps=</span></code>. Tables with no <code class="docutils literal notranslate"><span class="pre">video_*</span></code>, <code class="docutils literal notranslate"><span class="pre">audio_*</span></code> or
+<code class="docutils literal notranslate"><span class="pre">pose_*</span></code> column at all cannot infer anything and raise.</p></li>
+</ul>
+<p>When present, <code class="docutils literal notranslate"><span class="pre">start_time</span></code> / <code class="docutils literal notranslate"><span class="pre">stop_time</span></code> also enable session-mode navigation and
+let the GUI restrict neural data to trial windows.</p>
+</section>
 </section>
 <section id="align-media-from-streams-session-wide-or-mixed">
 <span id="target-session-wide-streams"></span><h3><code class="docutils literal notranslate"><span class="pre">align_media_from_streams</span></code> — session-wide or mixed<a class="headerlink" href="#align-media-from-streams-session-wide-or-mixed" title="Link to this heading">#</a></h3>
 <p>Use this when media doesn’t map 1:1 to trials: one continuous audio file across
 all trials, ephys on a separate clock, or explicit DAQ timestamps.</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.io.nwb_alignment</span><span class="w"> </span><span class="kn">import</span> <span class="n">align_media_from_streams</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">ethograph</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">eto</span>
 
 <span class="n">trials</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span>
     <span class="s2">&quot;trial&quot;</span><span class="p">:</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">],</span>
@@ -1050,7 +1090,7 @@ all trials, ephys on a separate clock, or explicit DAQ timestamps.</p>
     <span class="p">{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;ephys_probe-1&quot;</span><span class="p">,</span> <span class="s2">&quot;files&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;session.dat&quot;</span><span class="p">],</span> <span class="s2">&quot;rate&quot;</span><span class="p">:</span> <span class="mf">30000.0</span><span class="p">,</span> <span class="s2">&quot;starting_time&quot;</span><span class="p">:</span> <span class="mf">0.5</span><span class="p">},</span>
 <span class="p">]</span>
 
-<span class="n">align_media_from_streams</span><span class="p">(</span><span class="n">trials</span><span class="p">,</span> <span class="n">streams</span><span class="p">,</span> <span class="s2">&quot;.ethograph/alignment.nwb&quot;</span><span class="p">)</span>
+<span class="n">eto</span><span class="o">.</span><span class="n">align_media_from_streams</span><span class="p">(</span><span class="n">trials</span><span class="p">,</span> <span class="n">streams</span><span class="p">,</span> <span class="s2">&quot;.ethograph/alignment.nwb&quot;</span><span class="p">)</span>
 </pre></div>
 </div>
 <p>Each entry in <code class="docutils literal notranslate"><span class="pre">streams</span></code> accepts:</p>
@@ -1118,7 +1158,6 @@ Xarray</label><div class="sd-tab-content docutils">
 <span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">xarray</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">xr</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">ethograph</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">eto</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.io.nwb_alignment</span><span class="w"> </span><span class="kn">import</span> <span class="n">align_media_per_trial</span>
 
 <span class="c1"># 1) One Dataset per trial</span>
 <span class="n">datasets</span> <span class="o">=</span> <span class="p">[]</span>
@@ -1161,7 +1200,7 @@ Xarray</label><div class="sd-tab-content docutils">
     <span class="s2">&quot;pose_cam-2&quot;</span><span class="p">:</span>  <span class="p">[</span><span class="sa">f</span><span class="s2">&quot;dlc_cam2_trial</span><span class="si">{</span><span class="n">tid</span><span class="si">:</span><span class="s2">03d</span><span class="si">}</span><span class="s2">.h5&quot;</span> <span class="k">for</span> <span class="n">tid</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">11</span><span class="p">)],</span>
 <span class="p">})</span>
 
-<span class="n">align_media_per_trial</span><span class="p">(</span>
+<span class="n">eto</span><span class="o">.</span><span class="n">align_media_per_trial</span><span class="p">(</span>
     <span class="n">trial_table</span><span class="p">,</span>
     <span class="n">stream_rates</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;video&quot;</span><span class="p">:</span> <span class="mf">30.0</span><span class="p">,</span> <span class="s2">&quot;pose&quot;</span><span class="p">:</span> <span class="mf">30.0</span><span class="p">},</span>
     <span class="n">output_path</span><span class="o">=</span><span class="s2">&quot;.ethograph/alignment.nwb&quot;</span><span class="p">,</span>
@@ -1463,7 +1502,10 @@ code:</p>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#what-it-contains">What it contains</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#trial-relative-vs-session-absolute-time">Trial-relative vs session-absolute time</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#choosing-a-builder">Choosing a builder</a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#align-media-per-trial-one-file-per-trial"><code class="docutils literal notranslate"><span class="pre">align_media_per_trial</span></code> — one file per trial</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#align-media-per-trial-one-file-per-trial"><code class="docutils literal notranslate"><span class="pre">align_media_per_trial</span></code> — one file per trial</a><ul class="nav section-nav flex-column">
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#omitting-start-time-stop-time">Omitting <code class="docutils literal notranslate"><span class="pre">start_time</span></code> / <code class="docutils literal notranslate"><span class="pre">stop_time</span></code></a></li>
+</ul>
+</li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#align-media-from-streams-session-wide-or-mixed"><code class="docutils literal notranslate"><span class="pre">align_media_from_streams</span></code> — session-wide or mixed</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#reading-an-existing-alignment-file">Reading an existing alignment file</a></li>
 </ul>

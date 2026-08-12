@@ -427,22 +427,23 @@
 <p>This is the primary user-facing function for creating alignment files.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>trial_table</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html#pandas.DataFrame" title="(in pandas v3.0.5)"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code></a></span>) – DataFrame with <code class="docutils literal notranslate"><span class="pre">trial</span></code> column and <code class="docutils literal notranslate"><span class="pre">{stream}_{device}</span></code> filename
-columns.  <code class="docutils literal notranslate"><span class="pre">start_time</span></code> / <code class="docutils literal notranslate"><span class="pre">stop_time</span></code> are optional – omit for
-aligned-to-trial data.</p>
-</dd>
-</dl>
-<dl class="simple">
-<dt>stream_rates</dt><dd><p>Sampling rate per stream.  Must include every stream that has
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>trial_table</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html#pandas.DataFrame" title="(in pandas v3.0.5)"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code></a></span>) – DataFrame with <code class="docutils literal notranslate"><span class="pre">trial</span></code> column and <code class="docutils literal notranslate"><span class="pre">{stream}_{device}</span></code> filename
+columns.  Rows are trials, in order.  <code class="docutils literal notranslate"><span class="pre">start_time</span></code> / <code class="docutils literal notranslate"><span class="pre">stop_time</span></code>
+are optional – omit them and each trial’s duration is probed from its
+own media, laying trials end to end from <code class="docutils literal notranslate"><span class="pre">0.0</span></code>.</p></li>
+<li><p><strong>stream_rates</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code></a>[<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></a>, <a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></a>] | <a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></a></span>) – Sampling rate per stream.  Must include every stream that has
 columns in the table.  Example:
-<code class="docutils literal notranslate"><span class="pre">{&quot;video&quot;:</span> <span class="pre">30.0,</span> <span class="pre">&quot;audio&quot;:</span> <span class="pre">48000.0,</span> <span class="pre">&quot;pose&quot;:</span> <span class="pre">30.0}</span></code></p>
+<code class="docutils literal notranslate"><span class="pre">{&quot;video&quot;:</span> <span class="pre">30.0,</span> <span class="pre">&quot;audio&quot;:</span> <span class="pre">48000.0,</span> <span class="pre">&quot;pose&quot;:</span> <span class="pre">30.0}</span></code></p></li>
+<li><p><strong>output_path</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></a> | <a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Path</span></code></a> | <a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></a></span>) – Where to write the <code class="docutils literal notranslate"><span class="pre">.nwb</span></code> file.</p></li>
+<li><p><strong>media_root</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></a> | <a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Path</span></code></a> | <a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></a></span>) – Folder the filename columns are relative to.  Only needed when times
+are inferred, since probing must open the files.</p></li>
+<li><p><strong>pose_fps</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></a> | <a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></a></span>) – Frame rate for probing pose files.  Required to infer times from a
+table whose only media columns are <code class="docutils literal notranslate"><span class="pre">pose_*</span></code>.</p></li>
+</ul>
 </dd>
-<dt>output_path</dt><dd><p>Where to write the <code class="docutils literal notranslate"><span class="pre">.nwb</span></code> file.</p>
-</dd>
-</dl>
-<dl class="field-list simple">
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>Path to the created NWB file.</p>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>The in-memory <code class="xref py py-class docutils literal notranslate"><span class="pre">NWBFile</span></code>, written to <code class="docutils literal notranslate"><span class="pre">output_path</span></code> when given.</p>
 </dd>
 </dl>
 <p class="rubric">Examples</p>
@@ -454,7 +455,9 @@ columns in the table.  Example:
 <span class="gp">... </span>        <span class="s2">&quot;pose_cam-1&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;t1.h5&quot;</span><span class="p">,</span> <span class="s2">&quot;t2.h5&quot;</span><span class="p">,</span> <span class="s2">&quot;t3.h5&quot;</span><span class="p">],</span>
 <span class="gp">... </span>    <span class="p">}</span>
 <span class="gp">... </span><span class="p">)</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">eto</span><span class="o">.</span><span class="n">create_alignment</span><span class="p">(</span><span class="n">table</span><span class="p">,</span> <span class="p">{</span><span class="s2">&quot;video&quot;</span><span class="p">:</span> <span class="mf">30.0</span><span class="p">,</span> <span class="s2">&quot;pose&quot;</span><span class="p">:</span> <span class="mf">30.0</span><span class="p">},</span> <span class="s2">&quot;out/.ethograph/alignment.nwb&quot;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">eto</span><span class="o">.</span><span class="n">align_media_per_trial</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="n">table</span><span class="p">,</span> <span class="p">{</span><span class="s2">&quot;video&quot;</span><span class="p">:</span> <span class="mf">30.0</span><span class="p">,</span> <span class="s2">&quot;pose&quot;</span><span class="p">:</span> <span class="mf">30.0</span><span class="p">},</span> <span class="s2">&quot;out/.ethograph/alignment.nwb&quot;</span>
+<span class="gp">... </span><span class="p">)</span>
 </pre></div>
 </div>
 </dd></dl>

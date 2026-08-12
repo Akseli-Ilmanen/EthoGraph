@@ -506,7 +506,7 @@ pose file per camera, two microphones and explicit trial timing:
 
 ```python
 import pandas as pd
-from ethograph.io.nwb_alignment import align_media_per_trial
+import ethograph as eto
 
 trial_table = pd.DataFrame({
     "trial": [1, 2],
@@ -521,24 +521,68 @@ trial_table = pd.DataFrame({
     "stimulus":    ["tone_A", "tone_B"],
 })
 
-align_media_per_trial(
+eto.align_media_per_trial(
     trial_table,
     stream_rates={"video": 30.0, "pose": 30.0, "audio": 48000.0},
     output_path=".ethograph/alignment.nwb",
 )
 ```
 
+{func}`~ethograph.io.nwb_alignment.align_media_per_trial`,
+{func}`~ethograph.io.nwb_alignment.align_media_from_streams` and
+{class}`~ethograph.io.nwb_alignment.NWBAlignment` are all re-exported at the top
+level, so `eto.align_media_per_trial` and
+`from ethograph.io.nwb_alignment import align_media_per_trial` are the same
+function — use whichever you prefer.
+
 Notes:
 
+- **Files are paired by row, not by name.** Nothing scans a folder: row order
+  is trial order and each `{stream}_{device}` column is that stream's file for
+  that trial. Only the basename is stored; filename matching happens later, at
+  load time, when the GUI resolves each basename against the media folder you
+  select.
 - **Camera index pairs video with pose**: device `cam-1` overlays `pose_cam-1`.
 - **Extra columns** (`stimulus`, `condition`, …) become trial attributes and
   flow through to label TSV exports.
-- **`start_time` / `stop_time` are optional** — if omitted, durations are
-  inferred from the media files. When present they enable session-mode
-  navigation and let the GUI restrict neural data to trial windows.
 - **Multi-camera NWB files** need no table: each camera is already a separate
   {class}`~pynwb.image.ImageSeries` in `nwb.acquisition`, discovered
   automatically.
+
+(target-omitting-trial-times)=
+#### Omitting `start_time` / `stop_time`
+
+Both columns are optional. Leave them out and each trial's duration is probed
+from its own media file (video first, then audio, then pose), with trials laid
+**end to end** starting at `0.0`:
+
+```python
+eto.align_media_per_trial(
+    trial_table.drop(columns=["start_time", "stop_time"]),
+    stream_rates={"video": 30.0, "pose": 30.0, "audio": 48000.0},
+    output_path="my_project/.ethograph/alignment.nwb",
+    media_root="my_project/video",     # needed to open the files for probing
+)
+```
+
+Three things to know before relying on this:
+
+- **The files must be openable at build time.** Probing opens the media, so
+  either give absolute paths in the table or pass `media_root`; a filename that
+  doesn't resolve to an existing file raises `ValueError`. This is the one place
+  the builder needs the actual media rather than just its name.
+- **Inferred trials are contiguous.** Trial 2 starts exactly where trial 1
+  ends, so the inter-trial gaps of the real recording are erased. Trial-relative
+  time (labels, features, per-trial video) is unaffected, but session-absolute
+  time is fiction — pass the real `start_time` / `stop_time` whenever you have
+  ephys on a session clock, session-wide media, or session-mode navigation to
+  support.
+- **Pose-only tables need a rate.** A pose file has no intrinsic duration, so
+  probing it also requires `pose_fps=`. Tables with no `video_*`, `audio_*` or
+  `pose_*` column at all cannot infer anything and raise.
+
+When present, `start_time` / `stop_time` also enable session-mode navigation and
+let the GUI restrict neural data to trial windows.
 
 (target-session-wide-streams)=
 ### `align_media_from_streams` — session-wide or mixed
@@ -548,7 +592,7 @@ all trials, ephys on a separate clock, or explicit DAQ timestamps.
 
 ```python
 import pandas as pd
-from ethograph.io.nwb_alignment import align_media_from_streams
+import ethograph as eto
 
 trials = pd.DataFrame({
     "trial": [1, 2, 3],
@@ -565,7 +609,7 @@ streams = [
     {"name": "ephys_probe-1", "files": ["session.dat"], "rate": 30000.0, "starting_time": 0.5},
 ]
 
-align_media_from_streams(trials, streams, ".ethograph/alignment.nwb")
+eto.align_media_from_streams(trials, streams, ".ethograph/alignment.nwb")
 ```
 
 Each entry in `streams` accepts:
@@ -614,7 +658,6 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 import ethograph as eto
-from ethograph.io.nwb_alignment import align_media_per_trial
 
 # 1) One Dataset per trial
 datasets = []
@@ -657,7 +700,7 @@ trial_table = pd.DataFrame({
     "pose_cam-2":  [f"dlc_cam2_trial{tid:03d}.h5" for tid in range(1, 11)],
 })
 
-align_media_per_trial(
+eto.align_media_per_trial(
     trial_table,
     stream_rates={"video": 30.0, "pose": 30.0},
     output_path=".ethograph/alignment.nwb",
