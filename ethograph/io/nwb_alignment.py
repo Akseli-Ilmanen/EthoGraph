@@ -1189,9 +1189,7 @@ def align_media_per_trial(
     ...         "pose_cam-1": ["t1.h5", "t2.h5", "t3.h5"],
     ...     }
     ... )
-    >>> eto.align_media_per_trial(
-    ...     table, {"video": 30.0, "pose": 30.0}, "out/.ethograph/alignment.nwb"
-    ... )
+    >>> eto.align_media_per_trial(table, {"video": 30.0, "pose": 30.0}, "out/.ethograph/alignment.nwb")
     """
     from datetime import datetime
     from uuid import uuid4
