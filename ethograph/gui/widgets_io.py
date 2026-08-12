@@ -23,6 +23,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
+from ethograph.io.catalog import INDIVIDUAL_DIMS
 from ethograph.io.metadata_table import metadata_tsv_path
 from ethograph.io.validation import EPHYS_FILE_FILTER
 from ethograph.labels.export import correct_offsets_trial
@@ -916,7 +917,7 @@ class IOWidget(QWidget):
 
         individual = "ind0"
         ds = getattr(self.app_state, "ds", None)
-        _ind_dim = next((n for n in ("individuals", "individual") if ds is not None and n in ds.coords), None)
+        _ind_dim = next((n for n in INDIVIDUAL_DIMS if ds is not None and n in ds.coords), None)
         if _ind_dim is not None:
             individual = str(ds.coords[_ind_dim].values[0])
 
@@ -1008,7 +1009,7 @@ class IOWidget(QWidget):
 
         individual = "ind0"
         ds = getattr(self.app_state, "ds", None)
-        _ind_dim = next((n for n in ("individuals", "individual") if ds is not None and n in ds.coords), None)
+        _ind_dim = next((n for n in INDIVIDUAL_DIMS if ds is not None and n in ds.coords), None)
         if _ind_dim is not None:
             individual = str(ds.coords[_ind_dim].values[0])
 

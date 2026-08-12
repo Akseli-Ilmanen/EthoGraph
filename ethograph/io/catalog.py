@@ -23,6 +23,16 @@ if TYPE_CHECKING:
     from ethograph.io.trialtree import TrialTree
 
 
+#: Dim spellings that select an individual animal, most-preferred first.
+#: movement (v0.17+) is singular; datasets built by the older wizard wrote the
+#: plural. **A combo is always named after the dim it selects from** — neither
+#: spelling is renamed to the other, so a selection key is always a real dim
+#: and ``.sel()`` needs no translation. Renaming one of them is what let a
+#: panel's selections look complete to ``_sanitize_selections`` while leaving
+#: a dim free in the loader.
+INDIVIDUAL_DIMS = ("individual", "individuals")
+
+
 # ---------------------------------------------------------------------------
 # PlotData — universal rendering output: (T,) or (T, D)
 # ---------------------------------------------------------------------------
@@ -73,6 +83,13 @@ class DataCatalog:
     def combo_values(self, name: str) -> tuple[str, ...]:
         spec = self.combos.get(name)
         return spec.values if spec else ()
+
+    @property
+    def individual_combo(self) -> str | None:
+        """Name of the combo selecting an individual, in this dataset's own
+        spelling — ``None`` when it has no individual dim. Ask for it rather
+        than hardcoding either spelling."""
+        return next((n for n in INDIVIDUAL_DIMS if n in self.combos), None)
 
     def feature_choices(self) -> list[str]:
         """The canonical GUI feature list — the SINGLE source used by the
@@ -236,6 +253,31 @@ class _CatalogMixin:
 # ---------------------------------------------------------------------------
 
 
+def _selections_for_var(selections: dict[str, str], var: xr.DataArray) -> dict:
+    """Adapt combo-named *selections* to the dims of *var*.
+
+    A selection key **is** a dim name or it is ignored — combos are named after
+    their dim, so there is nothing to translate. Resist adding a plural→singular
+    fallback here: ``PanelStateMixin._sanitize_selections`` decides which dims
+    are still free on exactly these terms, and any rule applied on one side but
+    not the other leaves a dim free that the other thinks is pinned, which is
+    how ``sel_valid`` ends up with more than ``(time,)``/``(time, dim)``. A
+    stale plural key from an older settings file is simply inert.
+
+    The one real adjustment: ``feature_dims()`` stringifies coord labels for the
+    combo UI, so a numeric coordinate (``component=0``, ``unit=43``) arrives as
+    ``"0"``/``"43"``. Coerce back to the coordinate's dtype so ``.sel()`` matches.
+    """
+    out = dict(selections)
+    for dim, val in list(out.items()):
+        if isinstance(val, str) and dim in var.coords and var.coords[dim].dtype.kind in "iuf":
+            try:
+                out[dim] = var.coords[dim].dtype.type(val)
+            except (ValueError, TypeError):
+                pass
+    return out
+
+
 class XarrayLoader(_CatalogMixin):
     """Feature access from an ``xr.Dataset``.  Uses ``sel_valid`` for selection."""
 
@@ -291,19 +333,7 @@ class XarrayLoader(_CatalogMixin):
             var = ds[feature]
 
         time = eto.get_time_coord(var).values
-        # Translate "individuals" → "individual" for movement v0.17+ datasets
-        _sel = dict(selections)
-        if "individuals" in _sel and "individual" in var.dims and "individuals" not in var.dims:
-            _sel["individual"] = _sel.pop("individuals")
-        # feature_dims() stringifies coord labels for the combo UI, so a numeric
-        # coordinate (e.g. component=0, unit=43) arrives here as "0"/"43". Coerce
-        # back to the coordinate's dtype so .sel() matches the real index.
-        for dim, val in list(_sel.items()):
-            if isinstance(val, str) and dim in var.coords and var.coords[dim].dtype.kind in "iuf":
-                try:
-                    _sel[dim] = var.coords[dim].dtype.type(val)
-                except (ValueError, TypeError):
-                    pass
+        _sel = _selections_for_var(selections, var)
         data, filt_kwargs = eto.sel_valid(var, _sel)
         var_sel = var.sel(**filt_kwargs)
 
@@ -317,8 +347,9 @@ class XarrayLoader(_CatalogMixin):
 
         color_data = None
         if data.ndim == 1 and color_variable and color_variable in ds.data_vars:
-            color_kwargs = {k: v for k, v in selections.items() if k != "RGB"}
-            color_data, _ = eto.sel_valid(ds[color_variable], color_kwargs)
+            color_var = ds[color_variable]
+            color_kwargs = {k: v for k, v in _selections_for_var(selections, color_var).items() if k != "RGB"}
+            color_data, _ = eto.sel_valid(color_var, color_kwargs)
 
         changepoints = None
         if data.ndim == 1:
@@ -728,11 +759,12 @@ def _auto_catalog_xarray(ds: xr.Dataset) -> DataCatalog:
 
     combos: dict[str, ComboSpec] = {}
 
-    # Support both wizard format ("individuals") and movement v0.17+ format ("individual")
-    _ind_dim = next((n for n in ("individuals", "individual") if n in ds.coords), None)
+    # Named first so the individual leads the combo row; the name is the dim's
+    # own, never renamed (see INDIVIDUAL_DIMS).
+    _ind_dim = next((n for n in INDIVIDUAL_DIMS if n in ds.coords), None)
     if _ind_dim is not None:
         vals = tuple(ds.coords[_ind_dim].values.astype(str))
-        combos["individuals"] = ComboSpec("individuals", vals)
+        combos[_ind_dim] = ComboSpec(_ind_dim, vals)
 
     features_list = _feature_vars(ds)
     changepoints_list = list(ds.filter_by_attrs(type="changepoints").data_vars)
@@ -742,9 +774,6 @@ def _auto_catalog_xarray(ds: xr.Dataset) -> DataCatalog:
 
     for name in find_temporal_dims(ds):
         if name in combos or name.upper() in _HIDDEN_DIMS:
-            continue
-        # "individual" already normalized to "individuals" combo above
-        if name == "individual" and _ind_dim == "individual":
             continue
         if name in ds.coords:
             coord = ds.coords[name]
@@ -777,11 +806,12 @@ def catalog_from_xarray(ds: xr.Dataset, dt: TrialTree, nwb_alignment=None) -> Da
 
     combos: dict[str, ComboSpec] = {}
 
-    # Support both wizard format ("individuals") and movement v0.17+ format ("individual")
-    _ind_dim = next((n for n in ("individuals", "individual") if n in ds.coords), None)
+    # Named first so the individual leads the combo row; the name is the dim's
+    # own, never renamed (see INDIVIDUAL_DIMS).
+    _ind_dim = next((n for n in INDIVIDUAL_DIMS if n in ds.coords), None)
     if _ind_dim is not None:
         vals = tuple(ds.coords[_ind_dim].values.astype(str))
-        combos["individuals"] = ComboSpec("individuals", vals)
+        combos[_ind_dim] = ComboSpec(_ind_dim, vals)
 
     features_list = _feature_vars(ds)
     changepoints_list = list(ds.filter_by_attrs(type="changepoints").data_vars)
@@ -792,9 +822,6 @@ def catalog_from_xarray(ds: xr.Dataset, dt: TrialTree, nwb_alignment=None) -> Da
     extra_dims = find_temporal_dims(ds)
     for name in extra_dims:
         if name in combos or name.upper() in _HIDDEN_DIMS:
-            continue
-        # "individual" already normalized to "individuals" combo above
-        if name == "individual" and _ind_dim == "individual":
             continue
         if name in ds.coords:
             coord = ds.coords[name]
@@ -887,7 +914,7 @@ def catalog_from_pynapple(
     dim_map = _compute_shared_column_dims(feature_objs)
 
     combos: dict[str, ComboSpec] = {}
-    combos["individuals"] = ComboSpec("individuals", ("individual_0",))
+    combos["individual"] = ComboSpec("individual", ("individual_0",))
 
     features: list[str] = []
     changepoints: list[str] = []

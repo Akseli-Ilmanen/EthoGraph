@@ -240,7 +240,11 @@ class PanelStateMixin:
                 sels.pop(key, None)
             else:
                 sels[key] = value
-            self.panel_state["selections"] = sels
+            # Sanitize here too, not only on a feature change: setting a dim to
+            # "All" (or inheriting globals mid-rebuild) is the other way a panel
+            # ends up with two free dims, and the very next update_plot() then
+            # trips sel_valid's (time,)/(time, dim) assertion.
+            self.panel_state["selections"] = self._sanitize_selections(sels)
 
     def show_predictions_enabled(self) -> bool:
         """Whether this panel shows the dotted prediction-confidence curve."""
@@ -295,21 +299,13 @@ class PanelStateMixin:
             return sels
         dims = loader.feature_dims(feature)
 
-        def values_for(key: str) -> list | None:
-            """What *key* selects from, or ``None`` if the feature has no such dim.
-
-            The combos are named for the catalog (``individuals``) while
-            movement's dim is singular (``individual``); ``XarrayLoader.select``
-            translates between them, so validity is judged on the same terms.
-            """
-            if key in dims:
-                return dims[key]
-            return dims[key[:-1]] if key.endswith("s") and key[:-1] in dims else None
-
         # A dim the feature lacks entirely is harmless — sel_valid ignores it.
-        sels = {k: v for k, v in sels.items() if (vals := values_for(k)) is None or str(v) in vals}
-        pinned = set(sels) | {k[:-1] for k in sels if k.endswith("s")}
-        missing_multi = [d for d, vals in dims.items() if d not in pinned and len(vals) > 1]
+        # Judge exactly as `_selections_for_var` does: a key is a dim or it is
+        # inert. Do not add a plural→singular fallback on one side only — a key
+        # counted as pinning here but ignored there leaves an extra dim free,
+        # and sel_valid then returns more than (time,)/(time, dim).
+        sels = {k: v for k, v in sels.items() if k not in dims or str(v) in dims[k]}
+        missing_multi = [d for d, vals in dims.items() if d not in sels and len(vals) > 1]
         for d in missing_multi[1:]:
             sels[d] = dims[d][0]
         return sels

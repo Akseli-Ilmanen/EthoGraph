@@ -14,8 +14,8 @@ from ethograph.datasets import (
 )
 from ethograph.io.catalog import catalog_from_xarray
 from ethograph.utils.download import (
-    build_alignment_nwb,
     download_assets,
+    ensure_alignment_nwb,
     ensure_default_configs,
     write_example_configs,
 )
@@ -51,10 +51,10 @@ def _skip_if_not_downloaded(key: str) -> None:
 
 
 def _ensure_alignment_nwb(key: str) -> None:
-    """Build alignment.nwb only when it does not already exist."""
+    """Build/fetch alignment.nwb only when it does not already exist."""
     nwb_path = dataset_dir(key) / ".ethograph" / "alignment.nwb"
     if not nwb_path.exists():
-        build_alignment_nwb(key)
+        ensure_alignment_nwb(key)
 
 
 def _apply_template(meta, key: str, downsample: bool = False) -> None:

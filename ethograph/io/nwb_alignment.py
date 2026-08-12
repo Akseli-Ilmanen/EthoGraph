@@ -1146,9 +1146,9 @@ def _resolve_media_path(filename: Any, media_root: Path | None) -> Path | None:
 def align_media_per_trial(
     trial_table: pd.DataFrame,
     stream_rates: dict[str, float] | None = None,
-    output_path: Path | None = None,
+    output_path: str | Path | None = None,
     session_description: str = "NWB file for media alignment (ethograph generated).",
-    media_root: Path | None = None,
+    media_root: str | Path | None = None,
     pose_fps: float | None = None,
 ) -> NWBFile:
     """Create an alignment.nwb from a trial table.
@@ -1159,20 +1159,25 @@ def align_media_per_trial(
     ----------
     trial_table
         DataFrame with ``trial`` column and ``{stream}_{device}`` filename
-        columns.  ``start_time`` / ``stop_time`` are optional -- omit for
-        aligned-to-trial data.
-
-
+        columns.  Rows are trials, in order.  ``start_time`` / ``stop_time``
+        are optional -- omit them and each trial's duration is probed from its
+        own media, laying trials end to end from ``0.0``.
     stream_rates
         Sampling rate per stream.  Must include every stream that has
         columns in the table.  Example:
         ``{"video": 30.0, "audio": 48000.0, "pose": 30.0}``
     output_path
         Where to write the ``.nwb`` file.
+    media_root
+        Folder the filename columns are relative to.  Only needed when times
+        are inferred, since probing must open the files.
+    pose_fps
+        Frame rate for probing pose files.  Required to infer times from a
+        table whose only media columns are ``pose_*``.
 
     Returns
     -------
-    Path to the created NWB file.
+    The in-memory :class:`~pynwb.NWBFile`, written to ``output_path`` when given.
 
     Examples
     --------
@@ -1184,7 +1189,9 @@ def align_media_per_trial(
     ...         "pose_cam-1": ["t1.h5", "t2.h5", "t3.h5"],
     ...     }
     ... )
-    >>> eto.create_alignment(table, {"video": 30.0, "pose": 30.0}, "out/.ethograph/alignment.nwb")
+    >>> eto.align_media_per_trial(
+    ...     table, {"video": 30.0, "pose": 30.0}, "out/.ethograph/alignment.nwb"
+    ... )
     """
     from datetime import datetime
     from uuid import uuid4
@@ -1213,7 +1220,7 @@ def align_media_per_trial(
             trial_table,
             video_cols,
             audio_cols,
-            media_root,
+            Path(media_root) if media_root else None,
             pose_cols=pose_cols,
             pose_fps=pose_fps,
         )
@@ -1308,7 +1315,7 @@ def align_media_from_streams(
         ...     {"name": "pose_cam-1", "files": ["t1.h5", "t2.h5", "t3.h5"], "rate": 30.0},
         ...     {"name": "audio_mic-1", "files": ["session.wav"], "rate": 48000.0, "starting_time": 0.0},
         ... ]
-        >>> eto.create_alignment_from_streams(trials, streams, ".ethograph/alignment.nwb")
+        >>> eto.align_media_from_streams(trials, streams, ".ethograph/alignment.nwb")
     """
     from datetime import datetime
     from uuid import uuid4

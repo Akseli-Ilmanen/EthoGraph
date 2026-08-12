@@ -163,7 +163,11 @@ class MetaWidget(GridSectionContainer):
 
         # Signal connections for decoupled communication
         self.plot_container.labels_redraw_needed.connect(self._on_labels_redraw_needed)
+        self.plot_container.panel_content_changed.connect(self._rebind_console)
         self.app_state.trial_changed.connect(self.data_widget.on_trial_changed)
+        # After DataWidget.on_trial_changed: the catalog it rebuilds is what the
+        # console's derived features are removed from.
+        self.app_state.trial_changed.connect(self._on_trial_changed_console)
         self.app_state.trial_changed.connect(self.changepoints_widget._update_cp_status)
         self.app_state.trial_changed.connect(self.update_labels_widget_title)
         self.app_state.trial_changed.connect(self.io_widget._update_human_verified_status)
@@ -288,6 +292,7 @@ class MetaWidget(GridSectionContainer):
             "phy": getattr(self.ephys_widget, "traceview_panel", None),
             "lineplot": getattr(ps, "lineplot_panel", None),
             "spaceplot": getattr(ps, "spaceplot_panel", None),
+            "radialplot": getattr(ps, "radialplot_panel", None),
             "spectrogram": getattr(ps, "spectrogram_panel", None),
             "heatmap": getattr(ps, "heatmap_panel", None),
             "shared": getattr(ps, "shared_widget", None),
@@ -380,7 +385,7 @@ class MetaWidget(GridSectionContainer):
             if hasattr(video_area, "camera_view_removed"):
                 video_area.camera_view_removed.connect(self.active_panels.unregister)
 
-    _CONTEXT_KINDS = frozenset({"audiotrace", "spectrogram", "lineplot", "heatmap", "space", "ephys", "neo"})
+    _CONTEXT_KINDS = frozenset({"audiotrace", "spectrogram", "lineplot", "heatmap", "space", "radial", "ephys", "neo"})
 
     def _on_active_panel(self, reg):
         """A panel was clicked → track it, and show its controls in the sidebar.
@@ -399,6 +404,8 @@ class MetaWidget(GridSectionContainer):
                 self.data_widget._update_confidence_overlay()
         if kind == PanelKind.SPACE:
             self.data_widget.set_active_space_plot(reg.widget)
+        if kind == PanelKind.RADIAL:
+            self.data_widget.set_active_radial_plot(reg.widget)
         if kind in (PanelKind.AUDIOTRACE, PanelKind.SPECTROGRAM):
             self.plot_settings_widget.set_active_audio_plot(reg.widget)
             # Playback follows the last-clicked audio panel (its pin, else global).
@@ -477,10 +484,16 @@ class MetaWidget(GridSectionContainer):
     def _activate_panel(self, widget, kind: str):
         """Make a just-created panel the active one (green edge + sidebar
         controls showing its feature/selections)."""
+        from .active_panel import PanelKind
+
         mgr = self.active_panels
         reg = mgr.registration_for(widget) if mgr is not None else None
         if reg is not None:
             mgr.set_active(reg)
+            # A brand-new panel has no click behind it, so nothing else
+            # announces its contents to the console.
+            if reg.kind in PanelKind.FEATURE and reg.plot is not None:
+                self.plot_container.panel_content_changed.emit(reg.plot)
         # set_active no-ops when already active — sync the sidebar regardless.
         self._on_plot_focus(kind)
 
@@ -496,6 +509,9 @@ class MetaWidget(GridSectionContainer):
                 if plot is not None:
                     self._activate_panel(plot, "heatmap")
                     notify(f"Heatmap: {name}")
+            elif plot_type == "Radial":
+                self.data_widget.add_radial_plot(feature=name)
+                notify(f"Radial: {name}")
             elif plot_type.startswith("Space"):
                 # Every drop creates a new instance — space plots never
                 # replace each other.
@@ -535,6 +551,66 @@ class MetaWidget(GridSectionContainer):
             self._add_camera_view(name)
         elif kind == "image":
             self._add_image_view(name)
+        elif kind == "console":
+            self._add_console_panel()
+
+    def _add_console_panel(self):
+        """Open (or re-show) the Python console panel and bind whatever feature
+        panel is already active, so it is usable without a second click."""
+        panel = self.plot_container.add_console_panel()
+        if not getattr(panel, "_features_wired", False):
+            panel.features_changed.connect(self._on_derived_features_changed)
+            panel._features_wired = True
+        active = self.plot_container.active_feature_plot
+        if active is not None:
+            panel.bind_panel(active)
+
+    def _on_derived_features_changed(self):
+        """A console assignment added or removed a derived feature — refresh the
+        one canonical feature list everywhere it is shown."""
+        self.data_widget.refresh_feature_choices()
+        self.data_widget.refresh_radial_plots()
+        self._close_panels_for_missing_features()
+
+    def _close_panels_for_missing_features(self):
+        """Close any panel whose feature no longer exists.
+
+        Derived features are dropped by ``forget()``, ``clear(all=True)`` and
+        every trial change; a panel left showing one can never render again, so
+        it would sit there permanently blank under a name nothing answers to.
+        """
+        available = set(self.plot_container._available_features())
+        if not available:
+            return  # no catalog yet — "unknown", not "nothing exists"
+        for plot in [*self.plot_container.line_plots, *self.plot_container.heatmap_plots]:
+            feature = plot._effective_feature()
+            if feature and feature not in available:
+                self.plot_container.remove_panel(plot)
+        for space_plot in list(self.data_widget.space_plots):
+            feature = space_plot.feature_combo.currentText()
+            if feature and feature not in available:
+                self.data_widget.remove_space_plot(space_plot)
+        for radial_plot in list(self.data_widget.radial_plots):
+            feature = radial_plot.feature_combo.currentText()
+            if feature and feature not in available:
+                self.data_widget.remove_radial_plot(radial_plot)
+
+    def _rebind_console(self, plot):
+        """Keep the console describing the panel as it is NOW.
+
+        ``active_changed`` fires only when the active panel *changes*, so
+        re-clicking the panel you are already on, or swapping its feature in
+        the sidebar, left the console holding the previous variable.
+        """
+        console = self.plot_container.console_panel
+        if console is not None and plot is not None:
+            console.bind_panel(plot)
+
+    def _on_trial_changed_console(self, *_):
+        """Derived features live for one trial only (see ``reset_for_trial``)."""
+        console = self.plot_container.console_panel
+        if console is not None:
+            console.reset_for_trial()
 
     def _add_phy_panel(self):
         """Add (or re-show) the Phy-like raw-data trace panel. It is a singleton
@@ -922,6 +998,7 @@ class MetaWidget(GridSectionContainer):
         if self.app_state.ready:
             layout = self.plot_container.layout_state()
             layout["space_plots"] = self.data_widget.space_layout_state()
+            layout["radial_plots"] = self.data_widget.radial_layout_state()
             # Shell dock arrangement (space plots, cameras) is per-dataset
             # state and travels with the dataset's local_settings.yaml.
             layout["shell_dock_state_b64"] = self.shell.capture_dock_state_b64()
@@ -939,6 +1016,7 @@ class MetaWidget(GridSectionContainer):
         if layout:
             self.plot_container.apply_layout_state(layout)
             self.data_widget.apply_space_layout_state(layout.get("space_plots"))
+            self.data_widget.apply_radial_layout_state(layout.get("radial_plots"))
             blob = layout.get("shell_dock_state_b64")
             if blob:
                 self.shell.apply_dock_state_b64(blob)

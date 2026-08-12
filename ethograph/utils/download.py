@@ -1,9 +1,10 @@
 """Download example datasets from GitHub releases."""
 
 import logging
+import time
 from pathlib import Path
 from typing import Callable
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
 
 from ethograph.datasets import (
@@ -19,11 +20,55 @@ logger = logging.getLogger(__name__)
 
 _RELEASE_BASE = "https://github.com/Akseli-Ilmanen/EthoGraph/releases/download"
 
+#: Network settings for release-asset fetches. GitHub redirects every asset to
+#: ``release-assets.githubusercontent.com``, a four-IP anycast range that some
+#: institutional firewalls block or throttle even though ``github.com`` itself
+#: stays reachable — so a connect timeout on one asset says nothing about the
+#: next. Without an explicit timeout the OS default (~21 s per address, four
+#: addresses) turns that into a minutes-long freeze ending in WinError 10060.
+_DOWNLOAD_TIMEOUT_S = 30.0
+_DOWNLOAD_ATTEMPTS = 3
+_RETRY_BACKOFF_S = 2.0
+
+
+def _fetch(url: str, attempts: int = _DOWNLOAD_ATTEMPTS) -> bytes:
+    """Fetch *url*, retrying transient network failures with backoff.
+
+    HTTP errors (a genuinely missing asset) are raised immediately — only
+    connection-level failures are worth a second try.
+    """
+    last_error: Exception | None = None
+    for attempt in range(1, attempts + 1):
+        try:
+            with urlopen(url, timeout=_DOWNLOAD_TIMEOUT_S) as resp:  # noqa: S310
+                return resp.read()
+        except HTTPError:
+            raise
+        except (URLError, TimeoutError, OSError) as exc:
+            last_error = exc
+            logger.warning("Download attempt %d/%d failed for %s: %s", attempt, attempts, url, exc)
+            if attempt < attempts:
+                time.sleep(_RETRY_BACKOFF_S * 2 ** (attempt - 1))
+    raise ConnectionError(
+        f"Could not reach {url} after {attempts} attempts ({last_error}). "
+        "GitHub serves release assets from release-assets.githubusercontent.com "
+        "(185.199.108-111.133); check whether a firewall, VPN or proxy is blocking that host."
+    ) from last_error
+
+
 #: Optional per-template local-settings asset. If a ``local_settings.yaml``
 #: exists among a template's GitHub release assets, it is downloaded into the
 #: dataset's ``.ethograph/`` folder — shipping the author's panel layout (and
 #: any other per-dataset settings) through the normal settings system.
 TEMPLATE_LOCAL_SETTINGS_FILENAME = "local_settings.yaml"
+
+#: Optional per-template alignment asset. A dataset whose release ships an
+#: authored ``alignment.nwb`` sets ``"download_alignment": True`` in
+#: :data:`~ethograph.datasets.DATASETS` and gets the file fetched into
+#: ``.ethograph/`` instead of rebuilt by :func:`build_alignment_nwb` — use it
+#: whenever the real timing or stream offsets cannot be recovered by probing
+#: the media.
+TEMPLATE_ALIGNMENT_FILENAME = "alignment.nwb"
 
 # Default mapping written to ~/.ethograph/mapping.txt if it doesn't exist.
 DEFAULT_MAPPING = (
@@ -223,8 +268,12 @@ def download_assets(
         url = f"{_RELEASE_BASE}/{release_tag}/{name}"
         if on_progress:
             on_progress(i, name)
-        with urlopen(url) as resp:  # noqa: S310
-            local_path.write_bytes(resp.read())
+        data = _fetch(url)
+        # Write via .part so an interrupted write can never leave a truncated
+        # file that the exists() check above would later treat as complete.
+        part_path = local_path.with_name(local_path.name + ".part")
+        part_path.write_bytes(data)
+        part_path.replace(local_path)
         if on_progress:
             on_progress(i + 1, name)
 
@@ -245,8 +294,8 @@ def download_template_local_settings(key: str) -> Path | None:
         return local_path
     url = f"{_RELEASE_BASE}/{DATASETS[key]['release_tag']}/{TEMPLATE_LOCAL_SETTINGS_FILENAME}"
     try:
-        with urlopen(url) as resp:  # noqa: S310
-            data = resp.read()
+        # Optional asset — most releases 404 here, so don't spend retries on it.
+        data = _fetch(url, attempts=1)
     except (URLError, OSError):
         return None
     local_path.parent.mkdir(parents=True, exist_ok=True)
@@ -254,8 +303,75 @@ def download_template_local_settings(key: str) -> Path | None:
     return local_path
 
 
+def download_template_alignment(key: str) -> Path:
+    """Fetch the ``alignment.nwb`` release asset for *key* into ``.ethograph/``.
+
+    Only for datasets declaring ``"download_alignment": True``. Unlike
+    :func:`download_template_local_settings` the asset is *required*, so a
+    missing one raises rather than returning ``None`` — falling back to
+    :func:`build_alignment_nwb` would silently hand the user a differently
+    timed dataset while appearing to succeed.
+
+    An existing local file is kept: the GUI edits stream offsets straight into
+    this file, so re-selecting the template must not discard that.
+    """
+    from ethograph.utils.paths import SETTINGS_DIR
+
+    local_path = dataset_dir(key) / SETTINGS_DIR / TEMPLATE_ALIGNMENT_FILENAME
+    if local_path.exists():
+        return local_path
+    url = f"{_RELEASE_BASE}/{DATASETS[key]['release_tag']}/{TEMPLATE_ALIGNMENT_FILENAME}"
+    data = _fetch(url)
+    local_path.parent.mkdir(parents=True, exist_ok=True)
+    part_path = local_path.with_name(local_path.name + ".part")
+    part_path.write_bytes(data)
+    part_path.replace(local_path)
+    logger.info("Downloaded alignment NWB: %s", local_path)
+    return local_path
+
+
+def ensure_alignment_nwb(key: str) -> None:
+    """Make sure the dataset's ``.ethograph/alignment.nwb`` exists.
+
+    Downloaded when the dataset ships one (``"download_alignment"``),
+    constructed from its media mapping otherwise.
+    """
+    if DATASETS[key].get("download_alignment"):
+        download_template_alignment(key)
+        return
+    build_alignment_nwb(key)
+
+
+def _pair_media_with_trials(trials, media_rows: list[dict], key: str) -> list[tuple]:
+    """Pair each trial id in *trials* with its row from *media_rows*.
+
+    A row carrying an explicit ``"trial"`` is matched **by id**; that is the
+    only safe form when the metadata is not written in the same order as
+    ``dt.trials`` (which comes back numerically sorted, so date-ordered media
+    lists cross over). Rows without one are taken positionally, which is why
+    the row count then has to match exactly.
+    """
+    if all("trial" in row for row in media_rows):
+        by_trial = {str(row["trial"]): row for row in media_rows}
+        missing = [t for t in trials if str(t) not in by_trial]
+        if missing:
+            raise KeyError(f"{key}: no media row for trial(s) {missing}")
+        return [(t, {k: v for k, v in by_trial[str(t)].items() if k != "trial"}) for t in trials]
+
+    if len(media_rows) != len(trials):
+        raise ValueError(
+            f"{key}: {len(media_rows)} media rows for {len(trials)} trials. "
+            "Add a 'trial' key to each media row so they can be matched by id."
+        )
+    return list(zip(trials, media_rows))
+
+
 def build_alignment_nwb(key: str) -> None:
-    """Create an alignment.nwb from the dataset's media mapping and NC file."""
+    """Create an alignment.nwb from the dataset's media mapping and NC file.
+
+    Prefer :func:`ensure_alignment_nwb`, which honours a dataset's shipped
+    alignment asset instead of rebuilding it.
+    """
     dataset = DATASETS[key]
     media_rows = dataset.get("media")
     if not media_rows:
@@ -283,7 +399,7 @@ def build_alignment_nwb(key: str) -> None:
     fps = dt.itrial(0).fps
 
     rows = []
-    for trial_id, media in zip(trials, media_rows):
+    for trial_id, media in _pair_media_with_trials(trials, media_rows, key):
         if "video_cam-1" in media:
             video_path = dest / media["video_cam-1"]
             stop_time = get_video_duration(str(video_path))

@@ -112,7 +112,7 @@ def test_loading_replaces_the_feature_data(birdpark_gui, store):
 
     combos = meta.data_widget.combos
     assert _items(combos["keypoint"]) == ["8", "9"]
-    assert _items(combos["individuals"]) == ["individual_0"]
+    assert _items(combos["individual"]) == ["individual_0"]
     assert _items(combos["space"]) == ["x", "y"]
 
     assert {"position", "velocity", "speed", "acceleration"} <= set(meta.data_widget.catalog.feature_choices())
@@ -183,7 +183,7 @@ def test_the_coords_section_is_updated_not_torn_down(birdpark_gui, store):
     assert len(meta.data_widget.controls) == controls_once
 
     # And the dimension combos are on screen for the user to pick with.
-    for key in ("keypoint", "space", "individuals"):
+    for key in ("keypoint", "space", "individual"):
         assert not meta.data_widget._combo_row_fields[key].isHidden()
 
     # A dimension the next dataset lacks is hidden, not removed, so it can come

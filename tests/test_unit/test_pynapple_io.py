@@ -106,7 +106,7 @@ def test_catalog_basic(simple_nap_data):
     cat = catalog_from_pynapple(simple_nap_data)
     assert "speed" in cat.features
     assert "velocity" in cat.features
-    assert "individuals" in cat.combos
+    assert "individual" in cat.combos  # dim-named, movement-style singular
     assert cat.trial_conditions == []
 
 
@@ -153,7 +153,7 @@ def test_store_dims_shared(multi_tsdframe_data):
     store = PynappleStore(multi_tsdframe_data)
     assert "columns" in store.dims
     assert list(store.dims["columns"]) == ["x", "y", "z"]
-    assert "individuals" in store.dims
+    assert "individual" in store.dims
 
 
 def test_store_get_type_vars(multi_tsdframe_data):
@@ -161,7 +161,7 @@ def test_store_get_type_vars(multi_tsdframe_data):
     tvd = store.get_type_vars()
     assert "features" in tvd
     assert "columns" in tvd
-    assert "individuals" in tvd
+    assert "individual" in tvd
 
 
 def test_store_select_tsd(multi_tsdframe_data):

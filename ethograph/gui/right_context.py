@@ -17,6 +17,7 @@ plot type     sections shown
 ``lineplot``  Xarray coords, Overlays, Line-plot axes, shared axes
 ``heatmap``   Xarray coords, Overlays, Heatmap, shared axes
 ``space``     Xarray coords, Space-plot, shared axes
+``radial``    Radial-plot (feature + which value is up)
 ============  ==================================================
 
 The sidebar refreshes only when the clicked plot *type* changes (not on every
@@ -44,6 +45,9 @@ _CONTEXT_MAP: dict[str, list[str]] = {
     # Space: its own X/Y/Z + 3D + space controls (now inside spaceplot_panel);
     # the lineplot "coords" group is intentionally excluded.
     "space": ["spaceplot", "shared"],
+    # Radial (compass): its feature + which value points up. No shared axes —
+    # it has no time axis to autoscale or lock.
+    "radial": ["radialplot"],
     # Phy-like ephys trace: the full Kilosort trace controls (channel/gain/
     # pyramid/probe select + cluster table), borrowed from EphysWidget. No
     # shared axes group — autoscale/lock-axes don't apply to the trace view.
@@ -64,6 +68,7 @@ _CONTEXT_TITLE: dict[str, str] = {
     "lineplot": "Lineplot settings",
     "heatmap": "Heatmap settings",
     "space": "Space plot settings",
+    "radial": "Radial plot settings",
     "ephys": "Phy viewer settings",
     "neo": "Neo viewer settings",
 }

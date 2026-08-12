@@ -32,6 +32,7 @@ from qtpy.QtWidgets import (
 
 from ethograph.features.changepoints import snap_to_nearest_changepoint_time
 from ethograph.gui.notify import notify
+from ethograph.io.catalog import INDIVIDUAL_DIMS
 from ethograph.io.metadata_table import (
     empty_metadata_df,
     metadata_tsv_path,
@@ -718,7 +719,7 @@ class LabelsWidget(QWidget):
         folder = QFileDialog.getExistingDirectory(self, "Select predictions folder (.npy files)")
         if not folder:
             return
-        individual = self.app_state.individuals_sel or "default"
+        individual = self.app_state.selected_individual() or "default"
         threshold = self.io_widget.pred_confidence_threshold_spin.value()
         seg_threshold = self.io_widget.pred_segment_confidence_threshold_spin.value()
         try:
@@ -970,11 +971,11 @@ class LabelsWidget(QWidget):
 
     def _current_individual(self) -> str:
         """Return the currently selected individual name for interval operations."""
-        ind = getattr(self.app_state, "individuals_sel", None)
-        if ind is not None and ind not in ("", "None"):
-            return str(ind)
+        ind = self.app_state.selected_individual()
+        if ind is not None:
+            return ind
         _ds = self.app_state.ds
-        _ind_dim = next((n for n in ("individuals", "individual") if _ds is not None and n in _ds.coords), None)
+        _ind_dim = next((n for n in INDIVIDUAL_DIMS if _ds is not None and n in _ds.coords), None)
         if _ind_dim is not None:
             return str(_ds.coords[_ind_dim].values[0])
         return "default"

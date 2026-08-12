@@ -17,6 +17,9 @@ typing. Feature plot-type options are gated by data shape ``(T, N)``:
 * ``Lineplot`` — always available.
 * ``Heatmap`` / ``Space (2D)`` — need ``N >= 2``.
 * ``Space (3D)`` — needs ``N >= 3``.
+* ``Radial`` — needs the feature's dims to pin down to ONE column whose values
+  span a full turn (360° or 2π), which is what distinguishes a heading from any
+  other 1-D signal.
 """
 
 from __future__ import annotations
@@ -40,6 +43,8 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
+from .plots_radial import feature_angular_unit
+
 logger = logging.getLogger(__name__)
 
 SOURCE_MIME = "application/x-ethograph-source"
@@ -54,6 +59,10 @@ _ROLE_HEADER = Qt.UserRole + 2
 
 def feature_ncols(app_state, feature: str) -> int:
     """Number of non-time columns ``N`` for a feature (product of extra dims)."""
+    loader = getattr(app_state, "data_loader", None)
+    derived = getattr(loader, "derived", None)
+    if isinstance(derived, dict) and feature in derived:
+        return derived[feature].n_columns
     ds = getattr(app_state, "ds", None)
     if ds is None or feature not in getattr(ds, "data_vars", {}):
         return 1
@@ -75,6 +84,8 @@ def allowed_plot_types(kind: str, name: str, app_state) -> list[str]:
         return ["Image"]
     if kind == "neo":
         return ["Neo Trace"]
+    if kind == "console":
+        return ["Python console"]
     if kind == "phy":
         return ["Phy TraceView"]
     if kind == "feature":
@@ -84,6 +95,13 @@ def allowed_plot_types(kind: str, name: str, app_state) -> list[str]:
             options += ["Heatmap", "Space (2D)"]
         if n >= 3:
             options.append("Space (3D)")
+        # A compass shows ONE heading, so it is offered for any feature whose
+        # dims pin down to a single column covering a full turn — anything else
+        # has no direction. The raw column count says nothing here: a heading
+        # normally carries a keypoint or individual dim like every other
+        # feature, and gating on N == 1 hid the option from exactly those.
+        if feature_angular_unit(app_state, name) is not None:
+            options.append("Radial")
         return options
     return []
 
@@ -317,6 +335,11 @@ class SourcePopup(QWidget):
                 features = list(ds.data_vars)
         for feat in features:
             self._add_source(feat, "feature", str(feat))
+
+        # A dockable Python console over the plotted arrays: click a feature
+        # panel to bind what it shows, assign to make new features.
+        self._add_header("Tools")
+        self._add_source("Python console", "console", "console")
 
         self._apply_filter(self._filter.text())
 

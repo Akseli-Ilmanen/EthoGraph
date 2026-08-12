@@ -20,7 +20,7 @@ To pick which geometry is drawn, either:
   selection:
 
   ```yaml
-  space_library_geometry: moll2025_geometry
+  space_library_geometry: moll2025
   ```
 
 ## Schema

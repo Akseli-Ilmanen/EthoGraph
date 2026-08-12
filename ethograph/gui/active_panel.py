@@ -26,6 +26,7 @@ class PanelKind:
     LINEPLOT = "lineplot"
     HEATMAP = "heatmap"
     SPACE = "space"
+    RADIAL = "radial"
     EPHYS = "ephys"
     NEO = "neo"
     RASTER = "raster"

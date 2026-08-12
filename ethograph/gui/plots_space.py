@@ -123,8 +123,8 @@ def ensure_geometry_library() -> Path:
 def load_library_geometries(lib_dir: Path | None = None) -> dict[str, list["ReferenceGeometry"]]:
     """Parse every YAML file in the geometry library, keyed by file stem.
 
-    One file = one selectable geometry (e.g. ``moll2025_geometry.yaml`` →
-    ``"moll2025_geometry"``); all of a file's ``references`` are drawn together.
+    One file = one selectable geometry (e.g. ``moll2025.yaml`` →
+    ``"moll2025"``); all of a file's ``references`` are drawn together.
     Unparsable files are skipped with a log message (user-supplied input).
     """
     lib_dir = GEOMETRY_LIBRARY_DIR if lib_dir is None else Path(lib_dir)

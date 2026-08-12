@@ -48,6 +48,7 @@ from .audio_player import AudioPlayer
 from .label_drawing_mixin import LabelDrawingMixin
 from .plots_audiotrace import AudioTracePlot
 from .plots_base import ThrottleDebounce
+from .plots_console import ConsolePanel
 from .plots_ephystrace import EphysTracePlot
 from .plots_heatmap import HeatmapPlot
 from .plots_lineplot import LinePlot
@@ -277,6 +278,12 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
     #: Emitted with the plot widget whenever a dynamic panel (line plot or
     #: audio panel) is created.
     panel_added = Signal(object)
+    #: Emitted with a feature panel whenever what it shows may have changed —
+    #: it was clicked (including while already active) or the sidebar edited
+    #: its feature/selections. ``active_changed`` fires only when the active
+    #: panel *changes*, so anything that must track a panel's current contents
+    #: (the console) listens here instead.
+    panel_content_changed = Signal(object)
     #: Relays bufferUpdated from every spectrogram instance (auto-levels).
     spectrogram_buffer_updated = Signal()
 
@@ -312,6 +319,10 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         self._dyn_panels: list = []
         self._dyn_docks: dict = {}
         self._dyn_counter = 0
+        # The console is the one panel type that is a singleton (see
+        # add_console_panel) and is not a plot, so it stays out of _dyn_panels.
+        self.console_panel = None
+        self._console_dock = None
         # Hidden stand-in so get_current_plot() never returns None when no
         # feature panel exists (audio-/video-only sessions). Created lazily.
         self._fallback = None
@@ -622,6 +633,8 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
             plot.bufferUpdated.connect(self.spectrogram_buffer_updated)
         clicked_key = {"feature": "feature", "neo": "neo"}.get(group, "audio")
         plot.plot_clicked.connect(lambda _: setattr(self, "_last_clicked_panel", clicked_key))
+        if group == "feature":
+            plot.plot_clicked.connect(lambda _, p=plot: self.panel_content_changed.emit(p))
         # Register with the active-panel manager so it highlights + shows controls.
         if self.active_panels is not None:
             self.active_panels.register(
@@ -693,6 +706,52 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
             plot.setParent(None)
             plot.deleteLater()
         self._update_panel_visibility()
+
+    # ------------------------------------------------------------------
+    # Python console (singleton — one namespace per session)
+    # ------------------------------------------------------------------
+
+    def add_console_panel(self) -> ConsolePanel:
+        """Create (or re-show) the console panel and return it.
+
+        Unlike every other panel type the console is a singleton: its value is
+        the namespace it accumulates, so a second instance would be a second
+        set of variables with the same names. Re-adding brings the existing one
+        back instead of starting over.
+        """
+        if self.console_panel is not None:
+            dock = self._console_dock
+            if dock is not None:
+                dock.show()
+                dock.raise_()
+            return self.console_panel
+
+        panel = ConsolePanel(self.app_state)
+        dock = self._make_dock("Python console", panel, self.remove_console_panel)
+        dock.setObjectName("ConsoleDock")
+        anchor = self._last_open_dock()
+        if anchor is None:
+            self._dock_host.addDockWidget(Qt.LeftDockWidgetArea, dock)
+        else:
+            self._dock_host.splitDockWidget(anchor, dock, Qt.Vertical)
+        dock.show()
+        self.console_panel = panel
+        self._console_dock = dock
+        if self.active_panels is not None:
+            self.active_panels.register(panel, "console", clicked_signal=panel.plot_clicked)
+        return panel
+
+    def remove_console_panel(self) -> None:
+        panel, dock = self.console_panel, self._console_dock
+        self.console_panel = None
+        self._console_dock = None
+        if panel is None:
+            return
+        if self.active_panels is not None:
+            self.active_panels.unregister(panel)
+        if dock is not None:
+            self._dock_host.removeDockWidget(dock)
+            dock.deleteLater()
 
     def _anchor_dock_for_group(self, group: str) -> QDockWidget | None:
         """Audio panels stay grouped at the top of the default vertical stack

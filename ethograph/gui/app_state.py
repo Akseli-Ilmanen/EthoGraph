@@ -15,6 +15,7 @@ from qtpy.QtCore import QObject, QTimer, Signal
 import ethograph as eto
 from ethograph.gui.app_constants import DEFAULT_LABEL_OVERLAY_MODES
 from ethograph.gui.notify import notify
+from ethograph.io.catalog import INDIVIDUAL_DIMS
 from ethograph.io.metadata_table import (
     load_metadata_df,
     load_metadata_tsv,
@@ -870,6 +871,22 @@ class ObservableAppState(QObject):
             if val is not None and val not in ("", "None"):
                 selections[dim_name] = str(val)
         return selections
+
+    def selected_individual(self) -> str | None:
+        """The selected individual, in whichever spelling this dataset's dim
+        uses (movement is singular, older wizard data plural).
+
+        Combos are named after their dim, so the ``*_sel`` attribute differs
+        per dataset — read it through here instead of hardcoding a spelling.
+        Deliberately NOT named ``individual_sel``: that is the dynamically
+        generated combo attribute for a singular dim, and a method of the same
+        name is silently replaced by it.
+        """
+        for name in INDIVIDUAL_DIMS:
+            val = getattr(self, f"{name}_sel", None)
+            if val is not None and val not in ("", "None"):
+                return str(val)
+        return None
 
     def key_sel_exists(self, type_key: str) -> bool:
         """Check if a key selection exists for a given type."""

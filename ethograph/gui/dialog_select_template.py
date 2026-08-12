@@ -29,9 +29,9 @@ from ethograph.datasets import (  # noqa: E402
 )
 from ethograph.gui.notify import notify_dialog  # noqa: E402
 from ethograph.utils.download import (  # noqa: E402
-    build_alignment_nwb,
     download_assets,
     download_template_local_settings,
+    ensure_alignment_nwb,
     ensure_default_configs,
     write_example_configs,
 )
@@ -74,9 +74,9 @@ def _resolve_template_paths(key_or_dict) -> dict:
 def _build_alignment_nwb(key_or_dict) -> None:
     """Backward-compat helper — accepts a key or a legacy template dict."""
     if isinstance(key_or_dict, str):
-        build_alignment_nwb(key_or_dict)
+        ensure_alignment_nwb(key_or_dict)
     else:
-        build_alignment_nwb(key_or_dict["dataset_key"])
+        ensure_alignment_nwb(key_or_dict["dataset_key"])
 
 
 class _DownloadWorker(QThread):
@@ -222,9 +222,9 @@ class TemplateDialog(QDialog):
         ensure_default_configs()
         write_example_configs(key, dataset_dir(key))
         try:
-            build_alignment_nwb(key)
+            ensure_alignment_nwb(key)
         except Exception:
-            logger.warning("Failed to build alignment NWB", exc_info=True)
+            logger.warning("Failed to obtain alignment NWB", exc_info=True)
         # Optional template settings (incl. panel layout) from the release:
         # lands in the dataset's .ethograph/local_settings.yaml, which the
         # normal settings autoload applies when the dataset opens.

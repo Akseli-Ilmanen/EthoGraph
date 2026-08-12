@@ -30,8 +30,9 @@ from qtpy.QtWidgets import (
 import ethograph as eto
 from ethograph.gui.notify import notify, notify_dialog
 from ethograph.gui.pose_convert import COLOR_BY_INDIVIDUAL, COLOR_BY_KEYPOINT
-from ethograph.io.catalog import ComboSpec
+from ethograph.io.catalog import INDIVIDUAL_DIMS, ComboSpec
 from ethograph.io.data_loader import load_features_dataset
+from ethograph.io.derived import DerivedLoader
 from ethograph.io.plot_sources import FileSource
 from ethograph.io.time_model import compute_trial_video_bounds
 from ethograph.labels.intervals import get_interval_bounds
@@ -51,6 +52,7 @@ from .app_constants import (
 )
 from .dialog_keypoint_filter import KeypointFilterDialog
 from .make_pretty import clean_display_labels
+from .plots_radial import RadialPlot
 from .plots_space import SpacePlot
 from .plots_spectrogram import SharedAudioCache
 from .pose_render import (
@@ -548,6 +550,9 @@ class DataWidget(QWidget):
         self.active_space_plot: SpacePlot | None = None
         self._space_signals_connected = False
         self._space_plot_autocreated = False
+        self.radial_plots: list[RadialPlot] = []
+        self.active_radial_plot: RadialPlot | None = None
+        self._radial_signals_connected = False
 
         self.combos = {}
         #: The widget occupying each combo's row in the coords form. Kept so a
@@ -976,7 +981,10 @@ class DataWidget(QWidget):
         self.app_state._labels_file_path = ctx.result.labels_file_path
         self.app_state.trials = ctx.trials if ctx.trials else [1]
         self.app_state.ds = ctx.ds
-        self.app_state.data_loader = ctx.data_loader
+        # Wrapped once, here, so every consumer holds the same object whether or
+        # not the user ever opens the console (DerivedLoader forwards everything
+        # it does not define to the real loader).
+        self.app_state.data_loader = DerivedLoader(ctx.data_loader) if ctx.data_loader is not None else None
 
         # Set trials_sel early so _expand_mics_with_channels / get_media
         # can resolve filenames during UI creation.
@@ -1844,7 +1852,7 @@ class DataWidget(QWidget):
             app_state.trials = [trial_id]
         app_state.trials_sel = trial_id
         self.catalog = catalog_from_xarray(app_state.ds, dt)
-        app_state.data_loader = XarrayLoader(app_state.ds, self.catalog)
+        app_state.data_loader = DerivedLoader(XarrayLoader(app_state.ds, self.catalog))
 
         self._rebuild_coord_controls()
         # The panels' own selections were valid for the previous data; one that
@@ -1934,6 +1942,19 @@ class DataWidget(QWidget):
             combo.blockSignals(True)
             combo.addItem(feature_name, feature_name)
             combo.blockSignals(False)
+
+    def refresh_feature_choices(self) -> None:
+        """Re-fill the features combo from the catalog.
+
+        Used when features appear or disappear after load — today that means
+        the console panel registering/forgetting a derived feature. The combo
+        is refilled rather than appended to, so ``forget()`` takes effect too.
+        """
+        cat = self.catalog or getattr(self.app_state.data_loader, "catalog", None)
+        combo = self.combos.get("features")
+        if cat is None or combo is None:
+            return
+        self._refill_combo(combo, cat.feature_choices())
 
     def _set_controls_enabled(self, enabled: bool):
         for control in self.controls:
@@ -2026,7 +2047,7 @@ class DataWidget(QWidget):
             self.update_main_plot(t0=xmin, t1=xmax)
 
     def _create_combo_widget(self, key, vars):
-        excluded_from_all = {"individuals", "features", "cameras", "mics"}
+        excluded_from_all = {*INDIVIDUAL_DIMS, "features", "cameras", "mics"}
         show_all_checkbox = key not in excluded_from_all
 
         combo = QComboBox()
@@ -2146,6 +2167,9 @@ class DataWidget(QWidget):
             active.update_plot()
             if key == "features" and value:
                 self.plot_container.set_panel_title(active, str(value))
+            # What this panel shows just changed; anything tracking its contents
+            # (the console) must follow, and no click will tell it.
+            self.plot_container.panel_content_changed.emit(active)
 
         self.app_state.set_key_sel(key, value)
 
@@ -2160,7 +2184,7 @@ class DataWidget(QWidget):
                 self.ephys_widget.select_cluster_in_table(int(value))
             except (ValueError, TypeError):
                 pass
-        if key == "individuals":
+        if key in INDIVIDUAL_DIMS:
             self.labels_widget.refresh_labels_shapes_layer()
         self.update_label_plot(self.app_state.get_ds_kwargs())
 
@@ -2550,6 +2574,7 @@ class DataWidget(QWidget):
             self.update_space_plot()
         except Exception:
             logger.debug("update_space_plot failed", exc_info=True)
+        self.refresh_radial_plots()
 
         self.plot_container.update_time_marker_by_time(0.0)
 
@@ -2589,8 +2614,9 @@ class DataWidget(QWidget):
 
         intervals_df = self.app_state.label_intervals
 
-        if intervals_df is not None and not intervals_df.empty and "individuals" in ds_kwargs:
-            selected_ind = str(ds_kwargs["individuals"])
+        _ind_key = next((n for n in INDIVIDUAL_DIMS if n in ds_kwargs), None)
+        if intervals_df is not None and not intervals_df.empty and _ind_key is not None:
+            selected_ind = str(ds_kwargs[_ind_key])
             intervals_df = intervals_df[intervals_df["individual"] == selected_ind]
 
         predictions_df = None
@@ -2996,6 +3022,96 @@ class DataWidget(QWidget):
         sp.deleteLater()
         if self.active_space_plot is sp:
             self.set_active_space_plot(self.space_plots[-1] if self.space_plots else None)
+
+    # ------------------------------------------------------------------
+    # Radial (compass) plots — instances, exactly like space plots
+    # ------------------------------------------------------------------
+
+    def add_radial_plot(self, feature: str | None = None, focus: bool = True, default_width: bool = True):
+        """Create a new radial-plot panel showing one heading as an arrow."""
+        rp = RadialPlot(self.shell, self.app_state)
+        rp._apply_default_width = default_width
+        rp.closed.connect(self.remove_radial_plot)
+        self.radial_plots.append(rp)
+        self._canonicalize_radial_dock_names()
+        rp.dock_object_name = f"RadialPlotDock_{len(self.radial_plots) - 1}"
+
+        if not self._radial_signals_connected:
+            self._radial_signals_connected = True
+            # A compass shows one instant, so it follows the time marker rather
+            # than an x-range.
+            self.plot_container.time_marker_updated.connect(self._on_time_for_radial_plots)
+
+        ps = getattr(self, "plot_settings_widget", None)
+        if ps is not None and getattr(ps, "radialplot_panel", None) is not None:
+            ps.radialplot_panel.layout().insertWidget(0, rp.controls_widget)
+        mgr = getattr(self.meta_widget, "active_panels", None)
+        if mgr is not None:
+            mgr.register(rp, "radial", clicked_signal=rp.clicked)
+
+        rp.set_store(self._space_store())
+        rp.show()
+        rp.configure(feature=feature)
+
+        self.set_active_radial_plot(rp)
+        if focus and self.meta_widget is not None and hasattr(self.meta_widget, "_on_plot_focus"):
+            self.meta_widget._on_plot_focus("radial")
+        return rp
+
+    def remove_radial_plot(self, rp):
+        if rp not in self.radial_plots:
+            return
+        self.radial_plots.remove(rp)
+        mgr = getattr(self.meta_widget, "active_panels", None)
+        if mgr is not None:
+            mgr.unregister(rp)
+        if rp.controls_widget is not None:
+            rp.controls_widget.setParent(None)
+        dock = rp.dock_widget
+        if dock is not None:
+            dock.hide()
+            dock.deleteLater()
+        rp.dock_widget = None
+        rp.deleteLater()
+        if self.active_radial_plot is rp:
+            self.set_active_radial_plot(self.radial_plots[-1] if self.radial_plots else None)
+        self._canonicalize_radial_dock_names()
+
+    def set_active_radial_plot(self, rp) -> None:
+        self.active_radial_plot = rp
+        for other in self.radial_plots:
+            other.controls_widget.setVisible(other is rp)
+
+    def _canonicalize_radial_dock_names(self):
+        for i, rp in enumerate(self.radial_plots):
+            if rp.dock_widget is not None:
+                rp.dock_widget.setObjectName(f"RadialPlotDock_{i}")
+
+    def _on_time_for_radial_plots(self, time_s: float):
+        for rp in self.radial_plots:
+            if rp.isVisible():
+                rp.set_time(time_s)
+
+    def refresh_radial_plots(self) -> None:
+        """Re-read the data (trial change, new derived feature, …)."""
+        for rp in self.radial_plots:
+            rp.set_store(self._space_store())
+            rp.refresh()
+
+    def radial_layout_state(self) -> list[dict]:
+        self._canonicalize_radial_dock_names()
+        return [rp.radial_settings() for rp in self.radial_plots]
+
+    def apply_radial_layout_state(self, entries) -> None:
+        if not isinstance(entries, list):
+            return
+        while len(self.radial_plots) > len(entries):
+            self.remove_radial_plot(self.radial_plots[-1])
+        while len(self.radial_plots) < len(entries):
+            self.add_radial_plot(focus=False, default_width=False)
+        for rp, entry in zip(self.radial_plots, entries):
+            rp._apply_default_width = False
+            rp.apply_radial_settings(entry)
 
     def set_active_space_plot(self, sp: SpacePlot | None):
         """Track the active instance and show only its controls in the

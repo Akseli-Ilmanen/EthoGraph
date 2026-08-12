@@ -171,6 +171,22 @@ CP_COLOR_WAVEFORM = (0, 0, 0, 200)  # Black for waveform plot
 CP_COLOR_SPECTROGRAM = (255, 255, 255, 200)  # White for spectrogram
 CP_COLOR_OSC_EVENT = (0, 200, 200, 200)  # Cyan/teal for oscillatory events
 
+# One colour per column of a multi-column feature (keypoints, individuals, …).
+# Shared by every panel that draws several columns at once, so a keypoint keeps
+# the same colour whether it is a line-plot trace or a compass arrow.
+MULTIDIM_COLORS = [
+    "#1f77b4",  # Blue
+    "#d62728",  # Red
+    "#2ca02c",  # Green
+    "#ff7f0e",  # Orange
+    "#9467bd",  # Purple
+    "#8c564b",  # Brown
+    "#e377c2",  # Pink
+    "#7f7f7f",  # Gray
+    "#bcbd22",  # Olive
+    "#17becf",  # Cyan
+]
+
 # Dataset changepoint method colors
 CP_METHOD_COLORS = {
     "troughs": (100, 100, 255, 200),  # Blue

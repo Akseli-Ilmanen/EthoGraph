@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 from ethograph.io.plot_sources import WindowedBuffer, XarraySource  # noqa: E402
 
-from .app_constants import DEFAULT_BUFFER_MULTIPLIER, LINEPLOT_DEBOUNCE_MS  # noqa: E402
+from .app_constants import DEFAULT_BUFFER_MULTIPLIER, LINEPLOT_DEBOUNCE_MS, MULTIDIM_COLORS  # noqa: E402
 from .make_pretty import clean_display_labels  # noqa: E402
 from .plots_base import BasePlot, PanelStateMixin, ThrottleDebounce  # noqa: E402
 
@@ -311,18 +311,7 @@ def plot_multidim(plot_item, time, data, coord_labels=None, existing_curves=None
     if existing_curves is None:
         existing_curves = []
 
-    colors = [
-        "#1f77b4",  # Blue (replaces white)
-        "#d62728",  # Red
-        "#2ca02c",  # Green
-        "#ff7f0e",  # Orange
-        "#9467bd",  # Purple
-        "#8c564b",  # Brown
-        "#e377c2",  # Pink
-        "#7f7f7f",  # Gray
-        "#bcbd22",  # Olive
-        "#17becf",  # Cyan
-    ]
+    colors = MULTIDIM_COLORS
 
     for i in range(data.shape[1]):
         label = coord_labels[i] if coord_labels is not None else f"dim {i}"

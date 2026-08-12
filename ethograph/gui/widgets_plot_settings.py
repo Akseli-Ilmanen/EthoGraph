@@ -62,6 +62,7 @@ class PlotSettingsWidget(QWidget):
         self._create_toggle_buttons(main_layout)
         self._create_lineplot_panel(main_layout)
         self._create_spaceplot_panel(main_layout)
+        self._create_radialplot_panel(main_layout)
         self._create_spectrogram_panel(main_layout)
         self._create_heatmap_panel(main_layout)
         self._create_audio_channel_group(main_layout)
@@ -331,6 +332,28 @@ class PlotSettingsWidget(QWidget):
     # ------------------------------------------------------------------
     # SpacePlot panel
     # ------------------------------------------------------------------
+
+    def _create_radialplot_panel(self, main_layout):
+        """Host for the active radial plot's own controls.
+
+        Deliberately empty: everything a radial plot shows (feature, which
+        value points up) is per instance, so the instance's ``controls_widget``
+        is inserted here by ``DataWidget.add_radial_plot`` — there are no
+        global radial settings to put alongside it.
+        """
+        self.radialplot_panel = QWidget()
+        layout = QVBoxLayout()
+        layout.setSpacing(2)
+        layout.setContentsMargins(0, 0, 0, 0)
+        self.radialplot_panel.setLayout(layout)
+
+        group_box = QGroupBox("Radial Plot Controls")
+        group_layout = QVBoxLayout()
+        group_layout.setSpacing(2)
+        group_box.setLayout(group_layout)
+        layout.addWidget(group_box)
+        main_layout.addWidget(self.radialplot_panel)
+        self.radialplot_panel.hide()
 
     def _create_spaceplot_panel(self, main_layout):
         self.spaceplot_panel = QWidget()

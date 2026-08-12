@@ -30,19 +30,28 @@ DATASETS: dict[str, dict] = {
         "has_audio": False,
         "import_labels": True,
         # Reference geometry from the bundled library (ethograph/geometries/)
-        "library_geometry": "moll2025_geometry",
+        "library_geometry": "moll2025",
+        # The trial number is the recording number in the filename, so these
+        # rows are in date order while dt.trials is numerically sorted --
+        # "trial" is what pairs them, never the row position.
         "media": [
             {
+                "trial": 115,
                 "video_cam-1": "2024-12-17_115_Crow1-cam-1.mp4",
                 "pose_cam-1": "2024-12-17_115_Crow1-cam-1DLC.csv",
             },
             {
+                "trial": 41,
                 "video_cam-1": "2024-12-18_041_Crow1-cam-1.mp4",
                 "pose_cam-1": "2024-12-18_041_Crow1-cam-1DLC.csv",
             },
         ],
         # Download
         "release_tag": "moll2025",
+        # Ship the authored alignment.nwb as a release asset instead of
+        # rebuilding it locally — it carries the real per-trial timing, which
+        # probing the media cannot reproduce.
+        "download_alignment": True,
         "size_mb": 14,
         "extra_gui_assets": ["Trial_data_labels.tsv"],
         "assets_notebook": [
@@ -88,10 +97,10 @@ DATASETS: dict[str, dict] = {
                 "colors_sel: None\n"
                 "features_sel: speed\n"
                 "features_sel_previous: confidence\n"
-                "individuals_sel: Crow1\n"
+                # Keys are dim names: this dataset is movement-style singular.
+                "individual_sel: Crow1\n"
                 "keypoint_sel: beakTip\n"
-                "keypoints_sel: beakTip\n"
-                "keypoints_sel_previous: beakTip\n"
+                "keypoint_sel_previous: beakTip\n"
                 "s3d_dims_sel: '0'\n"
                 "s3d_dims_sel_previous: '0'\n"
                 "space_sel_previous: x\n"
@@ -100,7 +109,7 @@ DATASETS: dict[str, dict] = {
                 "labels_visible: true\n"
                 "pose_markers_visible: true\n"
                 "feature_view_mode: LinePlot\n"
-                "space_library_geometry: moll2025_geometry\n"
+                "space_library_geometry: moll2025\n"
                 "space_plot_type: Space Plot\n"
                 "ephys_offset: 0.0\n"
                 "panel_layout:\n"
@@ -284,8 +293,10 @@ def get_gui_assets(key: str) -> list[str]:
 
     _add(ds.get("nc_filename"))
     for row in ds.get("media", []):
-        for fname in row.values():
-            _add(fname)
+        # "trial" is a pairing key, not a media file.
+        for col, fname in row.items():
+            if col != "trial":
+                _add(fname)
     for extra in ds.get("extra_gui_assets", []):
         _add(extra)
     _add(ds.get("audio_file"))
