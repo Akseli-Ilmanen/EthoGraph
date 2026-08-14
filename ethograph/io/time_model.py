@@ -309,6 +309,52 @@ class SourceCollection:
         dists = [min(abs(s - t), abs(e - t)) for s, e in self._trial_intervals]
         return int(np.argmin(dists))
 
+    # -- Clock conversions (trial-relative ↔ session-absolute) --------------
+
+    def trial_index(self, trial_id) -> int | None:
+        """Index of *trial_id* in the trial bookmarks (int/str tolerant)."""
+        for i, tid in enumerate(self._trial_ids):
+            if tid == trial_id or str(tid) == str(trial_id):
+                return i
+        return None
+
+    def to_session(self, trial_id, t_rel: float) -> float:
+        """Trial-relative time within *trial_id* → session-absolute time.
+
+        Unknown trial ids (or no trial bookmarks) pass *t_rel* through
+        unchanged — a collection without trials has a single shared clock.
+        """
+        idx = self.trial_index(trial_id)
+        if idx is None:
+            return t_rel
+        return self._trial_intervals[idx][0] + t_rel
+
+    def to_trial(self, t_session: float, *, strict: bool = False) -> tuple[int | str, float] | None:
+        """Session-absolute time → ``(trial_id, trial-relative time)``.
+
+        ``strict=True`` returns ``None`` when *t_session* falls in an
+        inter-trial gap (for label placement — a label belongs to exactly one
+        trial); ``strict=False`` snaps to the closest trial and clamps into
+        its span (for navigation).
+        """
+        if not self._trial_intervals:
+            return None
+        if strict:
+            idx = next(
+                (i for i, (s, e) in enumerate(self._trial_intervals) if s <= t_session <= e),
+                None,
+            )
+            if idx is None:
+                return None
+        else:
+            idx = self.find_trial(t_session)
+            if idx is None:
+                return None
+        start, end = self._trial_intervals[idx]
+        t_in_trial = min(max(t_session, start), end)
+        trial_id = self._trial_ids[idx] if self._trial_ids else idx + 1
+        return trial_id, t_in_trial - start
+
     # -- Range queries (Neurosift-inspired) ---------------------------------
 
     @property

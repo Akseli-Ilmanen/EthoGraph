@@ -511,6 +511,48 @@ class ObservableAppState(QObject):
             return alignment.trial_range
         return None
 
+    # --- Display-basis authority -------------------------------------------
+    # The plot x-axis speaks exactly one clock at a time, decided here and
+    # nowhere else. Every conversion between the axis and per-trial storage
+    # (labels, video frames, per-trial data) goes through to_display /
+    # from_display; hand-rolling `trial_offset + t` anywhere else recreates
+    # the three-clock drift this authority exists to end.
+
+    @property
+    def display_basis(self) -> str:
+        """``"session"`` or ``"trial"`` — the clock of the plot x-axis.
+
+        Session-absolute only when the slider scope is the whole session AND
+        navigation isn't showing a label/sequence window (those windows are
+        built from trial-relative label onsets, so they are trial-basis even
+        under session scope).
+        """
+        scope = getattr(self, "slider_scope", "trial")
+        mode = getattr(self, "navigate_mode", "trial")
+        if scope == "session" and mode not in ("label", "sequence"):
+            return "session"
+        return "trial"
+
+    def to_display(self, trial_id, t_rel: float) -> float:
+        """Trial-relative time in *trial_id* → the plot axis's clock."""
+        sc = getattr(self, "source_collection", None)
+        if self.display_basis == "session" and sc is not None:
+            return sc.to_session(trial_id, t_rel)
+        return t_rel
+
+    def from_display(self, t_display: float, *, strict: bool = False) -> tuple[Any, float] | None:
+        """Plot-axis time → ``(trial_id, trial-relative time)``.
+
+        In session basis the trial is found under *t_display*
+        (``strict=True`` → ``None`` in inter-trial gaps, for label placement;
+        ``strict=False`` snaps to the closest trial). In trial basis the time
+        belongs to the current trial verbatim.
+        """
+        sc = getattr(self, "source_collection", None)
+        if self.display_basis == "session" and sc is not None:
+            return sc.to_trial(t_display, strict=strict)
+        return getattr(self, "trials_sel", None), t_display
+
     @property
     def before_s(self) -> float:
         mode = getattr(self, "navigate_mode", "trial")

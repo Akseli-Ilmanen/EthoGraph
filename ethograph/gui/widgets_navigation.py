@@ -518,16 +518,16 @@ class NavigationWidget(QWidget):
 
         # Convert local time to session-absolute for lookup
         sc = getattr(self.app_state, "source_collection", None)
-        trial_idx = None
+        new_trial = None
         if sc and sc.n_trials > 0:
             curr_trial = getattr(self.app_state, "trials_sel", None)
             if curr_trial in trials:
-                old_idx = trials.index(curr_trial)
-                session_time = sc.trial_offset(old_idx) + current_time
-                trial_idx = sc.find_trial(session_time)
+                session_time = sc.to_session(curr_trial, current_time)
+                hit = sc.to_trial(session_time)
+                if hit is not None:
+                    new_trial = hit[0]
 
-        if trial_idx is not None and 0 <= trial_idx < len(trials):
-            new_trial = trials[trial_idx]
+        if new_trial is not None and new_trial in trials:
             if new_trial != self.app_state.trials_sel:
                 self.app_state.trials_sel = new_trial
                 self.trials_combo.blockSignals(True)
@@ -873,17 +873,24 @@ class NavigationWidget(QWidget):
     # ==================================================================
 
     def _on_jump_to_time(self):
-        sio = getattr(self.app_state, "nwb_alignment", None)
         trials = getattr(self.app_state, "trials", None)
-        if sio is None or not trials:
-            notify("Cannot jump: no trial timing info", severity="warning")
-            return
+        sc = getattr(self.app_state, "source_collection", None)
         global_t = self.jump_time_spin.value()
-        try:
-            trial_id, rel_t = find_closest_trial(sio, trials, global_t)
-        except ValueError:
-            notify("Cannot jump: no trial timing info", severity="warning")
-            return
+
+        hit = sc.to_trial(global_t) if sc is not None and sc.n_trials > 0 else None
+        if hit is None:
+            # No trial bookmarks — fall back to the alignment table lookup.
+            sio = getattr(self.app_state, "nwb_alignment", None)
+            if sio is None or not trials:
+                notify("Cannot jump: no trial timing info", severity="warning")
+                return
+            try:
+                hit = find_closest_trial(sio, trials, global_t)
+            except ValueError:
+                notify("Cannot jump: no trial timing info", severity="warning")
+                return
+        trial_id, rel_t = hit
+
         if trial_id != getattr(self.app_state, "trials_sel", None):
             self.app_state.trials_sel = trial_id
             self.trials_combo.blockSignals(True)
@@ -892,8 +899,7 @@ class NavigationWidget(QWidget):
             self.app_state.trial_changed.emit()
             self._update_counter()
 
-        target_t = global_t if self.app_state.slider_scope == "session" else max(0.0, rel_t)
-        self._seek_to_time(target_t)
+        self._seek_to_time(self.app_state.to_display(trial_id, max(0.0, rel_t)))
 
     def _seek_to_time(self, time_s: float):
         """Move the time marker (and video) to *time_s*, scrolling it into view."""

@@ -2534,25 +2534,19 @@ class DataWidget(QWidget):
     def _pynapple_display_offset(self) -> float:
         """Display→absolute time offset for the pynapple loader.
 
-        The plot x-axis is trial-local (0-based) whenever the active window is
-        trial-based — trial scope, label/sequence navigation, fixed window over
-        a trial — and session-absolute only in session scope.  Pynapple sources
-        are always absolute, so trial-local windows query shifted by the current
-        trial's session start (``SourceCollection.trial_offset``).
+        Pynapple sources are always session-absolute, so whenever the display
+        basis is trial-local the query shifts by the current trial's session
+        start. The basis itself is decided by ``app_state.display_basis`` —
+        never re-derived here.
         """
         state = self.app_state
         sc = getattr(state, "source_collection", None)
-        if sc is None:
+        if sc is None or state.display_basis == "session":
             return 0.0
-        rw = getattr(state, "restrict_window", None)
-        rw_mode = getattr(rw, "mode", None)
-        if state.slider_scope == "session" and rw_mode in (None, "session", "fixed"):
-            return 0.0
-        trials = getattr(state, "trials", None)
         trial = getattr(state, "trials_sel", None)
-        if not trials or trial not in trials:
+        if trial is None:
             return 0.0
-        return float(sc.trial_offset(trials.index(trial)))
+        return float(sc.to_session(trial, 0.0))
 
     def _build_trial_alignment(self, trial_id) -> None:
         self.app_state.trial_alignment = compute_trial_video_bounds(
