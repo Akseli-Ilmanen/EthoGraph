@@ -488,6 +488,23 @@ class PoseDisplayManager:
         sio = self.app_state.nwb_alignment
         return getattr(sio, "nwb", None)
 
+    def _pose_device(self, camera_idx: int) -> str | None:
+        """Which pose stream feeds camera *camera_idx*.
+
+        Usually the camera's own name (``pose_cam-1``), but a dataset may
+        name the stream for what it holds (``pose_2d``) while its camera is
+        ``cam-1`` — so pose streams pair with cameras by index whenever the
+        camera's name isn't one of them. ``pose_keys`` sees both trials-table
+        columns and acquisitions, so a stream missing there doesn't exist.
+        """
+        sio = self.app_state.nwb_alignment
+        pose_devices = sio.pose_keys
+        cameras = sio.cameras
+        camera = cameras[camera_idx] if camera_idx < len(cameras) else None
+        if camera in pose_devices:
+            return camera
+        return pose_devices[camera_idx] if camera_idx < len(pose_devices) else None
+
     def _load_pose_for_camera(self, camera_idx: int) -> PoseRenderData | None:
         if self._pose_override is not None and camera_idx == self._primary_camera_index():
             return self._pose_override
@@ -500,7 +517,7 @@ class PoseDisplayManager:
             pose_path = sio.resolve_media_path(
                 trial_id,
                 "pose",
-                device=cameras[camera_idx],
+                device=self._pose_device(camera_idx),
                 fallback_folder=self.app_state.pose_folder,
             )
             if not pose_path:

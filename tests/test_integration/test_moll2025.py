@@ -649,3 +649,34 @@ class TestMollPynappleLabellingWithoutChangepoints:
         assert row["labels"] == 1
         assert row["onset_s"] == pytest.approx(t_start, abs=0.01)
         assert row["offset_s"] == pytest.approx(t_end, abs=0.01)
+
+
+class TestMollPoseOverlay:
+    """The pose stream is named for what it holds (``pose_2d``), not for its
+    camera (``cam-1``). Asking only for the camera's own name made the whole
+    dataset look pose-less: no overlay, no keypoints table, no skeleton."""
+
+    def test_pose_device_pairs_by_index_on_name_mismatch(self, moll2025_gui):
+        _, meta = moll2025_gui
+        sio = meta.app_state.nwb_alignment
+        # Precondition: the pose device is NOT the camera name.
+        assert sio.cameras == ["cam-1"]
+        assert "cam-1" not in sio.pose_keys
+
+        pm = meta.data_widget.pose_mgr
+        assert pm is not None
+        assert pm._pose_device(0) == sio.pose_keys[0]
+
+    def test_pose_overlay_renders(self, moll2025_gui):
+        from qtpy.QtWidgets import QApplication
+
+        _, meta = moll2025_gui
+        pm = meta.data_widget.pose_mgr
+
+        pr = pm._load_pose_for_camera(0)
+        assert pr is not None and len(pr.data) > 0
+
+        meta.data_widget.update_pose()
+        QApplication.processEvents()
+        assert meta.app_state.keypoints, "keypoints table never populated"
+        assert meta.shell.video_area.primary._overlay is not None
