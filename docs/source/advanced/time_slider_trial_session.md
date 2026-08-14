@@ -37,8 +37,10 @@ slider scope is set to session.
   boundary re-opens a video file, which takes a moment (the plots stay
   live). While the marker sits in an inter-trial gap — or in another trial's
   span whose video hasn't loaded yet — the camera views show black ("no
-  input") rather than freezing on a stale frame; playback resumes once the
-  new video is up.
+  input") rather than freezing on a stale frame. **Playback continues across
+  trial ends**: when the video runs out, the marker keeps advancing in real
+  time through the gap (views black), the next trial's video loads as the
+  marker enters its span, and playback resumes on it.
 - **Labelling works across trials** — click any trial's span to label it:
   the trial under the click becomes current, and the label is stored in that
   trial (trial-relative). Clicks in the gaps between trials are refused, as

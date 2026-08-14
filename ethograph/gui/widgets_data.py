@@ -580,6 +580,7 @@ class DataWidget(QWidget):
         self._marker_follow_timer.setInterval(300)
         self._marker_follow_timer.timeout.connect(self._follow_marker_trial)
         self._follow_pending_time: float | None = None
+        self._follow_pending_trial = None
         self.pose_mgr: PoseDisplayManager | None = None  # created after set_data_panel
         self._keypoint_labelling_dialog = None
         self.app_state.audio_video_sync = None
@@ -2743,12 +2744,23 @@ class DataWidget(QWidget):
         self.video_mgr.toggle_pause_resume(self.plot_container)
 
     def _on_time_marker_updated(self, time_s: float):
-        # Session basis: after the marker settles in ANOTHER trial's span,
-        # follow it — switch the current trial (debounced; loading a different
-        # trial's video takes ~2 s, so never per marker move).
+        # Session basis: once the marker sits in ANOTHER trial's span, follow
+        # it — switch the current trial after a short debounce. The timer only
+        # (re)starts when the TARGET trial changes: a continuously moving
+        # marker (gap-run playback) must still trigger the follow, so the
+        # debounce must not be reset by every tick within the same span.
         if self.app_state.display_basis == "session":
-            self._follow_pending_time = time_s
-            self._marker_follow_timer.start()
+            hit = self.app_state.from_display(time_s, strict=True)
+            target = hit[0] if hit is not None else None
+            if target is not None and target != self.app_state.trials_sel:
+                self._follow_pending_time = time_s
+                if target != self._follow_pending_trial or not self._marker_follow_timer.isActive():
+                    self._follow_pending_trial = target
+                    self._marker_follow_timer.start()
+            else:
+                # Back in the current trial (or a gap): nothing to follow.
+                self._follow_pending_trial = None
+                self._marker_follow_timer.stop()
         self._update_video_blanking(time_s)
         # Static-image views have no frame clock — the marker animates their
         # pose overlay directly (overlay time is trial-local).
@@ -2795,6 +2807,7 @@ class DataWidget(QWidget):
         trial start).
         """
         state = self.app_state
+        self._follow_pending_trial = None
         if state.display_basis != "session" or not state.ready:
             return
         time_s = getattr(self, "_follow_pending_time", None)

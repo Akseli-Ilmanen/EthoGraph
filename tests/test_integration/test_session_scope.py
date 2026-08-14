@@ -169,3 +169,85 @@ def test_camera_view_blanking(qapp):
     view.set_blanked(False)
     assert not view.is_blanked
     view.deleteLater()
+
+
+class _FakeVideoView:
+    """Minimal stand-in for CameraView as VideoSync sees it."""
+
+    class _Sig:
+        def connect(self, *_):
+            pass
+
+        def disconnect(self, *_):
+            pass
+
+    def __init__(self, n_frames=10):
+        self.n_frames = n_frames
+        self.fps = 10.0
+        self.time_offset = 0.0
+        self.start_frame = 0
+        self.time_changed = self._Sig()
+
+    def seek_trial_frame(self, frame, synchronous=False):
+        self.last_frame = frame
+
+
+def _make_sync(app_state, view):
+    """VideoSync over the fake view; app_state.video_fps reads view.fps."""
+    from types import SimpleNamespace
+
+    from ethograph.gui.video_sync import VideoSync
+
+    app_state.video = SimpleNamespace(view=view)
+    return VideoSync(app_state, view, "dummy.mp4")
+
+
+def test_gap_run_keeps_marker_advancing_past_trial_end(qapp, app_state):
+    """Session basis: reaching the video's last frame does NOT stop playback —
+    the marker keeps advancing on a wall clock until the session ends."""
+    from ethograph.io.time_model import SourceCollection
+
+    sc = SourceCollection()
+    sc.set_trials(ids=[1, 2], starts=[0.0, 20.0], stops=[10.0, 30.0])
+    app_state.source_collection = sc
+    app_state.slider_scope = "session"
+    app_state.navigate_mode = "trial"
+    app_state.trials_sel = 1
+
+    sync = _make_sync(app_state, _FakeVideoView(n_frames=100))
+    sync._current_frame = 99
+    sync._frame_accum = 99.0
+    sync._step = 1.0
+    sync._play_timer.start(1000)  # so is_playing holds; ticks are manual here
+
+    sync._advance()  # past the last frame -> gap run, NOT stop
+    assert sync._gap_run
+    assert sync.is_playing
+
+    # Backdate the wall clock: the marker override must advance accordingly.
+    sync._gap_wall_start -= 1.0
+    sync._advance()
+    assert sync.marker_time_override is not None
+    assert sync.marker_time_override > sync._gap_t0
+
+    # Past the session end the gap run stops for real.
+    sync._gap_t0 = 29.9
+    sync._gap_wall_start -= 10.0
+    sync._advance()
+    assert not sync.is_playing and not sync._gap_run
+    sync.cleanup()
+
+
+def test_trial_basis_still_stops_at_video_end(qapp, app_state):
+    app_state.slider_scope = "trial"
+    app_state.navigate_mode = "trial"
+
+    sync = _make_sync(app_state, _FakeVideoView(n_frames=100))
+    sync._current_frame = 99
+    sync._frame_accum = 99.0
+    sync._step = 1.0
+    sync._play_timer.start(1000)
+
+    sync._advance()
+    assert not sync.is_playing and not sync._gap_run
+    sync.cleanup()

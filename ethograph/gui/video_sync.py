@@ -10,6 +10,7 @@ natural limiter (no forced frame-skipping, no napari dims.play).
 """
 
 import logging
+import time
 from typing import Any, Optional
 
 from qtpy.QtCore import QObject, QTimer, Signal
@@ -65,6 +66,13 @@ class VideoSync(QObject):
         self.marker_time_override: Optional[float] = None
         # Smooth mode: decode-paced (synchronous) stepping, every frame, no audio.
         self._smooth_mode: bool = False
+        # Session-basis gap run: after the trial's last frame, playback does
+        # NOT stop — the marker keeps advancing on a wall clock (video frozen,
+        # views blanked by the gap logic) until the auto-follow loads the next
+        # trial's video and resumes, or the session ends.
+        self._gap_run: bool = False
+        self._gap_wall_start: float = 0.0
+        self._gap_t0: float = 0.0
 
         self._play_timer = QTimer()
         self._play_timer.timeout.connect(self._advance)
@@ -162,6 +170,7 @@ class VideoSync(QObject):
         self._segment_end_time_s = None
         self._audio_clock = None
         self._smooth_mode = False
+        self._gap_run = False
         self.marker_time_override = None
 
         from .app_constants import PLAYBACK_MODE_SMOOTH, PLAYBACK_MODE_SYNCED
@@ -202,6 +211,7 @@ class VideoSync(QObject):
         (see ``_apply_frame``) leave the marker frozen on the segment's exact
         end time instead of snapping it back to the last frame's time.
         """
+        self._gap_run = False
         self._play_timer.stop()
         self._segment_end_frame = None
         self._segment_end_time_s = None
@@ -250,7 +260,60 @@ class VideoSync(QObject):
         self._frame_accum = float(self._current_frame)
         self._play_timer.start(int(1000 / render_fps))
 
+    # ------------------------------------------------------------------
+    # Session-basis gap run (playback across the trial's end)
+    # ------------------------------------------------------------------
+
+    def _session_playback(self) -> bool:
+        return getattr(self.app_state, "display_basis", "trial") == "session"
+
+    def _session_end(self) -> float | None:
+        sc = getattr(self.app_state, "source_collection", None)
+        session = sc.session_range if sc is not None else None
+        return session.end_s if session is not None else None
+
+    def _end_of_video(self):
+        """The trial's video ran out during regular playback.
+
+        Trial basis (or no session extent known): stop, as always. Session
+        basis: keep the play timer and advance the MARKER on a wall clock —
+        the video freezes on its last frame (the gap logic blanks the views),
+        and the auto-follow picks the marker up in the next trial's span,
+        loads that video and resumes playback.
+        """
+
+
+        if not self._session_playback() or self._session_end() is None:
+            self.stop()
+            return
+        self._gap_run = True
+        self._gap_t0 = self.frame_to_time(self._current_frame)
+        self._gap_wall_start = time.perf_counter()
+        if self._audio_clock is not None:
+            self._audio_clock.stop()
+            self._audio_clock = None
+        self._smooth_mode = False
+        if not self._play_timer.isActive():
+            self._play_timer.start(int(1000 / self._render_cap()))
+
+    def _advance_gap(self):
+
+
+        speed = self._playback_speed()
+        t = self._gap_t0 + (time.perf_counter() - self._gap_wall_start) * speed
+        end = self._session_end()
+        if end is None or t >= end:
+            self.stop()
+            return
+        # Marker advances on the exact clock time; the video stays on its
+        # last frame (plots_container reads the override for the marker).
+        self.marker_time_override = t
+        self._apply_frame(self._current_frame)
+
     def _advance(self):
+        if self._gap_run:
+            self._advance_gap()
+            return
         if self._audio_clock is not None:
             self._advance_from_clock()
             return
@@ -267,7 +330,7 @@ class VideoSync(QObject):
             self.view.seek_trial_frame(next_frame)
             self._apply_frame(next_frame)
             if self._segment_end_frame is None:
-                self.stop()
+                self._end_of_video()
             return
         self.view.seek_trial_frame(next_frame)
         self._apply_frame(next_frame)
@@ -284,7 +347,7 @@ class VideoSync(QObject):
         self.view.seek_trial_frame(next_frame, synchronous=True)
         self._apply_frame(next_frame)
         if next_frame >= max_frame and self._segment_end_frame is None:
-            self.stop()
+            self._end_of_video()
 
     def _advance_from_clock(self):
         """Drive video + marker from the audio clock's real playback position."""
@@ -298,7 +361,7 @@ class VideoSync(QObject):
         self.view.seek_trial_frame(frame)
         self._apply_frame(frame)
         if clock.finished or frame >= max_frame:
-            self.stop()
+            self._end_of_video()
 
     def _build_audio_clock(self, t0_s: float, t1_s: float):
         """Preload the selected audio span and wrap it in an :class:`AudioClock`.
