@@ -1,6 +1,7 @@
 """Tests for the display-basis authority: SourceCollection clock conversions
 and app_state.display_basis / to_display / from_display."""
 
+import pandas as pd
 import pytest
 
 from ethograph.io.time_model import SourceCollection
@@ -112,9 +113,7 @@ def test_to_from_display_session_basis(app_state, sc):
 # ---------------------------------------------------------------------------
 
 
-def _labels_df(onsets_by_trial: dict) -> "pd.DataFrame":
-    import pandas as pd
-
+def _labels_df(onsets_by_trial: dict) -> pd.DataFrame:
     rows = []
     for trial, onsets in onsets_by_trial.items():
         for o in onsets:
@@ -232,3 +231,34 @@ def test_display_intervals_session_basis_shows_all_trials_shifted(app_state, sc)
     assert by_trial[1] == pytest.approx(10.5)
     assert by_trial[2] == pytest.approx(21.0)
     assert by_trial[4] == pytest.approx(42.0)
+
+
+# ---------------------------------------------------------------------------
+# XarrayLoader display offset (session basis: trial-local data on an absolute axis)
+# ---------------------------------------------------------------------------
+
+
+def test_xarray_loader_display_offset_renders_at_session_position():
+    import numpy as np
+    import xarray as xr
+
+    from ethograph.io.catalog import XarrayLoader
+
+    t = np.linspace(0.0, 4.0, 41)  # trial-local coord
+    ds = xr.Dataset({"speed": ("time", np.arange(41.0))}, coords={"time": t})
+    loader = XarrayLoader(ds)
+
+    native = loader.select("speed", {}, t0=0.0, t1=4.0)
+    assert native.time[0] == pytest.approx(0.0)
+
+    # Session basis: the axis is absolute, this trial starts at 20 s there.
+    loader.set_display_offset_provider(lambda: -20.0)
+    shifted = loader.select("speed", {}, t0=20.0, t1=24.0)
+    assert shifted is not None
+    assert shifted.time[0] == pytest.approx(20.0)
+    assert shifted.time[-1] == pytest.approx(24.0)
+    np.testing.assert_array_equal(np.asarray(shifted.data), np.asarray(native.data))
+
+    # A window outside the trial's span selects nothing (other trials absent).
+    outside = loader.select("speed", {}, t0=50.0, t1=60.0)
+    assert outside is None or len(outside.time) == 0

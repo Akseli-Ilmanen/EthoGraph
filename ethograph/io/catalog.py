@@ -279,13 +279,33 @@ def _selections_for_var(selections: dict[str, str], var: xr.DataArray) -> dict:
 
 
 class XarrayLoader(_CatalogMixin):
-    """Feature access from an ``xr.Dataset``.  Uses ``sel_valid`` for selection."""
+    """Feature access from an ``xr.Dataset``.  Uses ``sel_valid`` for selection.
+
+    The dataset's time coord is trial-local (0-based). Like
+    :class:`PynappleLoader`, a display-offset provider bridges to the plot
+    axis: it returns the shift from display time to the loader's native
+    clock, so in session basis (axis session-absolute) the provider returns
+    ``-trial_start`` and the current trial renders at its true session
+    position — previously session scope silently selected nothing for any
+    trial not starting near 0.
+    """
 
     def __init__(self, ds: xr.Dataset, catalog: DataCatalog | None = None) -> None:
         self._ds = ds
         if catalog is None:
             catalog = _auto_catalog_xarray(ds)
         self._catalog = catalog
+        self._display_offset_provider: Callable[[], float] | None = None
+
+    def set_display_offset_provider(self, provider: Callable[[], float] | None) -> None:
+        """Install the callable mapping display time to native (trial-local) time."""
+        self._display_offset_provider = provider
+
+    def display_offset(self) -> float:
+        """Current display→native offset in seconds (0.0 without a provider)."""
+        if self._display_offset_provider is None:
+            return 0.0
+        return float(self._display_offset_provider())
 
     @property
     def backend(self) -> str:
@@ -328,8 +348,11 @@ class XarrayLoader(_CatalogMixin):
         if time_coord is None:
             return None
 
+        # Shift the display-time query into the trial-local coord; the
+        # returned PlotData is shifted back so it lands on the axis drawn.
+        offset = self.display_offset()
         if t0 is not None and t1 is not None:
-            ds = ds.sel({time_coord.name: slice(t0, t1)})
+            ds = ds.sel({time_coord.name: slice(t0 + offset, t1 + offset)})
             var = ds[feature]
 
         time = eto.get_time_coord(var).values
@@ -366,14 +389,17 @@ class XarrayLoader(_CatalogMixin):
         ylabel = var.attrs.get("ylabel", feature)
         title = feature
 
-        return PlotData(
-            time=time,
-            data=data,
-            dim_labels=dim_labels,
-            title=title,
-            ylabel=ylabel,
-            color_data=color_data,
-            changepoints=changepoints,
+        return _shift_plot_time(
+            PlotData(
+                time=time,
+                data=data,
+                dim_labels=dim_labels,
+                title=title,
+                ylabel=ylabel,
+                color_data=color_data,
+                changepoints=changepoints,
+            ),
+            offset,
         )
 
     def time_range(self, feature: str | None = None) -> tuple[float, float]:
@@ -411,7 +437,7 @@ class XarrayLoader(_CatalogMixin):
             all_cp_times.append(self._ds["audio_cp_offsets"].values.astype(np.float64))
         if len(all_cp_times) > 1:
             cp_times = np.unique(np.concatenate(all_cp_times))
-        return cp_times
+        return cp_times - self.display_offset()
 
 
 # ---------------------------------------------------------------------------

@@ -1030,12 +1030,7 @@ class DataWidget(QWidget):
         # not the user ever opens the console (DerivedLoader forwards everything
         # it does not define to the real loader).
         self.app_state.data_loader = DerivedLoader(ctx.data_loader) if ctx.data_loader is not None else None
-        # Pynapple data lives in absolute session time while every non-session
-        # window (trial / label / sequence) is trial-local; the loader pulls the
-        # current offset per call, so no re-sync on trial or scope changes.
-        loader = self.app_state.data_loader
-        if loader is not None and hasattr(loader, "set_display_offset_provider"):
-            loader.set_display_offset_provider(self._pynapple_display_offset)
+        self._install_display_offset_provider()
 
         # Set trials_sel early so _expand_mics_with_channels / get_media
         # can resolve filenames during UI creation.
@@ -1904,6 +1899,7 @@ class DataWidget(QWidget):
         app_state.trials_sel = trial_id
         self.catalog = catalog_from_xarray(app_state.ds, dt)
         app_state.data_loader = DerivedLoader(XarrayLoader(app_state.ds, self.catalog))
+        self._install_display_offset_provider()
 
         self._rebuild_coord_controls()
         # The panels' own selections were valid for the previous data; one that
@@ -2545,22 +2541,52 @@ class DataWidget(QWidget):
 
         return missing
 
-    def _pynapple_display_offset(self) -> float:
-        """Display→absolute time offset for the pynapple loader.
+    def _install_display_offset_provider(self) -> None:
+        """Give the loader its display→native clock bridge, per backend.
 
-        Pynapple sources are always session-absolute, so whenever the display
-        basis is trial-local the query shifts by the current trial's session
-        start. The basis itself is decided by ``app_state.display_basis`` —
-        never re-derived here.
+        The offset is *pulled* per select call, so trial and scope changes
+        need no re-sync. Pynapple data is natively session-absolute, xarray
+        natively trial-local — each gets the provider that shifts a
+        display-clock query into its own clock.
         """
-        state = self.app_state
-        sc = getattr(state, "source_collection", None)
-        if sc is None or state.display_basis == "session":
-            return 0.0
-        trial = getattr(state, "trials_sel", None)
-        if trial is None:
+        loader = self.app_state.data_loader
+        if loader is None or not hasattr(loader, "set_display_offset_provider"):
+            return
+        if getattr(loader, "backend", None) == "pynapple":
+            loader.set_display_offset_provider(self._pynapple_display_offset)
+        else:
+            loader.set_display_offset_provider(self._xarray_display_offset)
+
+    def _trial_session_start(self) -> float:
+        sc = getattr(self.app_state, "source_collection", None)
+        trial = getattr(self.app_state, "trials_sel", None)
+        if sc is None or trial is None:
             return 0.0
         return float(sc.to_session(trial, 0.0))
+
+    def _pynapple_display_offset(self) -> float:
+        """Display→absolute offset for the pynapple loader.
+
+        Pynapple sources are session-absolute, so trial-basis queries shift
+        forward by the current trial's session start; in session basis the
+        axis already matches. The basis itself comes from
+        ``app_state.display_basis`` — never re-derived here.
+        """
+        if self.app_state.display_basis == "session":
+            return 0.0
+        return self._trial_session_start()
+
+    def _xarray_display_offset(self) -> float:
+        """Display→trial-local offset for the xarray loader.
+
+        Xarray time coords are trial-local, so session-basis queries shift
+        back by the trial's session start — the current trial renders at its
+        true session position (other trials are simply absent; multi-trial
+        stitching is out of scope, see the time-slider docs).
+        """
+        if self.app_state.display_basis != "session":
+            return 0.0
+        return -self._trial_session_start()
 
     def _build_trial_alignment(self, trial_id) -> None:
         self.app_state.trial_alignment = compute_trial_video_bounds(
