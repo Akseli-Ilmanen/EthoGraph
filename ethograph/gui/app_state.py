@@ -16,12 +16,7 @@ import ethograph as eto
 from ethograph.gui.app_constants import DEFAULT_LABEL_OVERLAY_MODES
 from ethograph.gui.notify import notify
 from ethograph.io.catalog import INDIVIDUAL_DIMS
-from ethograph.io.metadata_table import (
-    load_metadata_df,
-    load_metadata_tsv,
-    trials_ep_from_metadata_df,
-    validate_metadata_timing,
-)
+from ethograph.io.metadata_table import load_metadata_df
 from ethograph.io.time_model import (
     RestrictionWindow,
     TimeRange,
@@ -811,58 +806,24 @@ class ObservableAppState(QObject):
                     self.nwb_alignment = make_nwb_alignment(value)
 
             if name == "metadata_path":
+                # Metadata is purely additive (joined on its trial column) —
+                # trial timing always comes from the alignment NWB, never from
+                # a metadata file.
                 if value:
                     metadata_df, resolved_path = load_metadata_df(
                         source_path=self.nc_file_path,
                         metadata_path=value,
                         nwb_alignment=self.nwb_alignment,
-                        trials_ep=self.nwb_alignment.trials_ep,
                         trial_ids=getattr(self, "trials", None) or None,
                     )
                     self._values[name] = resolved_path or value
                     self.metadata_df = metadata_df
-
-                    # Read raw file for timing (load_metadata_df may strip
-                    # timing columns depending on which fallback path it took).
-                    raw_path = Path(resolved_path or value)
-                    if raw_path.suffix.lower() in {".tsv", ".csv", ".xlsx", ".xls"} and raw_path.exists():
-                        raw_df = load_metadata_tsv(raw_path)
-                        if "start_time" in raw_df.columns and "stop_time" in raw_df.columns:
-                            validate_metadata_timing(raw_df, raw_path)
-                            new_ep = trials_ep_from_metadata_df(raw_df)
-                            if new_ep is not None:
-                                self._rebuild_trials_from_ep(new_ep)
                 else:
                     self.metadata_df = None
 
             return
 
         super().__setattr__(name, value)
-
-    def _rebuild_trials_from_ep(self, trials_ep) -> None:
-        """Propagate new trial boundaries to source_collection.
-
-        The data_loader is stateless w.r.t. trials — callers pass t0/t1
-        directly to ``select()``, so no loader update is needed here.
-        """
-        trial_ids = list(range(1, len(trials_ep) + 1))
-        self.trials = trial_ids
-
-        # Rebuild source_collection trial bookmarks
-        sc = getattr(self, "source_collection", None)
-        if sc is not None:
-            sc.set_trials(
-                ids=trial_ids,
-                starts=[float(s) for s in trials_ep.start],
-                stops=[float(e) for e in trials_ep.end],
-            )
-
-        # Update alignment so .trials_ep reflects the new epochs
-        alignment = getattr(self, "nwb_alignment", None)
-        if alignment is not None and hasattr(alignment, "_trials_ep_cache"):
-            alignment._trials_ep_cache = trials_ep
-
-        logger.info("Rebuilt %d trials from metadata timing columns", len(trial_ids))
 
     # --- Dynamic _sel variables ---
     def get_ds_kwargs(self):

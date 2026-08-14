@@ -1254,6 +1254,72 @@ def align_media_per_trial(
     return nwbfile
 
 
+def trials_df_from_trials_ep(ep) -> pd.DataFrame:
+    """Trials DataFrame (``trial``/``start_time``/``stop_time`` + metadata
+    columns) from a pynapple trials IntervalSet."""
+    meta = getattr(ep, "metadata", None)
+    if meta is not None and "trial" in meta.columns:
+        ids = [_coerce_trial_id(t) for t in meta["trial"]]
+    else:
+        ids = list(range(1, len(ep) + 1))
+    df = pd.DataFrame(
+        {
+            "trial": ids,
+            "start_time": np.asarray(ep.start, dtype=np.float64),
+            "stop_time": np.asarray(ep.end, dtype=np.float64),
+        }
+    )
+    if meta is not None:
+        for col in meta.columns:
+            if col not in df.columns:
+                df[col] = list(meta[col])
+    return df
+
+
+def alignment_from_trials_ep(ep, output_path: str | Path) -> Path:
+    """Write a bare ``alignment.nwb`` holding only a trials table from *ep*.
+
+    The ONE sanctioned way a pynapple trials IntervalSet (``trials.npz``)
+    becomes trial timing: converted once, on the user's explicit say-so
+    (cover-page offer) — the loader itself never reads timing from the data.
+    The IntervalSet's metadata columns (condition, region, …) travel into the
+    trials table, so the alignment file is the single per-trial record.
+    """
+    from datetime import datetime
+    from uuid import uuid4
+
+    import pynwb
+    from dateutil.tz import tzlocal
+    from pynwb import NWBHDF5IO
+
+    trials = trials_df_from_trials_ep(ep)
+
+    nwbfile = pynwb.NWBFile(
+        session_description="NWB file for trial alignment (ethograph generated from a trials IntervalSet).",
+        identifier=str(uuid4()),
+        session_start_time=datetime.now(tzlocal()),
+    )
+    extra_cols = [c for c in trials.columns if c not in ("start_time", "stop_time")]
+    for col in extra_cols:
+        nwbfile.add_trial_column(name=col, description=col)
+    for _, row in trials.iterrows():
+        values = {}
+        for col in extra_cols:
+            value = row[col]
+            if col == "trial":
+                value = _coerce_trial_id(value)
+            elif not isinstance(value, (int, float, str, np.integer, np.floating)):
+                value = str(value)
+            values[col] = value
+        nwbfile.add_trial(start_time=float(row["start_time"]), stop_time=float(row["stop_time"]), **values)
+
+    output = Path(output_path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with NWBHDF5IO(str(output), "w") as io:
+        io.write(nwbfile)
+    return output
+
+
 def align_media_from_streams(
     trials: pd.DataFrame,
     streams: list[dict],

@@ -239,6 +239,30 @@ def add_angle_rgb_to_nap(
 PYNAPPLE_EXTENSIONS = {".nwb", ".npz"}
 
 
+def find_trials_intervalset(folder: str | Path) -> nap.IntervalSet | None:
+    """The trials IntervalSet stored in a pynapple folder, or ``None``.
+
+    Cheap scan: only ``.npz`` files whose arrays include ``start`` and ``end``
+    are actually loaded. Used by the cover page to offer converting trial
+    timing into ``.ethograph/alignment.nwb`` — the loader itself never reads
+    trial timing from the data.
+    """
+    folder = Path(folder)
+    if not folder.is_dir():
+        return None
+    for npz in sorted(folder.glob("*.npz")):
+        try:
+            with np.load(npz, allow_pickle=True) as raw:
+                if not {"start", "end"}.issubset(raw.keys()):
+                    continue
+        except (OSError, ValueError):
+            continue
+        obj = nap.load_file(str(npz))
+        if isinstance(obj, nap.IntervalSet):
+            return obj
+    return None
+
+
 def detect_trials(data: dict) -> nap.IntervalSet | None:
     """Find a trials IntervalSet in a loaded pynapple data dict."""
     for key in ("trials", "epochs", "intervals"):

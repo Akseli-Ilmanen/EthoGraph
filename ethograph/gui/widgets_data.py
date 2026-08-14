@@ -15,8 +15,6 @@ from qtpy.QtWidgets import (
     QCheckBox,
     QColorDialog,
     QComboBox,
-    QDialog,
-    QDialogButtonBox,
     QDoubleSpinBox,
     QFormLayout,
     QGridLayout,
@@ -860,34 +858,6 @@ class DataWidget(QWidget):
     # Loading phases
     # ------------------------------------------------------------------
 
-    def _resolve_metadata_conflicts(self, conflicts) -> list[str]:
-        """Ask, per column, whether the alignment NWB or the metadata file wins.
-
-        Called mid-load by ``load_features_dataset`` when a user metadata
-        column disagrees with the alignment NWB trials table. Returns the
-        column names to take from the metadata file.
-        """
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Metadata conflicts")
-        layout = QFormLayout(dialog)
-        layout.addRow(
-            QLabel(
-                "These columns exist in both the alignment NWB trials table and the\n"
-                "metadata file, with different content. Choose which source to use:"
-            )
-        )
-        combos: dict[str, QComboBox] = {}
-        for conflict in conflicts:
-            combo = QComboBox()
-            combo.addItems(["Alignment NWB", "Metadata file"])
-            combos[conflict.column] = combo
-            layout.addRow(f"{conflict.column} ({conflict.n_differing} trial(s) differ)", combo)
-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
-        buttons.accepted.connect(dialog.accept)
-        layout.addRow(buttons)
-        dialog.exec_()
-        return [col for col, combo in combos.items() if combo.currentIndex() == 1]
-
     def _phase_load_data(self, nc_file_path: str) -> _LoadContext:
         """Phase 1: Load dataset from disk."""
         try:
@@ -896,7 +866,6 @@ class DataWidget(QWidget):
                 progress_callback=getattr(self.app_state, "_progress_callback", None),
                 metadata_path=self.app_state.metadata_path,
                 alignment_path=getattr(self.app_state, "nwb_file_path", None),
-                metadata_conflict_resolver=self._resolve_metadata_conflicts,
             )
         except (OSError, ValueError, KeyError) as e:
             logger.exception("load_features_dataset failed")

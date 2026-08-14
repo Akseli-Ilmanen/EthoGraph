@@ -797,8 +797,61 @@ class CoverPage(QDialog):
         if self._drop.paths:
             if not self._prepare_dropped():
                 return
+        self._maybe_offer_alignment_from_trials()
         self.io_widget._on_load_clicked()
         self._close_if_loaded()
+
+    def _maybe_offer_alignment_from_trials(self):
+        """Pynapple folder with a trials IntervalSet but no alignment NWB:
+        offer to convert it into ``.ethograph/alignment.nwb`` once.
+
+        The alignment NWB is the only trial-timing source the loader reads —
+        a ``trials.npz`` is never consulted directly. This conversion (start/
+        end plus any metadata columns → trials table) is the one sanctioned
+        bridge, and it only happens with the user's explicit yes.
+        """
+        from qtpy.QtWidgets import QMessageBox
+
+        from ethograph.io.nwb_alignment import alignment_from_trials_ep
+        from ethograph.io.pynapple import find_trials_intervalset
+
+        folder_str = getattr(self.app_state, "nc_file_path", None)
+        if not folder_str:
+            return
+        folder = Path(folder_str)
+        if not folder.is_dir():
+            return
+        sidecar = folder / ".ethograph" / "alignment.nwb"
+        explicit = getattr(self.app_state, "nwb_file_path", None)
+        if sidecar.exists() or (explicit and Path(explicit).exists()):
+            return
+        try:
+            ep = find_trials_intervalset(folder)
+        except Exception:  # noqa: BLE001 - a broken npz must not block loading
+            logger.exception("Scanning for a trials IntervalSet failed")
+            return
+        if ep is None or len(ep) == 0:
+            return
+
+        answer = QMessageBox.question(
+            self,
+            "Create alignment from trials?",
+            f"This folder has no alignment NWB, but contains a trials IntervalSet "
+            f"({len(ep)} trials).\n\n"
+            "Create .ethograph/alignment.nwb from it? Trial timing (and any "
+            "per-trial metadata it carries) will come from that file from now on.\n\n"
+            "Without it, the session loads as a single continuous recording.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.Yes,
+        )
+        if answer != QMessageBox.Yes:
+            return
+        try:
+            alignment_from_trials_ep(ep, sidecar)
+            logger.info("Created %s from trials IntervalSet (%d trials)", sidecar, len(ep))
+        except Exception as e:  # noqa: BLE001 - outermost GUI boundary
+            logger.exception("Failed to create alignment from trials IntervalSet")
+            notify_dialog(f"Could not create alignment.nwb:\n{e}", "error")
 
     def _prepare_dropped(self) -> bool:
         """Classify the dropped files and populate the IO fields from them.
