@@ -29,9 +29,13 @@ from ethograph.io.catalog import (
 )
 from ethograph.io.metadata_table import (
     TABULAR_METADATA_EXTS,
+    MetadataConflict,
+    apply_metadata_choices,
     empty_metadata_df,
     load_metadata_df,
     load_metadata_tsv,
+    merge_trial_metadata,
+    metadata_from_nwb_trials,
     metadata_tsv_path,
     trials_ep_from_metadata_df,
     validate_metadata_timing,
@@ -39,6 +43,8 @@ from ethograph.io.metadata_table import (
 from ethograph.io.nwb_alignment import (
     EmpytAlignment,
     TableAlignment,
+    _build_trials_ep,
+    _coerce_trial_id,
     discover_nwb,
     make_nwb_alignment,
 )
@@ -202,19 +208,77 @@ def _resolve_alignment(source_path: str | Path, alignment_path: str | Path | Non
 # ---------------------------------------------------------------------------
 
 
+def _user_tabular_metadata(metadata_path: str | Path | None) -> pd.DataFrame | None:
+    """Load an explicitly supplied tabular metadata file, or None."""
+    if metadata_path is None:
+        return None
+    path = Path(metadata_path)
+    if path.suffix.lower() not in TABULAR_METADATA_EXTS:
+        return None
+    if not path.exists():
+        raise ValueError(f"Metadata file not found: {path}")
+    return load_metadata_tsv(path)
+
+
+def _merged_trials_df(
+    nwb_alignment,
+    metadata_path: str | Path | None,
+    conflict_resolver: Callable[[list[MetadataConflict]], list[str]] | None,
+) -> pd.DataFrame | None:
+    """Trials table from the alignment NWB, with user tabular metadata merged in.
+
+    Returns None when the alignment has no usable trials table — the caller
+    then falls back to trials detected in the data source.  Column conflicts
+    are settled by *conflict_resolver* (which returns the columns to take from
+    the metadata file); without one, alignment values win with a warning.
+    """
+    align_df = nwb_alignment.trials_df
+    if align_df is None or align_df.empty or "start_time" not in align_df.columns:
+        return None
+
+    user_df = _user_tabular_metadata(metadata_path)
+    if user_df is None:
+        if metadata_path is not None:
+            logger.info(
+                "Trial timing comes from the alignment NWB trials table; non-tabular metadata_path %s is not merged",
+                metadata_path,
+            )
+        return align_df
+
+    merged, conflicts = merge_trial_metadata(align_df, user_df)
+    if conflicts:
+        if conflict_resolver is not None:
+            take_metadata = conflict_resolver(conflicts)
+        else:
+            take_metadata = []
+            logger.warning(
+                "Metadata column(s) %s differ from the alignment NWB trials table — keeping alignment values",
+                [c.column for c in conflicts],
+            )
+        merged = apply_metadata_choices(merged, conflicts, take_metadata)
+    return merged
+
+
+def _trial_ids_from_ep(trials_ep) -> list[int | str]:
+    """Trial ids carried on the IntervalSet metadata, else 1-based indices."""
+    if trials_ep is None:
+        return [1]
+    meta = getattr(trials_ep, "metadata", None)
+    if meta is not None and "trial" in meta:
+        return [_coerce_trial_id(t) for t in meta["trial"]]
+    return list(range(1, len(trials_ep) + 1))
+
+
 def _load_pynapple_dataset(
     file_path: str,
     metadata_path: str | None = None,
     alignment_path: str | None = None,
+    metadata_conflict_resolver: Callable[[list[MetadataConflict]], list[str]] | None = None,
 ) -> LoadResult:
     """Load a pynapple .npz file or folder."""
     from ethograph.io.pynapple import load_nap_data
 
-    data, trials_ep = load_nap_data(file_path)
-    trials_ep = _resolve_trials_ep(data, trials_ep, metadata_path=metadata_path)
-
-    catalog = catalog_from_pynapple(data, source_path=file_path)
-    loader = PynappleLoader(data, catalog)
+    data, detected_ep = load_nap_data(file_path)
 
     parent = Path(file_path).parent if not Path(file_path).is_dir() else Path(file_path)
     sidecar = parent / ".ethograph" / "alignment.nwb"
@@ -227,10 +291,31 @@ def _load_pynapple_dataset(
         nwb_path = file_path
     else:
         nwb_path = None
-
-    trial_ids = list(range(1, len(trials_ep) + 1)) if trials_ep is not None else [1]
+    if alignment_path and not Path(alignment_path).exists():
+        logger.warning(
+            "Alignment NWB not found: %s — falling back to %s",
+            alignment_path,
+            nwb_path or "no alignment",
+        )
 
     sio = make_nwb_alignment(nwb_path)
+
+    # Trials priority: alignment NWB trials table (merged with user tabular
+    # metadata) → explicit metadata timing → IntervalSet detected in the data.
+    merged_df = _merged_trials_df(sio, metadata_path, metadata_conflict_resolver)
+    trials_ep = None
+    if merged_df is not None:
+        trials_ep = _build_trials_ep(merged_df)
+        if trials_ep is None:
+            logger.warning("Alignment NWB trials table has unusable timing — falling back to detected trials")
+            merged_df = None
+    if trials_ep is None:
+        trials_ep = _resolve_trials_ep(data, detected_ep, metadata_path=metadata_path)
+
+    catalog = catalog_from_pynapple(data, source_path=file_path)
+    loader = PynappleLoader(data, catalog)
+
+    trial_ids = _trial_ids_from_ep(trials_ep)
 
     converter = PynappleLabelConverter(data)
     all_labels_df = converter.resolve_labels(
@@ -238,12 +323,19 @@ def _load_pynapple_dataset(
         trial_ids=trial_ids,
     )
 
-    resolved_metadata_df, resolved_metadata_path = load_metadata_df(
-        source_path=file_path,
-        metadata_path=metadata_path,
-        nwb_alignment=sio,
-        trial_ids=trial_ids,
-    )
+    if merged_df is not None:
+        resolved_metadata_df = metadata_from_nwb_trials(merged_df, trial_ids)
+        user_path = Path(metadata_path) if metadata_path else None
+        resolved_metadata_path = (
+            str(user_path) if user_path is not None and user_path.suffix.lower() in TABULAR_METADATA_EXTS else None
+        )
+    else:
+        resolved_metadata_df, resolved_metadata_path = load_metadata_df(
+            source_path=file_path,
+            metadata_path=metadata_path,
+            nwb_alignment=sio,
+            trial_ids=trial_ids,
+        )
 
     # Determine which labels file path was used
     from ethograph.labels.tsv_store import labels_tsv_path
@@ -332,6 +424,7 @@ def load_features_dataset(
     progress_callback: Callable[[str], None] | None = None,
     metadata_path: str | None = None,
     alignment_path: str | None = None,
+    metadata_conflict_resolver: Callable[[list[MetadataConflict]], list[str]] | None = None,
 ) -> LoadResult:
     """Load dataset from file path.
 
@@ -340,17 +433,29 @@ def load_features_dataset(
     Parameters
     ----------
     metadata_path
-        Optional path to a TSV/CSV/Excel file with ``trial``, ``start_time``,
-        ``stop_time`` columns.  When provided, trial boundaries are read from
-        this file instead of the data source.
+        Optional path to a TSV/CSV/Excel file with per-trial metadata.  For
+        pynapple sources whose alignment NWB carries a trials table, the table
+        is merged into it (union of columns; shared columns must agree or a
+        conflict is raised to *metadata_conflict_resolver*).  Without an
+        alignment trials table, timing columns (``trial``, ``start_time``,
+        ``stop_time``) in this file define the trial boundaries directly.
     alignment_path
         Optional explicit alignment NWB. Overrides sidecar discovery — used
         for the user-specified alignment field and drag-and-dropped media.
+    metadata_conflict_resolver
+        Called with the list of :class:`MetadataConflict` when a metadata
+        column disagrees with the alignment trials table; returns the column
+        names to take from the metadata file.  ``None`` keeps alignment values.
 
     Returns a :class:`LoadResult` with dt, labels, catalog, and metadata.
     """
     if _is_pynapple_path_folder(file_path):
-        return _load_pynapple_dataset(file_path, metadata_path=metadata_path, alignment_path=alignment_path)
+        return _load_pynapple_dataset(
+            file_path,
+            metadata_path=metadata_path,
+            alignment_path=alignment_path,
+            metadata_conflict_resolver=metadata_conflict_resolver,
+        )
 
     if file_path.endswith(".nc"):
         return _load_trialtree(file_path, metadata_path=metadata_path, alignment_path=alignment_path)
@@ -381,7 +486,7 @@ def _build_source_collection_pynapple(
             sc.add(PynappleSource(key, obj, trials_ep))
     if trials_ep is not None and len(trials_ep) > 0:
         sc.set_trials(
-            ids=list(range(1, len(trials_ep) + 1)),
+            ids=_trial_ids_from_ep(trials_ep),
             starts=[float(s) for s in trials_ep.start],
             stops=[float(e) for e in trials_ep.end],
         )

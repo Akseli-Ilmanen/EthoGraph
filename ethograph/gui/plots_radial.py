@@ -45,6 +45,8 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
+from ethograph.io.time_model import TimeRange
+
 from .app_constants import MEDIA_VIEW_MIN_HEIGHT, MEDIA_VIEW_MIN_WIDTH, MULTIDIM_COLORS
 
 logger = logging.getLogger(__name__)
@@ -86,6 +88,10 @@ def _candidate_bounds(app_state) -> list:
     an xarray loader slices trial-relative time, so on a session whose trials
     carry offsets they can select nothing at all. Neither candidate is right on
     its own; whichever actually returns a full turn decides.
+
+    A pynapple loader carrying a display offset (trial-local window) answers
+    queries in display coordinates, so the session-absolute candidates are
+    also offered shifted into display coordinates — again tried, not trusted.
     """
     collection = getattr(app_state, "source_collection", None)
     candidates = [
@@ -93,6 +99,14 @@ def _candidate_bounds(app_state) -> list:
         getattr(collection, "union_range", None),
         getattr(app_state, "window_bounds", None),
     ]
+
+    loader = getattr(app_state, "data_loader", None)
+    offset = loader.display_offset() if hasattr(loader, "display_offset") else 0.0
+    if offset:
+        candidates += [
+            TimeRange(c.start_s - offset, c.end_s - offset) for c in candidates[:2] if c is not None
+        ]
+
     out: list = []
     for candidate in candidates:
         if candidate is not None and candidate not in out:

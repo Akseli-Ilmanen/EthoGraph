@@ -44,18 +44,20 @@ class TestWizardBBoxPipeline:
 
     def test_wizard_trialtree_netcdf_roundtrip(self, tmp_path):
         ds = _fetch_crab_dataset()
-        dt = wizard_single_from_pose(
+        # wizard_single_from_pose returns a plain single-trial Dataset (the
+        # trial structure lives in the alignment NWB it writes alongside).
+        out = wizard_single_from_pose(
             video_path=None,
             fps=ds.attrs["fps"],
             pose_path=ds.attrs["source_file"],
             source_software="VIA-tracks",
+            output_nc_path=str(tmp_path / "crab_trial.nc"),
         )
-        trial_ds = dt.itrial(0)
-        assert "position" in trial_ds.data_vars
-        assert "shape" in trial_ds.data_vars
+        assert "position" in out.data_vars
+        assert "shape" in out.data_vars
 
         nc_out = tmp_path / "crab_trial.nc"
-        _safe_to_netcdf(dt, nc_out)
+        _safe_to_netcdf(out, nc_out)
         assert nc_out.exists()
 
         ds = xr.open_dataset(nc_out)

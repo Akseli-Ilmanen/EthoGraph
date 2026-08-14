@@ -121,3 +121,150 @@ def test_load_metadata_df_uses_nwb_source_when_trials_present(monkeypatch, tmp_p
     assert source == str(nwb_path)
     assert list(mdf.columns) == ["trial", "genotype"]
     assert list(mdf["trial"]) == [1, 2]
+
+
+# ---------------------------------------------------------------------------
+# merge_trial_metadata / apply_metadata_choices
+# ---------------------------------------------------------------------------
+
+
+def _alignment_trials_df():
+    return pd.DataFrame(
+        {
+            "start_time": [20.9, 33.6, 46.5],
+            "stop_time": [25.5, 38.4, 50.7],
+            "trial": [1, 2, 4],
+            "video_cam-1": ["a.mp4", "b.mp4", "c.mp4"],
+        }
+    )
+
+
+def test_merge_unions_new_columns():
+    from ethograph.io.metadata_table import merge_trial_metadata
+
+    user = pd.DataFrame({"trial": [1, 2, 4], "genotype": ["WT", "KO", "WT"]})
+    merged, conflicts = merge_trial_metadata(_alignment_trials_df(), user)
+    assert conflicts == []
+    assert list(merged["genotype"]) == ["WT", "KO", "WT"]
+    assert list(merged["trial"]) == [1, 2, 4]
+    assert "start_time" in merged.columns
+
+
+def test_merge_partial_metadata_fills_nan_without_conflict():
+    from ethograph.io.metadata_table import merge_trial_metadata
+
+    user = pd.DataFrame({"trial": [2], "genotype": ["KO"]})
+    merged, conflicts = merge_trial_metadata(_alignment_trials_df(), user)
+    assert conflicts == []
+    assert merged.loc[merged["trial"] == 2, "genotype"].iloc[0] == "KO"
+    assert merged.loc[merged["trial"] == 1, "genotype"].isna().all()
+
+
+def test_merge_pynapple_naming_matches_nwb_timing():
+    """User 'start'/'end' columns are the same quantity as start_time/stop_time."""
+    from ethograph.io.metadata_table import merge_trial_metadata
+
+    user = pd.DataFrame(
+        {
+            "trial": [1, 2, 4],
+            "start": [20.9, 33.6, 46.5],
+            "end": [25.5, 38.4, 50.7],
+        }
+    )
+    merged, conflicts = merge_trial_metadata(_alignment_trials_df(), user)
+    assert conflicts == []
+    assert "start" not in merged.columns
+    assert "end" not in merged.columns
+
+
+def test_merge_unknown_trial_ids_raise():
+    from ethograph.io.metadata_table import merge_trial_metadata
+
+    user = pd.DataFrame({"trial": [1, 3], "genotype": ["WT", "KO"]})
+    with pytest.raises(ValueError, match="not present in the alignment"):
+        merge_trial_metadata(_alignment_trials_df(), user)
+
+
+def test_merge_duplicate_trial_ids_raise():
+    from ethograph.io.metadata_table import merge_trial_metadata
+
+    user = pd.DataFrame({"trial": [1, 1], "genotype": ["WT", "KO"]})
+    with pytest.raises(ValueError, match="duplicate"):
+        merge_trial_metadata(_alignment_trials_df(), user)
+
+
+def test_merge_conflict_defaults_to_alignment_and_choice_applies():
+    from ethograph.io.metadata_table import apply_metadata_choices, merge_trial_metadata
+
+    user = pd.DataFrame(
+        {
+            "trial": [1, 2, 4],
+            "start_time": [21.0, 33.6, 46.5],  # trial 1 differs
+        }
+    )
+    merged, conflicts = merge_trial_metadata(_alignment_trials_df(), user)
+    assert len(conflicts) == 1
+    assert conflicts[0].column == "start_time"
+    assert conflicts[0].n_differing == 1
+    # Default: alignment side kept.
+    assert merged.loc[merged["trial"] == 1, "start_time"].iloc[0] == pytest.approx(20.9)
+
+    chosen = apply_metadata_choices(merged, conflicts, ["start_time"])
+    assert chosen.loc[chosen["trial"] == 1, "start_time"].iloc[0] == pytest.approx(21.0)
+    # Non-conflicting rows untouched.
+    assert chosen.loc[chosen["trial"] == 2, "start_time"].iloc[0] == pytest.approx(33.6)
+
+
+# ---------------------------------------------------------------------------
+# Trials from alignment NWB (pynapple load path helpers)
+# ---------------------------------------------------------------------------
+
+
+def test_trial_ids_from_alignment_trials_ep():
+    """IntervalSet built from a trials table carries the real trial ids."""
+    pytest.importorskip("pynapple")
+    from ethograph.io.data_loader import _trial_ids_from_ep
+    from ethograph.io.nwb_alignment import _build_trials_ep
+
+    ep = _build_trials_ep(_alignment_trials_df())
+    assert ep is not None
+    assert _trial_ids_from_ep(ep) == [1, 2, 4]
+
+
+def test_merged_trials_df_prefers_alignment_table(tmp_path):
+    from ethograph.io.data_loader import _merged_trials_df
+    from ethograph.io.nwb_alignment import TableAlignment
+
+    alignment = TableAlignment(_alignment_trials_df())
+    user_path = tmp_path / "meta.tsv"
+    pd.DataFrame({"trial": [1, 2, 4], "genotype": ["WT", "KO", "WT"]}).to_csv(user_path, sep="\t", index=False)
+
+    merged = _merged_trials_df(alignment, str(user_path), None)
+    assert merged is not None
+    assert list(merged["genotype"]) == ["WT", "KO", "WT"]
+
+
+def test_merged_trials_df_conflict_resolver_wins(tmp_path):
+    from ethograph.io.data_loader import _merged_trials_df
+    from ethograph.io.nwb_alignment import TableAlignment
+
+    alignment = TableAlignment(_alignment_trials_df())
+    user_path = tmp_path / "meta.tsv"
+    pd.DataFrame({"trial": [1, 2, 4], "stop_time": [26.0, 38.4, 50.7]}).to_csv(user_path, sep="\t", index=False)
+
+    resolver_calls = []
+
+    def resolver(conflicts):
+        resolver_calls.append([c.column for c in conflicts])
+        return ["stop_time"]
+
+    merged = _merged_trials_df(alignment, str(user_path), resolver)
+    assert resolver_calls == [["stop_time"]]
+    assert merged.loc[merged["trial"] == 1, "stop_time"].iloc[0] == pytest.approx(26.0)
+
+
+def test_merged_trials_df_no_alignment_returns_none():
+    from ethograph.io.data_loader import _merged_trials_df
+    from ethograph.io.nwb_alignment import EmpytAlignment
+
+    assert _merged_trials_df(EmpytAlignment(), None, None) is None

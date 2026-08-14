@@ -899,16 +899,12 @@ class CoverPage(QDialog):
             for i, v in enumerate(videos):
                 cam_map.append((v, poses[i] if i < len(poses) else None))
         elif poses:
-            # Pose without video: a still image stands in as the "camera"
-            # background (static view, pose animates on top of it).
-            if not images:
-                raise RuntimeError(
-                    "A pose file without a video needs a background image "
-                    "(.png / .jpg) to display on — drop one alongside, or "
-                    "drop the matching video."
-                )
+            # Pose without video: a still image (when dropped) stands in as the
+            # "camera" background (static view, pose animates on top of it).
+            # With no image either, the pose stands alone — no camera view;
+            # position/confidence load as plottable features instead.
             for i, p in enumerate(poses):
-                cam_map.append((images[min(i, len(images) - 1)], p))
+                cam_map.append((images[min(i, len(images) - 1)] if images else None, p))
 
         session_files = buckets["session"]
         audio_files = list(buckets["audio"])
@@ -934,7 +930,13 @@ class CoverPage(QDialog):
             # Pure media: synthesise a single-trial alignment.tmp.nwb.
             nwb_path = self._build_tmp_alignment(cam_map, audio_files, details)
             app_state.nwb_file_path = str(nwb_path)
-            if cam_map and self._video_motion_cb.isChecked():
+            standalone_poses = [p for v, p in cam_map if v is None]
+            if standalone_poses:
+                # No camera to overlay on — the pose data IS the session's
+                # data: position/confidence become catalog features, so the
+                # drop is plottable (line/heatmap/space/radial) without video.
+                app_state.nc_file_path = str(self._compute_pose_features_nc(standalone_poses, details))
+            elif cam_map and self._video_motion_cb.isChecked():
                 # Video motion requested → the session is an xarray .nc holding a
                 # (time, camera) motion feature; media still comes from the tmp
                 # alignment above. Feature/camera dropdown + heatmap come for free.
@@ -964,13 +966,15 @@ class CoverPage(QDialog):
 
         if videos:
             app_state.video_folder = str(Path(videos[0]).parent)
-        if len(cam_map) > 1:
+        n_camera_backed = sum(1 for v, _ in cam_map if v is not None)
+        if n_camera_backed > 1:
             # Several videos (or image-backed pose cams) dropped = one trial
             # filmed by multiple cameras in parallel, so show every camera as
             # its own view (not just cam-1). Devices match the
-            # `video_cam-{i+1}` streams synthesised above.
+            # `video_cam-{i+1}` streams synthesised above. Standalone pose
+            # entries have no camera stream, so no view is created for them.
             app_state.primary_camera = "cam-1"
-            app_state.extra_cameras = [f"cam-{i + 1}" for i in range(1, len(cam_map))]
+            app_state.extra_cameras = [f"cam-{i + 1}" for i in range(1, n_camera_backed)]
         if poses:
             app_state.pose_folder = str(Path(poses[0]).parent)
             app_state.source_software = details.get("source_software")
@@ -1108,13 +1112,65 @@ class CoverPage(QDialog):
         ds.to_netcdf(out_path)
         return out_path
 
+    def _compute_pose_features_nc(self, poses: list[str], details: dict) -> Path:
+        """Convert standalone pose files to a features .nc behind a busy dialog."""
+        from ethograph.gui.dialog_busy_progress import BusyProgressDialog
+
+        dlg = BusyProgressDialog("Reading pose data…", parent=self)
+        nc_path, error = dlg.execute(
+            self._build_pose_features_nc,
+            poses,
+            details.get("source_software"),
+            details.get("pose_fps"),
+            self._drop_tmp_dir,
+        )
+        if error or nc_path is None:
+            raise RuntimeError(f"Could not read pose data: {error}")
+        return nc_path
+
+    @staticmethod
+    def _build_pose_features_nc(
+        poses: list[str], source_software: str | None, fps: float | None, out_dir: Path
+    ) -> Path:
+        """Write standalone pose files as a plottable features ``.nc``.
+
+        With no camera to overlay on, the pose data is the session's data:
+        the movement dataset's ``position``/``confidence`` become auto-detected
+        catalog features, so line/heatmap/space/radial panels work without any
+        video. Several pose files stack on a ``camera`` dim (``cam-1``, …)
+        matching the alignment's ``pose_cam-N`` streams.
+        """
+        import pandas as pd
+        import xarray as xr
+        from movement.io import load_dataset
+
+        if not fps:
+            raise RuntimeError("A pose file dropped without a video needs its frame rate.")
+
+        datasets = [load_dataset(p, source_software, fps) for p in poses]
+        if len(datasets) == 1:
+            ds = datasets[0]
+        else:
+            cams = pd.Index([f"cam-{i + 1}" for i in range(len(datasets))], name="camera")
+            ds = xr.concat(datasets, dim=cams, join="outer")
+        # Movement attrs can hold None values NetCDF cannot store — keep only
+        # what the loader reads.
+        ds.attrs = {"fps": fps}
+        if source_software:
+            ds.attrs["source_software"] = source_software
+
+        out_path = out_dir / f"pose_features-{uuid4().hex[:8]}.nc"
+        ds.to_netcdf(out_path)
+        return out_path
+
     def _build_tmp_alignment(self, cam_map, audio_files, details: dict | None = None) -> Path:
         """Create a single-trial alignment.tmp.nwb from loose media files.
 
         A ``cam_map`` entry may pair a pose file with a still image instead of
         a video (image + pose drop): the image becomes a static ``video_cam-N``
         stream at the user-provided pose fps, and the session duration comes
-        from the pose file itself.
+        from the pose file itself. A pose dropped with no video *and* no image
+        gets a ``pose_cam-N`` stream alone (no camera view exists for it).
         """
         import pandas as pd
 
@@ -1128,6 +1184,22 @@ class CoverPage(QDialog):
         streams: list[dict] = []
         stop_time = 0.0
         for i, (video, pose) in enumerate(cam_map):
+            if video is None:
+                # Standalone pose (no video, no image): the pose stream is the
+                # camera slot's only content, at the user-provided frame rate.
+                pose_fps = details.get("pose_fps")
+                if not pose_fps or not pose:
+                    raise RuntimeError("A pose file dropped without a video needs its frame rate.")
+                duration = _pose_duration(pose, details.get("source_software"), pose_fps)
+                stop_time = max(stop_time, duration)
+                streams.append({"name": f"pose_cam-{i + 1}", "files": [pose], "rate": pose_fps})
+                logger.info(
+                    "Drop alignment cam-%d: standalone pose %s at %s fps",
+                    i + 1,
+                    Path(pose).name,
+                    pose_fps,
+                )
+                continue
             if Path(video).suffix.lower() in IMAGE_EXTENSIONS:
                 pose_fps = details.get("pose_fps")
                 if not pose_fps or not pose:

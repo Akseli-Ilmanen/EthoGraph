@@ -304,3 +304,64 @@ def test_store_get_cp_times_no_changepoints():
     store = PynappleStore({"speed": nap.Tsd(t=t, d=np.random.randn(1000))})
     result = store.get_cp_times("speed", t0=0.0, t1=10.0)
     assert len(result) == 0
+
+
+# ---------------------------------------------------------------------------
+# Display offset (trial-local windows over absolute pynapple time)
+# ---------------------------------------------------------------------------
+
+
+def test_select_without_provider_is_absolute(simple_nap_data):
+    """No provider installed -> pure absolute-time access, as before."""
+    loader = PynappleStore(simple_nap_data)
+    plot_data = loader.select("speed", {}, t0=15.0, t1=25.0)
+    assert plot_data is not None
+    assert plot_data.time[0] >= 15.0 - 1e-9
+
+
+def test_select_with_offset_rebases_to_display_time(simple_nap_data):
+    """A trial-local query is shifted into absolute time and back."""
+    loader = PynappleStore(simple_nap_data)
+    loader.set_display_offset_provider(lambda: 15.0)  # trial 2 starts at 15 s
+
+    plot_data = loader.select("speed", {}, t0=0.0, t1=10.0)
+    assert plot_data is not None
+    assert 0.0 <= plot_data.time[0] < 0.1
+    assert plot_data.time[-1] <= 10.0 + 1e-9
+
+    # Same span queried absolute must give identical values.
+    loader.set_display_offset_provider(None)
+    absolute = loader.select("speed", {}, t0=15.0, t1=25.0)
+    np.testing.assert_array_equal(np.asarray(plot_data.data), np.asarray(absolute.data))
+    np.testing.assert_allclose(np.asarray(plot_data.time) + 15.0, np.asarray(absolute.time))
+
+
+def test_offset_is_pulled_per_call(simple_nap_data):
+    """The provider is consulted on every select, so trial changes need no re-sync."""
+    offset = {"value": 0.0}
+    loader = PynappleStore(simple_nap_data)
+    loader.set_display_offset_provider(lambda: offset["value"])
+
+    first_trial = loader.select("speed", {}, t0=0.0, t1=10.0)
+    offset["value"] = 15.0
+    second_trial = loader.select("speed", {}, t0=0.0, t1=10.0)
+    assert first_trial is not None and second_trial is not None
+    assert not np.array_equal(np.asarray(first_trial.data), np.asarray(second_trial.data))
+
+
+def test_get_cp_times_with_offset():
+    """Changepoint times come back in display coordinates."""
+    t = np.linspace(0, 25, 2500)
+    speed = nap.Tsd(t=t, d=np.random.randn(2500))
+    cp_times = np.array([16.0, 18.5, 22.2])
+    group = nap.TsGroup({0: nap.Ts(t=cp_times)})
+    group.set_info(
+        type=["changepoints"],
+        target_feature=["speed"],
+        source_label=["unit_0"],
+    )
+
+    loader = PynappleStore({"speed": speed, "cps": group})
+    loader.set_display_offset_provider(lambda: 15.0)
+    result = loader.get_cp_times("speed", t0=0.0, t1=10.0)
+    np.testing.assert_allclose(result, cp_times - 15.0, atol=1e-6)

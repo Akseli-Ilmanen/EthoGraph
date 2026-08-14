@@ -58,11 +58,24 @@ _ROLE_HEADER = Qt.UserRole + 2
 
 
 def feature_ncols(app_state, feature: str) -> int:
-    """Number of non-time columns ``N`` for a feature (product of extra dims)."""
+    """Number of non-time columns ``N`` for a feature (product of extra dims).
+
+    Asks the loader's ``feature_dims`` first — ``app_state.ds`` is None for
+    pynapple data, so reading only the dataset answered 1 for every pynapple
+    feature and hid the Heatmap/Space options exactly there.
+    """
     loader = getattr(app_state, "data_loader", None)
     derived = getattr(loader, "derived", None)
     if isinstance(derived, dict) and feature in derived:
         return derived[feature].n_columns
+    if loader is not None and hasattr(loader, "feature_dims"):
+        dims = loader.feature_dims(feature)
+        if dims:
+            n = 1
+            for values in dims.values():
+                n *= max(1, len(values))
+            return n
+        # {} can also mean "loader knows nothing" — fall through to the ds.
     ds = getattr(app_state, "ds", None)
     if ds is None or feature not in getattr(ds, "data_vars", {}):
         return 1

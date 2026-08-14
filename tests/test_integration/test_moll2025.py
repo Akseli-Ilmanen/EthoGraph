@@ -219,7 +219,10 @@ class TestMoll2025Pynapple:
         QApplication.processEvents()
 
         assert meta.app_state.ready is True
-        assert meta.app_state.dt is not None
+        # Pynapple loads build no TrialTree — the session lives in ds/loader.
+        assert meta.app_state.dt is None
+        assert meta.app_state.ds is not None
+        assert "beakTip_speed" in meta.app_state.data_loader.catalog.feature_choices()
 
     def test_npz_type_vars_structure(self):
         from ethograph.io.catalog import catalog_from_pynapple
@@ -586,6 +589,34 @@ class TestMollPynappleSpacePlot:
             if isinstance(item, (pg.PlotCurveItem, pg.PlotDataItem)) or hasattr(item, "_is_trajectory")
         ]
         assert len(trajectory_items) > 0, "No trajectory items rendered on 2D space plot"
+
+    def test_popup_offers_space_for_multicolumn_pynapple_feature(self, moll2025_pynapple_gui):
+        """The add-panel popup must gate on the loader's shape, not app_state.ds
+        — reading only the ds answered N=1 for every pynapple feature, hiding
+        Heatmap/Space exactly there."""
+        from ethograph.gui.source_popup import allowed_plot_types
+
+        _, meta = moll2025_pynapple_gui
+        options = allowed_plot_types("feature", "beakTip_position", meta.app_state)
+        assert "Heatmap" in options
+        assert "Space (2D)" in options
+        assert "Space (3D)" in options  # (N, 3) → all three axes available
+        # A 1-D feature still only offers a line plot.
+        assert allowed_plot_types("feature", "beakTip_speed", meta.app_state) == ["Lineplot"]
+
+    def test_dropping_a_pynapple_feature_creates_a_space_panel(self, moll2025_pynapple_gui):
+        _, meta = moll2025_pynapple_gui
+
+        n_before = len(meta.data_widget.space_plots)
+        meta._create_panel_for_source("feature", "beakTip_position", "Space (2D)")
+        QApplication.processEvents()
+
+        assert len(meta.data_widget.space_plots) == n_before + 1
+        sp = meta.data_widget.space_plots[-1]
+        assert sp.feature_combo.currentText() == "beakTip_position"
+        assert sp._trajectory_pos is not None, "No trajectory data"
+        X, Y, _ = sp._trajectory_pos
+        assert np.any(np.isfinite(X)) and np.any(np.isfinite(Y))
 
 
 class TestMollPynappleLabellingWithoutChangepoints:

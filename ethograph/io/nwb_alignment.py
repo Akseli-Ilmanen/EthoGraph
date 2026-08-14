@@ -997,11 +997,13 @@ def _add_external_series(
     if _segments_contiguous(seg_starts, seg_nsamples, rate):
         # external + rate carries no data array, so num_samples must be given
         # explicitly (this is also what lets readers find the last file's end).
+        # uint64 is the dtype the NWB spec stores — a plain int would trigger
+        # hdmf's int64→uint64 DtypeConversionWarning on every write.
         nwbfile.add_acquisition(
             ImageSeries(
                 rate=float(rate),
                 starting_time=seg_starts[0],
-                num_samples=int(sum(int(n) for n in seg_nsamples)),
+                num_samples=np.uint64(sum(int(n) for n in seg_nsamples)),
                 **kwargs,
             )
         )

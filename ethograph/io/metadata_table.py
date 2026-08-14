@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 import re
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -27,6 +28,11 @@ logger = logging.getLogger(__name__)
 _STREAM_COL_RE = re.compile(r"^(video|pose|audio|ephys)_(.+)$")
 
 TABULAR_METADATA_EXTS = frozenset({".tsv", ".csv", ".xlsx", ".xls"})
+
+#: pynapple IntervalSet spelling → NWB trials-table spelling for the same
+#: timing quantity. A user metadata table may use either; merging normalises
+#: to the NWB names so "start" and "start_time" are recognised as one column.
+PYNAPPLE_TO_NWB_COLUMNS = {"start": "start_time", "end": "stop_time"}
 
 _NWB_STRUCTURAL_COLUMNS = frozenset(
     {
@@ -206,6 +212,121 @@ def metadata_from_intervalset(trials_ep, trial_ids: list[int | str] | None = Non
 
     keep_cols = ["trial"] + [c for c in df.columns if c != "trial" and not _is_nwb_infrastructure_col(c)]
     return df.loc[:, [c for c in keep_cols if c in df.columns]].copy()
+
+
+@dataclass
+class MetadataConflict:
+    """A column present in both the alignment NWB trials table and a
+    user-supplied metadata table, with differing content."""
+
+    column: str
+    alignment_values: pd.Series  # indexed by trial id
+    metadata_values: pd.Series  # indexed by trial id, only trials the user table has
+    n_differing: int
+
+
+def _series_equal(a: pd.Series, b: pd.Series) -> np.ndarray:
+    """Element-wise equality with NaN == NaN, tolerant for floats."""
+    if pd.api.types.is_numeric_dtype(a) and pd.api.types.is_numeric_dtype(b):
+        av = a.to_numpy(dtype=np.float64, na_value=np.nan)
+        bv = b.to_numpy(dtype=np.float64, na_value=np.nan)
+        return np.isclose(av, bv, rtol=1e-9, atol=1e-9, equal_nan=True)
+    return ((a == b) | (a.isna() & b.isna())).to_numpy()
+
+
+def merge_trial_metadata(
+    alignment_df: pd.DataFrame,
+    user_df: pd.DataFrame,
+) -> tuple[pd.DataFrame, list[MetadataConflict]]:
+    """Merge a user metadata table into the alignment NWB trials table.
+
+    The alignment table is the base: its rows define the trial set and order.
+    User columns are first normalised (pynapple ``start``/``end`` → NWB
+    ``start_time``/``stop_time``); columns only the user table has are unioned
+    in, columns both tables share are compared per trial.  Shared columns with
+    identical content collapse to one; differing content is reported as a
+    :class:`MetadataConflict` and the merged table keeps the **alignment**
+    values until :func:`apply_metadata_choices` says otherwise.
+
+    Raises
+    ------
+    ValueError
+        If the user table contains trial ids the alignment table does not
+        (row-level mismatch is an inconsistency, not extra information).
+    """
+    align = _normalise_trial_column(alignment_df, None)
+    user = _normalise_trial_column(user_df, None)
+
+    rename = {
+        old: new for old, new in PYNAPPLE_TO_NWB_COLUMNS.items() if old in user.columns and new not in user.columns
+    }
+    if rename:
+        user = user.rename(columns=rename)
+
+    dup = user["trial"][user["trial"].duplicated()].tolist()
+    if dup:
+        raise ValueError(f"Metadata table has duplicate trial id(s): {dup[:10]}")
+
+    align_ids = list(align["trial"])
+    unknown = [t for t in user["trial"] if t not in set(align_ids)]
+    if unknown:
+        raise ValueError(
+            f"Metadata table has trial id(s) not present in the alignment NWB trials table: {unknown[:10]}"
+            f"{'…' if len(unknown) > 10 else ''} "
+            f"(alignment has {len(align_ids)} trials: {align_ids[0]}..{align_ids[-1]})"
+        )
+
+    user_indexed = user.set_index("trial")
+    # Rows for trials the user table lacks become NaN; those rows carry no
+    # opinion and never count as a conflict.
+    user_aligned = user_indexed.reindex(align_ids)
+    user_has_row = np.array([t in set(user_indexed.index) for t in align_ids])
+
+    merged = align.copy().reset_index(drop=True)
+    conflicts: list[MetadataConflict] = []
+
+    for col in user_aligned.columns:
+        user_vals = user_aligned[col].reset_index(drop=True)
+        if col not in merged.columns:
+            merged[col] = user_vals
+            continue
+        align_vals = merged[col].reset_index(drop=True)
+        equal = _series_equal(align_vals, user_vals)
+        differing = user_has_row & ~equal
+        if differing.any():
+            conflicts.append(
+                MetadataConflict(
+                    column=col,
+                    alignment_values=pd.Series(align_vals.values, index=align_ids),
+                    metadata_values=pd.Series(user_vals.values, index=align_ids)[user_has_row],
+                    n_differing=int(differing.sum()),
+                )
+            )
+
+    return merged, conflicts
+
+
+def apply_metadata_choices(
+    merged: pd.DataFrame,
+    conflicts: list[MetadataConflict],
+    take_metadata: list[str],
+) -> pd.DataFrame:
+    """Overwrite conflicting columns with the user-metadata side where chosen.
+
+    ``take_metadata`` lists the conflict columns the user wants from their
+    metadata table; every other conflict keeps the alignment values already in
+    *merged*.  Only trials the user table actually has are overwritten.
+    """
+    result = merged.copy()
+    by_col = {c.column: c for c in conflicts}
+    for col in take_metadata:
+        conflict = by_col.get(col)
+        if conflict is None:
+            continue
+        trial_to_value = conflict.metadata_values
+        mask = result["trial"].isin(trial_to_value.index)
+        result.loc[mask, col] = result.loc[mask, "trial"].map(trial_to_value)
+    return result
 
 
 def load_metadata_df(

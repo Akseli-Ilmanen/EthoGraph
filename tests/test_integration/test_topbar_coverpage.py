@@ -257,15 +257,17 @@ def test_nav_tab_contains_trials_table(birdpark_gui):
     shell, meta = birdpark_gui
     # trials_widget (with its table) is parented into the Navigation section.
     assert meta.trials_widget.parent() is not None
-    # Playback moved out of navigation into the video context panel.
-    assert meta.context_panel.isAncestorOf(meta.navigation_widget.playback_group)
 
 
-def test_video_context_shows_playback_and_pose(birdpark_gui):
+def test_video_context_shows_pose_only_when_pose_exists(birdpark_gui):
+    """Playback controls live in the bottom bar now — the video context holds
+    only the pose section, hidden for a dataset with no pose data."""
     shell, meta = birdpark_gui
     meta.focus_video_context()
     assert meta.context_panel.current_context() == "video"
-    assert meta.navigation_widget.playback_group.isVisibleTo(meta.context_panel)
+    pose_group = meta.data_panel.pose_groupbox
+    assert meta.context_panel.isAncestorOf(pose_group)
+    assert not pose_group.isVisibleTo(meta.context_panel)
 
 
 def test_zen_mode_toggle(gui, qtbot):
@@ -671,15 +673,58 @@ def test_cover_page_image_only_drop_rejected(gui):
         page._populate_io_from_buckets(buckets, {"data_sr": None, "source_software": None, "pose_fps": None})
 
 
-def test_cover_page_pose_without_image_or_video_rejected(gui):
-    """A pose file needs either a video or a background image to display on."""
+def test_cover_page_pose_only_drop_loads_as_features(gui):
+    """A pose file dropped with no video and no image loads on its own: the
+    pose becomes a features .nc (position/confidence) with a pose-only
+    alignment — plottable panels never require a camera."""
+    from ethograph.datasets import dataset_dir, is_dataset_downloaded
     from ethograph.gui.cover_page import CoverPage, classify_files
+    from ethograph.io.nwb_alignment import NWBAlignment
+
+    if not is_dataset_downloaded("moll2025"):
+        pytest.skip("moll2025 not downloaded")
+    pose_csv = next(iter(sorted(dataset_dir("moll2025").glob("*DLC.csv"))), None)
+    if pose_csv is None:
+        pytest.skip("moll2025 has no DLC pose file")
 
     shell, meta = gui
     page = CoverPage(shell, meta.io_widget)
-    buckets = classify_files(["tracking.slp"])
-    with pytest.raises(RuntimeError, match="background image"):
-        page._populate_io_from_buckets(buckets, {"data_sr": None, "source_software": None, "pose_fps": 30.0})
+    buckets = classify_files([str(pose_csv)])
+    assert buckets["pose"] == [str(pose_csv)]
+    page._populate_io_from_buckets(
+        buckets, {"data_sr": None, "source_software": "DeepLabCut", "pose_fps": 30.0}
+    )
+
+    app_state = meta.app_state
+    assert app_state.nc_file_path and app_state.nc_file_path.endswith(".nc")
+    assert app_state.nwb_file_path and app_state.nwb_file_path.endswith(".tmp.nwb")
+    align = NWBAlignment(app_state.nwb_file_path)
+    assert align.cameras == []  # no camera view exists for a standalone pose
+    assert align.get_stream_rate("pose", "cam-1") == 30.0
+
+    import xarray as xr
+
+    with xr.open_dataset(app_state.nc_file_path) as ds:
+        assert "position" in ds.data_vars
+        assert "time" in ds["position"].dims
+
+    # The drop must load into a working session: position is a catalog
+    # feature offered as a space plot, with no video anywhere.
+    from qtpy.QtWidgets import QApplication
+
+    from ethograph.gui.source_popup import allowed_plot_types
+
+    meta.data_widget.on_load_clicked()
+    QApplication.processEvents()
+    assert app_state.ready
+    assert app_state.video is None
+
+    assert "position" in meta.data_widget.catalog.feature_choices()
+    assert "Space (2D)" in allowed_plot_types("feature", "position", app_state)
+    meta._create_panel_for_source("feature", "position", "Space (2D)")
+    QApplication.processEvents()
+    assert meta.data_widget.space_plots
+    assert meta.data_widget.space_plots[-1].dock_widget is not None
 
 
 def test_cover_page_builds_single_trial_alignment(gui, birdpark_data_dir):

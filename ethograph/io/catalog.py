@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Callable, Protocol, runtime_checkable
 
 import numpy as np
 
@@ -420,13 +420,17 @@ class XarrayLoader(_CatalogMixin):
 
 
 class PynappleLoader(_CatalogMixin):
-    """Stateless feature access backed by raw pynapple objects.
+    """Feature access backed by raw pynapple objects, rendered in display time.
 
-    No trial state — callers always pass ``t0, t1`` (absolute session
-    times).  The loader ``restrict()``-s to that range and returns numpy in
-    a PlotData with time in absolute session coordinates — the same
-    coordinates as the plot x-axis, so a viewport starting anywhere (e.g. a
-    sliding fixed window) renders at the right position.
+    Pynapple objects live in absolute session time, but callers pass ``t0, t1``
+    in the plot's x-axis coordinates — which are trial-local whenever the GUI's
+    window is trial-based (trial / label / sequence scope) and absolute only in
+    session scope.  The bridge is ``display_offset``: queries are shifted into
+    absolute time before ``restrict()`` and returned times are shifted back, so
+    the PlotData always lands on the axis the caller drew.  The offset is
+    *pulled* per call from a provider installed by the GUI (the loader itself
+    stays free of trial state); with no provider it is 0.0 and the loader
+    behaves as pure absolute-time access.
     """
 
     def __init__(
@@ -445,6 +449,22 @@ class PynappleLoader(_CatalogMixin):
             k: v for k, v in data.items() if isinstance(v, (nap.Tsd, nap.TsdFrame, nap.TsdTensor))
         }
         self._dim_map = _compute_shared_column_dims(self._feature_objs)
+        self._display_offset_provider: Callable[[], float] | None = None
+
+    def set_display_offset_provider(self, provider: Callable[[], float] | None) -> None:
+        """Install the callable that maps display time to absolute time.
+
+        The provider returns the amount to ADD to a caller's ``t0/t1`` to reach
+        absolute session time (a trial's session start when the window is
+        trial-local, 0.0 in session scope).
+        """
+        self._display_offset_provider = provider
+
+    def display_offset(self) -> float:
+        """Current display→absolute offset in seconds (0.0 without a provider)."""
+        if self._display_offset_provider is None:
+            return 0.0
+        return float(self._display_offset_provider())
 
     @property
     def backend(self) -> str:
@@ -552,13 +572,20 @@ class PynappleLoader(_CatalogMixin):
     ) -> PlotData | None:
         import pynapple as nap
 
+        # Shift the display-time query into absolute session time; everything
+        # below runs absolute, and the returned PlotData is shifted back so it
+        # lands on the axis the caller drew.
+        offset = self.display_offset()
+        t0 += offset
+        t1 += offset
+
         actual_key = feature
         if feature == "pose_estimation":
             kp = selections.get("keypoint")
             if kp and kp in self._feature_objs:
                 actual_key = kp
             else:
-                return self._select_all_keypoints(selections, t0, t1)
+                return _shift_plot_time(self._select_all_keypoints(selections, t0, t1), offset)
 
         if actual_key not in self._feature_objs:
             return None
@@ -647,14 +674,17 @@ class PynappleLoader(_CatalogMixin):
             if cp_dict:
                 changepoints = cp_dict
 
-        return PlotData(
-            time=time,
-            data=data,
-            dim_labels=dim_labels,
-            title=feature,
-            ylabel=feature,
-            color_data=color_data,
-            changepoints=changepoints,
+        return _shift_plot_time(
+            PlotData(
+                time=time,
+                data=data,
+                dim_labels=dim_labels,
+                title=feature,
+                ylabel=feature,
+                color_data=color_data,
+                changepoints=changepoints,
+            ),
+            offset,
         )
 
     def get_cp_times(
@@ -664,6 +694,10 @@ class PynappleLoader(_CatalogMixin):
         t1: float = 0.0,
     ) -> np.ndarray:
         import pynapple as nap
+
+        offset = self.display_offset()
+        t0 += offset
+        t1 += offset
 
         all_times: list[np.ndarray] = []
         for key, obj in self._data.items():
@@ -690,12 +724,19 @@ class PynappleLoader(_CatalogMixin):
                     all_times.append(ts_obj.t)
         if not all_times:
             return np.array([], dtype=np.float64)
-        return np.unique(np.concatenate(all_times)).astype(np.float64)
+        return np.unique(np.concatenate(all_times)).astype(np.float64) - offset
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _shift_plot_time(plot_data: PlotData | None, offset: float) -> PlotData | None:
+    """Rebase a PlotData's time axis from absolute back to display coordinates."""
+    if plot_data is not None and offset:
+        plot_data.time = np.asarray(plot_data.time, dtype=np.float64) - offset
+    return plot_data
 
 
 def _compute_shared_column_dims(
