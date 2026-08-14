@@ -144,10 +144,40 @@ class CameraView(QWidget):
     def _position_proxy_badge(self) -> None:
         self._proxy_badge.move(6, 6)
 
+    def set_blanked(self, blanked: bool) -> None:
+        """Cover the video with black ("no input") or reveal it again.
+
+        Used in session basis when the time marker sits where the current
+        trial has no video (inter-trial gap, or another trial's span while
+        its video is still loading). A floating cover widget — never
+        ``clear()`` — so the decoder stays alive and unblanking is free.
+        """
+        cover = getattr(self, "_blank_cover", None)
+        self._blanked = bool(blanked)
+        if blanked:
+            if cover is None:
+                cover = QWidget(self)
+                cover.setAutoFillBackground(True)
+                cover.setStyleSheet("background-color: black;")
+                cover.setAttribute(Qt.WA_TransparentForMouseEvents)
+                self._blank_cover = cover
+            cover.setGeometry(self.rect())
+            cover.show()
+            cover.raise_()
+            self._proxy_badge.raise_()
+        elif cover is not None:
+            cover.hide()
+
+    @property
+    def is_blanked(self) -> bool:
+        return bool(getattr(self, "_blanked", False))
+
     def resizeEvent(self, event):
         super().resizeEvent(event)
         if self._proxy_badge.isVisible():
             self._position_proxy_badge()
+        if self.is_blanked and getattr(self, "_blank_cover", None) is not None:
+            self._blank_cover.setGeometry(self.rect())
 
     # ------------------------------------------------------------------
     # Loading

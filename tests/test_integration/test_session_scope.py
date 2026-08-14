@@ -156,3 +156,16 @@ def test_trial_change_centers_marker_on_session_start(session_gui):
     expected_start = sc.to_session(target, 0.0)
     marker_t = nav._current_time()
     assert marker_t == pytest.approx(expected_start, abs=0.5)
+
+
+def test_camera_view_blanking(qapp):
+    """The black 'no input' cover toggles without touching the decoder."""
+    from ethograph.gui.pygfx_video import CameraView
+
+    view = CameraView()
+    assert not view.is_blanked
+    view.set_blanked(True)
+    assert view.is_blanked
+    view.set_blanked(False)
+    assert not view.is_blanked
+    view.deleteLater()

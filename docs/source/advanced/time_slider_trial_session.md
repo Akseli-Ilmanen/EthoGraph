@@ -35,7 +35,10 @@ slider scope is set to session.
   inside another trial's span and, after a short settle (~0.3 s), that
   trial's video loads and shows the frame under the marker. Crossing a trial
   boundary re-opens a video file, which takes a moment (the plots stay
-  live). In inter-trial gaps the last frame holds.
+  live). While the marker sits in an inter-trial gap — or in another trial's
+  span whose video hasn't loaded yet — the camera views show black ("no
+  input") rather than freezing on a stale frame; playback resumes once the
+  new video is up.
 - **Labelling works across trials** — click any trial's span to label it:
   the trial under the click becomes current, and the label is stored in that
   trial (trial-relative). Clicks in the gaps between trials are refused, as

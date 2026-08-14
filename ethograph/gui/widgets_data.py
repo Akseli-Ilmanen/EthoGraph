@@ -2749,6 +2749,7 @@ class DataWidget(QWidget):
         if self.app_state.display_basis == "session":
             self._follow_pending_time = time_s
             self._marker_follow_timer.start()
+        self._update_video_blanking(time_s)
         # Static-image views have no frame clock — the marker animates their
         # pose overlay directly (overlay time is trial-local).
         image_views = self.video_mgr.image_views()
@@ -2763,6 +2764,27 @@ class DataWidget(QWidget):
         for sp in visible:
             sp.update_time_marker(time_s)
         self._highlight_label_at_time(time_s)
+
+    def _update_video_blanking(self, time_s: float) -> None:
+        """Black out the camera views when the marker has no video under it.
+
+        Session basis only: in an inter-trial gap, or inside another trial's
+        span while that trial's video hasn't loaded yet, the views show "no
+        input" (black cover) instead of freezing on the last frame. As soon
+        as the marker's trial is the loaded one, the cover lifts.
+        """
+        state = self.app_state
+        blank = False
+        if state.display_basis == "session" and getattr(state, "video", None) is not None:
+            hit = state.from_display(time_s, strict=True)
+            blank = hit is None or hit[0] != state.trials_sel
+
+        views = [self.shell.video_area.primary, *self.video_mgr.extra_widgets.values()]
+        for view in views:
+            if getattr(view, "static_image_path", None):
+                continue  # still images are timeless — never blanked
+            if hasattr(view, "set_blanked") and view.is_blanked != blank:
+                view.set_blanked(blank)
 
     def _follow_marker_trial(self):
         """Debounce target: make the trial under the marker current (session basis).
@@ -2782,6 +2804,8 @@ class DataWidget(QWidget):
         if hit is None or hit[0] == state.trials_sel:
             return
         trial_id = hit[0]
+        old_video = getattr(state, "video", None)
+        was_playing = bool(old_video is not None and old_video.is_playing)
         state._preserve_x_range_next = True
         state._marker_driven_trial_switch = True
         state.trials_sel = trial_id
@@ -2797,6 +2821,10 @@ class DataWidget(QWidget):
         video = getattr(state, "video", None)
         if video is not None:
             video.seek_to_frame(video.time_to_frame(time_s, round_nearest=True))
+            if was_playing:
+                # Playback survived the trial hop: the new decoder streams
+                # frames in as they arrive ("freeze until loaded, then go").
+                video.start()
 
     def _on_xrange_for_space_plot(self, _time_s: float):
         """Debounced re-render of space plots when lineplot x-range changes."""
