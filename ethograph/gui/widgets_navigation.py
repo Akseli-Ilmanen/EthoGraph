@@ -24,6 +24,8 @@ from ethograph.gui.notify import notify
 from ethograph.io.time_model import (
     RestrictionWindow,
     TimeRange,
+    build_label_window,
+    build_sequence_window,
     find_closest_trial,
     infer_slider_range,
     trial_start_range,
@@ -459,8 +461,13 @@ class NavigationWidget(QWidget):
             self._update_viewport_for_scope()
 
     def _fixed_pan_extent(self) -> TimeRange | None:
-        """Full extent the fixed window can slide over (scope-dependent)."""
-        if self.app_state.slider_scope == "session":
+        """Full extent the fixed window can slide over, in the display basis.
+
+        Keyed on ``display_basis`` (not raw ``slider_scope``): label/sequence
+        navigation is trial-basis even under session scope, so its anchors are
+        trial-relative and the extent must be too.
+        """
+        if self.app_state.display_basis == "session":
             sc = getattr(self.app_state, "source_collection", None)
             return sc.session_range if sc else None
         alignment = getattr(self.app_state, "trial_alignment", None)
@@ -734,7 +741,21 @@ class NavigationWidget(QWidget):
         self._update_counter()
         onset_s = float(inst["onset_s"])
         offset_s = float(inst["offset_s"])
-        self._center_and_maybe_play(onset_s, offset_s)
+        # Publish the window BEFORE moving the view, so window_bounds (zoom
+        # limits, loader queries, ephys restriction) describes what's shown.
+        # In fixed x-limits mode _center_and_maybe_play overwrites this with
+        # the fixed window — also correct.
+        df = getattr(self.app_state, "_all_labels_df", None)
+        tb = self.app_state.trial_bounds
+        if df is not None and tb is not None and "row_idx" in inst:
+            self.app_state.restrict_window = build_label_window(
+                df,
+                int(inst["row_idx"]),
+                tb,
+                extra_t0=self.before_spin.value(),
+                extra_t1=self.after_spin.value(),
+            )
+        self._center_and_maybe_play(onset_s, offset_s, trial_id)
 
     # ==================================================================
     # Sequence mode
@@ -780,7 +801,15 @@ class NavigationWidget(QWidget):
         self._update_counter()
         onset_s = float(match["onset_s"])
         offset_s = float(match["offset_s"])
-        self._center_and_maybe_play(onset_s, offset_s)
+        tb = self.app_state.trial_bounds
+        if tb is not None:
+            self.app_state.restrict_window = build_sequence_window(
+                match,
+                tb,
+                extra_t0=self.before_spin.value(),
+                extra_t1=self.after_spin.value(),
+            )
+        self._center_and_maybe_play(onset_s, offset_s, trial_id)
 
     # ==================================================================
     # Counter display
@@ -817,10 +846,19 @@ class NavigationWidget(QWidget):
     # Center view + auto-play
     # ==================================================================
 
-    def _center_and_maybe_play(self, onset_s: float, offset_s: float):
-        """Center view on *onset_s..offset_s* + context, seek to onset, optionally play."""
+    def _center_and_maybe_play(self, onset_rel: float, offset_rel: float, trial_id=None):
+        """Center view on a trial-relative interval + context, seek to onset, optionally play.
+
+        *onset_rel*/*offset_rel* are trial-relative times in *trial_id*
+        (default: the current trial); conversion to the plot axis's clock
+        happens here, once, via the display-basis authority.
+        """
         if self.plot_container is None:
             return
+        if trial_id is None:
+            trial_id = getattr(self.app_state, "trials_sel", None)
+        onset_s = self.app_state.to_display(trial_id, onset_rel)
+        offset_s = self.app_state.to_display(trial_id, offset_rel)
 
         master = getattr(self.plot_container, "_xlink_master", None) or getattr(
             self.plot_container, "_feature_plot", None
@@ -828,9 +866,14 @@ class NavigationWidget(QWidget):
 
         if self.app_state.get_with_default("xlim_mode") == "fixed":
             # Fixed window: anchor at the navigated interval's onset for
-            # label/sequence navigation, else at the scope origin (t=0).
-            anchor = onset_s if self.app_state.navigate_mode in ("label", "sequence") else None
-            self._apply_fixed_window(anchor)
+            # label/sequence navigation and whenever the axis is
+            # session-absolute (else a trial change would fling the window
+            # back to the session origin); anchor at the scope origin (t=0)
+            # only for the plain trial-basis case.
+            anchor_here = (
+                self.app_state.navigate_mode in ("label", "sequence") or self.app_state.display_basis == "session"
+            )
+            self._apply_fixed_window(onset_s if anchor_here else None)
             rw = self.app_state.restrict_window
             if master is not None and rw is not None:
                 master.vb.setXRange(rw.core_range.start_s, rw.core_range.end_s, padding=0)
@@ -936,12 +979,16 @@ class NavigationWidget(QWidget):
             video.seek_to_frame(new_frame)
 
     def _current_time(self) -> float | None:
-        """Where the playhead is — from the video, else the middle of the view."""
-        video = self.app_state.video
-        if video is not None:
-            return video.frame_to_time(self.app_state.current_frame)
+        """Where the playhead is, in the display clock.
+
+        The time marker is the one thing that always lives on the plot axis,
+        so it is the single source — asking the video here returned a
+        trial-relative time on a session-absolute axis.
+        """
         if self.plot_container is None:
             return None
+        for plot in self.plot_container._visible_plots():
+            return float(plot.time_marker.value())
         t0, t1 = self.plot_container.get_current_xlim()
         return (t0 + t1) / 2.0
 

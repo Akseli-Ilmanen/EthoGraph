@@ -2630,7 +2630,9 @@ class DataWidget(QWidget):
             logger.debug("update_space_plot failed", exc_info=True)
         self.refresh_radial_plots()
 
-        self.plot_container.update_time_marker_by_time(0.0)
+        # Trial start in the display clock — 0.0 only in trial basis; in
+        # session basis the trial starts at its session offset.
+        self.plot_container.update_time_marker_by_time(self.app_state.to_display(trials_sel, 0.0))
 
         self._update_confidence_overlay()
 

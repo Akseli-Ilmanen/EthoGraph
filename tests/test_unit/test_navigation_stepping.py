@@ -21,12 +21,31 @@ VIEW_SPAN = 4.0
 FPS = 25.0
 
 
-class _FakePlotContainer:
-    """The two methods window stepping needs off the plot container."""
+class _FakeMarker:
+    def __init__(self, time_s: float):
+        self._t = time_s
 
-    def __init__(self, xlim=(0.0, 10.0)):
+    def value(self) -> float:
+        return self._t
+
+
+class _FakePlot:
+    def __init__(self, marker_time: float):
+        self.time_marker = _FakeMarker(marker_time)
+
+
+class _FakePlotContainer:
+    """What window stepping needs off the plot container."""
+
+    def __init__(self, xlim=(0.0, 10.0), marker_time: float | None = None):
         self._xlim = xlim
+        self._marker_time = marker_time
         self.marked: list[float] = []
+
+    def _visible_plots(self):
+        if self._marker_time is None:
+            return []
+        return [_FakePlot(self._marker_time)]
 
     def get_current_xlim(self):
         return self._xlim
@@ -72,7 +91,7 @@ def nav(qapp, tmp_path):
 
 
 def test_stepping_forward_moves_one_view_span(nav):
-    """Without a video the playhead is the middle of the visible window."""
+    """Without a visible marker the playhead is the middle of the visible window."""
     nav.step_window_forward()
 
     assert nav.plot_container.marked == [5.0 + VIEW_SPAN]
@@ -84,9 +103,11 @@ def test_stepping_backward_moves_the_other_way(nav):
     assert nav.plot_container.marked == [5.0 - VIEW_SPAN]
 
 
-def test_stepping_follows_the_video_playhead_when_there_is_one(nav):
+def test_stepping_follows_the_time_marker_when_there_is_one(nav):
+    """The marker is the playhead — it is the one thing always on the plot
+    axis's clock (the video follows it during playback, not the reverse)."""
+    nav.plot_container._marker_time = 2.0
     nav.app_state.video = _FakeVideo()
-    nav.app_state.current_frame = 50  # 2.0 s at 25 fps
 
     nav.step_window_forward()
 
