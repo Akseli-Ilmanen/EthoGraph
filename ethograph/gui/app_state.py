@@ -107,7 +107,6 @@ class AppStateSpec:
         # datasets instead of being guessed per load path.
         "xlim_mode": (str, "interval", True),
         "fixed_window_s": (float, 10.0, True, SCOPE_LOCAL),
-        "pose_markers_visible": (bool, True, True, SCOPE_LOCAL),
         "labels_visible": (bool, True, True, SCOPE_LOCAL),
         # Per-plot-type label rendering: "full" | "bottom" | "none"
         "label_overlay_modes": (dict[str, str], dict(DEFAULT_LABEL_OVERLAY_MODES), True),

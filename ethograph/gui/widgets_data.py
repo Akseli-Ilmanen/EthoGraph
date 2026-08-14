@@ -1605,14 +1605,6 @@ class DataWidget(QWidget):
         if self._is_autoscale_on():
             self.plot_container.ephys_trace_plot.vb.enableAutoRange(x=False, y=True)
 
-    def _on_pose_markers_toggled(self, state: int):
-        visible = Qt.CheckState(state) == Qt.Checked
-        self.app_state.pose_markers_visible = visible
-        if visible:
-            self.update_pose()
-        elif self.pose_mgr is not None:
-            self.pose_mgr.clear_pose_display()
-
     def _update_view_mode_items(self, feature_sel: str):
         """Update view_mode_combo items based on available data.
 
@@ -2876,6 +2868,19 @@ class DataWidget(QWidget):
 
     _space_highlight_key: tuple | None = None
 
+    def _clear_space_highlight(self):
+        """Drop the sticky label highlight on every space plot.
+
+        Without this, a highlight applied while the marker was inside a label
+        would be re-applied by windowed re-renders forever after leaving it.
+        """
+        if self._space_highlight_key is None:
+            return
+        self._space_highlight_key = None
+        for sp in self.space_plots:
+            if sp.isVisible():
+                sp.clear_time_highlight()
+
     def _highlight_label_at_time(self, time_s: float):
         """If the current time falls inside a label, highlight that segment.
 
@@ -2883,12 +2888,12 @@ class DataWidget(QWidget):
         """
         label_intervals = self.app_state.get_display_intervals()
         if label_intervals is None or label_intervals.empty:
-            self._space_highlight_key = None
+            self._clear_space_highlight()
             return
         mask = (label_intervals["onset_s"] <= time_s) & (label_intervals["offset_s"] >= time_s)
         hits = label_intervals[mask]
         if hits.empty:
-            self._space_highlight_key = None
+            self._clear_space_highlight()
             return
         row = hits.iloc[0]
         key = (float(row["onset_s"]), float(row["offset_s"]), int(row["labels"]))
@@ -2919,10 +2924,15 @@ class DataWidget(QWidget):
             self.plot_container.set_x_range(mode="center", center_on_frame=frame_number)
 
     def update_pose(self):
-        """Refresh primary and extra camera pose layers through PoseDisplayManager."""
+        """Refresh primary and extra camera pose layers through PoseDisplayManager.
+
+        No master on/off gate here: marker and skeleton visibility are the
+        "Show" checkboxes in the Pose section. (The old napari-era
+        ``pose_markers_visible`` flag lost its checkbox in a refactor and then
+        silently blocked the whole pose pipeline for any dataset whose local
+        settings had it persisted as False.)
+        """
         if self.pose_mgr is None:
-            return
-        if not self.app_state.pose_markers_visible:
             return
         if not hasattr(self.app_state, "trials_sel") or self.app_state.trials_sel is None:
             return

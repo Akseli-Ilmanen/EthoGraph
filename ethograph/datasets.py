@@ -107,7 +107,6 @@ DATASETS: dict[str, dict] = {
                 "trials_sel: 41\n"
                 "files_aligned_to_trials: true\n"
                 "labels_visible: true\n"
-                "pose_markers_visible: true\n"
                 "feature_view_mode: LinePlot\n"
                 "space_library_geometry: moll2025\n"
                 "space_plot_type: Space Plot\n"
@@ -251,7 +250,6 @@ DATASETS: dict[str, dict] = {
                 "- side-view\n"
                 "- top-down-view\n"
                 "files_aligned_to_trials: true\n"
-                "pose_markers_visible: true\n"
                 "labels_visible: true\n"
             ),
         },

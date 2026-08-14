@@ -435,6 +435,9 @@ class SpacePlot(QWidget):
         # playback re-fetches only when the marker leaves the middle half.
         self._last_marker_t: float | None = None
         self._fetch_range: tuple[float, float] | None = None
+        # Sticky label highlight (start, end, rgb) — re-applied after every
+        # re-render, cleared via clear_time_highlight().
+        self._last_highlight: tuple[float, float, tuple] | None = None
         self._slide_timer = QTimer()
         self._slide_timer.setSingleShot(True)
         self._slide_timer.setInterval(300)
@@ -1000,6 +1003,9 @@ class SpacePlot(QWidget):
         self._trajectory_times = times
         self.is_3d = use_3d
 
+        if self._last_highlight is not None and self.color_variable() is None:
+            self.highlight_time_segment(*self._last_highlight)
+
         self.update_time_marker(self._current_marker_time())
 
     def _current_marker_time(self) -> float:
@@ -1247,9 +1253,14 @@ class SpacePlot(QWidget):
 
         Only applies in the default "Labels" color mode — when the trajectory
         is colored by another feature, the label highlight must not repaint it.
+        The segment is remembered and re-applied after every re-render —
+        sliding-window updates redraw the trajectory, which would otherwise
+        silently wipe the highlight (and the sender dedups per label, so it
+        never came back until the marker left and re-entered the label).
         """
         if self.color_variable() is not None:
             return
+        self._last_highlight = (float(start_time), float(end_time), tuple(np.ravel(color)[:3]))
         if not self.space_widget or self._trajectory_pos is None or self._trajectory_times is None:
             return
 
@@ -1305,6 +1316,26 @@ class SpacePlot(QWidget):
                 )
                 hl._is_highlight = True
                 plot_item.addItem(hl)
+
+    def clear_time_highlight(self):
+        """Forget the sticky label highlight and remove its items.
+
+        The grey background trajectory (if a highlight drew one) stays until
+        the next re-render — matching the pre-window behaviour, where a
+        highlight also persisted until the next full render.
+        """
+        self._last_highlight = None
+        if self.space_widget is None:
+            return
+        if isinstance(self.space_widget, gl.GLViewWidget):
+            for item in list(self.space_widget.items):
+                if getattr(item, "_is_highlight", False):
+                    self.space_widget.removeItem(item)
+        else:
+            plot_item = self.space_widget.getPlotItem()
+            for item in list(plot_item.items):
+                if getattr(item, "_is_highlight", False):
+                    plot_item.removeItem(item)
 
     def update_time_marker(self, time_position: float):
         """Show a red circle at the current time position on the trajectory."""
