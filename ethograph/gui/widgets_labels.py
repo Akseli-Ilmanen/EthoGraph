@@ -987,20 +987,28 @@ class LabelsWidget(QWidget):
             click_info: dict with 'x' (time coordinate) and 'button' (Qt button constant)
         """
 
-        t_clicked = click_info["x"]
+        t_display = click_info["x"]
         button = click_info["button"]
 
-        if t_clicked is None or not self.app_state.ready:
+        if t_display is None or not self.app_state.ready:
             return
 
         individual = self._current_individual()
+
+        # The click arrives in the display clock; selection/storage work in
+        # trial-relative time on ONE trial. Resolve the trial under the click
+        # once — in trial basis this is the identity on the current trial.
+        resolved = self.app_state.from_display(t_display)
+        click_trial, t_rel = resolved if resolved is not None else (self.app_state.trials_sel, t_display)
 
         try:
             # Left-click outside label-drawing mode selects the segment under the
             # cursor, so pressing "V" plays it back. Right-click stays minimal
             # (seek only) so it's fast.
             if button == Qt.LeftButton and not self.ready_for_label_click:
-                self._check_labels_click(t_clicked, individual)
+                if click_trial != self.app_state.trials_sel:
+                    self._switch_trial_for_click(click_trial)
+                self._check_labels_click(t_rel, individual)
 
         except (KeyError, IndexError, ValueError, AttributeError) as e:
             logger.error("Error in plot click handling: %s", e)
@@ -1009,7 +1017,7 @@ class LabelsWidget(QWidget):
         # Without video, any click (not in label mode) jumps the time marker
         if getattr(self.app_state, "video", None) is None and not self.ready_for_label_click:
             if self.plot_container is not None:
-                self.plot_container.update_time_marker_by_time(t_clicked)
+                self.plot_container.update_time_marker_by_time(t_display)
             if button == Qt.LeftButton:
                 return
 
@@ -1018,25 +1026,60 @@ class LabelsWidget(QWidget):
         # works. Otherwise right-click seeks the video; the red cursor follows
         # automatically via the video's frame_changed signal.
         if self.ready_for_label_click:
-            # Snap to nearest changepoint if available (in time domain)
+            # Snap to nearest changepoint if available (display clock — the
+            # changepoint times come back on the plot axis).
             if self.changepoints_widget and self.changepoints_widget.is_changepoint_correction_enabled():
-                t_snapped = self._snap_to_changepoint_time(t_clicked)
-            else:
-                t_snapped = t_clicked
+                t_display = self._snap_to_changepoint_time(t_display)
+
+            # A placed label belongs to exactly ONE trial: strict resolution
+            # refuses inter-trial gaps, and the two clicks of a state event
+            # must land in the same trial.
+            placed = self.app_state.from_display(t_display, strict=True)
+            if placed is None:
+                notify("Click falls between trials — no label placed", severity="warning")
+                self.first_click = None
+                self.second_click = None
+                return
+            p_trial, p_rel = placed
+            if self.first_click is not None and p_trial != self.app_state.trials_sel:
+                notify("Label would span two trials — cancelled", severity="warning")
+                self.first_click = None
+                self.second_click = None
+                return
+            if p_trial != self.app_state.trials_sel:
+                self._switch_trial_for_click(p_trial)
 
             # Point events: single click drops a marker at the snapped time.
             # State events: two clicks bound the interval.
             if self._active_label_is_point():
-                self._apply_point(t_snapped)
+                self._apply_point(p_rel)
             elif self.first_click is None:
-                self.first_click = t_snapped
+                self.first_click = p_rel
             else:
-                self.second_click = t_snapped
+                self.second_click = p_rel
                 self._apply_label()
 
         elif button == Qt.RightButton and self.app_state.video:
             # Seek to the nearest frame but keep the playhead on the exact click.
-            self._seek_to_frame(t_clicked)
+            self._seek_to_frame(t_display)
+
+    def _switch_trial_for_click(self, trial_id):
+        """Session-basis click on another trial's span: make it current.
+
+        The session axis already shows the right place, so the view must not
+        re-center (``_preserve_x_range_next``); the trial-change machinery
+        loads that trial's data/video underneath the click.
+        """
+        state = self.app_state
+        state._preserve_x_range_next = True
+        state.trials_sel = trial_id
+        nav = getattr(state, "navigation_widget", None)
+        combo = getattr(nav, "trials_combo", None)
+        if combo is not None:
+            combo.blockSignals(True)
+            combo.setCurrentText(str(trial_id))
+            combo.blockSignals(False)
+        state.trial_changed.emit()
 
     def _active_label_is_point(self) -> bool:
         """True iff the currently selected label class is declared as a point."""
@@ -1074,7 +1117,7 @@ class LabelsWidget(QWidget):
             self.current_labels = labels
             self.current_labels_pos = idx
             self.current_labels_is_prediction = False
-            self.highlight_spaceplot.emit(t, t)
+            self.highlight_spaceplot.emit(self._to_display(t), self._to_display(t))
             self.selected_labels = labels
             return True
 
@@ -1085,7 +1128,7 @@ class LabelsWidget(QWidget):
             self.current_labels = labels
             self.current_labels_pos = idx
             self.current_labels_is_prediction = False
-            self.highlight_spaceplot.emit(onset_s, offset_s)
+            self.highlight_spaceplot.emit(self._to_display(onset_s), self._to_display(offset_s))
             self.selected_labels = labels
             return True
         return False
@@ -1187,7 +1230,7 @@ class LabelsWidget(QWidget):
         offset_s = max(self.first_click, self.second_click)
         individual = self._current_individual()
 
-        self.highlight_spaceplot.emit(onset_s, offset_s)
+        self.highlight_spaceplot.emit(self._to_display(onset_s), self._to_display(offset_s))
 
         df = self.app_state.label_intervals
         if df is None:
@@ -1240,7 +1283,7 @@ class LabelsWidget(QWidget):
         self._mark_changes_unsaved()
         if self.data_widget:
             self.data_widget.update_main_plot(preserve_x_range=True)
-        self._seek_to_frame(onset_s)
+        self._seek_to_frame(self._to_display(onset_s))
         self.refresh_labels_shapes_layer()
 
     def _apply_point(self, t_clicked: float):
@@ -1285,11 +1328,16 @@ class LabelsWidget(QWidget):
         self._mark_changes_unsaved()
         if self.data_widget:
             self.data_widget.update_main_plot(preserve_x_range=True)
-        self._seek_to_frame(t_clicked)
+        self._seek_to_frame(self._to_display(t_clicked))
         self.refresh_labels_shapes_layer()
 
+    def _to_display(self, t_rel: float) -> float:
+        """Current trial's trial-relative time → the plot axis's clock."""
+        return self.app_state.to_display(self.app_state.trials_sel, t_rel)
+
     def _seek_to_frame(self, time_s: float):
-        """Seek to *time_s*, keeping the red marker on the EXACT (sub-frame) time.
+        """Seek to display-clock *time_s*, keeping the red marker on the EXACT
+        (sub-frame) time.
 
         The video can only display discrete frames, so it shows the nearest one,
         but the playhead stays on the true clicked/label time. This lets audio
@@ -1297,7 +1345,10 @@ class LabelsWidget(QWidget):
         docs/source/advanced/playback.md.
         """
         if hasattr(self.app_state, "video") and self.app_state.video:
-            video_frame = self.app_state.video.time_to_frame(time_s, round_nearest=True)
+            # The video's clock is trial-relative; convert from the axis clock.
+            resolved = self.app_state.from_display(time_s)
+            video_t = resolved[1] if resolved is not None else time_s
+            video_frame = self.app_state.video.time_to_frame(video_t, round_nearest=True)
             # seek_to_frame fires frame_changed (syncs pose/extra cameras and
             # snaps the marker to the frame); we then override the marker so it
             # sits on the exact time, not the frame grid.
@@ -1542,7 +1593,10 @@ class LabelsWidget(QWidget):
             return
         updater = getattr(self, "_update_labels_text", None)
         if updater is not None:
-            updater(time_s=time_s)
+            # The marker is on the display clock; the overlay matches against
+            # the current trial's (trial-relative) intervals.
+            resolved = self.app_state.from_display(time_s)
+            updater(time_s=resolved[1] if resolved is not None else time_s)
 
 
 class LabelsPerPlotDialog(QDialog):

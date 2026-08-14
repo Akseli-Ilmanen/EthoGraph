@@ -30,7 +30,7 @@ from qtpy.QtWidgets import (
 )
 
 import ethograph as eto
-from ethograph.gui.notify import notify, notify_dialog
+from ethograph.gui.notify import ask_label_time_basis, notify, notify_dialog
 from ethograph.gui.pose_convert import COLOR_BY_INDIVIDUAL, COLOR_BY_KEYPOINT
 from ethograph.io.catalog import INDIVIDUAL_DIMS, ComboSpec
 from ethograph.io.data_loader import load_features_dataset
@@ -38,6 +38,7 @@ from ethograph.io.derived import DerivedLoader
 from ethograph.io.plot_sources import FileSource
 from ethograph.io.time_model import compute_trial_video_bounds
 from ethograph.labels.intervals import get_interval_bounds
+from ethograph.labels.tsv_store import normalize_labels_basis
 from ethograph.utils.qt import (
     ElidedDelegate,
     find_combo_index,
@@ -1008,7 +1009,11 @@ class DataWidget(QWidget):
         self.io_widget.disable_downsample_controls()
         self.app_state.downsample_factor_used = ctx.downsample_factor
 
-        self.app_state._all_labels_df = ctx.all_labels_df
+        self.app_state._all_labels_df = normalize_labels_basis(
+            ctx.all_labels_df,
+            ctx.result.source_collection,
+            resolver=lambda: ask_label_time_basis(self),
+        )
         self.app_state._labels_file_path = ctx.result.labels_file_path
         self.app_state.trials = ctx.trials if ctx.trials else [1]
         self.app_state.ds = ctx.ds
@@ -2668,7 +2673,9 @@ class DataWidget(QWidget):
                     self.plot_container._clear_labels_on_plot(plot)
             return
 
-        intervals_df = self.app_state.label_intervals
+        # Display-basis view: session basis shows EVERY trial's labels at
+        # their session positions; trial basis is the current trial verbatim.
+        intervals_df = self.app_state.get_display_intervals()
 
         _ind_key = next((n for n in INDIVIDUAL_DIMS if n in ds_kwargs), None)
         if intervals_df is not None and not intervals_df.empty and _ind_key is not None:
@@ -2680,6 +2687,12 @@ class DataWidget(QWidget):
             trial = self.app_state.trials_sel
             df = self.app_state.pred_labels_df
             predictions_df = df[df["trial"] == trial] if "trial" in df.columns else df
+            if predictions_df is not None and self.app_state.display_basis == "session":
+                shift = self.app_state.to_display(trial, 0.0)
+                if shift:
+                    predictions_df = predictions_df.copy()
+                    predictions_df["onset_s"] = predictions_df["onset_s"] + shift
+                    predictions_df["offset_s"] = predictions_df["offset_s"] + shift
 
         self.labels_widget.plot_all_labels(intervals_df, predictions_df)
 
@@ -2745,7 +2758,7 @@ class DataWidget(QWidget):
 
         Only redraws when entering a different label interval.
         """
-        label_intervals = self.app_state.label_intervals
+        label_intervals = self.app_state.get_display_intervals()
         if label_intervals is None or label_intervals.empty:
             self._space_highlight_key = None
             return
@@ -3206,7 +3219,7 @@ class DataWidget(QWidget):
             return
 
         color = (255, 102, 0)
-        label_intervals = self.app_state.label_intervals
+        label_intervals = self.app_state.get_display_intervals()
         active_ids = self.app_state.active_label_ids
         if label_intervals is not None and not label_intervals.empty:
             mid = (start_time + end_time) / 2.0

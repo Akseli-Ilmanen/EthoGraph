@@ -27,7 +27,7 @@ from ethograph.io.catalog import INDIVIDUAL_DIMS
 from ethograph.io.metadata_table import metadata_tsv_path
 from ethograph.io.validation import EPHYS_FILE_FILTER
 from ethograph.labels.export import correct_offsets_trial
-from ethograph.labels.tsv_store import labels_tsv_path, load_labels_tsv
+from ethograph.labels.tsv_store import labels_tsv_path, load_labels_tsv, normalize_labels_basis
 from ethograph.utils.paths import (
     default_config_dir,
     find_mapping_file,
@@ -36,7 +36,7 @@ from ethograph.utils.qt import populate_if_exists
 
 from .app_state import AppStateSpec
 from .dialog_select_template import TemplateDialog
-from .notify import notify, notify_dialog
+from .notify import ask_label_time_basis, notify, notify_dialog
 from .top_bar import SectionPopup
 from .wizard_overview import NCWizardDialog
 
@@ -826,7 +826,11 @@ class IOWidget(QWidget):
         if not file_path:
             return
 
-        self.app_state._all_labels_df = load_labels_tsv(file_path)
+        self.app_state._all_labels_df = normalize_labels_basis(
+            load_labels_tsv(file_path),
+            getattr(self.app_state, "source_collection", None),
+            resolver=lambda: ask_label_time_basis(self),
+        )
         self.app_state._labels_file_path = file_path  # Track which file is active
         self.app_state.label_intervals = self.app_state.get_trial_intervals(self.app_state.trials_sel)
         self.label_file_path_edit.setText(file_path)
@@ -1646,7 +1650,11 @@ class IOWidget(QWidget):
                 if not labels_file_path:
                     return
 
-                self.app_state._all_labels_df = load_labels_tsv(labels_file_path)
+                self.app_state._all_labels_df = normalize_labels_basis(
+                    load_labels_tsv(labels_file_path),
+                    getattr(self.app_state, "source_collection", None),
+                    resolver=lambda: ask_label_time_basis(self),
+                )
 
                 self.app_state.label_intervals = self.app_state.get_trial_intervals(self.app_state.trials_sel)
                 self.label_file_path_edit.setText(labels_file_path)

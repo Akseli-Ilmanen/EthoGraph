@@ -85,6 +85,27 @@ def labels_tsv_path(nc_path: str | Path, suffix: str = "") -> Path:
 
 REQUIRED_COLUMNS = {"onset_s", "offset_s", "labels", "individual", "trial"}
 
+#: Canonical storage is trial-relative; a header comment records the basis so
+#: a round-tripped file is never ambiguous again. Files from other tools may
+#: carry session-absolute times — ``normalize_labels_basis`` rebases them once
+#: at load.
+TIME_BASIS_HEADER = "# time_basis:"
+TIME_BASIS_ATTR = "time_basis"
+
+
+def _read_time_basis_header(path: Path) -> str | None:
+    """The ``# time_basis:`` header value ("trial"/"session"), or None."""
+    try:
+        with open(path, encoding="utf-8-sig") as fh:
+            first = fh.readline()
+    except OSError:
+        return None
+    if first.startswith(TIME_BASIS_HEADER):
+        value = first[len(TIME_BASIS_HEADER) :].strip().lower()
+        if value in ("trial", "session"):
+            return value
+    return None
+
 
 def validate_labels_tsv(df: pd.DataFrame, path: str | Path = "") -> None:
     """Validate that a labels DataFrame has all required columns.
@@ -131,8 +152,10 @@ def load_labels_tsv(path: str | Path) -> pd.DataFrame:
 
     if path.suffix.lower() in (".xlsx", ".xls"):
         df = pd.read_excel(path)
+        basis = None
     else:
-        df = pd.read_csv(path, sep=None, engine="python", encoding="utf-8-sig")
+        basis = _read_time_basis_header(path)
+        df = pd.read_csv(path, sep=None, engine="python", encoding="utf-8-sig", comment="#")
     validate_labels_tsv(df, path)
 
     ensure_event_type(df)
@@ -146,6 +169,9 @@ def load_labels_tsv(path: str | Path) -> pd.DataFrame:
     df["prediction_source"] = df["prediction_source"].fillna("").astype(str)
     df["n_samples"] = df["n_samples"].fillna(0).astype(int)
 
+    # Declared basis (if the file has the header) rides along for
+    # normalize_labels_basis; DataFrame.attrs, so plain column ops keep it.
+    df.attrs[TIME_BASIS_ATTR] = basis
     return df
 
 
@@ -198,8 +224,86 @@ def save_labels_tsv(path: str | Path, df: pd.DataFrame) -> None:
     out = out[duration.isna() | (duration >= 0.0)]
 
     tmp = path.with_suffix(".tsv.tmp")
-    out.to_csv(tmp, sep="\t", index=False, encoding="utf-8-sig")
+    with open(tmp, "w", encoding="utf-8-sig", newline="") as fh:
+        fh.write(f"{TIME_BASIS_HEADER} trial\n")
+        out.to_csv(fh, sep="\t", index=False)
     tmp.replace(path)
+
+
+# ---------------------------------------------------------------------------
+# Time-basis normalisation (import boundary)
+# ---------------------------------------------------------------------------
+
+
+def infer_labels_basis(df: pd.DataFrame, source_collection) -> str | None:
+    """Guess whether ``onset_s`` values are trial-relative or session-absolute.
+
+    Votes per trial: onsets all inside ``[0, trial duration]`` → trial time;
+    all inside the trial's session-absolute window → session time. Returns
+    ``"trial"``, ``"session"``, or ``None`` when the votes are absent or
+    contradictory (undecidable — e.g. a session starting at 0 where the two
+    ranges overlap).
+    """
+    if df is None or df.empty or source_collection is None:
+        return None
+    votes: set[str] = set()
+    for trial_id, group in df.groupby("trial"):
+        idx = source_collection.trial_index(trial_id)
+        if idx is None:
+            continue
+        tr = source_collection.trial_range(idx)
+        onsets = group["onset_s"].dropna()
+        if onsets.empty:
+            continue
+        slack = max(0.5, tr.duration * 0.01)
+        trial_ok = bool(((onsets >= -slack) & (onsets <= tr.duration + slack)).all())
+        session_ok = bool(((onsets >= tr.start_s - slack) & (onsets <= tr.end_s + slack)).all())
+        if trial_ok and not session_ok:
+            votes.add("trial")
+        elif session_ok and not trial_ok:
+            votes.add("session")
+    if len(votes) == 1:
+        return votes.pop()
+    return None
+
+
+def normalize_labels_basis(
+    df: pd.DataFrame,
+    source_collection,
+    *,
+    resolver=None,
+) -> pd.DataFrame:
+    """Rebase a loaded labels DataFrame to canonical trial-relative time.
+
+    The declared basis (``# time_basis:`` header, carried in ``df.attrs``)
+    wins; otherwise :func:`infer_labels_basis` guesses; if that is
+    undecidable, *resolver* (a zero-arg callable returning "trial" or
+    "session" — the GUI's one-time dialog) is asked; without one, trial time
+    is assumed with a warning.
+    """
+    if df is None or df.empty:
+        return df
+    basis = df.attrs.get(TIME_BASIS_ATTR)
+    if basis is None:
+        basis = infer_labels_basis(df, source_collection)
+    if basis is None and resolver is not None:
+        basis = resolver()
+    if basis is None:
+        logger.warning("Label time basis undecidable — assuming trial-relative onsets")
+        basis = "trial"
+
+    if basis == "session" and source_collection is not None:
+        out = df.copy()
+        offsets = {tid: source_collection.to_session(tid, 0.0) for tid in out["trial"].unique()}
+        shift = out["trial"].map(offsets).astype(float)
+        out["onset_s"] = out["onset_s"] - shift
+        out["offset_s"] = out["offset_s"] - shift
+        out.attrs[TIME_BASIS_ATTR] = "trial"
+        logger.info("Rebased session-absolute label times to trial-relative")
+        return out
+
+    df.attrs[TIME_BASIS_ATTR] = "trial"
+    return df
 
 
 def _empty_all_labels() -> pd.DataFrame:

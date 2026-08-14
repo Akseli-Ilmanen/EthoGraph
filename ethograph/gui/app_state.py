@@ -1340,6 +1340,27 @@ class ObservableAppState(QObject):
     def get_trial_intervals(self, trial) -> pd.DataFrame:
         return get_trial_from_tsv(self._all_labels_df, trial)
 
+    def get_display_intervals(self) -> pd.DataFrame | None:
+        """Labels as they belong on the plot axis.
+
+        Trial basis: the current trial's rows verbatim (``label_intervals``).
+        Session basis: EVERY trial's rows, onsets shifted to session time —
+        the axis spans all trials, so all labels belong on it. Storage stays
+        trial-relative; this is a read-only view for drawing/hit-testing.
+        """
+        if self.display_basis != "session":
+            return self.label_intervals
+        df = self._all_labels_df
+        sc = getattr(self, "source_collection", None)
+        if df is None or df.empty or sc is None:
+            return self.label_intervals
+        out = df.copy()
+        offsets = {tid: sc.to_session(tid, 0.0) for tid in out["trial"].unique()}
+        shift = out["trial"].map(offsets).astype(float)
+        out["onset_s"] = out["onset_s"] + shift
+        out["offset_s"] = out["offset_s"] + shift
+        return out.reset_index(drop=True)
+
     def set_trial_intervals(self, trial, df: pd.DataFrame) -> None:
         self._all_labels_df = set_trial_in_tsv(self._all_labels_df, trial, df)
         nav = getattr(self, "navigation_widget", None)
