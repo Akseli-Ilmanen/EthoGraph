@@ -434,13 +434,13 @@ ds = xr.Dataset({
 })
 
 # Define trial boundaries (seconds)
-epochs = pd.DataFrame({
+trials = pd.DataFrame({
     "trial": [1, 2, 3],
     "start_time": [0.0, 120.0, 300.0],
     "stop_time": [100.0, 250.0, 500.0],
 })
 
-dt = eto.from_continuous(ds, epochs)
+dt = eto.from_continuous(ds, trials)
 dt.save("session.nc")
 
 dt.trial(2)  # returns the 120–250 s slice, time shifted to start at 0

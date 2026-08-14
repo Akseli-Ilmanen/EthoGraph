@@ -220,17 +220,81 @@ def _user_tabular_metadata(metadata_path: str | Path | None) -> pd.DataFrame | N
     return load_metadata_tsv(path)
 
 
+def _intervalset_metadata_by_time(ep, align_df: pd.DataFrame) -> pd.DataFrame | None:
+    """Metadata columns of a trials IntervalSet, keyed to alignment trial ids.
+
+    A trials ``.npz`` carries no trial-id column and may hold a different
+    trial count than the alignment table, so rows cannot be matched by
+    position. Each interval does lie inside one alignment trial's window,
+    though — match by the interval midpoint. Intervals falling in no
+    alignment trial are dropped (logged).
+    """
+    meta = getattr(ep, "metadata", None)
+    if meta is None or len(meta.columns) == 0 or len(ep) == 0:
+        return None
+
+    starts = align_df["start_time"].to_numpy(dtype=np.float64)
+    if "stop_time" in align_df.columns:
+        stops = align_df["stop_time"].to_numpy(dtype=np.float64)
+    else:
+        stops = np.full_like(starts, np.inf)
+    if "trial" in align_df.columns:
+        trial_ids = [_coerce_trial_id(t) for t in align_df["trial"]]
+    else:
+        trial_ids = list(range(1, len(align_df) + 1))
+
+    mids = (np.asarray(ep.start, dtype=np.float64) + np.asarray(ep.end, dtype=np.float64)) / 2.0
+    rows: list[dict] = []
+    dropped = 0
+    for i, mid in enumerate(mids):
+        j = int(np.searchsorted(starts, mid)) - 1
+        if j < 0 or mid > stops[j]:
+            dropped += 1
+            continue
+        row = dict(meta.iloc[i])
+        row["trial"] = trial_ids[j]
+        rows.append(row)
+    if dropped:
+        logger.warning(
+            "%d trials-IntervalSet interval(s) fall outside every alignment trial — metadata dropped", dropped
+        )
+    if not rows:
+        return None
+    return pd.DataFrame(rows)
+
+
+def _user_intervalset_metadata(metadata_path: str | Path | None, align_df: pd.DataFrame) -> pd.DataFrame | None:
+    """Per-trial metadata carried on a pynapple trials IntervalSet (.npz/folder)."""
+    if metadata_path is None:
+        return None
+    path = Path(metadata_path)
+    if not path.exists():
+        return None
+    if path.suffix.lower() != ".npz" and not path.is_dir():
+        return None
+    from ethograph.io.pynapple import load_nap_data
+
+    _, ep = load_nap_data(str(path))
+    if ep is None:
+        return None
+    return _intervalset_metadata_by_time(ep, align_df)
+
+
 def _merged_trials_df(
     nwb_alignment,
     metadata_path: str | Path | None,
     conflict_resolver: Callable[[list[MetadataConflict]], list[str]] | None,
 ) -> pd.DataFrame | None:
-    """Trials table from the alignment NWB, with user tabular metadata merged in.
+    """Trials table from the alignment NWB, with user metadata merged in.
 
-    Returns None when the alignment has no usable trials table — the caller
-    then falls back to trials detected in the data source.  Column conflicts
-    are settled by *conflict_resolver* (which returns the columns to take from
-    the metadata file); without one, alignment values win with a warning.
+    The alignment table is the timing truth. User metadata comes from a
+    tabular file (matched on its ``trial`` column) or from a trials
+    IntervalSet ``.npz`` (matched by time containment — the IntervalSet's
+    condition/region/… columns, never its timing). Returns None when the
+    alignment has no usable trials table — the caller then falls back to
+    trials detected in the data source. Column conflicts are settled by
+    *conflict_resolver* (which returns the columns to take from the metadata
+    file); without one, alignment values win with a warning.
     """
     align_df = nwb_alignment.trials_df
     if align_df is None or align_df.empty or "start_time" not in align_df.columns:
@@ -238,9 +302,11 @@ def _merged_trials_df(
 
     user_df = _user_tabular_metadata(metadata_path)
     if user_df is None:
+        user_df = _user_intervalset_metadata(metadata_path, align_df)
+    if user_df is None:
         if metadata_path is not None:
             logger.info(
-                "Trial timing comes from the alignment NWB trials table; non-tabular metadata_path %s is not merged",
+                "Trial timing comes from the alignment NWB trials table; metadata_path %s carried nothing to merge",
                 metadata_path,
             )
         return align_df
@@ -332,10 +398,10 @@ def _load_pynapple_dataset(
 
     if merged_df is not None:
         resolved_metadata_df = metadata_from_nwb_trials(merged_df, trial_ids)
-        user_path = Path(metadata_path) if metadata_path else None
-        resolved_metadata_path = (
-            str(user_path) if user_path is not None and user_path.suffix.lower() in TABULAR_METADATA_EXTS else None
-        )
+        # Keep the user's metadata source path (tabular or trials .npz) so it
+        # stays visible/editable; None when metadata came purely from the
+        # alignment table.
+        resolved_metadata_path = str(metadata_path) if metadata_path and Path(metadata_path).exists() else None
     else:
         resolved_metadata_df, resolved_metadata_path = load_metadata_df(
             source_path=file_path,
