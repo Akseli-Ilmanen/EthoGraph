@@ -25,18 +25,22 @@ slider scope is set to session.
 ## What session scope shows
 
 - **Features** — pynapple sources are natively session-absolute and render
-  across the whole session. Multi-trial `.nc` (xarray) datasets are natively
-  trial-local: the **current trial** renders at its true session position;
-  other trials' features are absent (stitching every trial onto one axis is
-  deliberately not supported — use a pynapple export for session-wide
-  analysis).
+  across the whole session. Multi-trial `.nc` (xarray) datasets are stored
+  per trial, so a session axis cannot show them meaningfully — **session
+  scope is disabled** for those datasets (the combo entry is greyed out; use
+  a pynapple export for session-wide analysis).
 - **Labels** — *every* trial's labels appear at their session positions, not
   just the current trial's.
 - **Video** — per-trial video files follow the slider: rest the time marker
   inside another trial's span and, after a short settle (~0.3 s), that
   trial's video loads and shows the frame under the marker. Crossing a trial
   boundary re-opens a video file, which takes a moment (the plots stay
-  live). In inter-trial gaps the last frame holds.
+  live). While the marker sits in an inter-trial gap — or in another trial's
+  span whose video hasn't loaded yet — the camera views show black ("no
+  input") rather than freezing on a stale frame. **Playback continues across
+  trial ends**: when the video runs out, the marker keeps advancing in real
+  time through the gap (views black), the next trial's video loads as the
+  marker enters its span, and playback resumes on it.
 - **Labelling works across trials** — click any trial's span to label it:
   the trial under the click becomes current, and the label is stored in that
   trial (trial-relative). Clicks in the gaps between trials are refused, as
@@ -77,7 +81,7 @@ trial-relative.
 | | trial scope | session scope |
 |---|---|---|
 | pynapple (`.npz`, folders, NWB) | axis 0-based; data rebased per trial | native — full session renders |
-| xarray (`.nc` TrialTree) | native — full trial renders | current trial at its true position; other trials absent |
+| xarray (`.nc` TrialTree), multi-trial | native — full trial renders | disabled (data is stored per trial) |
 | labels (TSV) | current trial's rows | all trials' rows, shifted |
 | video (per-trial files) | current trial's file | follows the marker across trials |
 

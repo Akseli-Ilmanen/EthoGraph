@@ -25,8 +25,11 @@ numeric (stimulus intensity). Values may be strings, ints or floats; missing
 values are allowed.
 
 Some names are reserved for structure rather than conditions: `start_time` /
-`stop_time` (seconds) define trial boundaries for navigation, and `video_*`,
-`audio_*`, `pose_*`, `ephys_*` and `*_start` hold media paths and offsets.
+`stop_time`, plus `video_*`, `audio_*`, `pose_*`, `ephys_*` and `*_start`, are
+alignment-NWB trials-table columns (timing, media paths, offsets) and are
+ignored when they appear in a metadata table — **trial timing always comes
+from the alignment NWB, never from metadata**. A metadata table contributes
+only its condition columns, joined on `trial`.
 
 ---
 
@@ -36,9 +39,15 @@ Loading a dataset auto-detects a sidecar `{stem}_metadata.tsv` beside it — e.g
 `session.nc` picks up `session_metadata.tsv`.
 
 To use a different file, set the **Metadata:** field in the loader form on the
-start page (*Custom set-up* card) before clicking **Load**. It accepts a table,
-or an `.nwb` / `.npz` / pynapple folder to read trial metadata from. The path is
-saved with the project. The **Template** button next to it writes a
+start page (*Custom set-up* card) before clicking **Load**. It accepts a
+tabular file (`.tsv` / `.csv` / `.xlsx`) with a `trial` column; other file
+types are ignored. The path is saved with the project.
+
+For pynapple folders whose trial timing lives in a `trials.npz` IntervalSet:
+the loader never reads timing from it. When no alignment NWB exists, the start
+page offers — once — to convert the IntervalSet into
+`.ethograph/alignment.nwb` (its metadata columns travel into the trials
+table); after that, the alignment file is the single per-trial record. The **Template** button next to it writes a
 `{stem}_metadata.tsv` pre-filled with all trial IDs, ready to edit in a
 spreadsheet.
 

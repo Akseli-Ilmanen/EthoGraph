@@ -496,18 +496,22 @@ slider scope is set to session.</p>
 <h2>What session scope shows<a class="headerlink" href="#what-session-scope-shows" title="Link to this heading">#</a></h2>
 <ul class="simple">
 <li><p><strong>Features</strong> — pynapple sources are natively session-absolute and render
-across the whole session. Multi-trial <code class="docutils literal notranslate"><span class="pre">.nc</span></code> (xarray) datasets are natively
-trial-local: the <strong>current trial</strong> renders at its true session position;
-other trials’ features are absent (stitching every trial onto one axis is
-deliberately not supported — use a pynapple export for session-wide
-analysis).</p></li>
+across the whole session. Multi-trial <code class="docutils literal notranslate"><span class="pre">.nc</span></code> (xarray) datasets are stored
+per trial, so a session axis cannot show them meaningfully — <strong>session
+scope is disabled</strong> for those datasets (the combo entry is greyed out; use
+a pynapple export for session-wide analysis).</p></li>
 <li><p><strong>Labels</strong> — <em>every</em> trial’s labels appear at their session positions, not
 just the current trial’s.</p></li>
 <li><p><strong>Video</strong> — per-trial video files follow the slider: rest the time marker
 inside another trial’s span and, after a short settle (~0.3 s), that
 trial’s video loads and shows the frame under the marker. Crossing a trial
 boundary re-opens a video file, which takes a moment (the plots stay
-live). In inter-trial gaps the last frame holds.</p></li>
+live). While the marker sits in an inter-trial gap — or in another trial’s
+span whose video hasn’t loaded yet — the camera views show black (“no
+input”) rather than freezing on a stale frame. <strong>Playback continues across
+trial ends</strong>: when the video runs out, the marker keeps advancing in real
+time through the gap (views black), the next trial’s video loads as the
+marker enters its span, and playback resumes on it.</p></li>
 <li><p><strong>Labelling works across trials</strong> — click any trial’s span to label it:
 the trial under the click becomes current, and the label is stored in that
 trial (trial-relative). Clicks in the gaps between trials are refused, as
@@ -555,9 +559,9 @@ trial-relative.</p>
 <td><p>axis 0-based; data rebased per trial</p></td>
 <td><p>native — full session renders</p></td>
 </tr>
-<tr class="row-odd"><td><p>xarray (<code class="docutils literal notranslate"><span class="pre">.nc</span></code> TrialTree)</p></td>
+<tr class="row-odd"><td><p>xarray (<code class="docutils literal notranslate"><span class="pre">.nc</span></code> TrialTree), multi-trial</p></td>
 <td><p>native — full trial renders</p></td>
-<td><p>current trial at its true position; other trials absent</p></td>
+<td><p>disabled (data is stored per trial)</p></td>
 </tr>
 <tr class="row-even"><td><p>labels (TSV)</p></td>
 <td><p>current trial’s rows</p></td>

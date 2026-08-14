@@ -475,8 +475,11 @@ The only required column is <strong><code class="docutils literal notranslate"><
 numeric (stimulus intensity). Values may be strings, ints or floats; missing
 values are allowed.</p>
 <p>Some names are reserved for structure rather than conditions: <code class="docutils literal notranslate"><span class="pre">start_time</span></code> /
-<code class="docutils literal notranslate"><span class="pre">stop_time</span></code> (seconds) define trial boundaries for navigation, and <code class="docutils literal notranslate"><span class="pre">video_*</span></code>,
-<code class="docutils literal notranslate"><span class="pre">audio_*</span></code>, <code class="docutils literal notranslate"><span class="pre">pose_*</span></code>, <code class="docutils literal notranslate"><span class="pre">ephys_*</span></code> and <code class="docutils literal notranslate"><span class="pre">*_start</span></code> hold media paths and offsets.</p>
+<code class="docutils literal notranslate"><span class="pre">stop_time</span></code>, plus <code class="docutils literal notranslate"><span class="pre">video_*</span></code>, <code class="docutils literal notranslate"><span class="pre">audio_*</span></code>, <code class="docutils literal notranslate"><span class="pre">pose_*</span></code>, <code class="docutils literal notranslate"><span class="pre">ephys_*</span></code> and <code class="docutils literal notranslate"><span class="pre">*_start</span></code>, are
+alignment-NWB trials-table columns (timing, media paths, offsets) and are
+ignored when they appear in a metadata table — <strong>trial timing always comes
+from the alignment NWB, never from metadata</strong>. A metadata table contributes
+only its condition columns, joined on <code class="docutils literal notranslate"><span class="pre">trial</span></code>.</p>
 </section>
 <hr class="docutils" />
 <section id="loading-metadata">
@@ -484,9 +487,14 @@ values are allowed.</p>
 <p>Loading a dataset auto-detects a sidecar <code class="docutils literal notranslate"><span class="pre">{stem}_metadata.tsv</span></code> beside it — e.g.
 <code class="docutils literal notranslate"><span class="pre">session.nc</span></code> picks up <code class="docutils literal notranslate"><span class="pre">session_metadata.tsv</span></code>.</p>
 <p>To use a different file, set the <strong>Metadata:</strong> field in the loader form on the
-start page (<em>Custom set-up</em> card) before clicking <strong>Load</strong>. It accepts a table,
-or an <code class="docutils literal notranslate"><span class="pre">.nwb</span></code> / <code class="docutils literal notranslate"><span class="pre">.npz</span></code> / pynapple folder to read trial metadata from. The path is
-saved with the project. The <strong>Template</strong> button next to it writes a
+start page (<em>Custom set-up</em> card) before clicking <strong>Load</strong>. It accepts a
+tabular file (<code class="docutils literal notranslate"><span class="pre">.tsv</span></code> / <code class="docutils literal notranslate"><span class="pre">.csv</span></code> / <code class="docutils literal notranslate"><span class="pre">.xlsx</span></code>) with a <code class="docutils literal notranslate"><span class="pre">trial</span></code> column; other file
+types are ignored. The path is saved with the project.</p>
+<p>For pynapple folders whose trial timing lives in a <code class="docutils literal notranslate"><span class="pre">trials.npz</span></code> IntervalSet:
+the loader never reads timing from it. When no alignment NWB exists, the start
+page offers — once — to convert the IntervalSet into
+<code class="docutils literal notranslate"><span class="pre">.ethograph/alignment.nwb</span></code> (its metadata columns travel into the trials
+table); after that, the alignment file is the single per-trial record. The <strong>Template</strong> button next to it writes a
 <code class="docutils literal notranslate"><span class="pre">{stem}_metadata.tsv</span></code> pre-filled with all trial IDs, ready to edit in a
 spreadsheet.</p>
 <p>Sources are tried in this order:</p>

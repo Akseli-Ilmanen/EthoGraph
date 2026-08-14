@@ -892,13 +892,13 @@ trial structure, use <code class="xref py py-func docutils literal notranslate">
 <span class="p">})</span>
 
 <span class="c1"># Define trial boundaries (seconds)</span>
-<span class="n">epochs</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span>
+<span class="n">trials</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span>
     <span class="s2">&quot;trial&quot;</span><span class="p">:</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">],</span>
     <span class="s2">&quot;start_time&quot;</span><span class="p">:</span> <span class="p">[</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">120.0</span><span class="p">,</span> <span class="mf">300.0</span><span class="p">],</span>
     <span class="s2">&quot;stop_time&quot;</span><span class="p">:</span> <span class="p">[</span><span class="mf">100.0</span><span class="p">,</span> <span class="mf">250.0</span><span class="p">,</span> <span class="mf">500.0</span><span class="p">],</span>
 <span class="p">})</span>
 
-<span class="n">dt</span> <span class="o">=</span> <span class="n">eto</span><span class="o">.</span><span class="n">from_continuous</span><span class="p">(</span><span class="n">ds</span><span class="p">,</span> <span class="n">epochs</span><span class="p">)</span>
+<span class="n">dt</span> <span class="o">=</span> <span class="n">eto</span><span class="o">.</span><span class="n">from_continuous</span><span class="p">(</span><span class="n">ds</span><span class="p">,</span> <span class="n">trials</span><span class="p">)</span>
 <span class="n">dt</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="s2">&quot;session.nc&quot;</span><span class="p">)</span>
 
 <span class="n">dt</span><span class="o">.</span><span class="n">trial</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>  <span class="c1"># returns the 120–250 s slice, time shifted to start at 0</span>
