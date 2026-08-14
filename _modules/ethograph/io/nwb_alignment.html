@@ -1446,11 +1446,13 @@
     <span class="k">if</span> <span class="n">_segments_contiguous</span><span class="p">(</span><span class="n">seg_starts</span><span class="p">,</span> <span class="n">seg_nsamples</span><span class="p">,</span> <span class="n">rate</span><span class="p">):</span>
         <span class="c1"># external + rate carries no data array, so num_samples must be given</span>
         <span class="c1"># explicitly (this is also what lets readers find the last file&#39;s end).</span>
+        <span class="c1"># uint64 is the dtype the NWB spec stores — a plain int would trigger</span>
+        <span class="c1"># hdmf&#39;s int64→uint64 DtypeConversionWarning on every write.</span>
         <span class="n">nwbfile</span><span class="o">.</span><span class="n">add_acquisition</span><span class="p">(</span>
             <span class="n">ImageSeries</span><span class="p">(</span>
                 <span class="n">rate</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">rate</span><span class="p">),</span>
                 <span class="n">starting_time</span><span class="o">=</span><span class="n">seg_starts</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span>
-                <span class="n">num_samples</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="nb">sum</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">n</span><span class="p">)</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">seg_nsamples</span><span class="p">)),</span>
+                <span class="n">num_samples</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">(</span><span class="nb">sum</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">n</span><span class="p">)</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">seg_nsamples</span><span class="p">)),</span>
                 <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
             <span class="p">)</span>
         <span class="p">)</span>

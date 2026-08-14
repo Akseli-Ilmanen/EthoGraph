@@ -66,6 +66,7 @@ Common issues and fixes.
 :hidden:
 
 metadata
+time_slider_trial_session
 labels/index
 changepoints/index
 keypoint_labelling/index
