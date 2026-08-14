@@ -56,6 +56,8 @@ from ethograph.io.validation import (
     VIDEO_EXTENSIONS,
 )
 
+# POSE_SOFTWARES is shared with the pose-overlay prompt in pose_render.
+from .app_constants import POSE_SOFTWARES
 from .notify import notify_dialog
 
 logger = logging.getLogger(__name__)
@@ -66,8 +68,6 @@ LABEL_EXTENSIONS = {".tsv"}
 # Pose extensions whose source software cannot be inferred from the suffix alone
 # (a ``.slp`` is always SLEAP; a ``.h5``/``.csv`` could be several tools).
 AMBIGUOUS_POSE_EXTENSIONS = {".h5", ".hdf5", ".csv"}
-# Ordered list of pose/bbox source software offered in the follow-up prompt.
-POSE_SOFTWARES = ["DeepLabCut", "SLEAP", "LightningPose", "Anipose", "VIA-tracks"]
 
 # One accent colour per entry point — repeated on the card border, the number
 # badge and (for drag & drop) the drop zone, so the three options read as

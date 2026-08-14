@@ -25,6 +25,7 @@ import pandas as pd
 import xarray as xr
 from movement.io import load_dataset
 
+from ethograph.gui.app_constants import POSE_SOFTWARES
 from ethograph.gui.notify import notify
 from ethograph.gui.pose_convert import COLOR_BY_KEYPOINT, COLOR_BY_MODES, poses_ds_to_points, sample_colormap
 from ethograph.gui.pose_overlay import OverlayStyle, PoseOverlayData
@@ -90,6 +91,33 @@ def _strip_keypoint_prefix(properties: pd.DataFrame) -> pd.DataFrame:
 #: caller has to know about; ``movement.io.load_dataset`` only takes the formats
 #: of the *tracking tools*, and has nothing to convert from.
 POSES_DATASET_SUFFIX = ".nc"
+
+
+def ask_pose_source_software(pose_path: str | Path, parent=None) -> str | None:
+    """One-time question: which software produced the pose files?
+
+    xarray datasets carry ``source_software`` in their attrs, but pynapple
+    sessions have no dataset to carry it — and ``movement.load_dataset``
+    refuses ``source_software=None``, so without an answer the pose overlay
+    can never load there. The answer is cached on
+    ``app_state.source_software`` by the caller (persisted per dataset), so
+    the question is asked once. Returns ``None`` on cancel / headless.
+    """
+    from qtpy.QtWidgets import QInputDialog
+
+    from ethograph.gui import notify as _notify
+
+    if _notify.SUPPRESS:
+        return None
+    item, ok = QInputDialog.getItem(
+        parent,
+        "Pose source software",
+        f"Which software produced the pose files?\n({Path(pose_path).name})",
+        POSE_SOFTWARES,
+        0,
+        False,
+    )
+    return item if ok and item else None
 
 
 def load_pose_from_file(file_path: str, source_software: str, fps: float) -> PoseRenderData:
@@ -479,6 +507,17 @@ class PoseDisplayManager:
                 return None
             try:
                 source_software = self.app_state.source_software or getattr(self.app_state.ds, "source_software", None)
+                if not source_software:
+                    if getattr(self, "_pose_software_declined", False):
+                        return None
+                    source_software = ask_pose_source_software(pose_path)
+                    if not source_software:
+                        # Declined: don't re-ask on every trial change/redraw.
+                        self._pose_software_declined = True
+                        return None
+                    # Cache the answer (persisted per dataset) — pynapple
+                    # sessions have no dataset attrs to carry it.
+                    self.app_state.source_software = source_software
                 pr = load_pose_from_file(
                     pose_path,
                     source_software,
