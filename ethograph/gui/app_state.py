@@ -280,6 +280,9 @@ class AppStateSpec:
         "space_z_axis": (str | None, None, True),
         "space_3d": (bool, False, True),
         "space_percentile_xyzlim": (float, 100.0, True),
+        # Space plots: show only ± this many seconds of trajectory around the
+        # time marker (0 = the whole window). Sliding window during playback.
+        "space_window_s": (float, 0.0, True),
         "space_marker_visible": (bool, True, True),
         "space_confidence_filter": (bool, False, True),
         "space_confidence_threshold": (float, 0.6, True),
@@ -289,6 +292,7 @@ class AppStateSpec:
             False,
         ),  # May confuse user, better not keep saved.
         "space_lock_axes": (bool, False, False),
+        "space_sync_views": (bool, True, True),
         "space_hide_zeros": (bool, False, True),
         "space_show_references": (bool, True, True),
         "space_library_geometry": (str | None, None, True, SCOPE_LOCAL),

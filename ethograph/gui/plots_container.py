@@ -306,6 +306,13 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         self._labels_redraw_scheduled = False
         # Coalesces deferred x-axis alignment (see schedule_axis_align).
         self._axis_align_scheduled = False
+        # Session basis draws only the labels intersecting the viewport, so a
+        # zoom/pan must re-derive that set — debounced, label redraws are not
+        # per-scroll-tick cheap.
+        self._labels_zoom_timer = QTimer(self)
+        self._labels_zoom_timer.setSingleShot(True)
+        self._labels_zoom_timer.setInterval(350)
+        self._labels_zoom_timer.timeout.connect(self.schedule_labels_redraw)
 
         # --- Plots ---
         # Fixed singleton panels; everything else (lineplot/heatmap/
@@ -1150,6 +1157,10 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
                 other.setXRange(t0, t1, padding=0)
         finally:
             self._xsync_guard = False
+        # Session basis: the drawn label set depends on the viewport, so a
+        # zoom/pan must refresh it (debounced).
+        if getattr(self.app_state, "display_basis", "trial") == "session":
+            self._labels_zoom_timer.start()
 
     def _apply_panel_sizes(self):
         """Default vertical sizing from `_PANEL_RATIOS` via resizeDocks.

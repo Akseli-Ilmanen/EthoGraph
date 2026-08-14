@@ -27,7 +27,6 @@ from ethograph.io.time_model import (
     build_label_window,
     build_sequence_window,
     find_closest_trial,
-    infer_slider_range,
     trial_start_range,
 )
 from ethograph.utils.sequences import get_label_instances, match_sequences
@@ -293,16 +292,7 @@ class NavigationWidget(QWidget):
         self.setLayout(main_layout)
 
         # Restore saved modes
-        saved_nav = app_state.get_with_default("navigate_mode")
-        nav_items = [m.lower() for m in NAVIGATE_MODES]
-        nav_idx = nav_items.index(saved_nav) if saved_nav in nav_items else 0
-        self.navigate_combo.setCurrentIndex(nav_idx)
-
-        saved_scope = app_state.get_with_default("slider_scope")
-        scope_display = _SCOPE_KEY_TO_DISPLAY.get(saved_scope, SLIDER_SCOPES[0])
-        scope_idx = SLIDER_SCOPES.index(scope_display) if scope_display in SLIDER_SCOPES else 0
-        self.scope_combo.setCurrentIndex(scope_idx)
-
+        self._sync_mode_combos_from_state()
         self._sync_xlim_combo_from_state()
 
     # ==================================================================
@@ -319,14 +309,43 @@ class NavigationWidget(QWidget):
         self._mappings = mappings
         self._populate_label_combo()
 
+    def _sync_mode_combos_from_state(self):
+        """Point the navigate/scope combos at the values app_state holds.
+
+        Both are SCOPE_LOCAL: loading a dataset swaps in that dataset's
+        ``local_settings.yaml``, so the combos built at startup can be stale.
+        Signals are blocked — this is a display sync, not a user action.
+        """
+        saved_nav = self.app_state.get_with_default("navigate_mode")
+        nav_items = [m.lower() for m in NAVIGATE_MODES]
+        nav_idx = nav_items.index(saved_nav) if saved_nav in nav_items else 0
+        self.navigate_combo.blockSignals(True)
+        self.navigate_combo.setCurrentIndex(nav_idx)
+        self.navigate_combo.blockSignals(False)
+        self._stack.setCurrentIndex(nav_idx)
+
+        saved_scope = self.app_state.get_with_default("slider_scope")
+        scope_display = _SCOPE_KEY_TO_DISPLAY.get(saved_scope, SLIDER_SCOPES[0])
+        scope_idx = SLIDER_SCOPES.index(scope_display) if scope_display in SLIDER_SCOPES else 0
+        self.scope_combo.blockSignals(True)
+        self.scope_combo.setCurrentIndex(scope_idx)
+        self.scope_combo.blockSignals(False)
+
     def refresh_after_load(self):
         self._populate_label_combo()
         self._populate_individual_combo()
-        # xlim_mode is a global user preference and may have been loaded/
-        # changed since this widget was built — re-sync the combo from
-        # app_state.
+        # navigate_mode / slider_scope / xlim_mode may have been swapped in by
+        # the dataset's local settings after this widget was built — re-sync
+        # the combos, then make the saved scope actually govern the first
+        # view: rebuild the restrict window and set the viewport. Without
+        # this, the plots keep whatever range they rendered with (often the
+        # data's full extent), which reads as session scope regardless of the
+        # combo.
+        self._sync_mode_combos_from_state()
         self._sync_xlim_combo_from_state()
         self.update_scope_availability()
+        self._apply_slider_scope()
+        self._update_viewport_for_scope()
 
     def update_scope_availability(self):
         """Offer session scope only when the backend can render a session axis.
@@ -646,20 +665,6 @@ class NavigationWidget(QWidget):
                 core_range=core,
                 trial_id=trial_id,
             )
-
-    def auto_infer_scope(self):
-        """Auto-detect slider scope from alignment timing and update the combo."""
-        sio = getattr(self.app_state, "nwb_alignment", None)
-        trial_id = getattr(self.app_state, "trials_sel", None)
-        sc = getattr(self.app_state, "source_collection", None)
-        if sio is None or trial_id is None:
-            return
-        scope, _ = infer_slider_range(sio, trial_id, sc)
-        display = _SCOPE_KEY_TO_DISPLAY.get(scope, SLIDER_SCOPES[0])
-        self.scope_combo.blockSignals(True)
-        self.scope_combo.setCurrentText(display)
-        self.scope_combo.blockSignals(False)
-        self.app_state.slider_scope = scope
 
     # ==================================================================
     # Trial mode

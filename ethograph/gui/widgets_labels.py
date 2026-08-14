@@ -1109,8 +1109,14 @@ class LabelsWidget(QWidget):
         # Points take precedence over overlapping state intervals: they're
         # smaller targets, so a near-hit is almost certainly intentional.
         # State intervals are only selected when no point matches.
+        # Each lookup falls back to ANY individual: a loaded file may store a
+        # different individual name than the current selection (e.g. a TSV
+        # from another session), and a label the user can see and click must
+        # be selectable — otherwise playback (V) silently fails on it.
         tolerance_s = self._point_click_tolerance_s()
         idx = find_point_at(df, t_clicked, individual, tolerance_s, label_ids=active_ids)
+        if idx is None:
+            idx = find_point_at(df, t_clicked, None, tolerance_s, label_ids=active_ids)
         if idx is not None:
             row = df.loc[idx]
             t = float(row["onset_s"])
@@ -1124,6 +1130,8 @@ class LabelsWidget(QWidget):
 
         # No point near the click — fall through to state intervals.
         idx = find_interval_at(df, t_clicked, individual, label_ids=active_ids)
+        if idx is None:
+            idx = find_interval_at(df, t_clicked, None, label_ids=active_ids)
         if idx is not None:
             onset_s, offset_s, labels = get_interval_bounds(df, idx)
             self.current_labels = labels

@@ -467,7 +467,7 @@ def delete_interval(df: pd.DataFrame, idx: int) -> pd.DataFrame:
 def find_interval_at(
     df: pd.DataFrame,
     time_s: float,
-    individual: str,
+    individual: str | None,
     label_ids: set[int] | None = None,
 ) -> int | None:
     """Return DataFrame index of state interval containing *time_s* for *individual*.
@@ -476,15 +476,18 @@ def find_interval_at(
 
     Parameters
     ----------
+    individual : str | None
+        ``None`` matches any individual — used as a selection fallback when
+        the current individual name doesn't match what a loaded file stores.
     label_ids : set[int] | None
         When given, only match intervals whose ``labels`` value is in this set.
         Useful for restricting to the active branch.
 
     Returns ``None`` if no non-background interval contains the time.
     """
-    mask = (
-        (df["individual"] == individual) & (df["onset_s"] <= time_s) & (df["offset_s"] >= time_s) & (df["labels"] != 0)
-    )
+    mask = (df["onset_s"] <= time_s) & (df["offset_s"] >= time_s) & (df["labels"] != 0)
+    if individual is not None:
+        mask = mask & (df["individual"] == individual)
     if "event_type" in df.columns:
         mask = mask & (df["event_type"] == EVENT_TYPE_STATE)
     if label_ids is not None:
@@ -498,7 +501,7 @@ def find_interval_at(
 def find_point_at(
     df: pd.DataFrame,
     time_s: float,
-    individual: str,
+    individual: str | None,
     tolerance_s: float,
     label_ids: set[int] | None = None,
 ) -> int | None:
@@ -506,15 +509,15 @@ def find_point_at(
 
     A point matches if ``|onset_s - time_s| <= tolerance_s``.  Caller chooses
     the tolerance — typically a few pixels' worth of plot time.
+    ``individual=None`` matches any individual (selection fallback).
     """
     if "event_type" not in df.columns or df.empty:
         return None
     mask = (
-        (df["event_type"] == EVENT_TYPE_POINT)
-        & (df["individual"] == individual)
-        & ((df["onset_s"] - time_s).abs() <= tolerance_s)
-        & (df["labels"] != 0)
+        (df["event_type"] == EVENT_TYPE_POINT) & ((df["onset_s"] - time_s).abs() <= tolerance_s) & (df["labels"] != 0)
     )
+    if individual is not None:
+        mask = mask & (df["individual"] == individual)
     if label_ids is not None:
         mask = mask & df["labels"].isin(label_ids)
     matches = df.index[mask]

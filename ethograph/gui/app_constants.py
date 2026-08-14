@@ -15,6 +15,12 @@ LABELS_WIDGET_SIZE_HINT_HEIGHT = 800
 CLUSTER_TABLE_ROW_HEIGHT = 20
 CLUSTER_TABLE_MAX_HEIGHT = 300
 
+# Session-basis label overlay (widgets_data.update_label_plot): draw only the
+# labels intersecting the viewport, and none at all above this cap — at that
+# density the rectangles are sub-pixel mush and thousands of items per panel
+# crawl. Zooming in shrinks the visible set below the cap and they reappear.
+SESSION_LABELS_MAX_DRAWN = 500
+
 # Label overlay box on video (widgets_labels.py)
 LABELS_OVERLAY_BOX_WIDTH = 250
 LABELS_OVERLAY_BOX_HEIGHT = 50

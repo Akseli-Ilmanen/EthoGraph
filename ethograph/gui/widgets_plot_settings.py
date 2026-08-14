@@ -400,6 +400,14 @@ class PlotSettingsWidget(QWidget):
         group_layout.addWidget(self.space_hide_zeros_checkbox, row, 2, 1, 2)
 
         row += 1
+        self.space_sync_views_checkbox = QCheckBox("Sync views across space plots")
+        self.space_sync_views_checkbox.setToolTip(
+            "Mirror zoom/pan (2D) and camera angle (3D) across all open space plots of the same type"
+        )
+        self.space_sync_views_checkbox.toggled.connect(self._on_space_sync_views_toggled)
+        group_layout.addWidget(self.space_sync_views_checkbox, row, 0, 1, 4)
+
+        row += 1
         self.space_show_references_checkbox = QCheckBox("Show reference geometry")
         self.space_show_references_checkbox.setToolTip("Draw the selected library reference geometry")
         self.space_show_references_checkbox.toggled.connect(self._on_space_show_references_toggled)
@@ -428,6 +436,8 @@ class PlotSettingsWidget(QWidget):
         self.space_lock_axes_checkbox.setChecked(self.app_state.get_with_default("space_lock_axes"))
 
         self.space_hide_zeros_checkbox.setChecked(self.app_state.get_with_default("space_hide_zeros"))
+
+        self.space_sync_views_checkbox.setChecked(self.app_state.get_with_default("space_sync_views"))
 
         self.space_show_references_checkbox.setChecked(self.app_state.get_with_default("space_show_references"))
 
@@ -463,6 +473,9 @@ class PlotSettingsWidget(QWidget):
 
     def _on_space_hide_zeros_toggled(self, checked: bool):
         self.app_state.space_hide_zeros = checked
+
+    def _on_space_sync_views_toggled(self, checked: bool):
+        self.app_state.space_sync_views = checked
 
     def _on_space_show_references_toggled(self, checked: bool):
         self.app_state.space_show_references = checked

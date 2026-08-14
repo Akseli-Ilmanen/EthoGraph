@@ -49,6 +49,7 @@ from ..io.ephys_loader import load_ephys
 from .app_constants import (
     DEFAULT_LAYOUT_MARGIN,
     DEFAULT_LAYOUT_SPACING,
+    SESSION_LABELS_MAX_DRAWN,
     SIDEBAR_AFTER_LOAD_WIDTH_RATIO,
 )
 from .dialog_keypoint_filter import KeypointFilterDialog
@@ -2687,6 +2688,34 @@ class DataWidget(QWidget):
         # their session positions; trial basis is the current trial verbatim.
         intervals_df = self.app_state.get_display_intervals()
 
+        # Session basis can hold thousands of rows across many panels — draw
+        # only what intersects the viewport (padded half a window each side;
+        # zoom/pan re-derives the set via the container's debounced redraw),
+        # and nothing at all above the cap: at that density the rectangles are
+        # sub-pixel mush and the GUI would crawl. Zooming in brings them back.
+        if (
+            intervals_df is not None
+            and not intervals_df.empty
+            and self.app_state.display_basis == "session"
+            and self.plot_container is not None
+        ):
+            try:
+                t0, t1 = self.plot_container.get_current_xlim()
+            except (AttributeError, TypeError):
+                t0 = t1 = None
+            if t0 is not None and t1 is not None and t1 > t0:
+                pad = (t1 - t0) * 0.5
+                ends = intervals_df["offset_s"].fillna(intervals_df["onset_s"])
+                visible = (intervals_df["onset_s"] <= t1 + pad) & (ends >= t0 - pad)
+                intervals_df = intervals_df[visible]
+            if len(intervals_df) > SESSION_LABELS_MAX_DRAWN:
+                logger.debug(
+                    "Skipping label overlay: %d labels in view (max %d) — zoom in",
+                    len(intervals_df),
+                    SESSION_LABELS_MAX_DRAWN,
+                )
+                intervals_df = intervals_df.iloc[0:0]
+
         _ind_key = next((n for n in INDIVIDUAL_DIMS if n in ds_kwargs), None)
         if intervals_df is not None and not intervals_df.empty and _ind_key is not None:
             selected_ind = str(ds_kwargs[_ind_key])
@@ -3101,6 +3130,7 @@ class DataWidget(QWidget):
         sp._apply_default_width = default_width
         sp.set_plot_container(self.plot_container)
         sp.closed.connect(self.remove_space_plot)
+        sp.view_changed.connect(self._on_space_plot_view_changed)
         self.space_plots.append(sp)
         # Canonical objectName BEFORE the dock exists: dock creation tries
         # shell.restoreDockWidget() with it, so a saved window state places
@@ -3111,6 +3141,7 @@ class DataWidget(QWidget):
         if not self._space_signals_connected:
             self._space_signals_connected = True
             self.plot_container.time_marker_updated.connect(self._on_xrange_for_space_plot)
+            self.app_state.space_sync_views_changed.connect(self._on_space_sync_views_toggled)
             if self.labels_widget:
                 self.labels_widget.highlight_spaceplot.connect(self._highlight_positions_in_space_plot)
 
@@ -3132,10 +3163,39 @@ class DataWidget(QWidget):
         else:
             sp.refresh()
 
+        # With view sync on, a new plot adopts the coordinate frame of the
+        # most recent open plot of the same type (2D/3D) instead of its own
+        # auto-range.
+        if getattr(self.app_state, "space_sync_views", True):
+            mode = "3d" if sp.is_3d else "2d"
+            for other in reversed(self.space_plots[:-1]):
+                state = other.capture_view_state()
+                if state is not None and state.get("mode") == mode:
+                    sp.apply_view_state(state)
+                    break
+
         self.set_active_space_plot(sp)
         if focus and self.meta_widget is not None and hasattr(self.meta_widget, "_on_plot_focus"):
             self.meta_widget._on_plot_focus("space")
         return sp
+
+    def _on_space_plot_view_changed(self, source: SpacePlot):
+        """Mirror an interactive view change (zoom/pan/orbit) onto every other
+        open space plot of the same type — ``apply_view_state`` no-ops on a
+        2D/3D mismatch, so 2D and 3D plots never sync with each other."""
+        if not getattr(self.app_state, "space_sync_views", True):
+            return
+        state = source.capture_view_state()
+        if state is None:
+            return
+        for sp in self.space_plots:
+            if sp is not source:
+                sp.apply_view_state(state)
+
+    def _on_space_sync_views_toggled(self, *_args):
+        """Turning sync ON immediately aligns all plots to the active one."""
+        if getattr(self.app_state, "space_sync_views", True) and self.space_plot is not None:
+            self._on_space_plot_view_changed(self.space_plot)
 
     def _canonicalize_space_dock_names(self):
         """Name space docks by list position so the shell's saveState /

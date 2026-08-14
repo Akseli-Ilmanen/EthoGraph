@@ -19,6 +19,7 @@ from qtpy.QtCore import QEvent, Qt, QTimer, Signal
 from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,
+    QDoubleSpinBox,
     QHBoxLayout,
     QLabel,
     QSizePolicy,
@@ -285,6 +286,12 @@ class SpacePlot(QWidget):
     #: Emitted with ``self`` when the user closes this panel's dock.
     closed = Signal(object)
 
+    #: Emitted with ``self`` after the user interactively changes the view
+    #: (2D zoom/pan or 3D camera orbit/zoom) — DataWidget mirrors the new
+    #: view onto every other open space plot of the same type when
+    #: ``app_state.space_sync_views`` is on.
+    view_changed = Signal(object)
+
     #: Monotonic counter so every instance's dock gets a unique objectName.
     _dock_seq = 0
 
@@ -367,6 +374,27 @@ class SpacePlot(QWidget):
         self.color_combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         color_row.addWidget(self.color_combo)
 
+        # Time window: only ± this many seconds of trajectory around the
+        # marker (0 = whole window). Session-long trajectories are slow to
+        # draw and unreadable; the window slides with the marker.
+        window_row = QHBoxLayout()
+        window_row.setContentsMargins(0, 0, 0, 0)
+        window_row.setSpacing(6)
+        window_row.addWidget(QLabel("± Window"))
+        self.window_spin = QDoubleSpinBox()
+        self.window_spin.setRange(0.0, 100000.0)
+        self.window_spin.setDecimals(1)
+        self.window_spin.setSingleStep(1.0)
+        self.window_spin.setSuffix(" s")
+        self.window_spin.setSpecialValueText("All")
+        self.window_spin.setValue(float(getattr(app_state, "space_window_s", 0.0) or 0.0))
+        self.window_spin.setToolTip(
+            "Show only this many seconds of trajectory either side of the time marker.\n"
+            "'All' draws the whole window — slow and cluttered on session-long data."
+        )
+        self.window_spin.valueChanged.connect(self._on_window_spin_changed)
+        window_row.addWidget(self.window_spin, 1)
+
         # These controls live in the sidebar's Space context, not on the plot;
         # they are re-parented there when the space plot is created
         # (see DataWidget.update_space_plot).
@@ -379,6 +407,7 @@ class SpacePlot(QWidget):
         controls_v.addLayout(toolbar)
         controls_v.addLayout(self._dim_rows)
         controls_v.addLayout(color_row)
+        controls_v.addLayout(window_row)
 
         # Plot area — stable container that stays in the layout; the actual
         # PlotWidget / GLViewWidget is swapped inside it.
@@ -402,6 +431,23 @@ class SpacePlot(QWidget):
         self._trajectory_times: np.ndarray | None = None
         self._time_marker_item = None
         self._locked_ranges: dict | None = None  # saved axis ranges when lock is on
+        # Sliding time window: last marker time + the range last fetched, so
+        # playback re-fetches only when the marker leaves the middle half.
+        self._last_marker_t: float | None = None
+        self._fetch_range: tuple[float, float] | None = None
+        self._slide_timer = QTimer()
+        self._slide_timer.setSingleShot(True)
+        self._slide_timer.setInterval(300)
+        self._slide_timer.timeout.connect(self._update_plot)
+
+        # View-sync: emit ``view_changed`` AFTER the widget has processed the
+        # interaction (the 3D events are seen in the event filter *before*
+        # GLViewWidget moves its camera), collapsing bursts within one
+        # event-loop iteration.
+        self._view_sync_timer = QTimer()
+        self._view_sync_timer.setSingleShot(True)
+        self._view_sync_timer.setInterval(0)
+        self._view_sync_timer.timeout.connect(lambda: self.view_changed.emit(self))
 
         # Connect combo/checkbox signals
         self.feature_combo.currentIndexChanged.connect(self._on_feature_changed)
@@ -415,6 +461,7 @@ class SpacePlot(QWidget):
         # Listen for settings changes via app_state
         app_state.space_percentile_xyzlim_changed.connect(self._on_settings_changed)
         app_state.space_limit_to_window_changed.connect(self._on_settings_changed)
+        app_state.space_window_s_changed.connect(self._on_window_state_changed)
         app_state.space_hide_zeros_changed.connect(self._on_settings_changed)
         app_state.space_show_references_changed.connect(self._on_settings_changed)
         app_state.space_library_geometry_changed.connect(self._on_settings_changed)
@@ -741,6 +788,22 @@ class SpacePlot(QWidget):
         if self._store is not None and self.isVisible():
             self._debounce_timer.start()
 
+    def _on_window_spin_changed(self, value: float):
+        self.app_state.space_window_s = float(value)
+        if self._store is not None and self.isVisible():
+            self._debounce_timer.start()
+
+    def _on_window_state_changed(self, value):
+        """Another instance (or a restore) changed the shared window setting."""
+        spin = float(self.window_spin.value())
+        value = float(value or 0.0)
+        if abs(spin - value) > 1e-9:
+            self.window_spin.blockSignals(True)
+            self.window_spin.setValue(value)
+            self.window_spin.blockSignals(False)
+        if self._store is not None and self.isVisible():
+            self._debounce_timer.start()
+
     def on_xrange_changed(self):
         """Called by DataWidget when the lineplot x-range changes."""
         if getattr(self.app_state, "space_limit_to_window", False) and self.isVisible():
@@ -849,6 +912,21 @@ class SpacePlot(QWidget):
         if t0 is None or t1 is None:
             return
 
+        # Sliding time window: clip the fetch to ± window around the marker.
+        # Session-long trajectories are slow to draw and unreadable; the
+        # window re-fetches as the marker approaches its edges (see
+        # _maybe_slide_window).
+        window_s = float(getattr(self.app_state, "space_window_s", 0.0) or 0.0)
+        if window_s > 0:
+            center = self._current_marker_time()
+            t0 = max(t0, center - window_s)
+            t1 = min(t1, center + window_s)
+            if t1 <= t0:
+                return
+            self._fetch_range = (t0, t1)
+        else:
+            self._fetch_range = None
+
         time_x, data_x, color_data = _select_axis(
             store, feature, {**selections, space_dim: x_val}, t0=t0, t1=t1, color_variable=color_var
         )
@@ -887,40 +965,93 @@ class SpacePlot(QWidget):
             data_y = interpolate_nans(data_y)
             data_z = interpolate_nans(data_z)
 
-        # Save current ranges before rebuilding the widget
+        # Save current ranges before touching the widget
         saved_ranges = self._capture_ranges() if locked else None
 
-        self._rebuild_plot_widget(use_3d)
+        # Rebuild the widget only when the 2D/3D type changes — rebuilding on
+        # every update was the dominant render cost. Otherwise the trajectory
+        # items are swapped on the live widget, keeping the user's zoom/camera.
+        rebuilt = self._ensure_plot_widget(use_3d)
+        self._clear_dynamic_items()
 
         if use_3d:
             _render_3d(self.space_widget, data_x, data_y, data_z, color_data)
-            _auto_camera_3d(self.space_widget, data_x, data_y, data_z)
+            if rebuilt:
+                _auto_camera_3d(self.space_widget, data_x, data_y, data_z)
         else:
             _render_2d(self.space_widget, data_x, data_y, color_data)
             plot_item = self.space_widget.getPlotItem()
             plot_item.setLabel("bottom", f"{feature}{SEPARATOR}{x_val}")
             plot_item.setLabel("left", f"{feature}{SEPARATOR}{y_val}")
 
-        if locked and saved_ranges:
-            self._restore_ranges(saved_ranges)
-        else:
+        if rebuilt:
+            if locked and saved_ranges:
+                self._restore_ranges(saved_ranges)
+            else:
+                self._apply_percentile_limits(data_x, data_y, data_z)
+            self._draw_references()
+        elif self._fetch_range is None and not locked:
+            # Non-windowed refresh (settings/axis change): re-fit as before.
+            # A sliding window keeps the current view — re-fitting every
+            # slide would make the axes jump with the animal.
             self._apply_percentile_limits(data_x, data_y, data_z)
-        self._draw_references()
 
         self._trajectory_pos = (data_x, data_y, data_z)
         self._trajectory_times = times
-        self._time_marker_item = None
         self.is_3d = use_3d
 
-        # Place marker at current time
-        current_frame = getattr(self.app_state, "current_frame", 0)
+        self.update_time_marker(self._current_marker_time())
+
+    def _current_marker_time(self) -> float:
+        """The time marker's position on the display clock."""
+        if self._last_marker_t is not None:
+            return float(self._last_marker_t)
+        frame = getattr(self.app_state, "current_frame", 0)
         video = getattr(self.app_state, "video", None)
         if video:
-            t = video.frame_to_time(current_frame)
+            return float(video.frame_to_time(frame))
+        fps = getattr(self.app_state, "video_fps", None)
+        t_rel = frame / fps if fps else 0.0
+        return float(self.app_state.to_display(getattr(self.app_state, "trials_sel", None), t_rel))
+
+    def _maybe_slide_window(self, t: float):
+        """Re-fetch the sliding window when the marker nears its edges.
+
+        Hysteresis: the fetch spans ± window, a slide fires only once the
+        marker leaves the middle half — so playback re-renders periodically,
+        not per marker tick (and the render itself no longer rebuilds the
+        widget).
+        """
+        if self._fetch_range is None or not self.isVisible():
+            return
+        t0, t1 = self._fetch_range
+        span = t1 - t0
+        if span <= 0:
+            return
+        if (t < t0 + span * 0.25 or t > t1 - span * 0.25) and not self._slide_timer.isActive():
+            self._slide_timer.start()
+
+    def _ensure_plot_widget(self, view_3d: bool) -> bool:
+        """(Re)create the plot widget only when the 2D/3D type changes."""
+        if self.space_widget is not None and isinstance(self.space_widget, gl.GLViewWidget) == view_3d:
+            return False
+        self._rebuild_plot_widget(view_3d)
+        self._time_marker_item = None
+        return True
+
+    def _clear_dynamic_items(self):
+        """Remove trajectory/highlight items, keeping references and marker."""
+        if self.space_widget is None:
+            return
+        if isinstance(self.space_widget, gl.GLViewWidget):
+            for item in list(self.space_widget.items):
+                if getattr(item, "_is_trajectory", False) or getattr(item, "_is_highlight", False):
+                    self.space_widget.removeItem(item)
         else:
-            fps = getattr(self.app_state, "video_fps", 30)
-            t = current_frame / fps if fps else 0.0
-        self.update_time_marker(t)
+            plot_item = self.space_widget.getPlotItem()
+            for item in list(plot_item.items):
+                if getattr(item, "_is_trajectory", False) or getattr(item, "_is_highlight", False):
+                    plot_item.removeItem(item)
 
     def _rebuild_plot_widget(self, view_3d: bool):
         """Remove old widget and create the right type inside the holder."""
@@ -945,6 +1076,12 @@ class SpacePlot(QWidget):
             self.space_widget = pg.PlotWidget()
             self.space_widget.setBackground("w")
 
+        if not isinstance(self.space_widget, gl.GLViewWidget):
+            # Manually only: programmatic setRange (percentile limits, restore,
+            # incoming sync) must not re-broadcast, or two synced plots loop.
+            vb = self.space_widget.getPlotItem().vb
+            vb.sigRangeChangedManually.connect(self._on_view_interacted)
+
         self._plot_holder_layout.addWidget(self.space_widget)
         self._install_click_filter()
 
@@ -963,7 +1100,29 @@ class SpacePlot(QWidget):
             return False
         if event.type() == QEvent.MouseButtonPress:
             self.clicked.emit()
+        elif event.type() in (QEvent.MouseMove, QEvent.Wheel, QEvent.MouseButtonRelease):
+            # GLViewWidget has no view-changed signal, so 3D camera changes
+            # (orbit drag / wheel zoom) are inferred from input events. Mouse
+            # moves arrive here only while a button is held (no tracking).
+            if isinstance(self.space_widget, gl.GLViewWidget) and obj is self.space_widget:
+                self._on_view_interacted()
         return False
+
+    # --- View sync across space plots ----------------------------------------
+
+    def _on_view_interacted(self, *_args):
+        """The user zoomed/panned/orbited — schedule a ``view_changed`` emit."""
+        self._view_sync_timer.start()
+
+    def capture_view_state(self) -> dict | None:
+        """Current coordinate frame: 2D axis ranges or 3D camera parameters."""
+        return self._capture_ranges()
+
+    def apply_view_state(self, state: dict) -> None:
+        """Adopt another plot's coordinate frame. No-ops when the state's
+        2D/3D mode doesn't match this plot's widget — sync never crosses
+        the 2D/3D boundary."""
+        self._restore_ranges(state)
 
     def _load_references(self) -> list[ReferenceGeometry]:
         """Reference geometry to overlay, resolved from the geometry library.
@@ -1149,6 +1308,8 @@ class SpacePlot(QWidget):
 
     def update_time_marker(self, time_position: float):
         """Show a red circle at the current time position on the trajectory."""
+        self._last_marker_t = float(time_position)
+        self._maybe_slide_window(time_position)
         if not getattr(self.app_state, "space_marker_visible", True):
             self._remove_time_marker()
             return
