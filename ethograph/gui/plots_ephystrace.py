@@ -25,6 +25,24 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
+def ephys_display_offset(app_state, scalar: float = 0.0) -> float:
+    """File-clock time corresponding to display-clock t=0 for an ephys stream.
+
+    The recording file runs on the session clock (plus a per-stream *scalar*
+    alignment offset); the display axis is trial-relative only in trial basis,
+    so the trial start is added only there. Add before indexing the file,
+    subtract from file times before drawing. The ONE conversion between the
+    plot axis and ephys file samples — shared by the trace plot and the
+    heatmap's ephys envelope, which previously disagreed.
+    """
+    if getattr(app_state, "display_basis", "trial") == "session":
+        return scalar
+    trial = getattr(app_state, "trials_sel", None)
+    align = getattr(app_state, "nwb_alignment", None)
+    trial_start = float(align.start_time(trial) or 0.0) if trial is not None and align is not None else 0.0
+    return trial_start + scalar
+
+
 def _nice_round(value: float) -> float:
     if value <= 0:
         return 1.0
@@ -503,15 +521,10 @@ class EphysTracePlot(BasePlot):
 
     @property
     def _ephys_offset(self) -> float:
-        """Session-absolute time corresponding to trial-relative t=0 for the ephys file stream."""
+        """File-clock time corresponding to display-clock t=0 (see
+        :func:`ephys_display_offset`)."""
         scalar = float(getattr(self.app_state, "ephys_offset", 0.0) or 0.0)
-        trial = getattr(self.app_state, "trials_sel", None)
-        align = getattr(self.app_state, "nwb_alignment", None)
-        if trial is not None and align is not None:
-            trial_start = float(align.start_time(trial) or 0.0)
-        else:
-            trial_start = 0.0
-        return trial_start + scalar
+        return ephys_display_offset(self.app_state, scalar=scalar)
 
     @property
     def _trial_duration(self) -> float | None:

@@ -665,7 +665,13 @@ class PSTHDialog(QDialog):
                     ref_times_abs.append(self._trial_abs_start(trial_id))
                     valid_display.append(i)
 
-            ref_arr = np.array(ref_times_abs)
+            # Refs are on the alignment clock; the spike TsGroup runs on the
+            # recording clock = alignment + the user's scalar ephys_offset.
+            # Shift only the refs handed to pynapple — the stored maps stay on
+            # the alignment clock for navigation. Without this the PSTH is
+            # displaced from the raster/trace by exactly ephys_offset.
+            eph_scalar = float(getattr(self.app_state, "ephys_offset", 0.0) or 0.0)
+            ref_arr = np.array(ref_times_abs) + eph_scalar
             ref_ts = nap.Ts(t=ref_arr)
             peri_nap = nap.compute_perievent(tsgroup[self._current_cluster_id], ref_ts, window=(-pre_s, post_s))
 

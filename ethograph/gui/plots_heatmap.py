@@ -256,6 +256,7 @@ class HeatmapPlot(PanelStateMixin, BasePlot):
     def _get_buffered_ephys_envelope(self, t0: float, t1: float):
         """Load ephys data, compute per-channel envelope, and cache."""
         from ..io.ephys_loader import load_ephys
+        from .plots_ephystrace import ephys_display_offset
 
         ephys_path, stream_id, _ = self.app_state.get_ephys_source()
         if not ephys_path:
@@ -264,20 +265,27 @@ class HeatmapPlot(PanelStateMixin, BasePlot):
             loader = load_ephys(ephys_path, stream_id)
         except Exception:
             return None, None
+        # t0/t1 are display-clock. file_time = display_time + file_off — the
+        # same conversion the trace plot applies (this envelope previously
+        # ignored the offset entirely and disagreed with it in every scope).
+        file_off = ephys_display_offset(
+            self.app_state, scalar=float(getattr(self.app_state, "ephys_offset", 0.0) or 0.0)
+        )
         fs = loader.rate
-        total_duration = len(loader) / fs
+        disp_min = -file_off
+        disp_max = len(loader) / fs - file_off
 
         window_size = t1 - t0
         buffer_size = window_size * self._buffer_multiplier
-        load_t0 = max(0.0, t0 - buffer_size / 2)
-        load_t1 = min(total_duration, t1 + buffer_size / 2)
+        load_t0 = max(disp_min, t0 - buffer_size / 2)
+        load_t1 = min(disp_max, t1 + buffer_size / 2)
 
         margin = (t1 - t0) * 0.2
         if self._buffered_data is not None and self._buffer_t0 <= t0 - margin and self._buffer_t1 >= t1 + margin:
             return self._buffered_data, self._buffered_time
 
-        start_idx = max(0, int(load_t0 * fs))
-        stop_idx = min(len(loader), int(load_t1 * fs))
+        start_idx = max(0, int((load_t0 + file_off) * fs))
+        stop_idx = min(len(loader), int((load_t1 + file_off) * fs))
         if stop_idx <= start_idx:
             return None, None
 

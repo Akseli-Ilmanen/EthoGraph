@@ -1258,15 +1258,30 @@ class EphysWidget(QWidget):
         return 0.0
 
     def _trial_ep(self) -> nap.IntervalSet | None:
+        """The visible window mapped onto the spike/recording clock.
+
+        Uses the window's actual start AND end — a window that doesn't begin
+        at display t=0 (label/sequence windows, panned fixed windows, session
+        basis) must restrict to its real span, not ``[0, duration]``.
+        """
         window_bounds = self.app_state.window_bounds
         if window_bounds is None:
             return None
-        t0 = self._ephys_offset()
-        return nap.IntervalSet(t0, t0 + window_bounds.duration)
+        offset = self._ephys_offset()
+        return nap.IntervalSet(offset + window_bounds.start_s, offset + window_bounds.end_s)
 
     def _ephys_offset(self) -> float:
-        """Session-absolute time corresponding to trial-relative t=0 for spike streams."""
+        """Spike/recording-clock time corresponding to display-clock t=0.
+
+        Spike times are session-absolute (plus the user's scalar
+        ``ephys_offset``); the display axis is trial-relative in trial basis
+        and session-absolute in session basis, so the trial start is added
+        only in trial basis. Add to a display time to reach the spike clock;
+        subtract from spike times to draw them on the axis.
+        """
         ephys_offset = float(getattr(self.app_state, "ephys_offset", 0.0) or 0.0)
+        if self.app_state.display_basis == "session":
+            return ephys_offset
         return self._trial_start_session() + ephys_offset
 
     def _restrict_to_trial(self, cluster_id: int, sr: float) -> tuple[np.ndarray, np.ndarray]:
@@ -2196,7 +2211,11 @@ class EphysWidget(QWidget):
 
         ds = self.app_state.dt.trial(trial) if self.app_state.dt is not None else self.app_state.ds
         start_time = self.app_state.nwb_alignment.start_time(trial)
-        bounds = self.app_state.window_bounds
+        # The firing rate is stored as a trial-relative feature, so bin over
+        # the trial's span on the spike clock — trial_bounds, not
+        # window_bounds, whose clock depends on the scope (mixing the two put
+        # t_stop before t_start for any trial not starting at 0).
+        bounds = self.app_state.trial_bounds
         if bounds is None:
             return
 
@@ -2205,7 +2224,7 @@ class EphysWidget(QWidget):
             self._spike_clusters,
             bin_size,
             t_start=start_time,
-            t_stop=bounds.end_s,
+            t_stop=start_time + bounds.duration,
             cluster_ids=cluster_ids,
             _tsgroup=self._tsgroup,
         )
