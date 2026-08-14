@@ -326,6 +326,40 @@ class NavigationWidget(QWidget):
         # changed since this widget was built — re-sync the combo from
         # app_state.
         self._sync_xlim_combo_from_state()
+        self.update_scope_availability()
+
+    def update_scope_availability(self):
+        """Offer session scope only when the backend can render a session axis.
+
+        Multi-trial xarray (.nc TrialTree) data is stored per trial: a session
+        axis would show only the current trial and mislead. The combo entry is
+        disabled (with a tooltip), and a persisted "session" scope is coerced
+        back to trial scope for such datasets.
+        """
+        loader = getattr(self.app_state, "data_loader", None)
+        backend = getattr(loader, "backend", None)
+        multi_trial = len(getattr(self.app_state, "trials", None) or []) > 1
+        disable = backend == "xarray" and multi_trial
+
+        session_display = _SCOPE_KEY_TO_DISPLAY["session"]
+        model = self.scope_combo.model()
+        item = model.item(SLIDER_SCOPES.index(session_display))
+        if item is not None:
+            item.setEnabled(not disable)
+            item.setToolTip(
+                "Session scope is unavailable for multi-trial .nc datasets — data is stored per trial"
+                if disable
+                else ""
+            )
+        if disable and self.app_state.slider_scope == "session":
+            # Coerce state directly (the combo may not be showing session yet
+            # during restore, so setCurrentText alone can be a no-op).
+            self.app_state.slider_scope = "trial"
+            self.scope_combo.blockSignals(True)
+            self.scope_combo.setCurrentText(_SCOPE_KEY_TO_DISPLAY["trial"])
+            self.scope_combo.blockSignals(False)
+            # Rebuild the window; the post-load flow sets the viewport next.
+            self._apply_slider_scope()
 
     def on_labels_changed(self):
         """Refresh label/sequence instances after labels are modified.
@@ -412,6 +446,11 @@ class NavigationWidget(QWidget):
         else:
             self._apply_slider_scope()
 
+        # Label/sequence navigation forces trial basis even under session
+        # scope, so the label overlay may need re-laying-out on the new axis.
+        if self.plot_container is not None:
+            self.plot_container.schedule_labels_redraw()
+
         self._update_counter()
 
     def _sync_spinboxes_to_mode(self, mode: str):
@@ -434,6 +473,13 @@ class NavigationWidget(QWidget):
             self._snap_to_closest_trial()
         else:
             self._apply_slider_scope()
+
+        # The scope decides the display basis, so the label rectangles must be
+        # re-laid-out on the new axis (session basis: ALL trials' labels;
+        # trial basis: the current trial at 0). Deferred — content renders
+        # first, exactly like every other panel-creation path.
+        if self.plot_container is not None:
+            self.plot_container.schedule_labels_redraw()
 
     def _on_xlim_mode_changed(self, mode_text: str):
         mode = _XLIM_DISPLAY_TO_KEY.get(mode_text, "interval")

@@ -25,11 +25,10 @@ slider scope is set to session.
 ## What session scope shows
 
 - **Features** — pynapple sources are natively session-absolute and render
-  across the whole session. Multi-trial `.nc` (xarray) datasets are natively
-  trial-local: the **current trial** renders at its true session position;
-  other trials' features are absent (stitching every trial onto one axis is
-  deliberately not supported — use a pynapple export for session-wide
-  analysis).
+  across the whole session. Multi-trial `.nc` (xarray) datasets are stored
+  per trial, so a session axis cannot show them meaningfully — **session
+  scope is disabled** for those datasets (the combo entry is greyed out; use
+  a pynapple export for session-wide analysis).
 - **Labels** — *every* trial's labels appear at their session positions, not
   just the current trial's.
 - **Video** — per-trial video files follow the slider: rest the time marker
@@ -77,7 +76,7 @@ trial-relative.
 | | trial scope | session scope |
 |---|---|---|
 | pynapple (`.npz`, folders, NWB) | axis 0-based; data rebased per trial | native — full session renders |
-| xarray (`.nc` TrialTree) | native — full trial renders | current trial at its true position; other trials absent |
+| xarray (`.nc` TrialTree), multi-trial | native — full trial renders | disabled (data is stored per trial) |
 | labels (TSV) | current trial's rows | all trials' rows, shifted |
 | video (per-trial files) | current trial's file | follows the marker across trials |
 

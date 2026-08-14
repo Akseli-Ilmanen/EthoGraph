@@ -3,8 +3,8 @@
 import pytest
 from qtpy.QtWidgets import QApplication
 
-from ethograph.gui.source_popup import allowed_plot_types
 from ethograph.datasets import resolve_dataset_paths
+from ethograph.gui.source_popup import allowed_plot_types
 from tests.conftest import _ensure_alignment_nwb, _skip_if_not_downloaded
 
 

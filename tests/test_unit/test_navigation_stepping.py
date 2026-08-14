@@ -132,3 +132,31 @@ def test_stepping_does_nothing_without_a_span(nav):
     nav.step_window_forward()
 
     assert nav.plot_container.marked == []
+
+
+class _FakeLoader:
+    def __init__(self, backend):
+        self.backend = backend
+
+
+def test_session_scope_disabled_for_multitrial_xarray(nav):
+    """Multi-trial .nc data is stored per trial — the session-scope combo
+    entry is disabled and a persisted session scope is coerced to trial."""
+    nav.app_state.data_loader = _FakeLoader("xarray")
+    nav.app_state.trials = [1, 2, 3]
+    nav.app_state.slider_scope = "session"
+
+    nav.update_scope_availability()
+
+    item = nav.scope_combo.model().item(2)  # "Session start → Session end"
+    assert not item.isEnabled()
+    assert nav.app_state.slider_scope == "trial"
+
+
+def test_session_scope_stays_enabled_for_pynapple(nav):
+    nav.app_state.data_loader = _FakeLoader("pynapple")
+    nav.app_state.trials = [1, 2, 3]
+
+    nav.update_scope_availability()
+
+    assert nav.scope_combo.model().item(2).isEnabled()

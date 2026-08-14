@@ -19,7 +19,7 @@ from movement.kinematics import (
 )
 
 import ethograph as eto
-from ethograph.gui.notify import notify_dialog
+from ethograph.gui.notify import notify, notify_dialog
 from ethograph.io.catalog import (
     DataCatalog,
     PynappleLoader,
@@ -296,6 +296,13 @@ def _load_pynapple_dataset(
             "Alignment NWB not found: %s — falling back to %s",
             alignment_path,
             nwb_path or "no alignment",
+        )
+        # Losing the alignment silently degrades everything downstream (no
+        # trial timing, no media) — the user must see it, not just the log.
+        fallback = f"sidecar {nwb_path}" if nwb_path else "NO alignment — trial timing and media unavailable"
+        notify(
+            f"Alignment NWB not found: {alignment_path}\nFalling back to {fallback}.",
+            severity="warning",
         )
 
     sio = make_nwb_alignment(nwb_path)

@@ -262,3 +262,20 @@ def test_xarray_loader_display_offset_renders_at_session_position():
     # A window outside the trial's span selects nothing (other trials absent).
     outside = loader.select("speed", {}, t0=50.0, t1=60.0)
     assert outside is None or len(outside.time) == 0
+
+
+# ---------------------------------------------------------------------------
+# Trial window duration without an alignment file (sc bookmark fallback)
+# ---------------------------------------------------------------------------
+
+
+def test_trial_bounds_from_source_collection_bookmarks(sc):
+    """No alignment: the trial window comes from the trial bookmarks, not the
+    union range (which made every 'trial' window span the whole session)."""
+    from ethograph.io.nwb_alignment import EmpytAlignment
+    from ethograph.io.time_model import compute_trial_video_bounds
+
+    tvb = compute_trial_video_bounds(EmpytAlignment(), 2, None, source_collection=sc)
+    assert tvb.trial_range is not None
+    assert tvb.trial_range.start_s == pytest.approx(0.0)
+    assert tvb.trial_range.duration == pytest.approx(6.0)  # trial 2: 20-26 s

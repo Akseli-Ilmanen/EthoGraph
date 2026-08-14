@@ -127,8 +127,10 @@ def compute_trial_video_bounds(
 
     Priority for trial duration:
     1. ``nwb_alignment.stop_time(trial)`` — authoritative when available
-    2. Video file duration (probed from file)
-    3. ``source_collection.union_range`` — last resort
+    2. ``source_collection`` trial bookmark — trials detected in the data
+       (e.g. a pynapple trials IntervalSet) when there is no alignment file
+    3. Video file duration (probed from file)
+    4. ``source_collection.union_range`` — last resort
     """
     sio = nwb_alignment
     video_path = sio.resolve_media_path(
@@ -145,7 +147,17 @@ def compute_trial_video_bounds(
     if stop is not None:
         trial_end = stop - sio.start_time(trial_id)
 
-    # 2. Fallbacks only when alignment has no stop time
+    # 2. Trial bookmarks from the data itself — without this, an alignment-free
+    #    pynapple session fell straight to union_range and every "trial" window
+    #    spanned the whole recording.
+    if (trial_end is None or trial_end <= 0) and source_collection is not None:
+        idx = source_collection.trial_index(trial_id)
+        if idx is not None:
+            duration = source_collection.trial_range(idx).duration
+            if duration > 0:
+                trial_end = duration
+
+    # 3./4. Fallbacks only when neither alignment nor bookmarks have timing
     if trial_end is None or trial_end <= 0:
         trial_end = _resolve_trial_end(video_path, video_offset, source_collection)
 
