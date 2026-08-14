@@ -760,7 +760,8 @@ class PSTHDialog(QDialog):
 
         video = getattr(self.app_state, "video", None)
         if video is not None:
-            video.seek_to_frame(video.time_to_frame(trial_relative_time))
+            display_t = self.app_state.to_display(trial_id, trial_relative_time)
+            video.seek_to_frame(video.time_to_frame(display_t))
 
         sign = "+" if rel_time >= 0 else ""
         self._status.setText(

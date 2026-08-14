@@ -573,6 +573,15 @@ class DataWidget(QWidget):
         self.video_mgr = VideoManager(shell.video_area, app_state)
         self.video_mgr.set_frame_changed_callback(self._on_primary_frame_changed)
         shell.video_area.camera_view_removed.connect(self._on_camera_view_removed)
+
+        # Session-basis auto-follow: after the marker settles in another
+        # trial's span, switch to it (debounced — a trial switch can mean a
+        # ~2 s video decoder respawn, so never per marker move).
+        self._marker_follow_timer = QTimer(self)
+        self._marker_follow_timer.setSingleShot(True)
+        self._marker_follow_timer.setInterval(300)
+        self._marker_follow_timer.timeout.connect(self._follow_marker_trial)
+        self._follow_pending_time: float | None = None
         self.pose_mgr: PoseDisplayManager | None = None  # created after set_data_panel
         self._keypoint_labelling_dialog = None
         self.app_state.audio_video_sync = None
@@ -2636,8 +2645,13 @@ class DataWidget(QWidget):
         self.refresh_radial_plots()
 
         # Trial start in the display clock — 0.0 only in trial basis; in
-        # session basis the trial starts at its session offset.
-        self.plot_container.update_time_marker_by_time(self.app_state.to_display(trials_sel, 0.0))
+        # session basis the trial starts at its session offset. Marker-driven
+        # trial switches (auto-follow, session-scope label clicks) keep the
+        # marker where the user put it instead.
+        marker_follow = getattr(self.app_state, "_marker_driven_trial_switch", False)
+        self.app_state._marker_driven_trial_switch = False
+        if not marker_follow:
+            self.plot_container.update_time_marker_by_time(self.app_state.to_display(trials_sel, 0.0))
 
         self._update_confidence_overlay()
 
@@ -2734,16 +2748,60 @@ class DataWidget(QWidget):
         self.video_mgr.toggle_pause_resume(self.plot_container)
 
     def _on_time_marker_updated(self, time_s: float):
+        # Session basis: after the marker settles in ANOTHER trial's span,
+        # follow it — switch the current trial (debounced; loading a different
+        # trial's video takes ~2 s, so never per marker move).
+        if self.app_state.display_basis == "session":
+            self._follow_pending_time = time_s
+            self._marker_follow_timer.start()
         # Static-image views have no frame clock — the marker animates their
-        # pose overlay directly.
-        for view in self.video_mgr.image_views():
-            view.set_overlay_time(time_s)
+        # pose overlay directly (overlay time is trial-local).
+        image_views = self.video_mgr.image_views()
+        if image_views:
+            resolved = self.app_state.from_display(time_s)
+            if resolved is not None:
+                for view in image_views:
+                    view.set_overlay_time(resolved[1])
         visible = [sp for sp in self.space_plots if sp.isVisible()]
         if not visible:
             return
         for sp in visible:
             sp.update_time_marker(time_s)
         self._highlight_label_at_time(time_s)
+
+    def _follow_marker_trial(self):
+        """Debounce target: make the trial under the marker current (session basis).
+
+        Strict resolution — a marker resting in an inter-trial gap follows
+        nothing. The view is preserved and the marker is restored to where the
+        user put it (``on_trial_changed`` would otherwise reset it to the
+        trial start).
+        """
+        state = self.app_state
+        if state.display_basis != "session" or not state.ready:
+            return
+        time_s = getattr(self, "_follow_pending_time", None)
+        if time_s is None:
+            return
+        hit = state.from_display(time_s, strict=True)
+        if hit is None or hit[0] == state.trials_sel:
+            return
+        trial_id = hit[0]
+        state._preserve_x_range_next = True
+        state._marker_driven_trial_switch = True
+        state.trials_sel = trial_id
+        nav = getattr(state, "navigation_widget", None)
+        combo = getattr(nav, "trials_combo", None)
+        if combo is not None:
+            combo.blockSignals(True)
+            combo.setCurrentText(str(trial_id))
+            combo.blockSignals(False)
+        state.trial_changed.emit()
+        # Land the video (and marker) on the followed time, not the trial start.
+        self.plot_container.update_time_marker_by_time(time_s)
+        video = getattr(state, "video", None)
+        if video is not None:
+            video.seek_to_frame(video.time_to_frame(time_s, round_nearest=True))
 
     def _on_xrange_for_space_plot(self, _time_s: float):
         """Debounced re-render of space plots when lineplot x-range changes."""
@@ -2787,7 +2845,9 @@ class DataWidget(QWidget):
         if video:
             current_time = video.frame_to_time(frame_number)
         else:
-            current_time = frame_number / self.app_state.video_fps
+            current_time = self.app_state.to_display(
+                getattr(self.app_state, "trials_sel", None), frame_number / self.app_state.video_fps
+            )
 
         xlim = self.plot_container.get_current_xlim()
         if getattr(self.app_state, "center_playback", False) or current_time < xlim[0] or current_time > xlim[1]:

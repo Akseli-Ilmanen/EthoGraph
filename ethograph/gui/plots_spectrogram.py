@@ -281,12 +281,11 @@ class SpectrogramBuffer:
 
         window_size = t1 - t0
         buffer_size = window_size * self.buffer_multiplier
-        self.buffer_t0 = max(0.0, t0 - buffer_size / 2)
-        self.buffer_t1 = t1 + buffer_size / 2
-
-        max_time = source.time_range.duration
-        if self.buffer_t1 > max_time:
-            self.buffer_t1 = max_time
+        # Clamp to the source's span on the display axis — the file does not
+        # necessarily start at t=0 there (session basis, stream offsets).
+        extent = source.time_range
+        self.buffer_t0 = max(extent.start_s, t0 - buffer_size / 2)
+        self.buffer_t1 = min(extent.end_s, t1 + buffer_size / 2)
 
         result = source.get_data(self.buffer_t0, self.buffer_t1)
         audio_data = result.values if hasattr(result, "values") else result

@@ -1408,7 +1408,9 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         elif video:
             current_time = video.frame_to_time(frame_number)
         else:
-            current_time = frame_number / self.app_state.video_fps
+            current_time = self.app_state.to_display(
+                getattr(self.app_state, "trials_sel", None), frame_number / self.app_state.video_fps
+            )
         for plot in self._visible_plots():
             plot.update_time_marker(current_time)
         self._update_label_indicator(current_time)

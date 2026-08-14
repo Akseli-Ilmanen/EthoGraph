@@ -460,15 +460,14 @@ class BasePlot(pg.PlotWidget):
 
         if mode == "center":
             video = getattr(self.app_state, "video", None)
-            if center_on_frame is not None:
-                current_time = (
-                    video.frame_to_time(center_on_frame) if video else center_on_frame / self.app_state.video_fps
-                )
+            frame = center_on_frame if center_on_frame is not None else self.app_state.current_frame
+            if video:
+                current_time = video.frame_to_time(frame)
             else:
-                current_time = (
-                    video.frame_to_time(self.app_state.current_frame)
-                    if video
-                    else self.app_state.current_frame / self.app_state.video_fps
+                # No video: frames tick on the trial clock; the axis speaks
+                # the display clock.
+                current_time = self.app_state.to_display(
+                    getattr(self.app_state, "trials_sel", None), frame / self.app_state.video_fps
                 )
 
             xlim = self.get_current_xlim()

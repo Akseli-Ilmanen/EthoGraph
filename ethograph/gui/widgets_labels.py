@@ -1072,6 +1072,7 @@ class LabelsWidget(QWidget):
         """
         state = self.app_state
         state._preserve_x_range_next = True
+        state._marker_driven_trial_switch = True
         state.trials_sel = trial_id
         nav = getattr(state, "navigation_widget", None)
         combo = getattr(nav, "trials_combo", None)
@@ -1345,10 +1346,8 @@ class LabelsWidget(QWidget):
         docs/source/advanced/playback.md.
         """
         if hasattr(self.app_state, "video") and self.app_state.video:
-            # The video's clock is trial-relative; convert from the axis clock.
-            resolved = self.app_state.from_display(time_s)
-            video_t = resolved[1] if resolved is not None else time_s
-            video_frame = self.app_state.video.time_to_frame(video_t, round_nearest=True)
+            # VideoSync.time_to_frame speaks the display clock too.
+            video_frame = self.app_state.video.time_to_frame(time_s, round_nearest=True)
             # seek_to_frame fires frame_changed (syncs pose/extra cameras and
             # snaps the marker to the frame); we then override the marker so it
             # sits on the exact time, not the frame grid.
@@ -1417,9 +1416,10 @@ class LabelsWidget(QWidget):
 
         if self.app_state.video:
             # Round to the nearest frame so the marker lands on the label
-            # boundary instead of truncating up to a frame short.
-            start_frame = self.app_state.video.time_to_frame(onset_s, round_nearest=True)
-            end_frame = self.app_state.video.time_to_frame(offset_s, round_nearest=True)
+            # boundary instead of truncating up to a frame short. time_to_frame
+            # speaks the display clock; the stored bounds are trial-relative.
+            start_frame = self.app_state.video.time_to_frame(self._to_display(onset_s), round_nearest=True)
+            end_frame = self.app_state.video.time_to_frame(self._to_display(offset_s), round_nearest=True)
             # Video shows nearest frames; audio uses the exact label bounds so
             # its tail isn't clipped to the frame grid (Phase 2). Whether the
             # marker itself stops on the exact offset_s or the nearest frame's
@@ -1430,8 +1430,9 @@ class LabelsWidget(QWidget):
             self._play_audio_segment(onset_s, offset_s)
 
     def _play_audio_segment(self, onset_s: float, offset_s: float):
+        # The audio player runs on the display clock (it feeds the marker).
         if self.plot_container and hasattr(self.plot_container, "audio_player"):
-            self.plot_container.audio_player.play_segment(onset_s, offset_s)
+            self.plot_container.audio_player.play_segment(self._to_display(onset_s), self._to_display(offset_s))
 
     def _get_canvas_widget(self):
         """Return the stable primary CameraView (host for the label overlay).
@@ -1500,7 +1501,12 @@ class LabelsWidget(QWidget):
                 if video_frame is None:
                     video_frame = int(getattr(self.app_state, "current_frame", 0) or 0)
                 if video:
-                    time_s = video.frame_to_time(video_frame)
+                    # frame_to_time is display-clock; the interval lookup
+                    # below runs on the current trial's trial-relative rows.
+                    resolved = self.app_state.from_display(video.frame_to_time(video_frame))
+                    if resolved is None:
+                        return
+                    time_s = resolved[1]
                 elif hasattr(self.app_state, "video_fps") and self.app_state.video_fps:
                     time_s = video_frame / self.app_state.video_fps
                 else:

@@ -19,6 +19,7 @@ import av
 from qtpy.QtCore import QEvent, Qt, QTimer, Signal
 from qtpy.QtWidgets import QSplitter, QVBoxLayout, QWidget
 
+from ethograph.io.time_model import trial_frame_window
 from ethograph.io.validation import IMAGE_EXTENSIONS
 from ethograph.io.video_proxy import proxy_cache_path
 from ethograph.utils.paths import ethograph_home
@@ -322,9 +323,7 @@ class VideoManager:
         """Compute (start_frame, end_frame, effective_offset) for the trial."""
         alignment = getattr(self.app_state, "trial_alignment", None)
         if alignment and alignment.trial_range:
-            trial_start_in_video = -time_offset
-            start_frame = max(0, int(trial_start_in_video * fps))
-            end_frame = int((trial_start_in_video + alignment.trial_range.duration) * fps)
+            start_frame, end_frame = trial_frame_window(alignment.trial_range, fps, time_offset)
             end_frame = min(end_frame, nframes)
             if start_frame > 0 or end_frame < nframes:
                 return start_frame, end_frame, 0.0
@@ -566,9 +565,12 @@ class VideoManager:
         video = getattr(self.app_state, "video", None)
         if video is None or not self.extra_widgets:
             return
-        t_seconds = video.frame_to_time(frame_number)
+        # frame_to_time is display-clock; extras' seek_to_time is trial-local.
+        resolved = self.app_state.from_display(video.frame_to_time(frame_number))
+        if resolved is None:
+            return
         for view in self.extra_widgets.values():
-            view.seek_to_time(t_seconds)
+            view.seek_to_time(resolved[1])
 
     def toggle_pause_resume(self, plot_container):
         video = getattr(self.app_state, "video", None)
@@ -694,7 +696,8 @@ class VideoManager:
     def _sync_widget_to_current_time(self, view: CameraView):
         video = getattr(self.app_state, "video", None)
         if video is not None:
-            view.seek_to_time(video.frame_to_time(video.current_frame))
+            resolved = self.app_state.from_display(video.frame_to_time(video.current_frame))
+            view.seek_to_time(resolved[1] if resolved is not None else 0.0)
         else:
             view.seek_video_frame(0)
 

@@ -7,7 +7,7 @@ import pyqtgraph as pg
 
 import ethograph as eto
 from ethograph.features.preprocessing import z_normalize
-from ethograph.io.plot_sources import WindowedBuffer, XarraySource
+from ethograph.io.plot_sources import WindowedBuffer, XarraySource, audio_display_offset
 
 from .app_constants import (
     DEFAULT_BUFFER_MULTIPLIER,
@@ -203,20 +203,22 @@ class HeatmapPlot(PanelStateMixin, BasePlot):
         loader = SharedAudioCache.get_loader(audio_path)
         if loader is None:
             return None, None
+        # t0/t1 are display-clock; the file starts at file_start on that axis.
+        file_start = audio_display_offset(self.app_state)
         fs = loader.rate
-        total_duration = len(loader) / fs
+        file_end = file_start + len(loader) / fs
 
         window_size = t1 - t0
         buffer_size = window_size * self._buffer_multiplier
-        load_t0 = max(0.0, t0 - buffer_size / 2)
-        load_t1 = min(total_duration, t1 + buffer_size / 2)
+        load_t0 = max(file_start, t0 - buffer_size / 2)
+        load_t1 = min(file_end, t1 + buffer_size / 2)
 
         margin = (t1 - t0) * 0.2
         if self._buffered_data is not None and self._buffer_t0 <= t0 - margin and self._buffer_t1 >= t1 + margin:
             return self._buffered_data, self._buffered_time
 
-        start_idx = max(0, int(load_t0 * fs))
-        stop_idx = min(len(loader), int(load_t1 * fs))
+        start_idx = max(0, int((load_t0 - file_start) * fs))
+        stop_idx = min(len(loader), int((load_t1 - file_start) * fs))
         if stop_idx <= start_idx:
             return None, None
 

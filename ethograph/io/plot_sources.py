@@ -18,7 +18,7 @@ Key types:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, NamedTuple, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Callable, NamedTuple, Protocol, runtime_checkable
 
 import numpy as np
 
@@ -84,11 +84,14 @@ class FileSource:
         name: str,
         loader,
         *,
-        start_time: float = 0.0,
+        start_time: float | Callable[[], float] = 0.0,
         channel: int | None = None,
     ):
         self._name = name
         self._loader = loader
+        # Display-clock time of the file's sample 0. A callable is resolved
+        # per access, so basis/trial changes need no source rebuild (same
+        # pulled-offset pattern as PynappleLoader.display_offset).
         self._start_time = start_time
         self._channel = channel
         self._rate = float(loader.rate)
@@ -107,9 +110,13 @@ class FileSource:
         return self._name
 
     @property
+    def start_time(self) -> float:
+        return float(self._start_time()) if callable(self._start_time) else float(self._start_time)
+
+    @property
     def time_range(self) -> TimeRange:
-        end = self._start_time + self._n_samples / self._rate
-        return TimeRange(self._start_time, end)
+        start = self.start_time
+        return TimeRange(start, start + self._n_samples / self._rate)
 
     @property
     def sampling_rate(self) -> float:
@@ -119,11 +126,14 @@ class FileSource:
     def identity(self) -> str:
         loader_id = getattr(self._loader, "filepath", id(self._loader))
         ch = f":{self._channel}" if self._channel is not None else ""
-        return f"file:{self._name}:{loader_id}{ch}"
+        # start_time is part of identity so buffers refetch when the display
+        # basis (or trial) moves the file on the axis.
+        return f"file:{self._name}:{loader_id}{ch}:o{self.start_time:.6f}"
 
     def get_data(self, t0: float, t1: float) -> SampleSlice:
-        i0 = max(0, int((t0 - self._start_time) * self._rate))
-        i1 = min(self._n_samples, int((t1 - self._start_time) * self._rate) + 1)
+        start = self.start_time
+        i0 = max(0, int((t0 - start) * self._rate))
+        i1 = min(self._n_samples, int((t1 - start) * self._rate) + 1)
         if i1 <= i0:
             empty = np.array([], dtype=np.float64)
             return SampleSlice(empty, empty)
@@ -133,7 +143,7 @@ class FileSource:
             ch = min(self._channel, data.shape[1] - 1)
             data = data[:, ch]
 
-        timestamps = self._start_time + np.arange(i0, i1) / self._rate
+        timestamps = start + np.arange(i0, i1) / self._rate
         return SampleSlice(
             timestamps.astype(np.float64),
             np.asarray(data, dtype=np.float64),
@@ -492,6 +502,25 @@ class WindowedBuffer:
         self._identity = None
 
 
+def audio_display_offset(app_state, mic_name: str | None = None) -> float:
+    """Display-clock time of the audio file's first sample.
+
+    The file's sample 0 sits at trial time ``stream_offset_for_trial`` (0.0
+    for per-trial audio, negative for session-wide files) and the trial sits
+    at its display offset. Subtract this from a display time before indexing
+    the audio file — the ONE conversion between axis time and audio samples.
+    """
+    trial = getattr(app_state, "trials_sel", None)
+    sio = getattr(app_state, "nwb_alignment", None)
+    file_start_rel = 0.0
+    if sio is not None:
+        file_start_rel = float(sio.stream_offset_for_trial(trial, "audio", mic_name) or 0.0)
+    to_display = getattr(app_state, "to_display", None)
+    if to_display is None:
+        return file_start_rel
+    return float(to_display(trial, file_start_rel))
+
+
 def build_audio_source(app_state, mic_name: str | None = None) -> FileSource | None:
     """Build a FileSource for audio from the current app_state.
 
@@ -508,4 +537,9 @@ def build_audio_source(app_state, mic_name: str | None = None) -> FileSource | N
     loader = SharedAudioCache.get_loader(audio_path)
     if loader is None:
         return None
-    return FileSource("audio", loader, channel=channel_idx)
+    return FileSource(
+        "audio",
+        loader,
+        channel=channel_idx,
+        start_time=lambda: audio_display_offset(app_state, mic_name),
+    )

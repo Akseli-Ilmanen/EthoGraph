@@ -7,6 +7,8 @@ from typing import TYPE_CHECKING, Any, Callable
 
 from qtpy.QtCore import QTimer
 
+from ethograph.io.plot_sources import audio_display_offset
+
 if TYPE_CHECKING:
     from .app_state import ObservableAppState
 
@@ -101,9 +103,11 @@ class AudioPlayer:
         if loader is None:
             return None
 
+        # t0/t1 are display-clock; index the file relative to its own start.
+        file_start = audio_display_offset(self.app_state, self.app_state.playback_mic_selection())
         fs = loader.rate
-        start_sample = max(0, int(t0_s * fs))
-        end_sample = min(len(loader), int(t1_s * fs))
+        start_sample = max(0, int((t0_s - file_start) * fs))
+        end_sample = min(len(loader), int((t1_s - file_start) * fs))
         if end_sample <= start_sample:
             return None
 

@@ -158,6 +158,20 @@ def compute_trial_video_bounds(
     )
 
 
+def trial_frame_window(trial_range: TimeRange, fps: float, time_offset: float) -> tuple[int, int]:
+    """First/last frame indices of the current trial within a media file.
+
+    ``time_offset`` is the trial-relative time of the file's sample 0
+    (``stream_offset_for_trial``): 0 for per-trial files, negative for
+    session-wide files. One formula shared by video decode clipping and pose
+    slicing — these must never drift apart.
+    """
+    trial_start_in_file = -time_offset
+    start_frame = max(0, int(trial_start_in_file * fps))
+    end_frame = int((trial_start_in_file + trial_range.duration) * fps)
+    return start_frame, end_frame
+
+
 def _resolve_trial_end(
     video_path: str | None,
     video_offset: float,

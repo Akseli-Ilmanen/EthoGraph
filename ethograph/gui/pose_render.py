@@ -30,6 +30,7 @@ from ethograph.gui.pose_convert import COLOR_BY_KEYPOINT, COLOR_BY_MODES, poses_
 from ethograph.gui.pose_overlay import OverlayStyle, PoseOverlayData
 from ethograph.io.nwb_alignment import pose_keys_for_cameras, pose_video_links_from_nwb
 from ethograph.io.nwb_import import _get_absolute_timestamps
+from ethograph.io.time_model import trial_frame_window
 from ethograph.skeleton import nwb_skeleton_to_config
 from ethograph.skeleton.config import hex_to_rgba
 
@@ -494,9 +495,7 @@ class PoseDisplayManager:
                     "video",
                     cameras[camera_idx],
                 )
-                trial_start = -time_offset
-                start_frame = max(0, int(trial_start * fps))
-                end_frame = int((trial_start + alignment.trial_range.duration) * fps)
+                start_frame, end_frame = trial_frame_window(alignment.trial_range, fps, time_offset)
                 pr = slice_pose_to_frames(pr, start_frame, end_frame)
             return pr
 

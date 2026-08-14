@@ -80,12 +80,23 @@ class VideoSync(QObject):
     # ------------------------------------------------------------------
     # Time mapping
     # ------------------------------------------------------------------
+    # frame_to_time / time_to_frame speak the DISPLAY clock (the plot axis):
+    # trial-relative in trial basis, session-absolute in session basis. The
+    # video itself stays a per-trial decode; the display offset is pulled per
+    # call so scope changes need no re-sync (same pattern as PynappleLoader).
+
+    def _display_offset(self) -> float:
+        """Shift from trial-relative time to the plot axis's clock."""
+        to_display = getattr(self.app_state, "to_display", None)
+        if to_display is None:
+            return 0.0
+        return float(to_display(getattr(self.app_state, "trials_sel", None), 0.0))
 
     def frame_to_time(self, frame: int) -> float:
-        return frame / self.fps + self._time_offset
+        return frame / self.fps + self._time_offset + self._display_offset()
 
     def time_to_frame(self, time_s: float, *, round_nearest: bool = False) -> int:
-        frames = (time_s - self._time_offset) * self.fps
+        frames = (time_s - self._display_offset() - self._time_offset) * self.fps
         return round(frames) if round_nearest else int(frames)
 
     @property
@@ -207,6 +218,18 @@ class VideoSync(QObject):
         # Single speed lever for both video FPS and audio pitch/rate.
         return self.app_state.playback_speed_pct / 100.0
 
+    def _audio_file_offset(self) -> float:
+        """Trial-relative time of the audio file's first sample.
+
+        0.0 for per-trial audio; the stream offset for session-wide files.
+        Subtract from a trial-relative time before indexing the audio file.
+        """
+        sio = getattr(self.app_state, "nwb_alignment", None)
+        if sio is None:
+            return 0.0
+        trial = getattr(self.app_state, "trials_sel", None)
+        return float(sio.stream_offset_for_trial(trial, "audio", None) or 0.0)
+
     def toggle_pause_resume(self):
         self.stop() if self.is_playing else self.start()
 
@@ -294,10 +317,11 @@ class VideoSync(QObject):
         except ImportError:
             return None
         try:
+            file_off = self._audio_file_offset()
             with AudioLoader(audio_path) as data:
                 fs = data.rate
-                s0 = max(0, int(t0_s * fs))
-                s1 = min(len(data), int(t1_s * fs))
+                s0 = max(0, int((t0_s - file_off) * fs))
+                s1 = min(len(data), int((t1_s - file_off) * fs))
                 if s1 <= s0:
                     return None
                 segment = data[s0:s1]
@@ -366,10 +390,11 @@ class VideoSync(QObject):
             return
 
         try:
+            file_off = self._audio_file_offset()
             with AudioLoader(audio_path) as data:
                 audio_sr = data.rate
-                start_sample = max(0, int(t0_s * audio_sr))
-                end_sample = int(t1_s * audio_sr)
+                start_sample = max(0, int((t0_s - file_off) * audio_sr))
+                end_sample = int((t1_s - file_off) * audio_sr)
                 if end_sample <= start_sample:
                     return
                 segment = data[start_sample:end_sample]
