@@ -95,12 +95,18 @@ class ActivePanelManager(QObject):
         return self._active
 
     def set_active(self, reg: PanelRegistration) -> None:
-        if reg is self._active:
-            return
-        if self._active is not None:
-            self._set_edge(self._active.widget, on=False)
-        self._active = reg
-        self._set_edge(reg.widget, on=True)
+        """Make *reg* active and announce it.
+
+        ``active_changed`` is emitted even when *reg* is already active: the
+        sidebar context can go stale while the panel stays active (zen mode,
+        Labels/Navigation section open suppress the context swap), so a click
+        must always re-announce — never be a silent no-op.
+        """
+        if reg is not self._active:
+            if self._active is not None:
+                self._set_edge(self._active.widget, on=False)
+            self._active = reg
+            self._set_edge(reg.widget, on=True)
         self.active_changed.emit(reg)
 
     # ------------------------------------------------------------------

@@ -152,8 +152,13 @@ class LinePlot(PanelStateMixin, BasePlot):
                 item.setDownsampling(auto=True, method="peak")
 
     def apply_y_range(self, ymin: Optional[float], ymax: Optional[float]):
-        if ymin is not None and ymax is not None:
-            self.plot_item.setYRange(ymin, ymax)
+        if ymin is None and ymax is None:
+            return
+        if ymin is None or ymax is None:
+            cur_lo, cur_hi = self.vb.viewRange()[1]
+            ymin = cur_lo if ymin is None else ymin
+            ymax = cur_hi if ymax is None else ymax
+        self.plot_item.setYRange(ymin, ymax)
 
     def _apply_y_constraints(self):
         """Apply y-axis constraints based on current feature data."""

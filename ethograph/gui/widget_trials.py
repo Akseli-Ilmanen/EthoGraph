@@ -1,12 +1,13 @@
-"""Trials metadata widget: tabular display + combinatorial filtering."""
+"""Trials metadata widget: tabular display, filtering, and in-place editing."""
 
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from qtpy.QtCore import QRect, Qt, Signal
+from qtpy.QtCore import QRect, Qt, QTimer, Signal
 from qtpy.QtGui import QColor, QPen
 from qtpy.QtWidgets import (
     QCheckBox,
@@ -15,17 +16,37 @@ from qtpy.QtWidgets import (
     QDoubleSpinBox,
     QHBoxLayout,
     QHeaderView,
+    QInputDialog,
     QLabel,
     QPushButton,
+    QStyledItemDelegate,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
 
+from ethograph.gui.notify import notify
+from ethograph.io.metadata_edit import (
+    TARGET_NWB,
+    blank_column,
+    coerce_value,
+    fits_dtype,
+    resolve_metadata_target,
+    write_metadata,
+)
+from ethograph.io.metadata_table import condition_columns
+
 logger = logging.getLogger(__name__)
 
 _MAX_INT_CATEGORICAL_VALUES = 15
+
+#: The current trial's row, while editing is on — the row you can change.
+_CURRENT_ROW_COLOR = QColor(80, 140, 210, 60)
+
+#: Edits are written this long after the last one (an NWB trials table is
+#: expensive to rewrite, and editing comes in bursts).
+_SAVE_DELAY_MS = 1200
 
 
 class _CatFilterDialog(QDialog):
@@ -198,6 +219,39 @@ class _FilterHeaderView(QHeaderView):
         super().mousePressEvent(event)
 
 
+class _ValueDelegate(QStyledItemDelegate):
+    """Cell editor: pick a value the column already uses, or type a new one.
+
+    Metadata columns are almost always a small set of repeated values, so the
+    editor offers them — but it is an editable combo, not a fixed list: adding
+    a value the column has never held has to cost nothing.
+    """
+
+    def __init__(self, options_for_column, parent=None):
+        super().__init__(parent)
+        self._options_for_column = options_for_column
+
+    def createEditor(self, parent, option, index):
+        combo = QComboBox(parent)
+        combo.setEditable(True)
+        combo.setInsertPolicy(QComboBox.NoInsert)
+        combo.addItems(self._options_for_column(index.column()))
+        completer = combo.completer()
+        if completer is not None:
+            completer.setCaseSensitivity(Qt.CaseInsensitive)
+            completer.setFilterMode(Qt.MatchContains)
+        return combo
+
+    def setEditorData(self, editor, index):
+        editor.setCurrentText(str(index.data(Qt.DisplayRole) or ""))
+        line_edit = editor.lineEdit()
+        if line_edit is not None:
+            line_edit.selectAll()
+
+    def setModelData(self, editor, model, index):
+        model.setData(index, editor.currentText().strip(), Qt.EditRole)
+
+
 class TrialsWidget(QWidget):
     """Tabular metadata display with combinatorial filtering.
 
@@ -222,11 +276,37 @@ class TrialsWidget(QWidget):
         self._cat_values: dict[int, list[str]] = {}
         self._cat_active: dict[int, set[str]] = {}
         self._num_active: dict[int, tuple[str, float]] = {}
+        self._editable_cols: set[int] = set()
+        self._dirty_columns: set[str] = set()
         self._building = False
+        self._applying = False
 
         layout = QVBoxLayout(self)
         layout.setSpacing(2)
         layout.setContentsMargins(2, 2, 2, 2)
+
+        # Editing: off by default, so a stray double-click never rewrites the
+        # metadata file. Stays available with no metadata yet — that is exactly
+        # when the first column gets added.
+        edit_row = QHBoxLayout()
+        self._edit_checkbox = QCheckBox("Edit values on double-click")
+        self._edit_checkbox.setToolTip(
+            "Double-click a cell in the current trial's row to change its value.\n"
+            "Values the column already uses are offered as you type; anything else is accepted.\n"
+            "Saved straight to the metadata file."
+        )
+        edit_row.addWidget(self._edit_checkbox)
+        edit_row.addStretch()
+        self._add_column_button = QPushButton("Add column…")
+        self._add_column_button.setToolTip("Add an empty metadata column to fill in per trial.")
+        self._add_column_button.clicked.connect(self._on_add_column)
+        edit_row.addWidget(self._add_column_button)
+        layout.addLayout(edit_row)
+
+        self._empty_label = QLabel("No trial metadata yet — start one with “Add column…”.")
+        self._empty_label.setWordWrap(True)
+        self._empty_label.setStyleSheet("color: #aaa;")
+        layout.addWidget(self._empty_label)
 
         # Table
         self._table = QTableWidget()
@@ -234,7 +314,9 @@ class TrialsWidget(QWidget):
         self._table.setSelectionMode(QTableWidget.SingleSelection)
         self._table.setEditTriggers(QTableWidget.NoEditTriggers)
         self._table.setSortingEnabled(True)
+        self._table.setItemDelegate(_ValueDelegate(self._column_options, self._table))
         self._table.cellClicked.connect(self._on_row_clicked)
+        self._table.itemChanged.connect(self._on_item_changed)
         self._table.horizontalHeader().setStretchLastSection(True)
         self._table.setMinimumHeight(280)
         layout.addWidget(self._table)
@@ -247,6 +329,22 @@ class TrialsWidget(QWidget):
         self._note_label.setWordWrap(True)
         self._note_label.setStyleSheet("color: #aaa;")
         layout.addWidget(self._note_label)
+
+        # Writes are batched: one file write per burst of edits, plus one
+        # whenever the user moves on to another trial.
+        self._save_timer = QTimer(self)
+        self._save_timer.setSingleShot(True)
+        self._save_timer.setInterval(_SAVE_DELAY_MS)
+        self._save_timer.timeout.connect(self.flush_metadata)
+        app_state.trial_changed.connect(self.flush_metadata)
+        app_state.trial_changed.connect(self._apply_edit_state)
+
+        # Restored last — _on_edit_toggled configures the table, which only
+        # exists by now.
+        self._edit_checkbox.toggled.connect(self._on_edit_toggled)
+        self._edit_checkbox.setChecked(bool(app_state.get_with_default("metadata_edit_enabled")))
+
+        self._update_visibility()
 
     def setup(self, metadata_df: pd.DataFrame) -> None:
         """Populate the widget from a metadata DataFrame."""
@@ -264,10 +362,19 @@ class TrialsWidget(QWidget):
 
         self._building = False
         self._apply_filters()
+        self._apply_edit_state()
+        self._update_visibility()
 
-        # Only show the trials table when there is real metadata to filter on
-        # (i.e. columns beyond the bare 'trial' number).
-        self.setVisible(self._has_metadata())
+    def _update_visibility(self) -> None:
+        """Show the table only when there is real metadata to filter on (i.e.
+        columns beyond the bare 'trial' number). The editing controls stay
+        visible either way — with no metadata yet is exactly when the first
+        column gets added."""
+        has_metadata = self._has_metadata()
+        self._table.setVisible(has_metadata)
+        self._status_label.setVisible(has_metadata)
+        self._note_label.setVisible(has_metadata)
+        self._empty_label.setVisible(not has_metadata)
 
     def _has_metadata(self) -> bool:
         df = getattr(self, "_metadata_df", None)
@@ -278,6 +385,17 @@ class TrialsWidget(QWidget):
     def _refresh_table(self) -> None:
         """Rebuild the table from _metadata_df."""
         df = self._metadata_df
+        # Every setItem below emits itemChanged; none of them is a user edit.
+        self._applying = True
+        try:
+            self._rebuild_table_items(df)
+        finally:
+            self._applying = False
+        self._editable_cols = {
+            list(df.columns).index(name) for name in condition_columns(df) if name in list(df.columns)
+        }
+
+    def _rebuild_table_items(self, df: pd.DataFrame) -> None:
         if df.empty:
             self._table.clear()
             self._table.setRowCount(0)
@@ -443,6 +561,233 @@ class TrialsWidget(QWidget):
         self._status_label.setText(f"Showing {n_shown} of {n_total} trials")
 
         self.trials_filtered.emit(sorted_trials)
+
+    # ==================================================================
+    # Editing metadata in place (double-click, current trial only)
+    # ==================================================================
+
+    def _on_edit_toggled(self, enabled: bool) -> None:
+        self.app_state.metadata_edit_enabled = enabled
+        self._table.setEditTriggers(QTableWidget.DoubleClicked if enabled else QTableWidget.NoEditTriggers)
+        self._apply_edit_state()
+
+    def _apply_edit_state(self) -> None:
+        """Make exactly the current trial's condition cells editable, and mark
+        that row.
+
+        Only the open trial can be edited: the value being typed describes what
+        the user is looking at, and a double-click two rows down would
+        otherwise silently score a trial they never saw.
+        """
+        enabled = self._edit_checkbox.isChecked()
+        current_row = self._current_trial_row() if enabled else None
+        self._applying = True
+        try:
+            for row in range(self._table.rowCount()):
+                background = _CURRENT_ROW_COLOR if row == current_row else None
+                for col in range(self._table.columnCount()):
+                    item = self._table.item(row, col)
+                    if item is None:
+                        continue
+                    editable = row == current_row and col in self._editable_cols
+                    flags = item.flags()
+                    item.setFlags(flags | Qt.ItemIsEditable if editable else flags & ~Qt.ItemIsEditable)
+                    item.setData(Qt.BackgroundRole, background)
+        finally:
+            self._applying = False
+
+    def _current_trial_row(self) -> int | None:
+        return self._row_of_trial(getattr(self.app_state, "trials_sel", None))
+
+    def _row_of_trial(self, trial) -> int | None:
+        if trial is None:
+            return None
+        for row in range(self._table.rowCount()):
+            item = self._table.item(row, 0)
+            if item is not None and str(item.data(Qt.UserRole)) == str(trial):
+                return row
+        return None
+
+    def _column_options(self, col_idx: int) -> list[str]:
+        """Values this column already uses, for the editor's autocomplete."""
+        cols = list(self._metadata_df.columns)
+        if not 0 <= col_idx < len(cols):
+            return []
+        series = self._metadata_df[cols[col_idx]].dropna()
+        return sorted({str(v) for v in series.tolist() if str(v) != ""})
+
+    def _on_item_changed(self, item: QTableWidgetItem) -> None:
+        """A cell was committed by the delegate — write it through."""
+        if self._building or self._applying:
+            return
+        col = item.column()
+        if col not in self._editable_cols:
+            return
+        row_head = self._table.item(item.row(), 0)
+        trial = row_head.data(Qt.UserRole) if row_head is not None else None
+        if trial is None:
+            return
+        column = list(self._metadata_df.columns)[col]
+        self.set_metadata_value(trial, column, str(item.data(Qt.DisplayRole) or ""))
+
+    def set_metadata_value(self, trial, column: str, text: str) -> None:
+        """Set *column* to *text* for *trial*, then show and save it.
+
+        Filters are deliberately NOT re-applied: editing a filtered column
+        would otherwise hide the trial being edited, out from under the user.
+        The filter picks the change up the next time it is opened.
+        """
+        df = getattr(self.app_state, "metadata_df", None)
+        df = self._metadata_df.copy() if df is None else df.copy()
+        mask = df["trial"].astype(str) == str(trial)
+        if not mask.any():
+            notify(f"Trial {trial} has no row in the metadata table.", "warning")
+            return
+
+        value = coerce_value(text, df[column] if column in df.columns else None)
+        if column not in df.columns:
+            df[column] = blank_column(df)
+        elif not fits_dtype(df[column], value):
+            df[column] = df[column].astype(object)
+        df.loc[mask, column] = value
+
+        self.app_state.metadata_df = df
+        self._metadata_df = df.copy()
+        self._show_value(trial, column, value)
+        self._register_filter_value(column, value)
+        self._queue_save(column)
+
+    def _show_value(self, trial, column: str, value) -> None:
+        """Put the stored (typed) value in the cell."""
+        item = self._cell_item(trial, column)
+        if item is None:
+            return
+        self._applying = True
+        self._table.setSortingEnabled(False)
+        try:
+            if isinstance(value, (int, np.integer)):
+                item.setData(Qt.DisplayRole, int(value))
+            elif isinstance(value, (float, np.floating)):
+                item.setData(Qt.DisplayRole, float(value))
+            else:
+                item.setData(Qt.DisplayRole, str(value))
+        finally:
+            self._table.setSortingEnabled(True)
+            self._applying = False
+
+    def _on_add_column(self) -> None:
+        """Add an empty metadata column, ready to fill in per trial."""
+        if not getattr(self.app_state, "ready", False):
+            notify("Load a dataset before adding metadata columns.", "warning")
+            return
+        name, ok = QInputDialog.getText(self, "New metadata column", "Column name:")
+        name = name.strip()
+        if not ok or not name:
+            return
+        df = getattr(self.app_state, "metadata_df", None)
+        df = self._metadata_df.copy() if df is None else df.copy()
+        if name in df.columns:
+            notify(f"Column {name!r} already exists.", "warning")
+            return
+
+        df[name] = blank_column(df)
+        self.app_state.metadata_df = df
+        self.reload_metadata()
+        self._queue_save(name)
+        # Adding a column is asking to fill it in.
+        self._edit_checkbox.setChecked(True)
+
+    # -- saving -------------------------------------------------------
+
+    def _queue_save(self, column: str) -> None:
+        self._dirty_columns.add(column)
+        self._save_timer.start()
+
+    def _metadata_target(self):
+        alignment = getattr(self.app_state, "nwb_alignment", None)
+        alignment_path = getattr(alignment, "_path", None)
+        if alignment_path is not None and Path(alignment_path).suffix.lower() != ".nwb":
+            alignment_path = None
+        return resolve_metadata_target(
+            getattr(self.app_state, "nc_file_path", None),
+            metadata_path=getattr(self.app_state, "metadata_path", None),
+            alignment_path=alignment_path,
+        )
+
+    def flush_metadata(self) -> None:
+        """Write pending edits to the metadata source. A no-op when there are none."""
+        self._save_timer.stop()
+        if not self._dirty_columns:
+            return
+        target = self._metadata_target()
+        df = getattr(self.app_state, "metadata_df", None)
+        if target is None or df is None:
+            self._dirty_columns.clear()
+            return
+
+        alignment = getattr(self.app_state, "nwb_alignment", None) if target.kind == TARGET_NWB else None
+        try:
+            if alignment is not None:
+                # pynwb holds the file open for reading; HDF5 refuses a second,
+                # writable handle while it does.
+                alignment.reload()
+            write_metadata(target, df, columns=sorted(self._dirty_columns))
+        except (OSError, ValueError, KeyError) as e:
+            logger.exception("Writing metadata to %s failed", target.path)
+            notify(f"Could not save metadata: {e}", "error")
+            return  # stay dirty — the next flush retries
+        finally:
+            if alignment is not None:
+                alignment.reload()
+
+        self._dirty_columns.clear()
+        if target.kind != TARGET_NWB and not getattr(self.app_state, "metadata_path", None):
+            # Make the sidecar the authoritative source from now on.
+            self.app_state.metadata_path = str(target.path)
+
+    def reload_metadata(self) -> None:
+        """Rebuild the table from ``app_state.metadata_df``, keeping filters.
+
+        Used when the shape of the table changed (a new column). Active
+        filters survive because new columns are appended, so the existing
+        column indices they key on still point at the same columns.
+        """
+        df = getattr(self.app_state, "metadata_df", None)
+        if df is None or df.empty:
+            return
+        cat_active, num_active = dict(self._cat_active), dict(self._num_active)
+        self._metadata_df = df.copy()
+        self._base_trials = self._metadata_df["trial"].dropna().drop_duplicates().tolist()
+        self._refresh_table()
+        self._setup_filter_header()
+        self._cat_active, self._num_active = cat_active, num_active
+        self._update_header_active_filters()
+        self._apply_edit_state()
+        self._update_visibility()
+
+    def _cell_item(self, trial, column: str) -> QTableWidgetItem | None:
+        cols = list(self._metadata_df.columns)
+        if column not in cols:
+            return None
+        col_idx = cols.index(column)
+        for row in range(self._table.rowCount()):
+            first = self._table.item(row, 0)
+            if first is not None and str(first.data(Qt.UserRole)) == str(trial):
+                return self._table.item(row, col_idx)
+        return None
+
+    def _register_filter_value(self, column: str, value) -> None:
+        """Make a newly introduced value selectable in that column's filter."""
+        cols = list(self._metadata_df.columns)
+        if column not in cols:
+            return
+        col_idx = cols.index(column)
+        if col_idx not in self._cat_cols:
+            return
+        values = self._cat_values.setdefault(col_idx, [])
+        if str(value) not in values:
+            values.append(str(value))
+            values.sort()
 
     def _on_row_clicked(self, row: int, _col: int) -> None:
         """Navigate to the trial in the clicked row."""

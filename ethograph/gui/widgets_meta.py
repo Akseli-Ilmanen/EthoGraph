@@ -361,6 +361,9 @@ class MetaWidget(GridSectionContainer):
         self.active_panels = ActivePanelManager(self)
         self.active_panels.active_changed.connect(self._on_active_panel)
         pc.active_panels = self.active_panels  # dynamic panels register in add_panel
+        # Leaving zen mode: the sidebar skipped every context swap while zen
+        # was on, so re-sync it to whatever panel is active now.
+        self.app_state.zen_mode_changed.connect(self._on_zen_mode_changed)
 
         # Only the fixed singletons register here; every dynamic panel
         # (lineplot/heatmap/audiotrace/spectrogram) registers per instance.
@@ -397,10 +400,13 @@ class MetaWidget(GridSectionContainer):
 
         kind = reg.kind
         if kind in PanelKind.FEATURE and reg.plot is not None:
+            plot_changed = self.plot_container.active_feature_plot is not reg.plot
             self.plot_container.active_feature_plot = reg.plot
             # The dotted prediction-confidence curve is hosted on the current
             # plot — re-render so it follows (or hides on) the new active plot.
-            if self.app_state.ready:
+            # A re-click of the same panel re-announces (sidebar sync) but the
+            # overlay host didn't move, so skip the re-render.
+            if plot_changed and self.app_state.ready:
                 self.data_widget._update_confidence_overlay()
         if kind == PanelKind.SPACE:
             self.data_widget.set_active_space_plot(reg.widget)
@@ -489,13 +495,16 @@ class MetaWidget(GridSectionContainer):
         mgr = self.active_panels
         reg = mgr.registration_for(widget) if mgr is not None else None
         if reg is not None:
+            # set_active always re-announces (even if already active), so
+            # _on_active_panel syncs the sidebar for us.
             mgr.set_active(reg)
             # A brand-new panel has no click behind it, so nothing else
             # announces its contents to the console.
             if reg.kind in PanelKind.FEATURE and reg.plot is not None:
                 self.plot_container.panel_content_changed.emit(reg.plot)
-        # set_active no-ops when already active — sync the sidebar regardless.
-        self._on_plot_focus(kind)
+        else:
+            # Not (yet) registered with the manager — still sync the sidebar.
+            self._on_plot_focus(kind)
 
     def _create_panel_for_source(self, kind: str, name: str, plot_type: str):
         pc = self.plot_container
@@ -598,9 +607,10 @@ class MetaWidget(GridSectionContainer):
     def _rebind_console(self, plot):
         """Keep the console describing the panel as it is NOW.
 
-        ``active_changed`` fires only when the active panel *changes*, so
-        re-clicking the panel you are already on, or swapping its feature in
-        the sidebar, left the console holding the previous variable.
+        ``panel_content_changed`` is the console's ONLY rebind channel: it
+        fires on every click AND on sidebar feature/selection edits, and a
+        click may also emit ``active_changed`` — binding there too would
+        double-bind.
         """
         console = self.plot_container.console_panel
         if console is not None and plot is not None:
@@ -811,6 +821,36 @@ class MetaWidget(GridSectionContainer):
         if self.context_panel.set_context("video", has_pose=self._pose_available()):
             self.refresh_widget_layout(self.context_panel)
 
+    def _sync_context_to_active(self):
+        """Re-apply the sidebar context for the manager's active panel.
+
+        The context swap is suppressed while zen mode is on or the Labels /
+        Navigation section is open, so the sidebar can go stale relative to
+        the active panel; call this when those suppressors lift.
+        """
+        from .active_panel import PanelKind
+
+        mgr = getattr(self, "active_panels", None)
+        reg = mgr.active if mgr is not None else None
+        if reg is None:
+            return
+        if reg.kind == PanelKind.VIDEO:
+            self.focus_video_context()
+        elif reg.kind in self._CONTEXT_KINDS:
+            self._on_plot_focus(reg.kind)
+
+    def _on_zen_mode_changed(self, on: bool):
+        if not on:
+            self._sync_context_to_active()
+
+    def _expand(self, index: int) -> None:
+        """Returning to the Data section re-syncs the context — panel clicks
+        made while Labels/Navigation was open were deliberately not applied."""
+        was = self._active
+        super()._expand(index)
+        if index == 0 and was != 0:
+            self._sync_context_to_active()
+
     def _set_default_context(self):
         """Pick an initial context after load so the Data section isn't empty."""
         if getattr(self.app_state, "video", None) is not None:
@@ -912,6 +952,10 @@ class MetaWidget(GridSectionContainer):
         elif hasattr(collapsible, "_title_widget") and hasattr(collapsible._title_widget, "setText"):
             collapsible._title_widget.setText(new_title)
 
+    def flush_pending_writes(self):
+        """Write out anything still sitting in a debounce timer (app close)."""
+        self.trials_widget.flush_metadata()
+
     def _check_unsaved_changes(self, event):
         """Check for unsaved changes and prompt. Returns True if OK to close."""
         if not self.app_state.changes_saved:
@@ -1011,15 +1055,43 @@ class MetaWidget(GridSectionContainer):
         ``app_state.panel_layout`` is auto-loaded with the dataset's
         local_settings.yaml — including one shipped as a template release
         asset. Absent → data-availability defaults stand.
+
+        A saved layout is untrusted input (stale for the data now loaded,
+        hand-edited, written by an older version): a failure applying it must
+        never abort the load. The broken layout is discarded — so the next
+        auto-save snapshots a working one — and the data-availability default
+        panels are rebuilt.
         """
         layout = getattr(self.app_state, "panel_layout", None)
-        if layout:
+        if not layout:
+            return
+        try:
             self.plot_container.apply_layout_state(layout)
             self.data_widget.apply_space_layout_state(layout.get("space_plots"))
             self.data_widget.apply_radial_layout_state(layout.get("radial_plots"))
             blob = layout.get("shell_dock_state_b64")
             if blob:
                 self.shell.apply_dock_state_b64(blob)
+        except Exception:
+            logger.exception("Saved panel layout could not be applied; resetting to defaults")
+            self.app_state.panel_layout = None
+            self._rebuild_default_panels()
+            notify("Saved panel layout could not be applied and was reset to defaults.", "warning")
+
+    def _rebuild_default_panels(self):
+        """Recover from a saved layout that failed mid-apply: drop whatever
+        panels it left behind and recreate the data-availability defaults
+        (the same set ``_setup_panel_controls`` builds on a fresh load)."""
+        pc = self.plot_container
+        for plot in list(pc._dyn_panels):
+            pc.remove_panel(plot)
+        dw = self.data_widget
+        if self.app_state.has_audio or self.app_state.audio_path:
+            mic_names = dw.catalog.mics if (self.app_state.has_audio and dw.catalog) else []
+            dw._create_default_audio_panels(mic_names)
+        if dw.catalog and dw.catalog.features and not pc.line_plots:
+            pc.add_lineplot()
+        pc.schedule_labels_redraw()
 
     def _on_reset_layout(self):
         space_type = getattr(self.app_state, "space_plot_type", "Layers")

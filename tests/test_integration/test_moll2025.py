@@ -551,6 +551,31 @@ class TestMollPynappleLinePlot:
             QApplication.processEvents()
             assert len(lp.plot_items) > 0, f"Feature '{text}' produced no plot items"
 
+    def test_all_checkbox_frees_the_column_dim(self, moll2025_pynapple_gui):
+        """'All' on a multi-column pynapple feature draws one curve per column,
+        on the panel already open — the xarray behaviour, same dim name."""
+        import pyqtgraph as pg
+
+        from ethograph.utils.qt import set_combo_to_value
+
+        _, meta = moll2025_pynapple_gui
+        dw = meta.data_widget
+        lp = meta.plot_container.line_plots[0]
+
+        set_combo_to_value(dw.combos["features"], "beakTip_position")
+        QApplication.processEvents()
+
+        def curves():
+            return sum(1 for it in lp.plot_items if isinstance(it, (pg.PlotDataItem, pg.PlotCurveItem)))
+
+        assert dw.all_checkboxes["space"].isChecked() is False
+        assert curves() == 1
+
+        dw.all_checkboxes["space"].setChecked(True)
+        QApplication.processEvents()
+        assert curves() == 3, "'All' did not free the column dim"
+        assert "space" not in lp._effective_selections()
+
 
 class TestMollPynappleSpacePlot:
     def test_space_2d_has_data(self, moll2025_pynapple_gui):

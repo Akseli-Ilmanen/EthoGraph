@@ -32,6 +32,12 @@ if TYPE_CHECKING:
 #: a dim free in the loader.
 INDIVIDUAL_DIMS = ("individual", "individuals")
 
+#: movement's name for the x/y/z axis. Pynapple columns spelling exactly that
+#: get the same dim name, so a space plot, a panel combo and a saved selection
+#: mean the same thing whichever backend the session came from.
+SPACE_DIM = "space"
+_SPACE_COLUMNS = frozenset({"x", "y", "z"})
+
 
 # ---------------------------------------------------------------------------
 # PlotData — universal rendering output: (T,) or (T, D)
@@ -49,6 +55,38 @@ class PlotData:
     ylabel: str = ""
     color_data: np.ndarray | None = None
     changepoints: dict[str, np.ndarray] | None = None
+
+
+# ---------------------------------------------------------------------------
+# ColumnAxis — a pynapple feature's non-time axis
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class ColumnAxis:
+    """The dim a pynapple feature's columns are selected by, plus its labels.
+
+    The pynapple counterpart of an xarray dim and its coord: ``dim`` is the
+    combo/selection key, ``labels`` are the raw column labels in data order.
+    """
+
+    dim: str
+    labels: tuple[Any, ...]
+
+    def match(self, value: Any) -> Any | None:
+        """The raw column label *value* names, or ``None`` if it names none.
+
+        ``feature_dims()`` stringifies labels for the combo UI, so a numeric
+        column comes back as ``"0"``/``"43"`` — the same coercion
+        :func:`_selections_for_var` does on the xarray side, in the one
+        direction pynapple needs it.
+        """
+        wanted = str(value)
+        return next((c for c in self.labels if str(c) == wanted), None)
+
+    def index(self, label: Any) -> int:
+        """Positional index of *label* — how every backend slices a column."""
+        return list(self.labels).index(label)
 
 
 # ---------------------------------------------------------------------------
@@ -372,6 +410,21 @@ class XarrayLoader(_CatalogMixin):
         if data.ndim == 1 and color_variable and color_variable in ds.data_vars:
             color_var = ds[color_variable]
             color_kwargs = {k: v for k, v in _selections_for_var(selections, color_var).items() if k != "RGB"}
+            # The panel's selections are sanitized against its FEATURE's dims
+            # only, so a multi-value dim the colour var alone carries (or one
+            # whose pinned value the colour var lacks — e.g. a stale saved
+            # layout) would reach sel_valid free and blow its (time,)/(time, D)
+            # shape assertion. Pin such dims to their first value, the same
+            # rule _sanitize_selections applies to extra feature dims.
+            for d in color_var.dims:
+                if "time" in str(d).lower() or d == "RGB" or color_var.sizes[d] <= 1:
+                    continue
+                if d in color_var.coords:
+                    coord_vals = color_var.coords[d].values
+                    if d not in color_kwargs or color_kwargs[d] not in coord_vals:
+                        color_kwargs[d] = coord_vals[0]
+                elif d not in color_kwargs:
+                    color_kwargs[d] = 0
             color_data, _ = eto.sel_valid(color_var, color_kwargs)
 
         changepoints = None
@@ -474,7 +527,7 @@ class PynappleLoader(_CatalogMixin):
         self._feature_objs: dict = {
             k: v for k, v in data.items() if isinstance(v, (nap.Tsd, nap.TsdFrame, nap.TsdTensor))
         }
-        self._dim_map = _compute_shared_column_dims(self._feature_objs)
+        self._axes = _column_axes(self._feature_objs)
         self._display_offset_provider: Callable[[], float] | None = None
 
     def set_display_offset_provider(self, provider: Callable[[], float] | None) -> None:
@@ -496,29 +549,35 @@ class PynappleLoader(_CatalogMixin):
     def backend(self) -> str:
         return "pynapple"
 
-    def feature_dims(self, feature: str) -> dict[str, list[str]]:
-        import pynapple as nap
+    def _keypoint_names(self) -> list[str]:
+        """The keypoints backing the synthetic ``pose_estimation`` feature."""
+        kp_spec = self._catalog.combos.get("keypoint") if self._catalog else None
+        return list(kp_spec.values) if kp_spec and kp_spec.values else []
 
+    def _column_axis(self, feature: str) -> ColumnAxis | None:
+        """The axis *feature* is selected on — the keypoints' own for pose."""
         if feature == "pose_estimation":
-            result: dict[str, list[str]] = {}
-            kp_spec = self._catalog.combos.get("keypoint") if self._catalog else None
-            if kp_spec and kp_spec.values:
-                # Spatial columns first — _build_axis_items expands the first
-                # dim into axis items (pose_estimation · x, etc.)
-                first_kp = self._feature_objs.get(kp_spec.values[0])
-                if isinstance(first_kp, nap.TsdFrame):
-                    result["space"] = [str(c) for c in first_kp.columns]
-                # Keypoints second — picked up by _populate_keypoint_combo
-                result["keypoint"] = list(kp_spec.values)
-            return result
+            keypoints = self._keypoint_names()
+            return self._axes.get(keypoints[0]) if keypoints else None
+        return self._axes.get(feature)
 
-        if feature not in self._feature_objs:
-            return {}
-        obj = self._feature_objs[feature]
+    def _pinned_column(self, feature: str, selections: dict[str, str]) -> Any | None:
+        """The column *selections* pins for *feature*, or ``None`` if free."""
+        return _pinned_column(self._column_axis(feature), selections)
+
+    def feature_dims(self, feature: str) -> dict[str, list[str]]:
         result: dict[str, list[str]] = {}
-        dim_name = self._dim_map.get(feature)
-        if isinstance(obj, nap.TsdFrame) and dim_name:
-            result[dim_name] = [str(c) for c in obj.columns]
+        # Columns first — _build_axis_items expands the first dim into axis
+        # items (pose_estimation · x, etc.)
+        axis = self._column_axis(feature)
+        if axis is not None:
+            result[axis.dim] = [str(c) for c in axis.labels]
+        if feature == "pose_estimation":
+            # Keypoints second — picked up by _populate_keypoint_combo
+            keypoints = self._keypoint_names()
+            if not keypoints:
+                return {}
+            result["keypoint"] = keypoints
         return result
 
     def _restrict(self, obj: Any, t0: float, t1: float):
@@ -533,18 +592,16 @@ class PynappleLoader(_CatalogMixin):
         t0: float,
         t1: float,
     ) -> PlotData | None:
-        """Stack all keypoint into one (T, N) array, optionally slicing by space/column."""
-        import pynapple as nap
-
-        kp_spec = self._catalog.combos.get("keypoint") if self._catalog else None
-        if not kp_spec or not kp_spec.values:
+        """Stack all keypoints into one (T, N) array, sliced by the pinned column."""
+        keypoints = self._keypoint_names()
+        if not keypoints:
             return None
 
         arrays: list[np.ndarray] = []
         labels: list[str] = []
         time = None
 
-        for kp_name in kp_spec.values:
+        for kp_name in keypoints:
             obj = self._feature_objs.get(kp_name)
             if obj is None:
                 continue
@@ -554,25 +611,21 @@ class PynappleLoader(_CatalogMixin):
             if time is None:
                 time = obj.t
 
-            if isinstance(obj, nap.TsdFrame):
-                cols = set(str(c) for c in obj.columns)
-                selected_col = None
-                for val in selections.values():
-                    if val in cols:
-                        selected_col = val
-                        break
-                if selected_col:
-                    arrays.append(obj[selected_col].values)
-                    labels.append(kp_name)
-                else:
-                    for c in obj.columns:
-                        arrays.append(obj[c].values)
-                        labels.append(f"{kp_name}_{c}")
-            elif isinstance(obj, nap.Tsd):
+            axis = self._axes.get(kp_name)
+            if axis is None:
                 arrays.append(obj.values)
                 labels.append(kp_name)
-            else:
                 continue
+
+            column = _pinned_column(axis, selections)
+            values = _flat_values(obj, len(obj))
+            if column is not None:
+                arrays.append(values[:, axis.index(column)])
+                labels.append(kp_name)
+            else:
+                for i, c in enumerate(axis.labels):
+                    arrays.append(values[:, i])
+                    labels.append(f"{kp_name}_{c}")
 
         if not arrays or time is None:
             return None
@@ -624,37 +677,21 @@ class PynappleLoader(_CatalogMixin):
 
         time = obj.t
 
-        # --- extract numpy based on type + selections ---
-        if isinstance(obj, nap.Tsd):
+        # --- extract numpy by the feature's own column dim, exactly as
+        # `sel_valid` selects by dim on the xarray side ---
+        axis = self._axes.get(actual_key)
+        if axis is None:
             data = obj.values
             dim_labels = None
-
-        elif isinstance(obj, nap.TsdFrame):
-            cols = set(str(c) for c in obj.columns)
-            selected_col = None
-            col_dim = self._dim_map.get(actual_key)
-            if col_dim and col_dim in selections:
-                selected_col = selections[col_dim]
-            if selected_col is None:
-                for val in selections.values():
-                    if val in cols:
-                        selected_col = val
-                        break
-
-            if selected_col and selected_col in obj.columns:
-                data = obj[selected_col].values
+        else:
+            column = _pinned_column(axis, selections)
+            values = _flat_values(obj, len(time))
+            if column is not None:
+                data = values[:, axis.index(column)]
                 dim_labels = None
             else:
-                data = obj.values
-                dim_labels = list(obj.columns)
-
-        elif isinstance(obj, nap.TsdTensor):
-            data = obj.values
-            if data.ndim > 2:
-                data = data.reshape(len(time), -1)
-            dim_labels = [str(i) for i in range(data.shape[1])] if data.ndim == 2 else None
-        else:
-            return None
+                data = values
+                dim_labels = [str(c) for c in axis.labels]
 
         # Color data
         color_data = None
@@ -765,39 +802,82 @@ def _shift_plot_time(plot_data: PlotData | None, offset: float) -> PlotData | No
     return plot_data
 
 
-def _compute_shared_column_dims(
-    feature_objs: dict,
-) -> dict[str, str]:
-    """Map each TsdFrame to a shared column dimension name.
+def _flat_values(obj: Any, n_time: int) -> np.ndarray:
+    """A pynapple object's values as ``(T, D)`` — tensors flattened past time."""
+    values = np.asarray(obj.values)
+    if values.ndim == 1:
+        return values.reshape(n_time, 1)
+    if values.ndim > 2:
+        return values.reshape(n_time, -1)
+    return values
 
-    TsdFrame objects with identical columns share one xarray dimension
-    → one combo in the GUI.
+
+def _pinned_column(axis: ColumnAxis | None, selections: dict[str, Any]) -> Any | None:
+    """The column *selections* pins on *axis*, or ``None`` if it is left free.
+
+    A selection key **is** the axis's dim or it is inert — the rule
+    :func:`_selections_for_var` and ``PanelStateMixin._sanitize_selections``
+    already follow. Scanning every selection's *value* for one that happens to
+    name a column (what this used to do) breaks it in both directions: a dim
+    left on "All" stays pinned by an unrelated key's value, and a key for a
+    dim the feature does not have silently selects.
+    """
+    if axis is None or axis.dim not in selections:
+        return None
+    return axis.match(selections[axis.dim])
+
+
+def _column_axes(feature_objs: dict) -> dict[str, ColumnAxis]:
+    """Map each multi-column pynapple feature to the axis it is selected on.
+
+    This is the **single authority** for that dim's name: the catalog builds
+    its combo from it, ``feature_dims()`` reports it, and ``select()`` reads
+    the selection stored under it. Three separate namings (a ``_dim_map`` for
+    ``select``, a hardcoded ``"space"`` for pose in ``feature_dims``, and the
+    catalog's own rule) is how a panel ended up with a combo the loader never
+    consulted — clicking "All" on it changed nothing.
+
+    Naming follows xarray so a panel behaves the same on either backend:
+    ``x``/``y``/``z`` columns are movement's ``space`` dim; other objects
+    sharing a column tuple share one dim; a lone object gets
+    ``{name}_columns``.
     """
     import pynapple as nap
 
     groups: dict[tuple, list[str]] = {}
+    labels: dict[tuple, tuple] = {}
     for name, obj in feature_objs.items():
         if isinstance(obj, nap.TsdFrame):
-            key = tuple(obj.columns)
-            groups.setdefault(key, []).append(name)
+            cols = tuple(obj.columns)
+        elif isinstance(obj, nap.TsdTensor):
+            # Rendering flattens everything past the time axis, so the axis the
+            # user picks from is that flattened one.
+            cols = tuple(str(i) for i in range(int(np.prod(obj.shape[1:]))))
+        else:
+            continue
+        groups.setdefault(cols, []).append(name)
+        labels[cols] = cols
 
-    dim_map: dict[str, str] = {}
+    axes: dict[str, ColumnAxis] = {}
     used: set[str] = set()
 
     for cols, names in groups.items():
-        if len(names) == 1:
+        if set(str(c) for c in cols) <= _SPACE_COLUMNS:
+            dim_name = SPACE_DIM
+        elif len(names) == 1:
             dim_name = f"{names[0]}_columns"
         else:
             dim_name = "columns"
-            suffix = 2
-            while dim_name in used:
-                dim_name = f"columns_{suffix}"
-                suffix += 1
+        base, suffix = dim_name, 2
+        while dim_name in used:
+            dim_name = f"{base}_{suffix}"
+            suffix += 1
         used.add(dim_name)
+        axis = ColumnAxis(dim=dim_name, labels=labels[cols])
         for name in names:
-            dim_map[name] = dim_name
+            axes[name] = axis
 
-    return dim_map
+    return axes
 
 
 # Dimensions that are internal to color variables — never show as user combos
@@ -978,10 +1058,18 @@ def catalog_from_pynapple(
         pose_names = _discover_pose_keypoints(source_path)
 
     feature_objs = {k: v for k, v in data.items() if isinstance(v, (nap.Tsd, nap.TsdFrame, nap.TsdTensor))}
-    dim_map = _compute_shared_column_dims(feature_objs)
+    axes = _column_axes(feature_objs)
 
     combos: dict[str, ComboSpec] = {}
     combos["individual"] = ComboSpec("individual", ("individual_0",))
+
+    def _add_column_combo(key: str) -> None:
+        """Register the combo for *key*'s column axis, named as the loader
+        names it — one authority, so every combo the sidebar shows is one
+        ``select()`` actually reads."""
+        axis = axes.get(key)
+        if axis is not None and axis.dim not in combos:
+            combos[axis.dim] = ComboSpec(axis.dim, tuple(str(c) for c in axis.labels))
 
     features: list[str] = []
     changepoints: list[str] = []
@@ -1003,23 +1091,16 @@ def catalog_from_pynapple(
                 keypoint_names.append(key)
             else:
                 features.append(key)
-
-                if isinstance(obj, nap.TsdFrame):
-                    dim_name = dim_map.get(key, f"{key}_columns")
-                    if dim_name not in combos:
-                        combos[dim_name] = ComboSpec(dim_name, tuple(str(c) for c in obj.columns))
+                _add_column_combo(key)
 
     if keypoint_names:
-        combos["keypoint"] = ComboSpec("keypoint", tuple(sorted(keypoint_names)))
+        keypoint_names = sorted(keypoint_names)
+        combos["keypoint"] = ComboSpec("keypoint", tuple(keypoint_names))
         features.insert(0, "pose_estimation")
-        # Detect column combo for keypoint TsdFrames
-        first_kp = feature_objs.get(keypoint_names[0])
-        if isinstance(first_kp, nap.TsdFrame):
-            cols = tuple(str(c) for c in first_kp.columns)
-            if set(cols) <= {"x", "y", "z"}:
-                combos["space"] = ComboSpec("space", cols)
-            else:
-                combos["columns"] = ComboSpec("columns", cols)
+        # The keypoints' columns are an axis like any other — and when a plain
+        # feature carries the same ones (x/y/z), it is literally the same axis,
+        # so both share the one combo instead of fighting over the selection.
+        _add_column_combo(keypoint_names[0])
 
     if features:
         combos["features"] = ComboSpec("features", tuple(features))

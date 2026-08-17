@@ -403,6 +403,7 @@ class EthographMainWindow(QMainWindow):
         if self.meta_widget is not None:
             if not self.meta_widget._check_unsaved_changes(event):
                 return
+            self.meta_widget.flush_pending_writes()
             # Final layout snapshot: window state → gui_settings.yaml,
             # panel layout → the dataset's local_settings.yaml.
             self.meta_widget.app_state.save_to_yaml()

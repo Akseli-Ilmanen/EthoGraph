@@ -1002,6 +1002,8 @@ class CoverPage(QDialog):
         # a previous drop's tmp alignment NWB). Clear it so the drop's own
         # trial timing wins; sidecar TSV discovery via source_path still works.
         app_state.metadata_path = None
+        # Same story for an explicit labels override from a previous drop.
+        app_state.labels_import_path = None
 
         # A drop defines a fresh single-trial session, so it is authoritative:
         # clear every media path first, then set only the ones actually dropped.
@@ -1038,6 +1040,10 @@ class CoverPage(QDialog):
         if buckets["neurons"]:
             app_state.neurons_path = buckets["neurons"][0]
         if buckets["labels"] and hasattr(io, "import_labels_checkbox"):
+            # Persisted per-dataset override (SCOPE_LOCAL) — read by
+            # IOWidget.get_import_labels_path() at load time. Explicit, so it
+            # is never re-guessed from the .nc filename on later loads.
+            app_state.labels_import_path = buckets["labels"][0]
             io.import_labels_checkbox.setChecked(True)
 
     def _populate_io_from_npy(self, buckets: dict[str, list[str]], details: dict):
@@ -1067,6 +1073,7 @@ class CoverPage(QDialog):
         app_state = self.app_state
         app_state.nc_file_path = output_path
         app_state.metadata_path = None
+        app_state.labels_import_path = None
         app_state.image_paths = list(buckets["image"])
         if video_path:
             app_state.video_folder = str(Path(video_path).parent)
@@ -1095,6 +1102,7 @@ class CoverPage(QDialog):
         app_state = self.app_state
         app_state.nc_file_path = output_path
         app_state.metadata_path = None
+        app_state.labels_import_path = None
         app_state.image_paths = list(buckets["image"])
         if ephys_path:
             app_state.ephys_path = ephys_path

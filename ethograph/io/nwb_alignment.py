@@ -197,6 +197,9 @@ class EmpytAlignment:
     def close(self) -> None:
         pass
 
+    def reload(self) -> None:
+        pass
+
 
 class TableAlignment(EmpytAlignment):
     """Alignment backed by a tabular dataframe with trial timing columns.
@@ -799,6 +802,17 @@ class NWBAlignment:
                 pass
             self._io = None
             self._nwb = None
+
+    def reload(self) -> None:
+        """Drop the open handle and every cached table.
+
+        Required around writing to this same file: pynwb holds it open for
+        reading and HDF5 refuses a second, writable handle — and afterwards the
+        cached trials table would still describe the pre-write file.
+        """
+        self.close()
+        self._trials_df_cache = None
+        self._rate_dict.clear()
 
 
 # ---------------------------------------------------------------------------

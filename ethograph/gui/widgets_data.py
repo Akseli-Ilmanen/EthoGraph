@@ -862,12 +862,20 @@ class DataWidget(QWidget):
 
     def _phase_load_data(self, nc_file_path: str) -> _LoadContext:
         """Phase 1: Load dataset from disk."""
+        labels_path = self.io_widget.get_import_labels_path()
+        if labels_path and not Path(labels_path).exists():
+            raise _LoadError(
+                f"'Import labels' is checked but the labels file was not found:\n{labels_path}\n\n"
+                "Uncheck 'Import labels', or point it at the correct file via "
+                "File ▸ Import labels…"
+            )
         try:
             result = load_features_dataset(
                 nc_file_path,
                 progress_callback=getattr(self.app_state, "_progress_callback", None),
                 metadata_path=self.app_state.metadata_path,
                 alignment_path=getattr(self.app_state, "nwb_file_path", None),
+                labels_path=labels_path,
             )
         except (OSError, ValueError, KeyError) as e:
             logger.exception("load_features_dataset failed")
@@ -1097,6 +1105,9 @@ class DataWidget(QWidget):
         if self.app_state.trials_sel not in filtered_trials and filtered_trials:
             self.app_state.set_key_sel("trials", filtered_trials[0])
             self.app_state.trial_changed.emit()
+        # Label / sequence navigation walks instances across trials — the ones
+        # the table just hid must drop out of that walk too.
+        self.navigation_widget.on_trials_filtered()
         self.update_main_plot()
 
     # ------------------------------------------------------------------

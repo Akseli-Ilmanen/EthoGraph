@@ -8,7 +8,7 @@ from ethograph.io.catalog import (
     PynappleLoader as PynappleStore,
 )
 from ethograph.io.catalog import (
-    _compute_shared_column_dims,
+    _column_axes,
     catalog_from_pynapple,
 )
 from ethograph.io.pynapple import detect_trials
@@ -69,11 +69,24 @@ def test_shared_columns_merged():
     """TsdFrames with identical columns produce one shared dimension name."""
     t = np.linspace(0, 10, 100)
     objs = {
+        "position": nap.TsdFrame(t=t, d=np.random.randn(100, 2), columns=["ch1", "ch2"]),
+        "velocity": nap.TsdFrame(t=t, d=np.random.randn(100, 2), columns=["ch1", "ch2"]),
+    }
+    axes = _column_axes(objs)
+    assert axes["position"].dim == axes["velocity"].dim == "columns"
+
+
+def test_xyz_columns_are_the_space_dim():
+    """x/y/z is movement's `space` dim on either backend, so a selection means
+    the same thing whichever one the session came from."""
+    t = np.linspace(0, 10, 100)
+    objs = {
         "position": nap.TsdFrame(t=t, d=np.random.randn(100, 3), columns=["x", "y", "z"]),
         "velocity": nap.TsdFrame(t=t, d=np.random.randn(100, 3), columns=["x", "y", "z"]),
     }
-    dim_map = _compute_shared_column_dims(objs)
-    assert dim_map["position"] == dim_map["velocity"] == "columns"
+    axes = _column_axes(objs)
+    assert axes["position"].dim == axes["velocity"].dim == "space"
+    assert axes["position"].labels == ("x", "y", "z")
 
 
 def test_different_columns_stay_separate():
@@ -83,18 +96,28 @@ def test_different_columns_stay_separate():
         "position": nap.TsdFrame(t=t, d=np.random.randn(100, 3), columns=["x", "y", "z"]),
         "emg": nap.TsdFrame(t=t, d=np.random.randn(100, 2), columns=["ch1", "ch2"]),
     }
-    dim_map = _compute_shared_column_dims(objs)
-    assert dim_map["position"] != dim_map["emg"]
+    axes = _column_axes(objs)
+    assert axes["position"].dim != axes["emg"].dim
 
 
 def test_single_tsdframe_keeps_prefixed_dim():
     """A lone TsdFrame gets '{name}_columns' (no merging needed)."""
     t = np.linspace(0, 10, 100)
     objs = {
-        "velocity": nap.TsdFrame(t=t, d=np.random.randn(100, 3), columns=["x", "y", "z"]),
+        "velocity": nap.TsdFrame(t=t, d=np.random.randn(100, 3), columns=["a", "b", "c"]),
     }
-    dim_map = _compute_shared_column_dims(objs)
-    assert dim_map["velocity"] == "velocity_columns"
+    axes = _column_axes(objs)
+    assert axes["velocity"].dim == "velocity_columns"
+
+
+def test_tsdtensor_gets_a_column_axis():
+    """A tensor's flattened axis is selectable like any other, so a panel can
+    pin one column instead of being stuck on all of them."""
+    t = np.linspace(0, 10, 100)
+    objs = {"frames": nap.TsdTensor(t=t, d=np.random.randn(100, 2, 3))}
+    axis = _column_axes(objs)["frames"]
+    assert axis.dim == "frames_columns"
+    assert axis.labels == ("0", "1", "2", "3", "4", "5")
 
 
 # ---------------------------------------------------------------------------
@@ -112,17 +135,31 @@ def test_catalog_basic(simple_nap_data):
 
 def test_catalog_detects_tsdframe_columns(simple_nap_data):
     cat = catalog_from_pynapple(simple_nap_data)
-    assert "velocity_columns" in cat.combos
-    assert list(cat.combo_values("velocity_columns")) == ["x", "y", "z"]
+    assert "space" in cat.combos
+    assert list(cat.combo_values("space")) == ["x", "y", "z"]
 
 
 def test_catalog_shared_columns(multi_tsdframe_data):
-    """Shared columns produce one 'columns' combo instead of two."""
+    """Shared columns produce one combo instead of two."""
     cat = catalog_from_pynapple(multi_tsdframe_data)
-    assert "columns" in cat.combos
+    assert "space" in cat.combos
     assert "position_columns" not in cat.combos
     assert "velocity_columns" not in cat.combos
-    assert list(cat.combo_values("columns")) == ["x", "y", "z"]
+    assert list(cat.combo_values("space")) == ["x", "y", "z"]
+
+
+def test_catalog_combos_match_loader_dims(multi_tsdframe_data):
+    """Every combo the catalog offers is one `select()` actually reads.
+
+    The combo name, `feature_dims()` and the key `select()` looks up used to
+    be decided in three places; a combo named differently from the dim the
+    loader reads is one the "All" checkbox cannot free.
+    """
+    cat = catalog_from_pynapple(multi_tsdframe_data)
+    store = PynappleStore(multi_tsdframe_data, cat)
+    for feature in cat.features:
+        for dim in store.feature_dims(feature):
+            assert dim in cat.combos, f"{feature}: dim {dim!r} has no combo"
 
 
 def test_catalog_detects_changepoints():
@@ -151,8 +188,8 @@ def test_store_features(multi_tsdframe_data):
 
 def test_store_dims_shared(multi_tsdframe_data):
     store = PynappleStore(multi_tsdframe_data)
-    assert "columns" in store.dims
-    assert list(store.dims["columns"]) == ["x", "y", "z"]
+    assert "space" in store.dims
+    assert list(store.dims["space"]) == ["x", "y", "z"]
     assert "individual" in store.dims
 
 
@@ -160,7 +197,7 @@ def test_store_get_type_vars(multi_tsdframe_data):
     store = PynappleStore(multi_tsdframe_data)
     tvd = store.get_type_vars()
     assert "features" in tvd
-    assert "columns" in tvd
+    assert "space" in tvd
     assert "individual" in tvd
 
 
@@ -186,9 +223,83 @@ def test_store_select_tsdframe_all_columns(multi_tsdframe_data):
 def test_store_select_tsdframe_single_column(multi_tsdframe_data):
     """With column selection, TsdFrame returns 1-D data."""
     store = PynappleStore(multi_tsdframe_data)
-    pd = store.select("position", {"columns": "x"}, t0=0.0, t1=10.0)
+    pd = store.select("position", {"space": "x"}, t0=0.0, t1=10.0)
     assert pd is not None
     assert pd.data.ndim == 1
+
+
+def test_store_select_ignores_a_dim_the_feature_lacks(multi_tsdframe_data):
+    """A selection key IS a dim of the feature or it is inert — exactly the
+    xarray rule. Matching any selection *value* against the columns kept a dim
+    pinned after the user had set it to "All"."""
+    data = dict(multi_tsdframe_data)
+    data["emg"] = nap.TsdFrame(t=data["position"].t, d=np.random.randn(1000, 2), columns=["x", "q"])
+    store = PynappleStore(data)
+    # 'emg_columns' belongs to emg, not to position: position's own dim is free.
+    pd = store.select("position", {"emg_columns": "x", "individual": "individual_0"}, t0=0.0, t1=10.0)
+    assert pd is not None
+    assert pd.data.shape[1] == 3
+    assert pd.dim_labels == ["x", "y", "z"]
+
+
+def test_store_select_numeric_column_from_combo_string(multi_tsdframe_data):
+    """feature_dims() stringifies labels for the combo, so the value comes back
+    as a string even for numeric columns — it must still pin."""
+    data = dict(multi_tsdframe_data)
+    data["emg"] = nap.TsdFrame(t=data["position"].t, d=np.random.randn(1000, 3), columns=[0, 1, 2])
+    store = PynappleStore(data)
+    assert store.feature_dims("emg") == {"emg_columns": ["0", "1", "2"]}
+    pd = store.select("emg", {"emg_columns": "1"}, t0=0.0, t1=10.0)
+    assert pd is not None
+    assert pd.data.ndim == 1
+    assert len(pd.data) == len(data["emg"])
+    np.testing.assert_allclose(pd.data, data["emg"].values[:, 1])
+
+
+@pytest.fixture
+def pose_nap_data(monkeypatch):
+    """A pose session: two keypoint TsdFrames plus a plain feature sharing x/y."""
+    import ethograph.io.catalog as catalog_mod
+
+    t = np.linspace(0, 10, 1000)
+
+    def _frame():
+        return nap.TsdFrame(t=t, d=np.random.randn(1000, 2), columns=["x", "y"])
+
+    data = {"nose": _frame(), "tail": _frame(), "centroid": _frame()}
+    monkeypatch.setattr(catalog_mod, "_discover_pose_keypoints", lambda _p: {"nose", "tail"})
+    return data, catalog_from_pynapple(data, source_path="pose.nwb")
+
+
+def test_pose_column_dim_is_the_shared_space_dim(pose_nap_data):
+    """The keypoints' columns are the same axis a plain x/y feature has, so one
+    combo serves both — two combos over one axis is what let the pinned one win
+    while the user was clicking "All" on the other."""
+    data, cat = pose_nap_data
+    store = PynappleStore(data, cat)
+    assert store.feature_dims("pose_estimation") == {"space": ["x", "y"], "keypoint": ["nose", "tail"]}
+    assert store.feature_dims("centroid") == {"space": ["x", "y"]}
+    assert "columns" not in cat.combos
+
+
+def test_pose_all_columns_with_keypoint_pinned(pose_nap_data):
+    """Keypoint pinned, column dim on "All" → one curve per column."""
+    data, cat = pose_nap_data
+    store = PynappleStore(data, cat)
+    pinned = store.select("pose_estimation", {"keypoint": "nose", "space": "x"}, t0=0.0, t1=5.0)
+    assert pinned.data.ndim == 1
+    freed = store.select("pose_estimation", {"keypoint": "nose"}, t0=0.0, t1=5.0)
+    assert freed.data.shape[1] == 2
+    assert freed.dim_labels == ["x", "y"]
+
+
+def test_pose_all_keypoints_with_column_pinned(pose_nap_data):
+    """Column pinned, keypoint dim on "All" → one curve per keypoint."""
+    data, cat = pose_nap_data
+    store = PynappleStore(data, cat)
+    pd = store.select("pose_estimation", {"space": "x"}, t0=0.0, t1=5.0)
+    assert pd.data.shape[1] == 2
+    assert pd.dim_labels == ["nose", "tail"]
 
 
 def test_store_select_with_time_window(multi_tsdframe_data):

@@ -245,12 +245,15 @@ def test_trials_table_hidden_without_metadata(gui):
     import pandas as pd
 
     shell, meta = gui
-    # Bare trial numbers → no metadata → table hidden.
-    meta.trials_widget.setup(pd.DataFrame({"trial": [1, 2, 3]}))
-    assert meta.trials_widget.isHidden()
+    trials = meta.trials_widget
+    # Bare trial numbers → no metadata → table hidden. The editing controls
+    # stay, since that is how the first column gets added.
+    trials.setup(pd.DataFrame({"trial": [1, 2, 3]}))
+    assert trials._table.isHidden()
+    assert not trials._add_column_button.isHidden()
     # Real metadata columns → table shown.
-    meta.trials_widget.setup(pd.DataFrame({"trial": [1, 2], "condition": ["a", "b"]}))
-    assert not meta.trials_widget.isHidden()
+    trials.setup(pd.DataFrame({"trial": [1, 2], "condition": ["a", "b"]}))
+    assert not trials._table.isHidden()
 
 
 def test_nav_tab_contains_trials_table(birdpark_gui):
@@ -532,6 +535,51 @@ def test_added_lineplot_behaves_like_any_lineplot(birdpark_gui):
     assert meta.context_panel.current_context() in ("lineplot", "heatmap")
 
 
+def test_reclick_active_panel_resyncs_context(birdpark_gui):
+    """A click is never a silent no-op: re-clicking the already-active panel
+    re-announces it, so a stale sidebar recovers on the FIRST click — not
+    after clicking another panel and coming back."""
+    shell, meta = birdpark_gui
+    pc = meta.plot_container
+    plot = pc.add_lineplot(feature=pc._available_features()[0])
+    reg = meta.active_panels.registration_for(plot)
+    meta.active_panels.set_active(reg)
+    assert meta.context_panel.current_context() in ("lineplot", "heatmap")
+    # The sidebar drifts while the panel stays active.
+    meta.context_panel.set_context("audiotrace")
+    # ONE re-click on the same, still-active panel restores its context.
+    meta.active_panels.set_active(reg)
+    assert meta.context_panel.current_context() in ("lineplot", "heatmap")
+
+
+def test_data_section_return_resyncs_context(birdpark_gui):
+    """Clicks made while the Labels/Navigation section is open deliberately
+    don't swap the sidebar; returning to the Data section applies them."""
+    shell, meta = birdpark_gui
+    pc = meta.plot_container
+    plot = pc.add_lineplot(feature=pc._available_features()[0])
+    meta._expand(1)  # Labels section open → context swaps suppressed
+    before = meta.context_panel.current_context()
+    meta.active_panels.set_active(meta.active_panels.registration_for(plot))
+    assert meta.context_panel.current_context() == before  # suppressed
+    meta._expand(0)  # back to Data → re-synced from the active panel
+    assert meta.context_panel.current_context() in ("lineplot", "heatmap")
+
+
+def test_zen_mode_exit_resyncs_context(birdpark_gui):
+    """Clicks made during zen mode don't swap the (hidden) sidebar; leaving
+    zen mode re-syncs it to the active panel."""
+    shell, meta = birdpark_gui
+    pc = meta.plot_container
+    plot = pc.add_lineplot(feature=pc._available_features()[0])
+    meta.app_state.zen_mode = True
+    before = meta.context_panel.current_context()
+    meta.active_panels.set_active(meta.active_panels.registration_for(plot))
+    assert meta.context_panel.current_context() == before  # suppressed
+    meta.app_state.zen_mode = False
+    assert meta.context_panel.current_context() in ("lineplot", "heatmap")
+
+
 def test_cover_page_borrows_and_returns_load_panel(gui, qtbot):
     """The IO load panel (path fields + Load) is hosted on the cover page
     while it is shown, and handed back to the IO tab when it closes."""
@@ -803,6 +851,157 @@ def test_cover_page_audio_only_alignment(gui, birdpark_data_dir):
     assert align.get_media(1, "audio", "mic-1") is None
     resolved = align.resolve_media_path(1, "audio", device="mic-1")
     assert resolved and Path(resolved).name == audios[0].name
+
+
+def test_cover_page_labels_drop_loads_on_first_load(gui, birdpark_data_dir):
+    """A dropped labels .tsv with a non-canonical name must still load.
+
+    ``resolve_labels_tsv`` only auto-discovers ``{nc_stem}_labels.tsv``; a
+    dropped tsv with a different name previously relied on the "Import
+    labels" checkbox alone, which had no wiring into the load pipeline. The
+    checkbox must set an explicit override that survives to Load, even
+    though the labels format-combo/path-edit widgets it *normally* backs
+    onto do not exist yet on a first load (they're created lazily, after
+    load, by ``IOWidget.create_device_controls``).
+    """
+    from qtpy.QtWidgets import QApplication
+
+    from ethograph.gui.cover_page import CoverPage, classify_files
+    from ethograph.labels.tsv_store import save_labels_tsv
+
+    shell, meta = gui
+    data_dir = Path(birdpark_data_dir)
+    session = next(iter(sorted(data_dir.glob("*.nc"))), None)
+    if session is None:
+        pytest.skip("birdpark has no .nc session file")
+
+    import pandas as pd
+
+    # nc_file_path/labels_import_path are SCOPE_LOCAL and persist into the
+    # real (shared) example dataset's .ethograph/local_settings.yaml — reset
+    # before and after so this test never leaks state across runs.
+    app_state = meta.app_state
+    app_state.nc_file_path = str(session)
+    app_state.labels_import_path = None
+
+    labels_tsv = data_dir / "my_custom_annotations.tsv"
+    rows = pd.DataFrame(
+        {
+            "onset_s": [0.1],
+            "offset_s": [0.5],
+            "labels": [1],
+            "individual": ["individual 1"],
+            "trial": [1],
+            "human_verified": [False],
+            "changepoint_corrected": [False],
+            "prediction_source": ["manual"],
+            "n_samples": [0],
+        }
+    )
+    save_labels_tsv(labels_tsv, rows)
+
+    try:
+        page = CoverPage(shell, meta.io_widget)
+        buckets = classify_files([str(session), str(labels_tsv)])
+        assert buckets["labels"] == [str(labels_tsv)]
+        page._populate_io_from_buckets(buckets, {"data_sr": None, "source_software": None})
+
+        assert meta.io_widget.import_labels_checkbox.isChecked()
+        assert app_state.labels_import_path == str(labels_tsv)
+        assert meta.io_widget.get_import_labels_path() == str(labels_tsv)
+
+        meta.data_widget.on_load_clicked()
+        QApplication.processEvents()
+        assert app_state.ready
+        assert not app_state._all_labels_df.empty
+        assert 1 in set(app_state._all_labels_df["labels"])
+    finally:
+        labels_tsv.unlink(missing_ok=True)
+        app_state.labels_import_path = None
+
+
+def test_import_labels_checkbox_seeds_and_persists_canonical_guess(gui, birdpark_data_dir):
+    """First tick with no persisted override seeds+persists the canonical guess.
+
+    Mirrors how a downloaded template (e.g. moll2025) ships its labels tsv
+    named exactly ``{nc_stem}_labels.tsv`` next to the ``.nc`` — the checkbox
+    must still resolve it on a completely fresh dataset (nothing in
+    local_settings.yaml yet), and remember it afterwards so it is never
+    re-guessed.
+    """
+    from ethograph.labels.tsv_store import labels_tsv_path, save_labels_tsv
+
+    shell, meta = gui
+    data_dir = Path(birdpark_data_dir)
+    session = next(iter(sorted(data_dir.glob("*.nc"))), None)
+    if session is None:
+        pytest.skip("birdpark has no .nc session file")
+
+    import pandas as pd
+
+    canonical_tsv = labels_tsv_path(session)
+    rows = pd.DataFrame(
+        {
+            "onset_s": [0.2],
+            "offset_s": [0.6],
+            "labels": [1],
+            "individual": ["individual 1"],
+            "trial": [1],
+            "human_verified": [False],
+            "changepoint_corrected": [False],
+            "prediction_source": ["manual"],
+            "n_samples": [0],
+        }
+    )
+    save_labels_tsv(canonical_tsv, rows)
+    app_state = meta.app_state
+    io = meta.io_widget
+    # `import_labels_nc_data` is SCOPE_GLOBAL — unlike the SCOPE_LOCAL fields
+    # below it isn't keyed on this dataset, so it can carry over from a real
+    # gui_settings.yaml on this machine. Force a real False→True transition
+    # (a same-state setChecked() is a no-op and never fires the signal under
+    # test) and restore the previous value afterwards.
+    prior_checked = io.import_labels_checkbox.isChecked()
+    io.import_labels_checkbox.setChecked(False)
+    # SCOPE_LOCAL settings persist into the real (shared) example dataset's
+    # .ethograph/local_settings.yaml — force the "nothing persisted yet"
+    # starting condition explicitly and clean up after, rather than assuming
+    # a previous test run left it untouched.
+    app_state.nc_file_path = str(session)
+    app_state.labels_import_path = None
+    try:
+        io.nc_file_path_edit.setText(str(session))
+        io.import_labels_checkbox.setChecked(True)
+
+        assert app_state.labels_import_path == str(canonical_tsv)
+        assert io.get_import_labels_path() == str(canonical_tsv)
+    finally:
+        canonical_tsv.unlink(missing_ok=True)
+        app_state.labels_import_path = None
+        io.import_labels_checkbox.setChecked(prior_checked)
+
+
+def test_import_labels_checkbox_missing_path_raises(gui, birdpark_data_dir):
+    """A checked box pointing at a nonexistent file must fail loudly, not
+    silently skip labels — the exact complaint that motivated the fix."""
+    shell, meta = gui
+    data_dir = Path(birdpark_data_dir)
+    session = next(iter(sorted(data_dir.glob("*.nc"))), None)
+    if session is None:
+        pytest.skip("birdpark has no .nc session file")
+
+    app_state = meta.app_state
+    io = meta.io_widget
+    io.nc_file_path_edit.setText(str(session))
+    app_state.nc_file_path = str(session)
+    try:
+        app_state.labels_import_path = str(data_dir / "does_not_exist_labels.tsv")
+        io.import_labels_checkbox.setChecked(True)
+
+        with pytest.raises(Exception, match="Import labels"):
+            meta.data_widget._phase_load_data(str(session))
+    finally:
+        app_state.labels_import_path = None
 
 
 # ---------------------------------------------------------------------------

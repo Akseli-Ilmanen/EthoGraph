@@ -131,3 +131,24 @@ def test_save_survives_snapshot_failure(moll2025_gui, tmp_path, monkeypatch):
     assert app_state.save_to_yaml()
     assert local_path.exists()
     assert global_path.exists()
+
+
+def test_broken_saved_layout_falls_back_to_defaults(moll2025_gui, monkeypatch):
+    """A saved panel layout that fails to apply (stale for the data now
+    loaded, hand-edited, older version) must never abort the load: the
+    layout is discarded — so the next auto-save snapshots a working one —
+    and the data-availability default panels are rebuilt."""
+    viewer, meta = moll2025_gui
+    app_state = meta.app_state
+    pc = meta.plot_container
+
+    def poisoned_apply(state):
+        raise AssertionError("stale selections blew sel_valid")
+
+    monkeypatch.setattr(pc, "apply_layout_state", poisoned_apply)
+    app_state.panel_layout = {"panels": [{"type": "lineplot"}]}
+
+    meta.apply_saved_panel_layout()  # must not raise
+
+    assert app_state.panel_layout is None, "broken layout must be discarded"
+    assert pc.line_plots, "data-availability default lineplot must be rebuilt"

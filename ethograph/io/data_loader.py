@@ -183,6 +183,7 @@ def _load_pynapple_dataset(
     file_path: str,
     metadata_path: str | None = None,
     alignment_path: str | None = None,
+    labels_path: str | None = None,
 ) -> LoadResult:
     """Load a pynapple .npz file or folder.
 
@@ -237,6 +238,7 @@ def _load_pynapple_dataset(
     all_labels_df = converter.resolve_labels(
         source_path=file_path,
         trial_ids=trial_ids,
+        labels_path=Path(labels_path) if labels_path else None,
     )
 
     # Metadata: a tabular file joined on its trial column, else whatever
@@ -257,7 +259,7 @@ def _load_pynapple_dataset(
     # Determine which labels file path was used
     from ethograph.labels.tsv_store import labels_tsv_path
 
-    tsv_path = labels_tsv_path(Path(file_path))
+    tsv_path = Path(labels_path) if labels_path else labels_tsv_path(Path(file_path))
     labels_file_path = str(tsv_path) if tsv_path.exists() else None
 
     return LoadResult(
@@ -279,6 +281,7 @@ def _load_trialtree(
     file_path: str,
     metadata_path: str | None = None,
     alignment_path: str | None = None,
+    labels_path: str | None = None,
 ) -> LoadResult:
     """Load a TrialTree or xarray.Dataset from a .nc file."""
     dt = eto.open(file_path)
@@ -312,10 +315,10 @@ def _load_trialtree(
     # Determine which labels file path was used
     from ethograph.labels.tsv_store import labels_tsv_path
 
-    tsv_path = labels_tsv_path(Path(file_path))
+    tsv_path = Path(labels_path) if labels_path else labels_tsv_path(Path(file_path))
     labels_file_path = str(tsv_path) if tsv_path.exists() else None
 
-    all_labels_df = resolve_labels_tsv(file_path, dt.trials)
+    all_labels_df = resolve_labels_tsv(file_path, dt.trials, labels_path=tsv_path if labels_path else None)
 
     return LoadResult(
         dt=dt,
@@ -341,6 +344,7 @@ def load_features_dataset(
     progress_callback: Callable[[str], None] | None = None,
     metadata_path: str | None = None,
     alignment_path: str | None = None,
+    labels_path: str | None = None,
 ) -> LoadResult:
     """Load dataset from file path.
 
@@ -355,6 +359,9 @@ def load_features_dataset(
     alignment_path
         Optional explicit alignment NWB. Overrides sidecar discovery — used
         for the user-specified alignment field and drag-and-dropped media.
+    labels_path
+        Optional explicit labels TSV. Overrides the ``{name}_labels.tsv``
+        sidecar discovery — used for the user-specified "Import labels" path.
 
     Returns a :class:`LoadResult` with dt, labels, catalog, and metadata.
     """
@@ -363,10 +370,13 @@ def load_features_dataset(
             file_path,
             metadata_path=metadata_path,
             alignment_path=alignment_path,
+            labels_path=labels_path,
         )
 
     if file_path.endswith(".nc"):
-        return _load_trialtree(file_path, metadata_path=metadata_path, alignment_path=alignment_path)
+        return _load_trialtree(
+            file_path, metadata_path=metadata_path, alignment_path=alignment_path, labels_path=labels_path
+        )
 
     raise ValueError(
         f"Unsupported file type: {Path(file_path).suffix!r}. "

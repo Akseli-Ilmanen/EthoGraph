@@ -130,6 +130,12 @@ class AppStateSpec:
         "pred_segment_confidence_threshold": (float, 0.6, True),
         "trial_conditions": (list | None, None, False),
         "keypoints": (list[str], [], False),
+        # Global preference: the "Import labels" checkbox is remembered across
+        # datasets (gui_settings.yaml). Safe as a sticky global because the
+        # canonical {stem}_labels.tsv guess is only seeded when that file
+        # exists — a dataset with no labels file loads without labels instead
+        # of erroring. Only an explicitly-set labels_import_path (SCOPE_LOCAL)
+        # that has gone missing still raises at load.
         "import_labels_nc_data": (bool, False, True),
         # Playback speed as a % of the original recording speed (100 = native
         # speed). Drives both the video frame rate and the audio pitch/rate
@@ -153,6 +159,10 @@ class AppStateSpec:
         "label_intervals": (pd.DataFrame | None, None, False),
         "metadata_df": (pd.DataFrame | None, None, False),
         "metadata_path": (str | None, None, True, SCOPE_LOCAL),
+        # Whether the trials table lets the current trial's metadata cells be
+        # edited by double-click. Per dataset, and off by default: a stray
+        # double-click must never rewrite somebody's metadata file.
+        "metadata_edit_enabled": (bool, False, True, SCOPE_LOCAL),
         "trial_alignment": (TrialVideoBounds | None, None, False),
         "ephys_offset": (float, 0.0, True, SCOPE_LOCAL),
         "navigate_mode": (str, "trial", True, SCOPE_LOCAL),
@@ -176,6 +186,14 @@ class AppStateSpec:
             None,
             False,
         ),  # Tracks active labels file (canonical or predictions)
+        # Explicit "Import labels" override: persisted per-dataset
+        # (.ethograph/local_settings.yaml) so it is remembered instead of
+        # re-guessed from the .nc filename on every load. Seeded once (guess
+        # from labels_tsv_path) the first time the checkbox is ticked for a
+        # dataset that has never set it; from then on it is the sole source
+        # of truth for where "Import labels" reads from, and a missing file
+        # raises rather than silently loading nothing.
+        "labels_import_path": (str | None, None, True, SCOPE_LOCAL),
         "nwb_file_path": (str | None, None, True, SCOPE_LOCAL),
         "video_folder": (str | None, None, True, SCOPE_LOCAL),
         "audio_folder": (str | None, None, True, SCOPE_LOCAL),
@@ -1174,6 +1192,13 @@ class ObservableAppState(QObject):
             if local_path is None:
                 return False
             state_dict = self._yaml_read(local_path)
+            if not state_dict:
+                return False
+            # Drop global-preference keys left in a local file by older
+            # versions (e.g. import_labels_nc_data before it went global) —
+            # a per-dataset leftover must never override a global preference.
+            global_keys = AppStateSpec.saveable_attributes(scope=AppStateSpec.SCOPE_GLOBAL)
+            state_dict = {k: v for k, v in state_dict.items() if k not in global_keys}
             if not state_dict:
                 return False
             self.load_from_dict(state_dict)

@@ -280,9 +280,10 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
     panel_added = Signal(object)
     #: Emitted with a feature panel whenever what it shows may have changed —
     #: it was clicked (including while already active) or the sidebar edited
-    #: its feature/selections. ``active_changed`` fires only when the active
-    #: panel *changes*, so anything that must track a panel's current contents
-    #: (the console) listens here instead.
+    #: its feature/selections. ``active_changed`` announces clicks but not
+    #: sidebar edits, so anything that must track a panel's current contents
+    #: (the console) listens here instead — and ONLY here, since a click can
+    #: fire both signals.
     panel_content_changed = Signal(object)
     #: Relays bufferUpdated from every spectrogram instance (auto-levels).
     spectrogram_buffer_updated = Signal()

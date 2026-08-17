@@ -396,6 +396,41 @@ class NavigationWidget(QWidget):
             self.app_state.sequence_match_idx = min(old_idx, max(0, len(self._sequence_matches) - 1))
             self._update_counter()
 
+    def on_trials_filtered(self):
+        """Re-scope label/sequence instances to the trials the table still shows.
+
+        Same refresh as :meth:`on_labels_changed`, minus the navigation: a
+        filter change must not fling the view to another trial, so the lists
+        are recomputed and the index clamped in place.
+        """
+        mode = self.app_state.navigate_mode
+        if mode == "label":
+            self._refresh_label_instances_keep_position(self.app_state.label_instance_idx)
+        elif mode == "sequence":
+            old_idx = self.app_state.sequence_match_idx
+            self._compute_sequence_matches()
+            self.app_state.sequence_match_idx = min(old_idx, max(0, len(self._sequence_matches) - 1))
+            self._update_counter()
+
+    def _visible_trials(self) -> set[str] | None:
+        """Trial IDs the trials table currently shows, as strings.
+
+        ``app_state.trials`` IS the filtered list (``TrialsWidget._apply_filters``
+        writes it), so navigation only has to honour it. Compared as strings
+        because label/metadata tables disagree on int vs str trial IDs.
+        """
+        trials = getattr(self.app_state, "trials", None)
+        if not trials:
+            return None
+        return {str(t) for t in trials}
+
+    def _only_visible_trials(self, items: list[dict]) -> list[dict]:
+        """Drop instances/matches belonging to filtered-out trials."""
+        visible = self._visible_trials()
+        if visible is None:
+            return items
+        return [it for it in items if str(it["trial"]) in visible]
+
     def _refresh_label_instances_keep_position(self, old_idx: int):
         """Refresh label instances and keep index close to old_idx."""
         label_id = self.label_combo.currentData()
@@ -406,7 +441,7 @@ class NavigationWidget(QWidget):
         individual = self.individual_combo.currentText()
         ind_filter = None if individual == "All" else individual
         df = getattr(self.app_state, "_all_labels_df", None)
-        self._label_instances = get_label_instances(df, label_id, ind_filter)
+        self._label_instances = self._only_visible_trials(get_label_instances(df, label_id, ind_filter))
         self.app_state.label_instance_idx = min(old_idx, max(0, len(self._label_instances) - 1))
         self._update_counter()
 
@@ -762,7 +797,7 @@ class NavigationWidget(QWidget):
         individual = self.individual_combo.currentText()
         ind_filter = None if individual == "All" else individual
         df = getattr(self.app_state, "_all_labels_df", None)
-        self._label_instances = get_label_instances(df, label_id, ind_filter)
+        self._label_instances = self._only_visible_trials(get_label_instances(df, label_id, ind_filter))
         self.app_state.label_instance_idx = 0
         self._update_counter()
 
@@ -812,15 +847,18 @@ class NavigationWidget(QWidget):
     # Sequence mode
     # ==================================================================
 
-    def _on_sequence_search(self):
+    def _compute_sequence_matches(self):
+        """Recompute ``_sequence_matches`` from the pattern box, visible trials only."""
         pattern = self.sequence_input.text().strip()
         if not pattern:
             self._sequence_matches = []
-            self._update_counter()
             return
         self.app_state.sequence_pattern = pattern
         df = getattr(self.app_state, "_all_labels_df", None)
-        self._sequence_matches = match_sequences(df, pattern)
+        self._sequence_matches = self._only_visible_trials(match_sequences(df, pattern))
+
+    def _on_sequence_search(self):
+        self._compute_sequence_matches()
         self.app_state.sequence_match_idx = 0
         self._update_counter()
         if self._sequence_matches:

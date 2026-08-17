@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 
 import numpy as np
+from qtpy.QtCore import Qt
 from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -760,8 +761,10 @@ class IOWidget(QWidget):
         input_layout.addWidget(self.labels_format_combo)
 
         self.label_file_path_edit = QLineEdit()
-        if self.import_labels_checkbox.isChecked() and self.app_state.nc_file_path:
-            populate_if_exists(self.label_file_path_edit, labels_tsv_path(self.app_state.nc_file_path))
+        if self.import_labels_checkbox.isChecked():
+            path = self._resolve_import_labels_path()
+            if path:
+                self.label_file_path_edit.setText(path)
         input_layout.addWidget(self.label_file_path_edit)
 
         self.labels_browse_btn = QPushButton("Browse")
@@ -832,6 +835,10 @@ class IOWidget(QWidget):
             resolver=lambda: ask_label_time_basis(self),
         )
         self.app_state._labels_file_path = file_path  # Track which file is active
+        # Remember this exact file for future loads of this dataset — an
+        # explicit choice must never be re-guessed from the .nc filename.
+        self.app_state.labels_import_path = file_path
+        self.import_labels_checkbox.setChecked(True)
         self.app_state.label_intervals = self.app_state.get_trial_intervals(self.app_state.trials_sel)
         self.label_file_path_edit.setText(file_path)
 
@@ -1320,11 +1327,37 @@ class IOWidget(QWidget):
         return line_edit
 
     def _on_import_labels_checked(self, state):
-        self.app_state.import_labels_nc_data = state == 2
-        if state == 2 and self.app_state.nc_file_path:
-            tsv = labels_tsv_path(self.app_state.nc_file_path)
-            if hasattr(self, "label_file_path_edit"):
-                populate_if_exists(self.label_file_path_edit, tsv)
+        checked = Qt.CheckState(state) == Qt.Checked
+        self.app_state.import_labels_nc_data = checked
+        if checked:
+            path = self._resolve_import_labels_path()
+            if path and hasattr(self, "label_file_path_edit"):
+                self.label_file_path_edit.setText(path)
+
+    def _resolve_import_labels_path(self) -> str | None:
+        """Resolve + persist the explicit "Import labels" path.
+
+        ``app_state.labels_import_path`` (SCOPE_LOCAL) is the single source of
+        truth once set — remembered per dataset instead of re-derived from the
+        ``.nc`` filename on every load, which silently found nothing whenever
+        a labels file didn't happen to match the ``{stem}_labels.tsv``
+        convention. Seeded once, on first use for a dataset that has never
+        set it, from that same canonical guess (still correct for datasets
+        that DO follow it, e.g. downloaded templates) — after that the guess
+        is never repeated. The guess is only seeded when the file exists:
+        the checkbox itself is a global preference, so a dataset with no
+        labels file must resolve to nothing (and load without labels) rather
+        than pin a nonexistent path that would error every future load.
+        """
+        if self.app_state.labels_import_path:
+            return self.app_state.labels_import_path
+        if not self.app_state.nc_file_path:
+            return None
+        guess = labels_tsv_path(self.app_state.nc_file_path)
+        if not guess.exists():
+            return None
+        self.app_state.labels_import_path = str(guess)
+        return str(guess)
 
     def _on_clear_path_clicked(self, object_name, line_edit):
         line_edit.setText("")
@@ -1771,6 +1804,25 @@ class IOWidget(QWidget):
 
     def get_nc_file_path(self):
         return self.nc_file_path_edit.text().strip()
+
+    def get_import_labels_path(self) -> str | None:
+        """Explicit labels TSV override for "Import labels", resolved at Load time.
+
+        ``app_state.labels_import_path`` (SCOPE_LOCAL) is the single source of
+        truth: set explicitly (cover-page labels drop, "Import labels…" browse)
+        or seeded once from the canonical ``{stem}_labels.tsv`` guess the first
+        time it resolves for a dataset that has never set it (only if that
+        file exists — the checkbox is a global preference, so datasets without
+        labels resolve to ``None`` and load without labels). An explicitly-set
+        path that has gone missing is a load error, not a silent no-op (see
+        ``_phase_load_data``).
+        """
+        if not self.import_labels_checkbox.isChecked():
+            return None
+        path = self._resolve_import_labels_path()
+        if path is None:
+            logger.info("'Import labels' is checked but no labels file resolved — loading without labels.")
+        return path
 
     # ------------------------------------------------------------------
     # Wire signals to other widgets (called from MetaWidget)
