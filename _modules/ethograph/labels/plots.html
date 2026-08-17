@@ -429,7 +429,7 @@
     <span class="n">fraction</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.2</span><span class="p">,</span>
     <span class="n">alpha</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.8</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Plot label segments from an intervals DataFrame.</span>
+<span class="w">    </span><span class="sd">"""Plot label segments from an intervals DataFrame.</span>
 
 <span class="sd">    Args:</span>
 <span class="sd">        ax: Matplotlib axis to plot on</span>
@@ -444,23 +444,23 @@
 <span class="sd">        import ethograph as eto</span>
 <span class="sd">        from ethograph.labels.intervals import load_label_mapping</span>
 
-<span class="sd">        dt = eto.open(&quot;data.nc&quot;)</span>
-<span class="sd">        label_mappings = load_label_mapping(&quot;mapping.txt&quot;)</span>
+<span class="sd">        dt = eto.open("data.nc")</span>
+<span class="sd">        label_mappings = load_label_mapping("mapping.txt")</span>
 
 <span class="sd">        fig, ax = plt.subplots()</span>
 <span class="sd">        # df is an intervals DataFrame with onset_s, offset_s, labels, individual</span>
 <span class="sd">        plot_label_segments(ax, df, label_mappings)</span>
 <span class="sd">        plt.show()</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="k">if</span> <span class="n">individual</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="n">df</span> <span class="o">=</span> <span class="n">df</span><span class="p">[</span><span class="n">df</span><span class="p">[</span><span class="s2">&quot;individual&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="n">individual</span><span class="p">]</span>
+        <span class="n">df</span> <span class="o">=</span> <span class="n">df</span><span class="p">[</span><span class="n">df</span><span class="p">[</span><span class="s2">"individual"</span><span class="p">]</span> <span class="o">==</span> <span class="n">individual</span><span class="p">]</span>
 
     <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">iterrows</span><span class="p">():</span>
         <span class="n">draw_label_rectangle</span><span class="p">(</span>
             <span class="n">ax</span><span class="p">,</span>
-            <span class="n">row</span><span class="p">[</span><span class="s2">&quot;onset_s&quot;</span><span class="p">],</span>
-            <span class="n">row</span><span class="p">[</span><span class="s2">&quot;offset_s&quot;</span><span class="p">],</span>
-            <span class="nb">int</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;labels&quot;</span><span class="p">]),</span>
+            <span class="n">row</span><span class="p">[</span><span class="s2">"onset_s"</span><span class="p">],</span>
+            <span class="n">row</span><span class="p">[</span><span class="s2">"offset_s"</span><span class="p">],</span>
+            <span class="nb">int</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">"labels"</span><span class="p">]),</span>
             <span class="n">label_mappings</span><span class="p">,</span>
             <span class="n">is_main</span><span class="p">,</span>
             <span class="n">fraction</span><span class="o">=</span><span class="n">fraction</span><span class="p">,</span>
@@ -481,7 +481,7 @@
     <span class="n">fraction</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
     <span class="n">alpha</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.8</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Draw a label rectangle on a matplotlib axis.</span>
+<span class="w">    </span><span class="sd">"""Draw a label rectangle on a matplotlib axis.</span>
 
 <span class="sd">    Args:</span>
 <span class="sd">        ax: Matplotlib axis to plot on</span>
@@ -497,11 +497,11 @@
 <span class="sd">        fig, ax = plt.subplots()</span>
 <span class="sd">        ax.plot(time, signal)</span>
 <span class="sd">        draw_label_rectangle(ax, 1.2, 3.5, label_id=1, label_mappings=label_mappings)</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="k">if</span> <span class="n">labels</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">label_mappings</span><span class="p">:</span>
         <span class="k">return</span>
 
-    <span class="n">color</span> <span class="o">=</span> <span class="n">label_mappings</span><span class="p">[</span><span class="n">labels</span><span class="p">][</span><span class="s2">&quot;color&quot;</span><span class="p">]</span>
+    <span class="n">color</span> <span class="o">=</span> <span class="n">label_mappings</span><span class="p">[</span><span class="n">labels</span><span class="p">][</span><span class="s2">"color"</span><span class="p">]</span>
 
     <span class="k">if</span> <span class="n">is_main</span><span class="p">:</span>
         <span class="n">ax</span><span class="o">.</span><span class="n">axvspan</span><span class="p">(</span><span class="n">start_time</span><span class="p">,</span> <span class="n">end_time</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="n">alpha</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="n">color</span><span class="p">,</span> <span class="n">zorder</span><span class="o">=-</span><span class="mi">10</span><span class="p">)</span>
@@ -532,7 +532,7 @@
     <span class="n">alpha</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.7</span><span class="p">,</span>
     <span class="n">individual</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Plot label segments at a specific row position.</span>
+<span class="w">    </span><span class="sd">"""Plot label segments at a specific row position.</span>
 
 <span class="sd">    Useful for comparing ground truth vs. predictions on the same axis by</span>
 <span class="sd">    placing each on a different row.</span>
@@ -552,13 +552,13 @@
 <span class="sd">        import ethograph as eto</span>
 <span class="sd">        from ethograph.labels.intervals import load_label_mapping</span>
 
-<span class="sd">        dt = eto.open(&quot;data.nc&quot;)</span>
-<span class="sd">        pred_dt = eto.open(&quot;predictions.nc&quot;)</span>
-<span class="sd">        label_mappings = load_label_mapping(&quot;mapping.txt&quot;)</span>
+<span class="sd">        dt = eto.open("data.nc")</span>
+<span class="sd">        pred_dt = eto.open("predictions.nc")</span>
+<span class="sd">        label_mappings = load_label_mapping("mapping.txt")</span>
 
 <span class="sd">        fig, ax = plt.subplots()</span>
 <span class="sd">        ax.set_yticks([0, 0.8])</span>
-<span class="sd">        ax.set_yticklabels([&quot;ground truth&quot;, &quot;predictions&quot;])</span>
+<span class="sd">        ax.set_yticklabels(["ground truth", "predictions"])</span>
 
 <span class="sd">        # gt_df, pred_df are intervals DataFrames with onset_s, offset_s, labels, individual</span>
 <span class="sd">        gt_df = ...</span>
@@ -567,19 +567,19 @@
 <span class="sd">        plot_label_segments_multirow(ax, gt_df, label_mappings, row_index=0)</span>
 <span class="sd">        plot_label_segments_multirow(ax, pred_df, label_mappings, row_index=1)</span>
 <span class="sd">        plt.show()</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="k">if</span> <span class="n">individual</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="n">df</span> <span class="o">=</span> <span class="n">df</span><span class="p">[</span><span class="n">df</span><span class="p">[</span><span class="s2">&quot;individual&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="n">individual</span><span class="p">]</span>
+        <span class="n">df</span> <span class="o">=</span> <span class="n">df</span><span class="p">[</span><span class="n">df</span><span class="p">[</span><span class="s2">"individual"</span><span class="p">]</span> <span class="o">==</span> <span class="n">individual</span><span class="p">]</span>
 
     <span class="n">y_base</span> <span class="o">=</span> <span class="n">row_index</span> <span class="o">*</span> <span class="n">row_spacing</span>
     <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">iterrows</span><span class="p">():</span>
         <span class="n">_draw_rectangle</span><span class="p">(</span>
             <span class="n">ax</span><span class="p">,</span>
-            <span class="n">row</span><span class="p">[</span><span class="s2">&quot;onset_s&quot;</span><span class="p">],</span>
-            <span class="n">row</span><span class="p">[</span><span class="s2">&quot;offset_s&quot;</span><span class="p">],</span>
+            <span class="n">row</span><span class="p">[</span><span class="s2">"onset_s"</span><span class="p">],</span>
+            <span class="n">row</span><span class="p">[</span><span class="s2">"offset_s"</span><span class="p">],</span>
             <span class="n">y_base</span><span class="p">,</span>
             <span class="n">rect_height</span><span class="p">,</span>
-            <span class="nb">int</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;labels&quot;</span><span class="p">]),</span>
+            <span class="nb">int</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">"labels"</span><span class="p">]),</span>
             <span class="n">label_mappings</span><span class="p">,</span>
             <span class="n">alpha</span><span class="p">,</span>
         <span class="p">)</span></div>
@@ -599,7 +599,7 @@
     <span class="k">if</span> <span class="n">labels</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">label_mappings</span><span class="p">:</span>
         <span class="k">return</span>
 
-    <span class="n">color</span> <span class="o">=</span> <span class="n">label_mappings</span><span class="p">[</span><span class="n">labels</span><span class="p">][</span><span class="s2">&quot;color&quot;</span><span class="p">]</span>
+    <span class="n">color</span> <span class="o">=</span> <span class="n">label_mappings</span><span class="p">[</span><span class="n">labels</span><span class="p">][</span><span class="s2">"color"</span><span class="p">]</span>
     <span class="n">rect</span> <span class="o">=</span> <span class="n">patches</span><span class="o">.</span><span class="n">Rectangle</span><span class="p">(</span>
         <span class="p">(</span><span class="n">start_time</span><span class="p">,</span> <span class="n">y_base</span><span class="p">),</span>
         <span class="n">end_time</span> <span class="o">-</span> <span class="n">start_time</span><span class="p">,</span>
@@ -620,7 +620,7 @@
     <span class="n">confidence_threshold</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.75</span><span class="p">,</span>
     <span class="n">segment_confidence_threshold</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.6</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">Path</span><span class="p">,</span> <span class="nb">dict</span><span class="p">]:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Plot per-trial prediction confidence and save to a PDF.</span>
+<span class="w">    </span><span class="sd">"""Plot per-trial prediction confidence and save to a PDF.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
@@ -631,7 +631,7 @@
 <span class="sd">    dt : TrialTree</span>
 <span class="sd">        Used to get per-trial time coordinates.</span>
 <span class="sd">    label_mappings : dict</span>
-<span class="sd">        Mapping from label int → {&#39;color&#39;: ..., &#39;name&#39;: ...}.</span>
+<span class="sd">        Mapping from label int → {'color': ..., 'name': ...}.</span>
 <span class="sd">    output_path : Path or None</span>
 <span class="sd">        Where to save the PDF. If None, a temp file is created.</span>
 <span class="sd">    confidence_threshold : float</span>
@@ -645,9 +645,9 @@
 <span class="sd">        Path to the saved PDF.</span>
 <span class="sd">    highlighted : dict</span>
 <span class="sd">        {trial: bool} — True if the trial was highlighted red (low confidence).</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="k">if</span> <span class="n">output_path</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="n">tmp</span> <span class="o">=</span> <span class="n">tempfile</span><span class="o">.</span><span class="n">NamedTemporaryFile</span><span class="p">(</span><span class="n">suffix</span><span class="o">=</span><span class="s2">&quot;.pdf&quot;</span><span class="p">,</span> <span class="n">delete</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+        <span class="n">tmp</span> <span class="o">=</span> <span class="n">tempfile</span><span class="o">.</span><span class="n">NamedTemporaryFile</span><span class="p">(</span><span class="n">suffix</span><span class="o">=</span><span class="s2">".pdf"</span><span class="p">,</span> <span class="n">delete</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
         <span class="n">output_path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">tmp</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
         <span class="n">tmp</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
     <span class="n">output_path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">output_path</span><span class="p">)</span>
@@ -660,40 +660,40 @@
     <span class="k">with</span> <span class="n">PdfPages</span><span class="p">(</span><span class="n">output_path</span><span class="p">)</span> <span class="k">as</span> <span class="n">pdf</span><span class="p">:</span>
         <span class="c1"># --- Legend / explanation page ---</span>
         <span class="n">leg_fig</span><span class="p">,</span> <span class="n">leg_ax</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">subplots</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">14</span><span class="p">,</span> <span class="mi">5</span><span class="p">))</span>
-        <span class="n">leg_ax</span><span class="o">.</span><span class="n">axis</span><span class="p">(</span><span class="s2">&quot;off&quot;</span><span class="p">)</span>
+        <span class="n">leg_ax</span><span class="o">.</span><span class="n">axis</span><span class="p">(</span><span class="s2">"off"</span><span class="p">)</span>
 
         <span class="n">lines</span> <span class="o">=</span> <span class="p">[</span>
-            <span class="p">(</span><span class="mf">0.92</span><span class="p">,</span> <span class="sa">r</span><span class="s2">&quot;$\bf{Confidence\ score\ (per\ frame):}$&quot;</span><span class="p">,</span> <span class="mi">14</span><span class="p">,</span> <span class="s2">&quot;black&quot;</span><span class="p">),</span>
-            <span class="p">(</span><span class="mf">0.78</span><span class="p">,</span> <span class="sa">r</span><span class="s2">&quot;$c_t = 1 - \frac{H(p_t)}{\log K}$&quot;</span><span class="p">,</span> <span class="mi">13</span><span class="p">,</span> <span class="s2">&quot;black&quot;</span><span class="p">),</span>
+            <span class="p">(</span><span class="mf">0.92</span><span class="p">,</span> <span class="sa">r</span><span class="s2">"$\bf{Confidence\ score\ (per\ frame):}$"</span><span class="p">,</span> <span class="mi">14</span><span class="p">,</span> <span class="s2">"black"</span><span class="p">),</span>
+            <span class="p">(</span><span class="mf">0.78</span><span class="p">,</span> <span class="sa">r</span><span class="s2">"$c_t = 1 - \frac{H(p_t)}{\log K}$"</span><span class="p">,</span> <span class="mi">13</span><span class="p">,</span> <span class="s2">"black"</span><span class="p">),</span>
             <span class="p">(</span>
                 <span class="mf">0.64</span><span class="p">,</span>
-                <span class="sa">r</span><span class="s2">&quot;where $p_t \in \mathbb</span><span class="si">{R}</span><span class="s2">^K$ is the softmax output at frame $t$,&quot;</span>
-                <span class="sa">r</span><span class="s2">&quot;  $H(p_t) = -\sum_k p_k \log p_k$ is the entropy,&quot;</span>
-                <span class="sa">r</span><span class="s2">&quot;  and $K$ is the number of classes.&quot;</span><span class="p">,</span>
+                <span class="sa">r</span><span class="s2">"where $p_t \in \mathbb</span><span class="si">{R}</span><span class="s2">^K$ is the softmax output at frame $t$,"</span>
+                <span class="sa">r</span><span class="s2">"  $H(p_t) = -\sum_k p_k \log p_k$ is the entropy,"</span>
+                <span class="sa">r</span><span class="s2">"  and $K$ is the number of classes."</span><span class="p">,</span>
                 <span class="mi">10</span><span class="p">,</span>
-                <span class="s2">&quot;#333333&quot;</span><span class="p">,</span>
+                <span class="s2">"#333333"</span><span class="p">,</span>
             <span class="p">),</span>
             <span class="p">(</span>
                 <span class="mf">0.50</span><span class="p">,</span>
-                <span class="sa">r</span><span class="s2">&quot;$c_t = 1.0$ means the model is certain;  $c_t = 0.0$ means the model is maximally uncertain (uniform distribution).&quot;</span><span class="p">,</span>  <span class="c1"># noqa: E501</span>
+                <span class="sa">r</span><span class="s2">"$c_t = 1.0$ means the model is certain;  $c_t = 0.0$ means the model is maximally uncertain (uniform distribution)."</span><span class="p">,</span>  <span class="c1"># noqa: E501</span>
                 <span class="mi">10</span><span class="p">,</span>
-                <span class="s2">&quot;#333333&quot;</span><span class="p">,</span>
+                <span class="s2">"#333333"</span><span class="p">,</span>
             <span class="p">),</span>
-            <span class="p">(</span><span class="mf">0.34</span><span class="p">,</span> <span class="sa">r</span><span class="s2">&quot;$\bf</span><span class="si">{Thresholds:}</span><span class="s2">$&quot;</span><span class="p">,</span> <span class="mi">12</span><span class="p">,</span> <span class="s2">&quot;black&quot;</span><span class="p">),</span>
+            <span class="p">(</span><span class="mf">0.34</span><span class="p">,</span> <span class="sa">r</span><span class="s2">"$\bf</span><span class="si">{Thresholds:}</span><span class="s2">$"</span><span class="p">,</span> <span class="mi">12</span><span class="p">,</span> <span class="s2">"black"</span><span class="p">),</span>
             <span class="p">(</span>
                 <span class="mf">0.22</span><span class="p">,</span>
-                <span class="sa">rf</span><span class="s2">&quot;Frame threshold (orange dashed, $\tau_</span><span class="se">{{</span><span class="s2">frame</span><span class="se">}}</span><span class="s2">=</span><span class="si">{</span><span class="n">confidence_threshold</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">$): &quot;</span>
-                <span class="sa">r</span><span class="s2">&quot;frames with $c_t &lt; \tau_</span><span class="si">{frame}</span><span class="s2">$ are plotted as red dots.&quot;</span><span class="p">,</span>
+                <span class="sa">rf</span><span class="s2">"Frame threshold (orange dashed, $\tau_</span><span class="se">{{</span><span class="s2">frame</span><span class="se">}}</span><span class="s2">=</span><span class="si">{</span><span class="n">confidence_threshold</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">$): "</span>
+                <span class="sa">r</span><span class="s2">"frames with $c_t &lt; \tau_</span><span class="si">{frame}</span><span class="s2">$ are plotted as red dots."</span><span class="p">,</span>
                 <span class="mi">10</span><span class="p">,</span>
-                <span class="s2">&quot;darkorange&quot;</span><span class="p">,</span>
+                <span class="s2">"darkorange"</span><span class="p">,</span>
             <span class="p">),</span>
             <span class="p">(</span>
                 <span class="mf">0.10</span><span class="p">,</span>
-                <span class="sa">rf</span><span class="s2">&quot;Segment threshold (red dotted, $\tau_</span><span class="se">{{</span><span class="s2">seg</span><span class="se">}}</span><span class="s2">=</span><span class="si">{</span><span class="n">segment_confidence_threshold</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">$): &quot;</span>
-                <span class="sa">r</span><span class="s2">&quot;segments whose mean frame confidence $\bar{{c}} &lt; \tau_{{seg}}$ are shaded red. &quot;</span>
-                <span class="sa">r</span><span class="s2">&quot;A trial is marked low-confidence (red border) if its overall mean $&lt; \tau_{{frame}}$ or any segment $&lt; \tau_{{seg}}$.&quot;</span><span class="p">,</span>  <span class="c1"># noqa: E501</span>
+                <span class="sa">rf</span><span class="s2">"Segment threshold (red dotted, $\tau_</span><span class="se">{{</span><span class="s2">seg</span><span class="se">}}</span><span class="s2">=</span><span class="si">{</span><span class="n">segment_confidence_threshold</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">$): "</span>
+                <span class="sa">r</span><span class="s2">"segments whose mean frame confidence $\bar{{c}} &lt; \tau_{{seg}}$ are shaded red. "</span>
+                <span class="sa">r</span><span class="s2">"A trial is marked low-confidence (red border) if its overall mean $&lt; \tau_{{frame}}$ or any segment $&lt; \tau_{{seg}}$."</span><span class="p">,</span>  <span class="c1"># noqa: E501</span>
                 <span class="mi">10</span><span class="p">,</span>
-                <span class="s2">&quot;red&quot;</span><span class="p">,</span>
+                <span class="s2">"red"</span><span class="p">,</span>
             <span class="p">),</span>
         <span class="p">]</span>
         <span class="k">for</span> <span class="n">y</span><span class="p">,</span> <span class="n">txt</span><span class="p">,</span> <span class="n">size</span><span class="p">,</span> <span class="n">color</span> <span class="ow">in</span> <span class="n">lines</span><span class="p">:</span>
@@ -704,11 +704,11 @@
                 <span class="n">transform</span><span class="o">=</span><span class="n">leg_ax</span><span class="o">.</span><span class="n">transAxes</span><span class="p">,</span>
                 <span class="n">fontsize</span><span class="o">=</span><span class="n">size</span><span class="p">,</span>
                 <span class="n">color</span><span class="o">=</span><span class="n">color</span><span class="p">,</span>
-                <span class="n">va</span><span class="o">=</span><span class="s2">&quot;top&quot;</span><span class="p">,</span>
+                <span class="n">va</span><span class="o">=</span><span class="s2">"top"</span><span class="p">,</span>
                 <span class="n">wrap</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
             <span class="p">)</span>
 
-        <span class="n">pdf</span><span class="o">.</span><span class="n">savefig</span><span class="p">(</span><span class="n">leg_fig</span><span class="p">,</span> <span class="n">bbox_inches</span><span class="o">=</span><span class="s2">&quot;tight&quot;</span><span class="p">)</span>
+        <span class="n">pdf</span><span class="o">.</span><span class="n">savefig</span><span class="p">(</span><span class="n">leg_fig</span><span class="p">,</span> <span class="n">bbox_inches</span><span class="o">=</span><span class="s2">"tight"</span><span class="p">)</span>
         <span class="n">plt</span><span class="o">.</span><span class="n">close</span><span class="p">(</span><span class="n">leg_fig</span><span class="p">)</span>
 
         <span class="c1"># --- Per-trial subplots ---</span>
@@ -721,33 +721,33 @@
 
             <span class="k">if</span> <span class="n">confidence</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
                 <span class="n">highlighted</span><span class="p">[</span><span class="n">trial</span><span class="p">]</span> <span class="o">=</span> <span class="kc">False</span>
-                <span class="n">ax</span><span class="o">.</span><span class="n">set_title</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;trial-</span><span class="si">{</span><span class="n">trial</span><span class="si">}</span><span class="se">\n</span><span class="s2">(no confidence)&quot;</span><span class="p">,</span> <span class="n">fontsize</span><span class="o">=</span><span class="mi">9</span><span class="p">)</span>
-                <span class="n">ax</span><span class="o">.</span><span class="n">axis</span><span class="p">(</span><span class="s2">&quot;off&quot;</span><span class="p">)</span>
+                <span class="n">ax</span><span class="o">.</span><span class="n">set_title</span><span class="p">(</span><span class="sa">f</span><span class="s2">"trial-</span><span class="si">{</span><span class="n">trial</span><span class="si">}</span><span class="se">\n</span><span class="s2">(no confidence)"</span><span class="p">,</span> <span class="n">fontsize</span><span class="o">=</span><span class="mi">9</span><span class="p">)</span>
+                <span class="n">ax</span><span class="o">.</span><span class="n">axis</span><span class="p">(</span><span class="s2">"off"</span><span class="p">)</span>
                 <span class="k">continue</span>
 
             <span class="n">ds</span> <span class="o">=</span> <span class="n">dt</span><span class="o">.</span><span class="n">trial</span><span class="p">(</span><span class="n">trial</span><span class="p">)</span>
-            <span class="n">time_coord</span> <span class="o">=</span> <span class="n">ds</span><span class="o">.</span><span class="n">time</span><span class="o">.</span><span class="n">values</span> <span class="k">if</span> <span class="s2">&quot;time&quot;</span> <span class="ow">in</span> <span class="n">ds</span><span class="o">.</span><span class="n">coords</span> <span class="k">else</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">confidence</span><span class="p">))</span>
+            <span class="n">time_coord</span> <span class="o">=</span> <span class="n">ds</span><span class="o">.</span><span class="n">time</span><span class="o">.</span><span class="n">values</span> <span class="k">if</span> <span class="s2">"time"</span> <span class="ow">in</span> <span class="n">ds</span><span class="o">.</span><span class="n">coords</span> <span class="k">else</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">confidence</span><span class="p">))</span>
             <span class="n">n</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">confidence</span><span class="p">),</span> <span class="nb">len</span><span class="p">(</span><span class="n">time_coord</span><span class="p">))</span>
             <span class="n">confidence</span> <span class="o">=</span> <span class="n">confidence</span><span class="p">[:</span><span class="n">n</span><span class="p">]</span>
             <span class="n">time_coord</span> <span class="o">=</span> <span class="n">time_coord</span><span class="p">[:</span><span class="n">n</span><span class="p">]</span>
 
-            <span class="n">trial_intervals</span> <span class="o">=</span> <span class="n">labels_df</span><span class="p">[</span><span class="n">labels_df</span><span class="p">[</span><span class="s2">&quot;trial&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="n">trial</span><span class="p">]</span>
+            <span class="n">trial_intervals</span> <span class="o">=</span> <span class="n">labels_df</span><span class="p">[</span><span class="n">labels_df</span><span class="p">[</span><span class="s2">"trial"</span><span class="p">]</span> <span class="o">==</span> <span class="n">trial</span><span class="p">]</span>
 
             <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">trial_intervals</span><span class="o">.</span><span class="n">iterrows</span><span class="p">():</span>
-                <span class="n">label_id</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;labels&quot;</span><span class="p">])</span>
-                <span class="n">color</span> <span class="o">=</span> <span class="n">label_mappings</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">label_id</span><span class="p">,</span> <span class="p">{})</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;color&quot;</span><span class="p">,</span> <span class="s2">&quot;gray&quot;</span><span class="p">)</span>
-                <span class="n">ax</span><span class="o">.</span><span class="n">axvspan</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;onset_s&quot;</span><span class="p">],</span> <span class="n">row</span><span class="p">[</span><span class="s2">&quot;offset_s&quot;</span><span class="p">],</span> <span class="n">alpha</span><span class="o">=</span><span class="mf">0.25</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="n">color</span><span class="p">,</span> <span class="n">zorder</span><span class="o">=-</span><span class="mi">10</span><span class="p">)</span>
+                <span class="n">label_id</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">"labels"</span><span class="p">])</span>
+                <span class="n">color</span> <span class="o">=</span> <span class="n">label_mappings</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">label_id</span><span class="p">,</span> <span class="p">{})</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"color"</span><span class="p">,</span> <span class="s2">"gray"</span><span class="p">)</span>
+                <span class="n">ax</span><span class="o">.</span><span class="n">axvspan</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">"onset_s"</span><span class="p">],</span> <span class="n">row</span><span class="p">[</span><span class="s2">"offset_s"</span><span class="p">],</span> <span class="n">alpha</span><span class="o">=</span><span class="mf">0.25</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="n">color</span><span class="p">,</span> <span class="n">zorder</span><span class="o">=-</span><span class="mi">10</span><span class="p">)</span>
 
-            <span class="n">ax</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">time_coord</span><span class="p">,</span> <span class="n">confidence</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s2">&quot;steelblue&quot;</span><span class="p">,</span> <span class="n">lw</span><span class="o">=</span><span class="mf">0.8</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="mf">0.9</span><span class="p">)</span>
-            <span class="n">ax</span><span class="o">.</span><span class="n">axhline</span><span class="p">(</span><span class="n">confidence_threshold</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s2">&quot;orange&quot;</span><span class="p">,</span> <span class="n">lw</span><span class="o">=</span><span class="mf">0.8</span><span class="p">,</span> <span class="n">ls</span><span class="o">=</span><span class="s2">&quot;--&quot;</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="mf">0.7</span><span class="p">)</span>
-            <span class="n">ax</span><span class="o">.</span><span class="n">axhline</span><span class="p">(</span><span class="n">segment_confidence_threshold</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s2">&quot;red&quot;</span><span class="p">,</span> <span class="n">lw</span><span class="o">=</span><span class="mf">0.6</span><span class="p">,</span> <span class="n">ls</span><span class="o">=</span><span class="s2">&quot;:&quot;</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="mf">0.6</span><span class="p">)</span>
+            <span class="n">ax</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">time_coord</span><span class="p">,</span> <span class="n">confidence</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s2">"steelblue"</span><span class="p">,</span> <span class="n">lw</span><span class="o">=</span><span class="mf">0.8</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="mf">0.9</span><span class="p">)</span>
+            <span class="n">ax</span><span class="o">.</span><span class="n">axhline</span><span class="p">(</span><span class="n">confidence_threshold</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s2">"orange"</span><span class="p">,</span> <span class="n">lw</span><span class="o">=</span><span class="mf">0.8</span><span class="p">,</span> <span class="n">ls</span><span class="o">=</span><span class="s2">"--"</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="mf">0.7</span><span class="p">)</span>
+            <span class="n">ax</span><span class="o">.</span><span class="n">axhline</span><span class="p">(</span><span class="n">segment_confidence_threshold</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s2">"red"</span><span class="p">,</span> <span class="n">lw</span><span class="o">=</span><span class="mf">0.6</span><span class="p">,</span> <span class="n">ls</span><span class="o">=</span><span class="s2">":"</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="mf">0.6</span><span class="p">)</span>
 
             <span class="n">low_mask</span> <span class="o">=</span> <span class="n">confidence</span> <span class="o">&lt;</span> <span class="n">confidence_threshold</span>
             <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">low_mask</span><span class="p">):</span>
                 <span class="n">ax</span><span class="o">.</span><span class="n">scatter</span><span class="p">(</span>
                     <span class="n">time_coord</span><span class="p">[</span><span class="n">low_mask</span><span class="p">],</span>
                     <span class="n">confidence</span><span class="p">[</span><span class="n">low_mask</span><span class="p">],</span>
-                    <span class="n">color</span><span class="o">=</span><span class="s2">&quot;red&quot;</span><span class="p">,</span>
+                    <span class="n">color</span><span class="o">=</span><span class="s2">"red"</span><span class="p">,</span>
                     <span class="n">s</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span>
                     <span class="n">alpha</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span>
                     <span class="n">zorder</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span>
@@ -755,40 +755,40 @@
 
             <span class="n">has_low_segment</span> <span class="o">=</span> <span class="kc">False</span>
             <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">trial_intervals</span><span class="o">.</span><span class="n">iterrows</span><span class="p">():</span>
-                <span class="n">onset</span><span class="p">,</span> <span class="n">offset</span> <span class="o">=</span> <span class="n">row</span><span class="p">[</span><span class="s2">&quot;onset_s&quot;</span><span class="p">],</span> <span class="n">row</span><span class="p">[</span><span class="s2">&quot;offset_s&quot;</span><span class="p">]</span>
+                <span class="n">onset</span><span class="p">,</span> <span class="n">offset</span> <span class="o">=</span> <span class="n">row</span><span class="p">[</span><span class="s2">"onset_s"</span><span class="p">],</span> <span class="n">row</span><span class="p">[</span><span class="s2">"offset_s"</span><span class="p">]</span>
                 <span class="n">seg_mask</span> <span class="o">=</span> <span class="p">(</span><span class="n">time_coord</span> <span class="o">&gt;=</span> <span class="n">onset</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">time_coord</span> <span class="o">&lt;=</span> <span class="n">offset</span><span class="p">)</span>
                 <span class="k">if</span> <span class="n">seg_mask</span><span class="o">.</span><span class="n">any</span><span class="p">():</span>
                     <span class="n">seg_conf</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">confidence</span><span class="p">[</span><span class="n">seg_mask</span><span class="p">])</span>
                     <span class="k">if</span> <span class="n">seg_conf</span> <span class="o">&lt;</span> <span class="n">segment_confidence_threshold</span><span class="p">:</span>
                         <span class="n">has_low_segment</span> <span class="o">=</span> <span class="kc">True</span>
-                        <span class="n">ax</span><span class="o">.</span><span class="n">axvspan</span><span class="p">(</span><span class="n">onset</span><span class="p">,</span> <span class="n">offset</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s2">&quot;red&quot;</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="mf">0.2</span><span class="p">,</span> <span class="n">zorder</span><span class="o">=</span><span class="mi">4</span><span class="p">)</span>
+                        <span class="n">ax</span><span class="o">.</span><span class="n">axvspan</span><span class="p">(</span><span class="n">onset</span><span class="p">,</span> <span class="n">offset</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s2">"red"</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="mf">0.2</span><span class="p">,</span> <span class="n">zorder</span><span class="o">=</span><span class="mi">4</span><span class="p">)</span>
 
             <span class="n">mean_conf</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">confidence</span><span class="p">))</span>
             <span class="n">low</span> <span class="o">=</span> <span class="n">mean_conf</span> <span class="o">&lt;</span> <span class="n">confidence_threshold</span> <span class="ow">or</span> <span class="n">has_low_segment</span>
             <span class="n">highlighted</span><span class="p">[</span><span class="n">trial</span><span class="p">]</span> <span class="o">=</span> <span class="n">low</span>
 
             <span class="n">ax</span><span class="o">.</span><span class="n">set_title</span><span class="p">(</span>
-                <span class="sa">f</span><span class="s2">&quot;trial-</span><span class="si">{</span><span class="n">trial</span><span class="si">}</span><span class="s2">  mean=</span><span class="si">{</span><span class="n">mean_conf</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+                <span class="sa">f</span><span class="s2">"trial-</span><span class="si">{</span><span class="n">trial</span><span class="si">}</span><span class="s2">  mean=</span><span class="si">{</span><span class="n">mean_conf</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">"</span><span class="p">,</span>
                 <span class="n">fontsize</span><span class="o">=</span><span class="mi">9</span><span class="p">,</span>
-                <span class="n">color</span><span class="o">=</span><span class="s2">&quot;red&quot;</span> <span class="k">if</span> <span class="n">low</span> <span class="k">else</span> <span class="s2">&quot;black&quot;</span><span class="p">,</span>
-                <span class="n">weight</span><span class="o">=</span><span class="s2">&quot;bold&quot;</span> <span class="k">if</span> <span class="n">low</span> <span class="k">else</span> <span class="s2">&quot;normal&quot;</span><span class="p">,</span>
+                <span class="n">color</span><span class="o">=</span><span class="s2">"red"</span> <span class="k">if</span> <span class="n">low</span> <span class="k">else</span> <span class="s2">"black"</span><span class="p">,</span>
+                <span class="n">weight</span><span class="o">=</span><span class="s2">"bold"</span> <span class="k">if</span> <span class="n">low</span> <span class="k">else</span> <span class="s2">"normal"</span><span class="p">,</span>
             <span class="p">)</span>
             <span class="k">if</span> <span class="n">low</span><span class="p">:</span>
                 <span class="k">for</span> <span class="n">spine</span> <span class="ow">in</span> <span class="n">ax</span><span class="o">.</span><span class="n">spines</span><span class="o">.</span><span class="n">values</span><span class="p">():</span>
-                    <span class="n">spine</span><span class="o">.</span><span class="n">set_edgecolor</span><span class="p">(</span><span class="s2">&quot;red&quot;</span><span class="p">)</span>
+                    <span class="n">spine</span><span class="o">.</span><span class="n">set_edgecolor</span><span class="p">(</span><span class="s2">"red"</span><span class="p">)</span>
                     <span class="n">spine</span><span class="o">.</span><span class="n">set_linewidth</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>
 
             <span class="n">ax</span><span class="o">.</span><span class="n">set_ylim</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mf">1.05</span><span class="p">)</span>
-            <span class="n">ax</span><span class="o">.</span><span class="n">set_xlabel</span><span class="p">(</span><span class="s2">&quot;time (s)&quot;</span><span class="p">,</span> <span class="n">fontsize</span><span class="o">=</span><span class="mi">7</span><span class="p">)</span>
-            <span class="n">ax</span><span class="o">.</span><span class="n">set_ylabel</span><span class="p">(</span><span class="s2">&quot;confidence&quot;</span><span class="p">,</span> <span class="n">fontsize</span><span class="o">=</span><span class="mi">7</span><span class="p">)</span>
+            <span class="n">ax</span><span class="o">.</span><span class="n">set_xlabel</span><span class="p">(</span><span class="s2">"time (s)"</span><span class="p">,</span> <span class="n">fontsize</span><span class="o">=</span><span class="mi">7</span><span class="p">)</span>
+            <span class="n">ax</span><span class="o">.</span><span class="n">set_ylabel</span><span class="p">(</span><span class="s2">"confidence"</span><span class="p">,</span> <span class="n">fontsize</span><span class="o">=</span><span class="mi">7</span><span class="p">)</span>
             <span class="n">ax</span><span class="o">.</span><span class="n">tick_params</span><span class="p">(</span><span class="n">labelsize</span><span class="o">=</span><span class="mi">7</span><span class="p">)</span>
             <span class="n">ax</span><span class="o">.</span><span class="n">grid</span><span class="p">(</span><span class="kc">True</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="mf">0.3</span><span class="p">)</span>
 
         <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">trials</span><span class="p">),</span> <span class="nb">len</span><span class="p">(</span><span class="n">axes</span><span class="p">)):</span>
-            <span class="n">axes</span><span class="p">[</span><span class="n">j</span><span class="p">]</span><span class="o">.</span><span class="n">axis</span><span class="p">(</span><span class="s2">&quot;off&quot;</span><span class="p">)</span>
+            <span class="n">axes</span><span class="p">[</span><span class="n">j</span><span class="p">]</span><span class="o">.</span><span class="n">axis</span><span class="p">(</span><span class="s2">"off"</span><span class="p">)</span>
 
         <span class="n">plt</span><span class="o">.</span><span class="n">tight_layout</span><span class="p">()</span>
-        <span class="n">pdf</span><span class="o">.</span><span class="n">savefig</span><span class="p">(</span><span class="n">fig</span><span class="p">,</span> <span class="n">bbox_inches</span><span class="o">=</span><span class="s2">&quot;tight&quot;</span><span class="p">)</span>
+        <span class="n">pdf</span><span class="o">.</span><span class="n">savefig</span><span class="p">(</span><span class="n">fig</span><span class="p">,</span> <span class="n">bbox_inches</span><span class="o">=</span><span class="s2">"tight"</span><span class="p">)</span>
         <span class="n">plt</span><span class="o">.</span><span class="n">close</span><span class="p">(</span><span class="n">fig</span><span class="p">)</span>
 
     <span class="k">return</span> <span class="n">output_path</span><span class="p">,</span> <span class="n">highlighted</span>

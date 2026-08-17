@@ -472,9 +472,9 @@ on a 30 Hz signal produces ~6 Hz output (2 points per block).</p></li>
 </dl>
 <p class="rubric">Examples</p>
 <div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">ethograph</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">eto</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">dt</span> <span class="o">=</span> <span class="n">eto</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="s2">&quot;high_rate_experiment.nc&quot;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">dt</span> <span class="o">=</span> <span class="n">eto</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="s2">"high_rate_experiment.nc"</span><span class="p">)</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">dt_small</span> <span class="o">=</span> <span class="n">eto</span><span class="o">.</span><span class="n">downsample_trialtree</span><span class="p">(</span><span class="n">dt</span><span class="p">,</span> <span class="n">factor</span><span class="o">=</span><span class="mi">20</span><span class="p">)</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">dt_small</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="s2">&quot;experiment_downsampled.nc&quot;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">dt_small</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="s2">"experiment_downsampled.nc"</span><span class="p">)</span>
 </pre></div>
 </div>
 </dd></dl>
@@ -515,17 +515,17 @@ numpy array and returns a same-length binary indicator.</p></li>
 <p class="rubric">Examples</p>
 <div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">ethograph</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">eto</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.features.changepoints</span><span class="w"> </span><span class="kn">import</span> <span class="n">find_troughs_binary</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">dt</span> <span class="o">=</span> <span class="n">eto</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="s2">&quot;experiment.nc&quot;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">dt</span> <span class="o">=</span> <span class="n">eto</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="s2">"experiment.nc"</span><span class="p">)</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">ds</span> <span class="o">=</span> <span class="n">dt</span><span class="o">.</span><span class="n">itrial</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">ds</span> <span class="o">=</span> <span class="n">eto</span><span class="o">.</span><span class="n">add_changepoints_to_ds</span><span class="p">(</span>
 <span class="gp">... </span>    <span class="n">ds</span><span class="p">,</span>
-<span class="gp">... </span>    <span class="n">target_feature</span><span class="o">=</span><span class="s2">&quot;speed&quot;</span><span class="p">,</span>
-<span class="gp">... </span>    <span class="n">changepoint_name</span><span class="o">=</span><span class="s2">&quot;troughs&quot;</span><span class="p">,</span>
+<span class="gp">... </span>    <span class="n">target_feature</span><span class="o">=</span><span class="s2">"speed"</span><span class="p">,</span>
+<span class="gp">... </span>    <span class="n">changepoint_name</span><span class="o">=</span><span class="s2">"troughs"</span><span class="p">,</span>
 <span class="gp">... </span>    <span class="n">changepoint_func</span><span class="o">=</span><span class="n">find_troughs_binary</span><span class="p">,</span>
 <span class="gp">... </span>    <span class="n">prominence</span><span class="o">=</span><span class="mf">0.3</span><span class="p">,</span>
 <span class="gp">... </span><span class="p">)</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">ds</span><span class="p">[</span><span class="s2">&quot;speed_troughs&quot;</span><span class="p">]</span>
-<span class="go">&lt;xarray.DataArray &#39;speed_troughs&#39; (time: 9000, keypoint: 7)&gt;</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">ds</span><span class="p">[</span><span class="s2">"speed_troughs"</span><span class="p">]</span>
+<span class="go">&lt;xarray.DataArray 'speed_troughs' (time: 9000, keypoint: 7)&gt;</span>
 </pre></div>
 </div>
 </dd></dl>
@@ -598,10 +598,10 @@ binary indicator of the same length).</p></li>
 <p class="rubric">Examples</p>
 <div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">ethograph</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">eto</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.features.changepoints</span><span class="w"> </span><span class="kn">import</span> <span class="n">find_troughs</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">data</span> <span class="o">=</span> <span class="n">eto</span><span class="o">.</span><span class="n">load_nap_data</span><span class="p">(</span><span class="s2">&quot;experiment.nwb&quot;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">data</span> <span class="o">=</span> <span class="n">eto</span><span class="o">.</span><span class="n">load_nap_data</span><span class="p">(</span><span class="s2">"experiment.nwb"</span><span class="p">)</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">cp_group</span> <span class="o">=</span> <span class="n">eto</span><span class="o">.</span><span class="n">add_changepoints_to_nap</span><span class="p">(</span>
-<span class="gp">... </span>    <span class="n">data</span><span class="p">[</span><span class="s2">&quot;speed&quot;</span><span class="p">],</span>
-<span class="gp">... </span>    <span class="n">target_feature</span><span class="o">=</span><span class="s2">&quot;speed&quot;</span><span class="p">,</span>
+<span class="gp">... </span>    <span class="n">data</span><span class="p">[</span><span class="s2">"speed"</span><span class="p">],</span>
+<span class="gp">... </span>    <span class="n">target_feature</span><span class="o">=</span><span class="s2">"speed"</span><span class="p">,</span>
 <span class="gp">... </span>    <span class="n">changepoint_func</span><span class="o">=</span><span class="n">find_troughs</span><span class="p">,</span>
 <span class="gp">... </span>    <span class="n">prominence</span><span class="o">=</span><span class="mf">0.3</span><span class="p">,</span>
 <span class="gp">... </span><span class="p">)</span>
@@ -639,13 +639,13 @@ same time support as <em>tsdframe</em>.</p>
 </dl>
 <p class="rubric">Examples</p>
 <div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">ethograph</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">eto</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">data</span> <span class="o">=</span> <span class="n">eto</span><span class="o">.</span><span class="n">load_nap_data</span><span class="p">(</span><span class="s2">&quot;experiment.nwb&quot;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">data</span> <span class="o">=</span> <span class="n">eto</span><span class="o">.</span><span class="n">load_nap_data</span><span class="p">(</span><span class="s2">"experiment.nwb"</span><span class="p">)</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">rgb</span> <span class="o">=</span> <span class="n">eto</span><span class="o">.</span><span class="n">add_angle_rgb_to_nap</span><span class="p">(</span>
-<span class="gp">... </span>    <span class="n">data</span><span class="p">[</span><span class="s2">&quot;position&quot;</span><span class="p">],</span>
-<span class="gp">... </span>    <span class="n">smoothing_params</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;sigma&quot;</span><span class="p">:</span> <span class="mi">3</span><span class="p">},</span>
+<span class="gp">... </span>    <span class="n">data</span><span class="p">[</span><span class="s2">"position"</span><span class="p">],</span>
+<span class="gp">... </span>    <span class="n">smoothing_params</span><span class="o">=</span><span class="p">{</span><span class="s2">"sigma"</span><span class="p">:</span> <span class="mi">3</span><span class="p">},</span>
 <span class="gp">... </span><span class="p">)</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">rgb</span><span class="o">.</span><span class="n">columns</span>
-<span class="go">[&#39;R&#39;, &#39;G&#39;, &#39;B&#39;]</span>
+<span class="go">['R', 'G', 'B']</span>
 </pre></div>
 </div>
 </dd></dl>

@@ -405,7 +405,7 @@
                 <article class="bd-article">
                   
   <h1>Source code for ethograph.labels.tsv_store</h1><div class="highlight"><pre>
-<span></span><span class="sd">&quot;&quot;&quot;TSV-based label storage for EthoGraph.</span>
+<span></span><span class="sd">"""TSV-based label storage for EthoGraph.</span>
 
 <span class="sd">File format:</span>
 <span class="sd">    trial                   - trial identifier</span>
@@ -420,7 +420,7 @@
 
 
 <span class="sd">Label names are managed centrally in mapping.txt.</span>
-<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">"""</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
 
@@ -439,31 +439,31 @@
 <span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span>
 
 <span class="n">TSV_COLUMNS</span> <span class="o">=</span> <span class="p">[</span>
-    <span class="s2">&quot;trial&quot;</span><span class="p">,</span>
-    <span class="s2">&quot;individual&quot;</span><span class="p">,</span>
-    <span class="s2">&quot;labels&quot;</span><span class="p">,</span>
-    <span class="s2">&quot;onset_s&quot;</span><span class="p">,</span>
-    <span class="s2">&quot;offset_s&quot;</span><span class="p">,</span>
-    <span class="s2">&quot;event_type&quot;</span><span class="p">,</span>
-    <span class="s2">&quot;human_verified&quot;</span><span class="p">,</span>
-    <span class="s2">&quot;changepoint_corrected&quot;</span><span class="p">,</span>
-    <span class="s2">&quot;prediction_source&quot;</span><span class="p">,</span>
-    <span class="s2">&quot;n_samples&quot;</span><span class="p">,</span>
+    <span class="s2">"trial"</span><span class="p">,</span>
+    <span class="s2">"individual"</span><span class="p">,</span>
+    <span class="s2">"labels"</span><span class="p">,</span>
+    <span class="s2">"onset_s"</span><span class="p">,</span>
+    <span class="s2">"offset_s"</span><span class="p">,</span>
+    <span class="s2">"event_type"</span><span class="p">,</span>
+    <span class="s2">"human_verified"</span><span class="p">,</span>
+    <span class="s2">"changepoint_corrected"</span><span class="p">,</span>
+    <span class="s2">"prediction_source"</span><span class="p">,</span>
+    <span class="s2">"n_samples"</span><span class="p">,</span>
 <span class="p">]</span>
 
 <span class="c1"># Per-trial metadata columns (same value for all rows in a trial)</span>
 <span class="n">TRIAL_META_COLUMNS</span> <span class="o">=</span> <span class="p">[</span>
-    <span class="s2">&quot;human_verified&quot;</span><span class="p">,</span>
-    <span class="s2">&quot;changepoint_corrected&quot;</span><span class="p">,</span>
-    <span class="s2">&quot;prediction_source&quot;</span><span class="p">,</span>
-    <span class="s2">&quot;n_samples&quot;</span><span class="p">,</span>
+    <span class="s2">"human_verified"</span><span class="p">,</span>
+    <span class="s2">"changepoint_corrected"</span><span class="p">,</span>
+    <span class="s2">"prediction_source"</span><span class="p">,</span>
+    <span class="s2">"n_samples"</span><span class="p">,</span>
 <span class="p">]</span>
 
 <span class="n">TRIAL_META_DEFAULTS</span> <span class="o">=</span> <span class="p">{</span>
-    <span class="s2">&quot;human_verified&quot;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span>
-    <span class="s2">&quot;changepoint_corrected&quot;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span>
-    <span class="s2">&quot;prediction_source&quot;</span><span class="p">:</span> <span class="s2">&quot;&quot;</span><span class="p">,</span>
-    <span class="s2">&quot;n_samples&quot;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span>
+    <span class="s2">"human_verified"</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span>
+    <span class="s2">"changepoint_corrected"</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span>
+    <span class="s2">"prediction_source"</span><span class="p">:</span> <span class="s2">""</span><span class="p">,</span>
+    <span class="s2">"n_samples"</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span>
 <span class="p">}</span>
 
 
@@ -474,18 +474,18 @@
 
 <div class="viewcode-block" id="labels_tsv_path">
 <a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.tsv_store.labels_tsv_path">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">labels_tsv_path</span><span class="p">(</span><span class="n">nc_path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">,</span> <span class="n">suffix</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Path</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Derive the labels TSV path from the .nc file path.</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">labels_tsv_path</span><span class="p">(</span><span class="n">nc_path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">,</span> <span class="n">suffix</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">""</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Path</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Derive the labels TSV path from the .nc file path.</span>
 
 <span class="sd">    Examples</span>
 <span class="sd">    --------</span>
-<span class="sd">    &gt;&gt;&gt; labels_tsv_path(&quot;experiment/data.nc&quot;)</span>
-<span class="sd">    PosixPath(&#39;experiment/data_labels.tsv&#39;)</span>
-<span class="sd">    &gt;&gt;&gt; labels_tsv_path(&quot;experiment/data.nc&quot;, suffix=&quot;_downsampled_100x&quot;)</span>
-<span class="sd">    PosixPath(&#39;experiment/data_downsampled_100x_labels.tsv&#39;)</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    &gt;&gt;&gt; labels_tsv_path("experiment/data.nc")</span>
+<span class="sd">    PosixPath('experiment/data_labels.tsv')</span>
+<span class="sd">    &gt;&gt;&gt; labels_tsv_path("experiment/data.nc", suffix="_downsampled_100x")</span>
+<span class="sd">    PosixPath('experiment/data_downsampled_100x_labels.tsv')</span>
+<span class="sd">    """</span>
     <span class="n">nc_path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">nc_path</span><span class="p">)</span>
-    <span class="k">return</span> <span class="n">nc_path</span><span class="o">.</span><span class="n">parent</span> <span class="o">/</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">nc_path</span><span class="o">.</span><span class="n">stem</span><span class="si">}{</span><span class="n">suffix</span><span class="si">}</span><span class="s2">_labels.tsv&quot;</span></div>
+    <span class="k">return</span> <span class="n">nc_path</span><span class="o">.</span><span class="n">parent</span> <span class="o">/</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">nc_path</span><span class="o">.</span><span class="n">stem</span><span class="si">}{</span><span class="n">suffix</span><span class="si">}</span><span class="s2">_labels.tsv"</span></div>
 
 
 
@@ -493,45 +493,45 @@
 <span class="c1"># Load / save labels</span>
 <span class="c1"># ---------------------------------------------------------------------------</span>
 
-<span class="n">REQUIRED_COLUMNS</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;onset_s&quot;</span><span class="p">,</span> <span class="s2">&quot;offset_s&quot;</span><span class="p">,</span> <span class="s2">&quot;labels&quot;</span><span class="p">,</span> <span class="s2">&quot;individual&quot;</span><span class="p">,</span> <span class="s2">&quot;trial&quot;</span><span class="p">}</span>
+<span class="n">REQUIRED_COLUMNS</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"onset_s"</span><span class="p">,</span> <span class="s2">"offset_s"</span><span class="p">,</span> <span class="s2">"labels"</span><span class="p">,</span> <span class="s2">"individual"</span><span class="p">,</span> <span class="s2">"trial"</span><span class="p">}</span>
 
 <span class="c1">#: Canonical storage is trial-relative; a header comment records the basis so</span>
 <span class="c1">#: a round-tripped file is never ambiguous again. Files from other tools may</span>
 <span class="c1">#: carry session-absolute times — ``normalize_labels_basis`` rebases them once</span>
 <span class="c1">#: at load.</span>
-<span class="n">TIME_BASIS_HEADER</span> <span class="o">=</span> <span class="s2">&quot;# time_basis:&quot;</span>
-<span class="n">TIME_BASIS_ATTR</span> <span class="o">=</span> <span class="s2">&quot;time_basis&quot;</span>
+<span class="n">TIME_BASIS_HEADER</span> <span class="o">=</span> <span class="s2">"# time_basis:"</span>
+<span class="n">TIME_BASIS_ATTR</span> <span class="o">=</span> <span class="s2">"time_basis"</span>
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">_read_time_basis_header</span><span class="p">(</span><span class="n">path</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;The ``# time_basis:`` header value (&quot;trial&quot;/&quot;session&quot;), or None.&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""The ``# time_basis:`` header value ("trial"/"session"), or None."""</span>
     <span class="k">try</span><span class="p">:</span>
-        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s2">&quot;utf-8-sig&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">fh</span><span class="p">:</span>
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s2">"utf-8-sig"</span><span class="p">)</span> <span class="k">as</span> <span class="n">fh</span><span class="p">:</span>
             <span class="n">first</span> <span class="o">=</span> <span class="n">fh</span><span class="o">.</span><span class="n">readline</span><span class="p">()</span>
     <span class="k">except</span> <span class="ne">OSError</span><span class="p">:</span>
         <span class="k">return</span> <span class="kc">None</span>
     <span class="k">if</span> <span class="n">first</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="n">TIME_BASIS_HEADER</span><span class="p">):</span>
         <span class="n">value</span> <span class="o">=</span> <span class="n">first</span><span class="p">[</span><span class="nb">len</span><span class="p">(</span><span class="n">TIME_BASIS_HEADER</span><span class="p">)</span> <span class="p">:]</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
-        <span class="k">if</span> <span class="n">value</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;trial&quot;</span><span class="p">,</span> <span class="s2">&quot;session&quot;</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">value</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">"trial"</span><span class="p">,</span> <span class="s2">"session"</span><span class="p">):</span>
             <span class="k">return</span> <span class="n">value</span>
     <span class="k">return</span> <span class="kc">None</span>
 
 
 <div class="viewcode-block" id="validate_labels_tsv">
 <a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.tsv_store.validate_labels_tsv">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">validate_labels_tsv</span><span class="p">(</span><span class="n">df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Validate that a labels DataFrame has all required columns.</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">validate_labels_tsv</span><span class="p">(</span><span class="n">df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span> <span class="o">=</span> <span class="s2">""</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Validate that a labels DataFrame has all required columns.</span>
 
 <span class="sd">    Raises</span>
 <span class="sd">    ------</span>
 <span class="sd">    ValueError</span>
 <span class="sd">        If any of ``onset_s``, ``offset_s``, ``labels``, ``individual``, ``trial``</span>
 <span class="sd">        are missing from the DataFrame columns.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="n">missing</span> <span class="o">=</span> <span class="n">REQUIRED_COLUMNS</span> <span class="o">-</span> <span class="nb">set</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">missing</span><span class="p">:</span>
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-            <span class="sa">f</span><span class="s2">&quot;Labels file </span><span class="si">{</span><span class="n">path</span><span class="si">}</span><span class="s2"> is missing required columns: </span><span class="si">{</span><span class="nb">sorted</span><span class="p">(</span><span class="n">missing</span><span class="p">)</span><span class="si">}</span><span class="s2">. Required: </span><span class="si">{</span><span class="nb">sorted</span><span class="p">(</span><span class="n">REQUIRED_COLUMNS</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="sa">f</span><span class="s2">"Labels file </span><span class="si">{</span><span class="n">path</span><span class="si">}</span><span class="s2"> is missing required columns: </span><span class="si">{</span><span class="nb">sorted</span><span class="p">(</span><span class="n">missing</span><span class="p">)</span><span class="si">}</span><span class="s2">. Required: </span><span class="si">{</span><span class="nb">sorted</span><span class="p">(</span><span class="n">REQUIRED_COLUMNS</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span>
         <span class="p">)</span></div>
 
 
@@ -539,7 +539,7 @@
 <div class="viewcode-block" id="load_labels_tsv">
 <a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.tsv_store.load_labels_tsv">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">load_labels_tsv</span><span class="p">(</span><span class="n">path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Load labels from a TSV file.</span>
+<span class="w">    </span><span class="sd">"""Load labels from a TSV file.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
@@ -555,22 +555,22 @@
 
 <span class="sd">    Examples</span>
 <span class="sd">    --------</span>
-<span class="sd">    &gt;&gt;&gt; df = load_labels_tsv(&quot;experiment/data_labels.tsv&quot;)</span>
-<span class="sd">    &gt;&gt;&gt; df[[&quot;trial&quot;, &quot;onset_s&quot;, &quot;offset_s&quot;, &quot;labels&quot;, &quot;individual&quot;]].head()</span>
+<span class="sd">    &gt;&gt;&gt; df = load_labels_tsv("experiment/data_labels.tsv")</span>
+<span class="sd">    &gt;&gt;&gt; df[["trial", "onset_s", "offset_s", "labels", "individual"]].head()</span>
 <span class="sd">       trial  onset_s  offset_s  labels individual</span>
 <span class="sd">    0      1     0.41     0.505       1      crow1</span>
 <span class="sd">    1      1     0.51     0.620       2      crow1</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="n">path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
     <span class="k">if</span> <span class="ow">not</span> <span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
         <span class="k">return</span> <span class="n">_empty_all_labels</span><span class="p">()</span>
 
-    <span class="k">if</span> <span class="n">path</span><span class="o">.</span><span class="n">suffix</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;.xlsx&quot;</span><span class="p">,</span> <span class="s2">&quot;.xls&quot;</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">path</span><span class="o">.</span><span class="n">suffix</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">".xlsx"</span><span class="p">,</span> <span class="s2">".xls"</span><span class="p">):</span>
         <span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_excel</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
         <span class="n">basis</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="k">else</span><span class="p">:</span>
         <span class="n">basis</span> <span class="o">=</span> <span class="n">_read_time_basis_header</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
-        <span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_csv</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="n">sep</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">engine</span><span class="o">=</span><span class="s2">&quot;python&quot;</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s2">&quot;utf-8-sig&quot;</span><span class="p">,</span> <span class="n">comment</span><span class="o">=</span><span class="s2">&quot;#&quot;</span><span class="p">)</span>
+        <span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_csv</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="n">sep</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">engine</span><span class="o">=</span><span class="s2">"python"</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s2">"utf-8-sig"</span><span class="p">,</span> <span class="n">comment</span><span class="o">=</span><span class="s2">"#"</span><span class="p">)</span>
     <span class="n">validate_labels_tsv</span><span class="p">(</span><span class="n">df</span><span class="p">,</span> <span class="n">path</span><span class="p">)</span>
 
     <span class="n">ensure_event_type</span><span class="p">(</span><span class="n">df</span><span class="p">)</span>
@@ -581,8 +581,8 @@
     <span class="k">for</span> <span class="n">col</span><span class="p">,</span> <span class="n">default</span> <span class="ow">in</span> <span class="n">TRIAL_META_DEFAULTS</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
         <span class="k">if</span> <span class="n">col</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
             <span class="n">df</span><span class="p">[</span><span class="n">col</span><span class="p">]</span> <span class="o">=</span> <span class="n">default</span>
-    <span class="n">df</span><span class="p">[</span><span class="s2">&quot;prediction_source&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">df</span><span class="p">[</span><span class="s2">&quot;prediction_source&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">fillna</span><span class="p">(</span><span class="s2">&quot;&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">str</span><span class="p">)</span>
-    <span class="n">df</span><span class="p">[</span><span class="s2">&quot;n_samples&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">df</span><span class="p">[</span><span class="s2">&quot;n_samples&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">fillna</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">int</span><span class="p">)</span>
+    <span class="n">df</span><span class="p">[</span><span class="s2">"prediction_source"</span><span class="p">]</span> <span class="o">=</span> <span class="n">df</span><span class="p">[</span><span class="s2">"prediction_source"</span><span class="p">]</span><span class="o">.</span><span class="n">fillna</span><span class="p">(</span><span class="s2">""</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">str</span><span class="p">)</span>
+    <span class="n">df</span><span class="p">[</span><span class="s2">"n_samples"</span><span class="p">]</span> <span class="o">=</span> <span class="n">df</span><span class="p">[</span><span class="s2">"n_samples"</span><span class="p">]</span><span class="o">.</span><span class="n">fillna</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">int</span><span class="p">)</span>
 
     <span class="c1"># Declared basis (if the file has the header) rides along for</span>
     <span class="c1"># normalize_labels_basis; DataFrame.attrs, so plain column ops keep it.</span>
@@ -594,7 +594,7 @@
 <div class="viewcode-block" id="save_labels_tsv">
 <a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.tsv_store.save_labels_tsv">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">save_labels_tsv</span><span class="p">(</span><span class="n">path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">,</span> <span class="n">df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Save labels DataFrame to TSV. Uses atomic write (tmp + rename).</span>
+<span class="w">    </span><span class="sd">"""Save labels DataFrame to TSV. Uses atomic write (tmp + rename).</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
@@ -602,49 +602,49 @@
 <span class="sd">        Destination path.</span>
 <span class="sd">    df : pd.DataFrame</span>
 <span class="sd">        Labels DataFrame with required columns (see :data:`REQUIRED_COLUMNS`).</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="n">path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
     <span class="n">path</span><span class="o">.</span><span class="n">parent</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 
     <span class="n">out</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
-    <span class="k">if</span> <span class="s2">&quot;onset_global&quot;</span> <span class="ow">in</span> <span class="n">out</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
-        <span class="n">out</span> <span class="o">=</span> <span class="n">out</span><span class="o">.</span><span class="n">sort_values</span><span class="p">(</span><span class="s2">&quot;onset_global&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">reset_index</span><span class="p">(</span><span class="n">drop</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="k">if</span> <span class="s2">"onset_global"</span> <span class="ow">in</span> <span class="n">out</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
+        <span class="n">out</span> <span class="o">=</span> <span class="n">out</span><span class="o">.</span><span class="n">sort_values</span><span class="p">(</span><span class="s2">"onset_global"</span><span class="p">)</span><span class="o">.</span><span class="n">reset_index</span><span class="p">(</span><span class="n">drop</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
     <span class="k">else</span><span class="p">:</span>
-        <span class="n">out</span> <span class="o">=</span> <span class="n">out</span><span class="o">.</span><span class="n">sort_values</span><span class="p">([</span><span class="s2">&quot;trial&quot;</span><span class="p">,</span> <span class="s2">&quot;onset_s&quot;</span><span class="p">])</span><span class="o">.</span><span class="n">reset_index</span><span class="p">(</span><span class="n">drop</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="n">out</span> <span class="o">=</span> <span class="n">out</span><span class="o">.</span><span class="n">sort_values</span><span class="p">([</span><span class="s2">"trial"</span><span class="p">,</span> <span class="s2">"onset_s"</span><span class="p">])</span><span class="o">.</span><span class="n">reset_index</span><span class="p">(</span><span class="n">drop</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 
     <span class="n">preferred</span> <span class="o">=</span> <span class="p">[</span>
-        <span class="s2">&quot;session&quot;</span><span class="p">,</span>
-        <span class="s2">&quot;trial&quot;</span><span class="p">,</span>
-        <span class="s2">&quot;session_trial&quot;</span><span class="p">,</span>
-        <span class="s2">&quot;individual&quot;</span><span class="p">,</span>
-        <span class="s2">&quot;labels&quot;</span><span class="p">,</span>
-        <span class="s2">&quot;onset_s&quot;</span><span class="p">,</span>
-        <span class="s2">&quot;offset_s&quot;</span><span class="p">,</span>
-        <span class="s2">&quot;event_type&quot;</span><span class="p">,</span>
-        <span class="s2">&quot;trial_onset&quot;</span><span class="p">,</span>
-        <span class="s2">&quot;trial_offset&quot;</span><span class="p">,</span>
-        <span class="s2">&quot;onset_global&quot;</span><span class="p">,</span>
-        <span class="s2">&quot;offset_global&quot;</span><span class="p">,</span>
-        <span class="s2">&quot;duration&quot;</span><span class="p">,</span>
-        <span class="s2">&quot;sequence_idx&quot;</span><span class="p">,</span>
-        <span class="s2">&quot;sequence&quot;</span><span class="p">,</span>
-        <span class="s2">&quot;human_verified&quot;</span><span class="p">,</span>
-        <span class="s2">&quot;changepoint_corrected&quot;</span><span class="p">,</span>
-        <span class="s2">&quot;prediction_source&quot;</span><span class="p">,</span>
-        <span class="s2">&quot;n_samples&quot;</span><span class="p">,</span>
+        <span class="s2">"session"</span><span class="p">,</span>
+        <span class="s2">"trial"</span><span class="p">,</span>
+        <span class="s2">"session_trial"</span><span class="p">,</span>
+        <span class="s2">"individual"</span><span class="p">,</span>
+        <span class="s2">"labels"</span><span class="p">,</span>
+        <span class="s2">"onset_s"</span><span class="p">,</span>
+        <span class="s2">"offset_s"</span><span class="p">,</span>
+        <span class="s2">"event_type"</span><span class="p">,</span>
+        <span class="s2">"trial_onset"</span><span class="p">,</span>
+        <span class="s2">"trial_offset"</span><span class="p">,</span>
+        <span class="s2">"onset_global"</span><span class="p">,</span>
+        <span class="s2">"offset_global"</span><span class="p">,</span>
+        <span class="s2">"duration"</span><span class="p">,</span>
+        <span class="s2">"sequence_idx"</span><span class="p">,</span>
+        <span class="s2">"sequence"</span><span class="p">,</span>
+        <span class="s2">"human_verified"</span><span class="p">,</span>
+        <span class="s2">"changepoint_corrected"</span><span class="p">,</span>
+        <span class="s2">"prediction_source"</span><span class="p">,</span>
+        <span class="s2">"n_samples"</span><span class="p">,</span>
     <span class="p">]</span>
     <span class="n">cols</span> <span class="o">=</span> <span class="p">[</span><span class="n">c</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">preferred</span> <span class="k">if</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">out</span><span class="o">.</span><span class="n">columns</span><span class="p">]</span>
     <span class="n">cols</span> <span class="o">+=</span> <span class="p">[</span><span class="n">c</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">out</span><span class="o">.</span><span class="n">columns</span> <span class="k">if</span> <span class="n">c</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">cols</span><span class="p">]</span>
     <span class="n">out</span> <span class="o">=</span> <span class="n">out</span><span class="p">[</span><span class="n">cols</span><span class="p">]</span>
 
     <span class="c1"># Drop negative-duration state intervals; keep point events (NaN offset).</span>
-    <span class="n">duration</span> <span class="o">=</span> <span class="n">out</span><span class="p">[</span><span class="s2">&quot;offset_s&quot;</span><span class="p">]</span> <span class="o">-</span> <span class="n">out</span><span class="p">[</span><span class="s2">&quot;onset_s&quot;</span><span class="p">]</span>
+    <span class="n">duration</span> <span class="o">=</span> <span class="n">out</span><span class="p">[</span><span class="s2">"offset_s"</span><span class="p">]</span> <span class="o">-</span> <span class="n">out</span><span class="p">[</span><span class="s2">"onset_s"</span><span class="p">]</span>
     <span class="n">out</span> <span class="o">=</span> <span class="n">out</span><span class="p">[</span><span class="n">duration</span><span class="o">.</span><span class="n">isna</span><span class="p">()</span> <span class="o">|</span> <span class="p">(</span><span class="n">duration</span> <span class="o">&gt;=</span> <span class="mf">0.0</span><span class="p">)]</span>
 
-    <span class="n">tmp</span> <span class="o">=</span> <span class="n">path</span><span class="o">.</span><span class="n">with_suffix</span><span class="p">(</span><span class="s2">&quot;.tsv.tmp&quot;</span><span class="p">)</span>
-    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">tmp</span><span class="p">,</span> <span class="s2">&quot;w&quot;</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s2">&quot;utf-8-sig&quot;</span><span class="p">,</span> <span class="n">newline</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">fh</span><span class="p">:</span>
-        <span class="n">fh</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">TIME_BASIS_HEADER</span><span class="si">}</span><span class="s2"> trial</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
-        <span class="n">out</span><span class="o">.</span><span class="n">to_csv</span><span class="p">(</span><span class="n">fh</span><span class="p">,</span> <span class="n">sep</span><span class="o">=</span><span class="s2">&quot;</span><span class="se">\t</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">index</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+    <span class="n">tmp</span> <span class="o">=</span> <span class="n">path</span><span class="o">.</span><span class="n">with_suffix</span><span class="p">(</span><span class="s2">".tsv.tmp"</span><span class="p">)</span>
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">tmp</span><span class="p">,</span> <span class="s2">"w"</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s2">"utf-8-sig"</span><span class="p">,</span> <span class="n">newline</span><span class="o">=</span><span class="s2">""</span><span class="p">)</span> <span class="k">as</span> <span class="n">fh</span><span class="p">:</span>
+        <span class="n">fh</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">TIME_BASIS_HEADER</span><span class="si">}</span><span class="s2"> trial</span><span class="se">\n</span><span class="s2">"</span><span class="p">)</span>
+        <span class="n">out</span><span class="o">.</span><span class="n">to_csv</span><span class="p">(</span><span class="n">fh</span><span class="p">,</span> <span class="n">sep</span><span class="o">=</span><span class="s2">"</span><span class="se">\t</span><span class="s2">"</span><span class="p">,</span> <span class="n">index</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
     <span class="n">tmp</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="n">path</span><span class="p">)</span></div>
 
 
@@ -655,32 +655,32 @@
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">infer_labels_basis</span><span class="p">(</span><span class="n">df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">source_collection</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Guess whether ``onset_s`` values are trial-relative or session-absolute.</span>
+<span class="w">    </span><span class="sd">"""Guess whether ``onset_s`` values are trial-relative or session-absolute.</span>
 
 <span class="sd">    Votes per trial: onsets all inside ``[0, trial duration]`` → trial time;</span>
-<span class="sd">    all inside the trial&#39;s session-absolute window → session time. Returns</span>
-<span class="sd">    ``&quot;trial&quot;``, ``&quot;session&quot;``, or ``None`` when the votes are absent or</span>
+<span class="sd">    all inside the trial's session-absolute window → session time. Returns</span>
+<span class="sd">    ``"trial"``, ``"session"``, or ``None`` when the votes are absent or</span>
 <span class="sd">    contradictory (undecidable — e.g. a session starting at 0 where the two</span>
 <span class="sd">    ranges overlap).</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="k">if</span> <span class="n">df</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">df</span><span class="o">.</span><span class="n">empty</span> <span class="ow">or</span> <span class="n">source_collection</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
         <span class="k">return</span> <span class="kc">None</span>
     <span class="n">votes</span><span class="p">:</span> <span class="nb">set</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
-    <span class="k">for</span> <span class="n">trial_id</span><span class="p">,</span> <span class="n">group</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="s2">&quot;trial&quot;</span><span class="p">):</span>
+    <span class="k">for</span> <span class="n">trial_id</span><span class="p">,</span> <span class="n">group</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="s2">"trial"</span><span class="p">):</span>
         <span class="n">idx</span> <span class="o">=</span> <span class="n">source_collection</span><span class="o">.</span><span class="n">trial_index</span><span class="p">(</span><span class="n">trial_id</span><span class="p">)</span>
         <span class="k">if</span> <span class="n">idx</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
             <span class="k">continue</span>
         <span class="n">tr</span> <span class="o">=</span> <span class="n">source_collection</span><span class="o">.</span><span class="n">trial_range</span><span class="p">(</span><span class="n">idx</span><span class="p">)</span>
-        <span class="n">onsets</span> <span class="o">=</span> <span class="n">group</span><span class="p">[</span><span class="s2">&quot;onset_s&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">dropna</span><span class="p">()</span>
+        <span class="n">onsets</span> <span class="o">=</span> <span class="n">group</span><span class="p">[</span><span class="s2">"onset_s"</span><span class="p">]</span><span class="o">.</span><span class="n">dropna</span><span class="p">()</span>
         <span class="k">if</span> <span class="n">onsets</span><span class="o">.</span><span class="n">empty</span><span class="p">:</span>
             <span class="k">continue</span>
         <span class="n">slack</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">tr</span><span class="o">.</span><span class="n">duration</span> <span class="o">*</span> <span class="mf">0.01</span><span class="p">)</span>
         <span class="n">trial_ok</span> <span class="o">=</span> <span class="nb">bool</span><span class="p">(((</span><span class="n">onsets</span> <span class="o">&gt;=</span> <span class="o">-</span><span class="n">slack</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">onsets</span> <span class="o">&lt;=</span> <span class="n">tr</span><span class="o">.</span><span class="n">duration</span> <span class="o">+</span> <span class="n">slack</span><span class="p">))</span><span class="o">.</span><span class="n">all</span><span class="p">())</span>
         <span class="n">session_ok</span> <span class="o">=</span> <span class="nb">bool</span><span class="p">(((</span><span class="n">onsets</span> <span class="o">&gt;=</span> <span class="n">tr</span><span class="o">.</span><span class="n">start_s</span> <span class="o">-</span> <span class="n">slack</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">onsets</span> <span class="o">&lt;=</span> <span class="n">tr</span><span class="o">.</span><span class="n">end_s</span> <span class="o">+</span> <span class="n">slack</span><span class="p">))</span><span class="o">.</span><span class="n">all</span><span class="p">())</span>
         <span class="k">if</span> <span class="n">trial_ok</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">session_ok</span><span class="p">:</span>
-            <span class="n">votes</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="s2">&quot;trial&quot;</span><span class="p">)</span>
+            <span class="n">votes</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="s2">"trial"</span><span class="p">)</span>
         <span class="k">elif</span> <span class="n">session_ok</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">trial_ok</span><span class="p">:</span>
-            <span class="n">votes</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="s2">&quot;session&quot;</span><span class="p">)</span>
+            <span class="n">votes</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="s2">"session"</span><span class="p">)</span>
     <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">votes</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">votes</span><span class="o">.</span><span class="n">pop</span><span class="p">()</span>
     <span class="k">return</span> <span class="kc">None</span>
@@ -692,14 +692,14 @@
     <span class="o">*</span><span class="p">,</span>
     <span class="n">resolver</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Rebase a loaded labels DataFrame to canonical trial-relative time.</span>
+<span class="w">    </span><span class="sd">"""Rebase a loaded labels DataFrame to canonical trial-relative time.</span>
 
 <span class="sd">    The declared basis (``# time_basis:`` header, carried in ``df.attrs``)</span>
 <span class="sd">    wins; otherwise :func:`infer_labels_basis` guesses; if that is</span>
-<span class="sd">    undecidable, *resolver* (a zero-arg callable returning &quot;trial&quot; or</span>
-<span class="sd">    &quot;session&quot; — the GUI&#39;s one-time dialog) is asked; without one, trial time</span>
+<span class="sd">    undecidable, *resolver* (a zero-arg callable returning "trial" or</span>
+<span class="sd">    "session" — the GUI's one-time dialog) is asked; without one, trial time</span>
 <span class="sd">    is assumed with a warning.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="k">if</span> <span class="n">df</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">df</span><span class="o">.</span><span class="n">empty</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">df</span>
     <span class="n">basis</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">attrs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">TIME_BASIS_ATTR</span><span class="p">)</span>
@@ -708,26 +708,26 @@
     <span class="k">if</span> <span class="n">basis</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">resolver</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
         <span class="n">basis</span> <span class="o">=</span> <span class="n">resolver</span><span class="p">()</span>
     <span class="k">if</span> <span class="n">basis</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&quot;Label time basis undecidable — assuming trial-relative onsets&quot;</span><span class="p">)</span>
-        <span class="n">basis</span> <span class="o">=</span> <span class="s2">&quot;trial&quot;</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">"Label time basis undecidable — assuming trial-relative onsets"</span><span class="p">)</span>
+        <span class="n">basis</span> <span class="o">=</span> <span class="s2">"trial"</span>
 
-    <span class="k">if</span> <span class="n">basis</span> <span class="o">==</span> <span class="s2">&quot;session&quot;</span> <span class="ow">and</span> <span class="n">source_collection</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="k">if</span> <span class="n">basis</span> <span class="o">==</span> <span class="s2">"session"</span> <span class="ow">and</span> <span class="n">source_collection</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
         <span class="n">out</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
-        <span class="n">offsets</span> <span class="o">=</span> <span class="p">{</span><span class="n">tid</span><span class="p">:</span> <span class="n">source_collection</span><span class="o">.</span><span class="n">to_session</span><span class="p">(</span><span class="n">tid</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">)</span> <span class="k">for</span> <span class="n">tid</span> <span class="ow">in</span> <span class="n">out</span><span class="p">[</span><span class="s2">&quot;trial&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">unique</span><span class="p">()}</span>
-        <span class="n">shift</span> <span class="o">=</span> <span class="n">out</span><span class="p">[</span><span class="s2">&quot;trial&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">map</span><span class="p">(</span><span class="n">offsets</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">float</span><span class="p">)</span>
-        <span class="n">out</span><span class="p">[</span><span class="s2">&quot;onset_s&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">out</span><span class="p">[</span><span class="s2">&quot;onset_s&quot;</span><span class="p">]</span> <span class="o">-</span> <span class="n">shift</span>
-        <span class="n">out</span><span class="p">[</span><span class="s2">&quot;offset_s&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">out</span><span class="p">[</span><span class="s2">&quot;offset_s&quot;</span><span class="p">]</span> <span class="o">-</span> <span class="n">shift</span>
-        <span class="n">out</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="n">TIME_BASIS_ATTR</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;trial&quot;</span>
-        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Rebased session-absolute label times to trial-relative&quot;</span><span class="p">)</span>
+        <span class="n">offsets</span> <span class="o">=</span> <span class="p">{</span><span class="n">tid</span><span class="p">:</span> <span class="n">source_collection</span><span class="o">.</span><span class="n">to_session</span><span class="p">(</span><span class="n">tid</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">)</span> <span class="k">for</span> <span class="n">tid</span> <span class="ow">in</span> <span class="n">out</span><span class="p">[</span><span class="s2">"trial"</span><span class="p">]</span><span class="o">.</span><span class="n">unique</span><span class="p">()}</span>
+        <span class="n">shift</span> <span class="o">=</span> <span class="n">out</span><span class="p">[</span><span class="s2">"trial"</span><span class="p">]</span><span class="o">.</span><span class="n">map</span><span class="p">(</span><span class="n">offsets</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">float</span><span class="p">)</span>
+        <span class="n">out</span><span class="p">[</span><span class="s2">"onset_s"</span><span class="p">]</span> <span class="o">=</span> <span class="n">out</span><span class="p">[</span><span class="s2">"onset_s"</span><span class="p">]</span> <span class="o">-</span> <span class="n">shift</span>
+        <span class="n">out</span><span class="p">[</span><span class="s2">"offset_s"</span><span class="p">]</span> <span class="o">=</span> <span class="n">out</span><span class="p">[</span><span class="s2">"offset_s"</span><span class="p">]</span> <span class="o">-</span> <span class="n">shift</span>
+        <span class="n">out</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="n">TIME_BASIS_ATTR</span><span class="p">]</span> <span class="o">=</span> <span class="s2">"trial"</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">"Rebased session-absolute label times to trial-relative"</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">out</span>
 
-    <span class="n">df</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="n">TIME_BASIS_ATTR</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;trial&quot;</span>
+    <span class="n">df</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="n">TIME_BASIS_ATTR</span><span class="p">]</span> <span class="o">=</span> <span class="s2">"trial"</span>
     <span class="k">return</span> <span class="n">df</span>
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">_empty_all_labels</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
     <span class="n">df</span> <span class="o">=</span> <span class="n">empty_intervals</span><span class="p">()</span>
-    <span class="n">df</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="s2">&quot;trial&quot;</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="nb">object</span><span class="p">))</span>
+    <span class="n">df</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="s2">"trial"</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="nb">object</span><span class="p">))</span>
     <span class="k">for</span> <span class="n">col</span><span class="p">,</span> <span class="n">default</span> <span class="ow">in</span> <span class="n">TRIAL_META_DEFAULTS</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
         <span class="n">df</span><span class="p">[</span><span class="n">col</span><span class="p">]</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="nb">type</span><span class="p">(</span><span class="n">default</span><span class="p">))</span>
     <span class="k">return</span> <span class="n">df</span>
@@ -741,16 +741,16 @@
 <div class="viewcode-block" id="get_trial_from_tsv">
 <a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.tsv_store.get_trial_from_tsv">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">get_trial_from_tsv</span><span class="p">(</span><span class="n">all_df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">trial</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Extract all rows for a single trial from the all-labels DataFrame.</span>
+<span class="w">    </span><span class="sd">"""Extract all rows for a single trial from the all-labels DataFrame.</span>
 
 <span class="sd">    Returns a DataFrame with the full ``TSV_COLUMNS`` set: trial, individual,</span>
 <span class="sd">    labels, onset_s, offset_s, plus per-trial metadata columns.  Callers that</span>
 <span class="sd">    only need interval data can ignore the extras; ``set_trial_in_tsv`` already</span>
 <span class="sd">    discards everything except ``INTERVAL_COLUMNS`` when writing back.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="k">if</span> <span class="n">all_df</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">all_df</span><span class="o">.</span><span class="n">empty</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">empty_intervals</span><span class="p">()</span>
-    <span class="n">mask</span> <span class="o">=</span> <span class="n">all_df</span><span class="p">[</span><span class="s2">&quot;trial&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="n">trial</span>
+    <span class="n">mask</span> <span class="o">=</span> <span class="n">all_df</span><span class="p">[</span><span class="s2">"trial"</span><span class="p">]</span> <span class="o">==</span> <span class="n">trial</span>
     <span class="n">cols</span> <span class="o">=</span> <span class="p">[</span><span class="n">c</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">TSV_COLUMNS</span> <span class="k">if</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">all_df</span><span class="o">.</span><span class="n">columns</span><span class="p">]</span>
     <span class="n">trial_df</span> <span class="o">=</span> <span class="n">all_df</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">mask</span><span class="p">,</span> <span class="n">cols</span><span class="p">]</span><span class="o">.</span><span class="n">reset_index</span><span class="p">(</span><span class="n">drop</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">trial_df</span><span class="o">.</span><span class="n">empty</span><span class="p">:</span>
@@ -766,20 +766,20 @@
     <span class="n">trial</span><span class="p">,</span>
     <span class="n">trial_df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Replace all rows for a trial in the all-labels DataFrame.</span>
+<span class="w">    </span><span class="sd">"""Replace all rows for a trial in the all-labels DataFrame.</span>
 
 <span class="sd">    Preserves per-trial metadata columns from the existing rows.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="k">if</span> <span class="n">all_df</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
         <span class="n">all_df</span> <span class="o">=</span> <span class="n">_empty_all_labels</span><span class="p">()</span>
 
     <span class="c1"># Preserve existing meta values for this trial</span>
     <span class="n">old_meta</span> <span class="o">=</span> <span class="n">get_trial_meta</span><span class="p">(</span><span class="n">all_df</span><span class="p">,</span> <span class="n">trial</span><span class="p">)</span>
-    <span class="n">other</span> <span class="o">=</span> <span class="n">all_df</span><span class="p">[</span><span class="n">all_df</span><span class="p">[</span><span class="s2">&quot;trial&quot;</span><span class="p">]</span> <span class="o">!=</span> <span class="n">trial</span><span class="p">]</span>
+    <span class="n">other</span> <span class="o">=</span> <span class="n">all_df</span><span class="p">[</span><span class="n">all_df</span><span class="p">[</span><span class="s2">"trial"</span><span class="p">]</span> <span class="o">!=</span> <span class="n">trial</span><span class="p">]</span>
 
     <span class="n">trial_df</span> <span class="o">=</span> <span class="n">ensure_event_type</span><span class="p">(</span><span class="n">trial_df</span><span class="o">.</span><span class="n">copy</span><span class="p">())</span>
     <span class="n">new_rows</span> <span class="o">=</span> <span class="n">trial_df</span><span class="p">[</span><span class="n">INTERVAL_COLUMNS</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
-    <span class="n">new_rows</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="s2">&quot;trial&quot;</span><span class="p">,</span> <span class="n">trial</span><span class="p">)</span>
+    <span class="n">new_rows</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="s2">"trial"</span><span class="p">,</span> <span class="n">trial</span><span class="p">)</span>
     <span class="k">for</span> <span class="n">col</span><span class="p">,</span> <span class="n">default</span> <span class="ow">in</span> <span class="n">TRIAL_META_DEFAULTS</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
         <span class="n">new_rows</span><span class="p">[</span><span class="n">col</span><span class="p">]</span> <span class="o">=</span> <span class="n">old_meta</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">col</span><span class="p">,</span> <span class="n">default</span><span class="p">)</span>
 
@@ -796,10 +796,10 @@
 <div class="viewcode-block" id="get_trial_meta">
 <a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.tsv_store.get_trial_meta">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">get_trial_meta</span><span class="p">(</span><span class="n">all_df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">trial</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Read per-trial metadata from columns. Returns dict with defaults for missing trials.&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""Read per-trial metadata from columns. Returns dict with defaults for missing trials."""</span>
     <span class="k">if</span> <span class="n">all_df</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">all_df</span><span class="o">.</span><span class="n">empty</span><span class="p">:</span>
         <span class="k">return</span> <span class="nb">dict</span><span class="p">(</span><span class="n">TRIAL_META_DEFAULTS</span><span class="p">)</span>
-    <span class="n">mask</span> <span class="o">=</span> <span class="n">all_df</span><span class="p">[</span><span class="s2">&quot;trial&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="n">trial</span>
+    <span class="n">mask</span> <span class="o">=</span> <span class="n">all_df</span><span class="p">[</span><span class="s2">"trial"</span><span class="p">]</span> <span class="o">==</span> <span class="n">trial</span>
     <span class="n">rows</span> <span class="o">=</span> <span class="n">all_df</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span>
     <span class="k">if</span> <span class="n">rows</span><span class="o">.</span><span class="n">empty</span><span class="p">:</span>
         <span class="k">return</span> <span class="nb">dict</span><span class="p">(</span><span class="n">TRIAL_META_DEFAULTS</span><span class="p">)</span>
@@ -807,8 +807,8 @@
     <span class="n">result</span> <span class="o">=</span> <span class="p">{}</span>
     <span class="k">for</span> <span class="n">col</span><span class="p">,</span> <span class="n">default</span> <span class="ow">in</span> <span class="n">TRIAL_META_DEFAULTS</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
         <span class="n">val</span> <span class="o">=</span> <span class="n">first</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">col</span><span class="p">,</span> <span class="n">default</span><span class="p">)</span>
-        <span class="k">if</span> <span class="n">col</span> <span class="o">==</span> <span class="s2">&quot;prediction_source&quot;</span><span class="p">:</span>
-            <span class="n">result</span><span class="p">[</span><span class="n">col</span><span class="p">]</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">val</span><span class="p">)</span> <span class="k">if</span> <span class="n">pd</span><span class="o">.</span><span class="n">notna</span><span class="p">(</span><span class="n">val</span><span class="p">)</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">col</span> <span class="o">==</span> <span class="s2">"prediction_source"</span><span class="p">:</span>
+            <span class="n">result</span><span class="p">[</span><span class="n">col</span><span class="p">]</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">val</span><span class="p">)</span> <span class="k">if</span> <span class="n">pd</span><span class="o">.</span><span class="n">notna</span><span class="p">(</span><span class="n">val</span><span class="p">)</span> <span class="k">else</span> <span class="s2">""</span>
         <span class="k">else</span><span class="p">:</span>
             <span class="n">result</span><span class="p">[</span><span class="n">col</span><span class="p">]</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">val</span><span class="p">)</span> <span class="k">if</span> <span class="n">pd</span><span class="o">.</span><span class="n">notna</span><span class="p">(</span><span class="n">val</span><span class="p">)</span> <span class="k">else</span> <span class="n">default</span>
     <span class="k">return</span> <span class="n">result</span></div>
@@ -818,10 +818,10 @@
 <div class="viewcode-block" id="set_trial_meta_attr">
 <a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.tsv_store.set_trial_meta_attr">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">set_trial_meta_attr</span><span class="p">(</span><span class="n">all_df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">trial</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">value</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Set a per-trial metadata column value for all rows of a trial.&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""Set a per-trial metadata column value for all rows of a trial."""</span>
     <span class="k">if</span> <span class="n">all_df</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">all_df</span>
-    <span class="n">mask</span> <span class="o">=</span> <span class="n">all_df</span><span class="p">[</span><span class="s2">&quot;trial&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="n">trial</span>
+    <span class="n">mask</span> <span class="o">=</span> <span class="n">all_df</span><span class="p">[</span><span class="s2">"trial"</span><span class="p">]</span> <span class="o">==</span> <span class="n">trial</span>
     <span class="k">if</span> <span class="n">mask</span><span class="o">.</span><span class="n">any</span><span class="p">():</span>
         <span class="n">all_df</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">mask</span><span class="p">,</span> <span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">value</span>
     <span class="k">return</span> <span class="n">all_df</span></div>
@@ -831,7 +831,7 @@
 <div class="viewcode-block" id="init_empty_labels">
 <a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.tsv_store.init_empty_labels">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">init_empty_labels</span><span class="p">(</span><span class="n">trials</span><span class="p">:</span> <span class="nb">list</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Create empty labels DataFrame.&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""Create empty labels DataFrame."""</span>
     <span class="k">return</span> <span class="n">_empty_all_labels</span><span class="p">()</span></div>
 
 </pre></div>

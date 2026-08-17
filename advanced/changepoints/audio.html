@@ -503,15 +503,15 @@ stored in the dataset as <code class="docutils literal notranslate"><span class=
 <p>Audio changepoints use a different storage format because dense binary arrays
 at audio sample rates (e.g. 44 kHz) would be prohibitively large. They are
 stored as onset/offset time pairs in seconds:</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">ds</span><span class="p">[</span><span class="s2">&quot;audio_cp_onsets&quot;</span><span class="p">]</span>  <span class="o">=</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">(</span>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">ds</span><span class="p">[</span><span class="s2">"audio_cp_onsets"</span><span class="p">]</span>  <span class="o">=</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">(</span>
     <span class="n">onset_times_s</span><span class="p">,</span>
-    <span class="n">dims</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;audio_cp&quot;</span><span class="p">],</span>
-    <span class="n">attrs</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;audio_changepoints&quot;</span><span class="p">,</span> <span class="s2">&quot;target_feature&quot;</span><span class="p">:</span> <span class="s2">&quot;audio&quot;</span><span class="p">},</span>
+    <span class="n">dims</span><span class="o">=</span><span class="p">[</span><span class="s2">"audio_cp"</span><span class="p">],</span>
+    <span class="n">attrs</span><span class="o">=</span><span class="p">{</span><span class="s2">"type"</span><span class="p">:</span> <span class="s2">"audio_changepoints"</span><span class="p">,</span> <span class="s2">"target_feature"</span><span class="p">:</span> <span class="s2">"audio"</span><span class="p">},</span>
 <span class="p">)</span>
-<span class="n">ds</span><span class="p">[</span><span class="s2">&quot;audio_cp_offsets&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">(</span>
+<span class="n">ds</span><span class="p">[</span><span class="s2">"audio_cp_offsets"</span><span class="p">]</span> <span class="o">=</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">(</span>
     <span class="n">offset_times_s</span><span class="p">,</span>
-    <span class="n">dims</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;audio_cp&quot;</span><span class="p">],</span>
-    <span class="n">attrs</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;audio_changepoints&quot;</span><span class="p">,</span> <span class="s2">&quot;target_feature&quot;</span><span class="p">:</span> <span class="s2">&quot;audio&quot;</span><span class="p">},</span>
+    <span class="n">dims</span><span class="o">=</span><span class="p">[</span><span class="s2">"audio_cp"</span><span class="p">],</span>
+    <span class="n">attrs</span><span class="o">=</span><span class="p">{</span><span class="s2">"type"</span><span class="p">:</span> <span class="s2">"audio_changepoints"</span><span class="p">,</span> <span class="s2">"target_feature"</span><span class="p">:</span> <span class="s2">"audio"</span><span class="p">},</span>
 <span class="p">)</span>
 </pre></div>
 </div>

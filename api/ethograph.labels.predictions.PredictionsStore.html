@@ -435,9 +435,9 @@ formats. Additional formats can be added to <code class="docutils literal notran
 </dd>
 </dl>
 <p class="rubric">Example</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">store</span> <span class="o">=</span> <span class="n">PredictionsStore</span><span class="p">(</span><span class="s2">&quot;predictions_cetnet_20260330/uncorr&quot;</span><span class="p">)</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">store</span> <span class="o">=</span> <span class="n">PredictionsStore</span><span class="p">(</span><span class="s2">"predictions_cetnet_20260330/uncorr"</span><span class="p">)</span>
 <span class="n">confidence</span> <span class="o">=</span> <span class="n">store</span><span class="o">.</span><span class="n">get_confidence</span><span class="p">(</span><span class="n">trial</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span> <span class="n">dt</span><span class="o">=</span><span class="n">dt</span><span class="p">)</span>
-<span class="n">labels_df</span><span class="p">,</span> <span class="n">levels</span> <span class="o">=</span> <span class="n">store</span><span class="o">.</span><span class="n">load_all</span><span class="p">(</span><span class="n">dt</span><span class="p">,</span> <span class="n">individual</span><span class="o">=</span><span class="s2">&quot;Poppy&quot;</span><span class="p">,</span> <span class="n">threshold</span><span class="o">=</span><span class="mf">0.75</span><span class="p">)</span>
+<span class="n">labels_df</span><span class="p">,</span> <span class="n">levels</span> <span class="o">=</span> <span class="n">store</span><span class="o">.</span><span class="n">load_all</span><span class="p">(</span><span class="n">dt</span><span class="p">,</span> <span class="n">individual</span><span class="o">=</span><span class="s2">"Poppy"</span><span class="p">,</span> <span class="n">threshold</span><span class="o">=</span><span class="mf">0.75</span><span class="p">)</span>
 </pre></div>
 </div>
 <p class="rubric">Methods</p>

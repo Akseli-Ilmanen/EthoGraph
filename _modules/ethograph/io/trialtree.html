@@ -453,7 +453,7 @@
         <span class="k">else</span><span class="p">:</span>
             <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">dataset</span><span class="o">=</span><span class="n">data</span><span class="p">,</span> <span class="n">children</span><span class="o">=</span><span class="n">children</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="n">name</span><span class="p">)</span>
         <span class="c1"># Always initialize nwb_alignment to a null-object (empty EmpytAlignment)</span>
-        <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;nwb_alignment&quot;</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">"nwb_alignment"</span><span class="p">):</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">nwb_alignment</span> <span class="o">=</span> <span class="n">EmpytAlignment</span><span class="p">()</span>
 
     <span class="c1"># ------------------------------------------------------------------</span>
@@ -464,18 +464,18 @@
         <span class="n">trial_str</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">trial</span><span class="p">)</span>
         <span class="k">if</span> <span class="n">trial_str</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">children</span><span class="p">:</span>
             <span class="k">return</span> <span class="n">trial_str</span>
-        <span class="n">sanitized</span> <span class="o">=</span> <span class="n">trial_str</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;/&quot;</span><span class="p">,</span> <span class="s2">&quot;_&quot;</span><span class="p">)</span>
+        <span class="n">sanitized</span> <span class="o">=</span> <span class="n">trial_str</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">"/"</span><span class="p">,</span> <span class="s2">"_"</span><span class="p">)</span>
         <span class="k">if</span> <span class="n">sanitized</span> <span class="o">!=</span> <span class="n">trial_str</span> <span class="ow">and</span> <span class="n">sanitized</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">children</span><span class="p">:</span>
             <span class="k">return</span> <span class="n">sanitized</span>
-        <span class="n">legacy</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;trial_</span><span class="si">{</span><span class="n">trial_str</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="n">legacy</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"trial_</span><span class="si">{</span><span class="n">trial_str</span><span class="si">}</span><span class="s2">"</span>
         <span class="k">if</span> <span class="n">legacy</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">children</span><span class="p">:</span>
             <span class="k">return</span> <span class="n">legacy</span>
-        <span class="k">raise</span> <span class="ne">KeyError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;No node found for trial </span><span class="si">{</span><span class="n">trial</span><span class="si">!r}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="ne">KeyError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"No node found for trial </span><span class="si">{</span><span class="n">trial</span><span class="si">!r}</span><span class="s2">"</span><span class="p">)</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">_has_trial_node</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">trial</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
         <span class="n">trial_str</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">trial</span><span class="p">)</span>
-        <span class="n">sanitized</span> <span class="o">=</span> <span class="n">trial_str</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;/&quot;</span><span class="p">,</span> <span class="s2">&quot;_&quot;</span><span class="p">)</span>
-        <span class="k">return</span> <span class="n">trial_str</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">children</span> <span class="ow">or</span> <span class="n">sanitized</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">children</span> <span class="ow">or</span> <span class="sa">f</span><span class="s2">&quot;trial_</span><span class="si">{</span><span class="n">trial_str</span><span class="si">}</span><span class="s2">&quot;</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">children</span>
+        <span class="n">sanitized</span> <span class="o">=</span> <span class="n">trial_str</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">"/"</span><span class="p">,</span> <span class="s2">"_"</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">trial_str</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">children</span> <span class="ow">or</span> <span class="n">sanitized</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">children</span> <span class="ow">or</span> <span class="sa">f</span><span class="s2">"trial_</span><span class="si">{</span><span class="n">trial_str</span><span class="si">}</span><span class="s2">"</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">children</span>
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__getitem__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">):</span>
         <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="nb">int</span><span class="p">):</span>
@@ -495,15 +495,15 @@
 
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">_is_continuous</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;True when backed by a single shared dataset + epoch boundaries.&quot;&quot;&quot;</span>
-        <span class="k">return</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;_continuous_ds&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+<span class="w">        </span><span class="sd">"""True when backed by a single shared dataset + epoch boundaries."""</span>
+        <span class="k">return</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">"_continuous_ds"</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">_slice_continuous</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">trial_id</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">xr</span><span class="o">.</span><span class="n">Dataset</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Slice the continuous dataset for a single trial, shifting time to 0.&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""Slice the continuous dataset for a single trial, shifting time to 0."""</span>
         <span class="n">start</span><span class="p">,</span> <span class="n">stop</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_trial_epochs</span><span class="p">[</span><span class="n">trial_id</span><span class="p">]</span>
         <span class="n">ds</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_continuous_ds</span>
 
-        <span class="n">time_dims</span> <span class="o">=</span> <span class="p">[</span><span class="n">d</span> <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="n">ds</span><span class="o">.</span><span class="n">dims</span> <span class="k">if</span> <span class="s2">&quot;time&quot;</span> <span class="ow">in</span> <span class="n">d</span><span class="o">.</span><span class="n">lower</span><span class="p">()]</span>
+        <span class="n">time_dims</span> <span class="o">=</span> <span class="p">[</span><span class="n">d</span> <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="n">ds</span><span class="o">.</span><span class="n">dims</span> <span class="k">if</span> <span class="s2">"time"</span> <span class="ow">in</span> <span class="n">d</span><span class="o">.</span><span class="n">lower</span><span class="p">()]</span>
 
         <span class="n">sel</span> <span class="o">=</span> <span class="p">{</span><span class="n">dim</span><span class="p">:</span> <span class="nb">slice</span><span class="p">(</span><span class="n">start</span><span class="p">,</span> <span class="n">stop</span><span class="p">)</span> <span class="k">for</span> <span class="n">dim</span> <span class="ow">in</span> <span class="n">time_dims</span><span class="p">}</span>
         <span class="n">sliced</span> <span class="o">=</span> <span class="n">ds</span><span class="o">.</span><span class="n">sel</span><span class="p">(</span><span class="n">sel</span><span class="p">)</span>
@@ -513,7 +513,7 @@
                 <span class="n">sliced</span> <span class="o">=</span> <span class="n">sliced</span><span class="o">.</span><span class="n">assign_coords</span><span class="p">({</span><span class="n">dim</span><span class="p">:</span> <span class="n">sliced</span><span class="o">.</span><span class="n">coords</span><span class="p">[</span><span class="n">dim</span><span class="p">]</span><span class="o">.</span><span class="n">values</span> <span class="o">-</span> <span class="n">start</span><span class="p">})</span>
 
         <span class="n">sliced</span><span class="o">.</span><span class="n">attrs</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">ds</span><span class="o">.</span><span class="n">attrs</span><span class="p">)</span>
-        <span class="n">sliced</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s2">&quot;trial&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">trial_id</span>
+        <span class="n">sliced</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s2">"trial"</span><span class="p">]</span> <span class="o">=</span> <span class="n">trial_id</span>
         <span class="k">return</span> <span class="n">sliced</span>
 
     <span class="c1"># ------------------------------------------------------------------</span>
@@ -522,33 +522,33 @@
 
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">trials</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span> <span class="o">|</span> <span class="nb">str</span><span class="p">]:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;List of trial identifiers.&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""List of trial identifiers."""</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_is_continuous</span><span class="p">:</span>
             <span class="k">return</span> <span class="nb">sorted</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_trial_epochs</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
 
         <span class="n">raw</span> <span class="o">=</span> <span class="p">[</span>
-            <span class="n">node</span><span class="o">.</span><span class="n">ds</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s2">&quot;trial&quot;</span><span class="p">]</span>
+            <span class="n">node</span><span class="o">.</span><span class="n">ds</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s2">"trial"</span><span class="p">]</span>
             <span class="k">for</span> <span class="n">node</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">children</span><span class="o">.</span><span class="n">values</span><span class="p">()</span>
-            <span class="k">if</span> <span class="n">node</span><span class="o">.</span><span class="n">ds</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="s2">&quot;trial&quot;</span> <span class="ow">in</span> <span class="n">node</span><span class="o">.</span><span class="n">ds</span><span class="o">.</span><span class="n">attrs</span>
+            <span class="k">if</span> <span class="n">node</span><span class="o">.</span><span class="n">ds</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="s2">"trial"</span> <span class="ow">in</span> <span class="n">node</span><span class="o">.</span><span class="n">ds</span><span class="o">.</span><span class="n">attrs</span>
         <span class="p">]</span>
-        <span class="n">trials</span> <span class="o">=</span> <span class="p">[</span><span class="n">val</span><span class="o">.</span><span class="n">item</span><span class="p">()</span> <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">val</span><span class="p">,</span> <span class="s2">&quot;item&quot;</span><span class="p">)</span> <span class="k">else</span> <span class="n">val</span> <span class="k">for</span> <span class="n">val</span> <span class="ow">in</span> <span class="n">raw</span><span class="p">]</span>
+        <span class="n">trials</span> <span class="o">=</span> <span class="p">[</span><span class="n">val</span><span class="o">.</span><span class="n">item</span><span class="p">()</span> <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">val</span><span class="p">,</span> <span class="s2">"item"</span><span class="p">)</span> <span class="k">else</span> <span class="n">val</span> <span class="k">for</span> <span class="n">val</span> <span class="ow">in</span> <span class="n">raw</span><span class="p">]</span>
         <span class="k">if</span> <span class="ow">not</span> <span class="n">trials</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;No datasets with &#39;trial&#39; attribute found in the tree.&quot;</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"No datasets with 'trial' attribute found in the tree."</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">trials</span>
 
 <div class="viewcode-block" id="TrialTree.trial_items">
 <a class="viewcode-back" href="../../../api/trialtree.html#ethograph.io.trialtree.TrialTree.trial_items">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">trial_items</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Iterate over ``(trial_id, dataset)`` pairs for all trial nodes.&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""Iterate over ``(trial_id, dataset)`` pairs for all trial nodes."""</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_is_continuous</span><span class="p">:</span>
             <span class="k">for</span> <span class="n">trial_id</span> <span class="ow">in</span> <span class="nb">sorted</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_trial_epochs</span><span class="o">.</span><span class="n">keys</span><span class="p">()):</span>
                 <span class="k">yield</span> <span class="n">trial_id</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_slice_continuous</span><span class="p">(</span><span class="n">trial_id</span><span class="p">)</span>
             <span class="k">return</span>
 
         <span class="k">for</span> <span class="n">node</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">children</span><span class="o">.</span><span class="n">values</span><span class="p">():</span>
-            <span class="k">if</span> <span class="n">node</span><span class="o">.</span><span class="n">ds</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="s2">&quot;trial&quot;</span> <span class="ow">in</span> <span class="n">node</span><span class="o">.</span><span class="n">ds</span><span class="o">.</span><span class="n">attrs</span><span class="p">:</span>
-                <span class="n">trial_id</span> <span class="o">=</span> <span class="n">node</span><span class="o">.</span><span class="n">ds</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s2">&quot;trial&quot;</span><span class="p">]</span>
-                <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">trial_id</span><span class="p">,</span> <span class="s2">&quot;item&quot;</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">node</span><span class="o">.</span><span class="n">ds</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="s2">"trial"</span> <span class="ow">in</span> <span class="n">node</span><span class="o">.</span><span class="n">ds</span><span class="o">.</span><span class="n">attrs</span><span class="p">:</span>
+                <span class="n">trial_id</span> <span class="o">=</span> <span class="n">node</span><span class="o">.</span><span class="n">ds</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s2">"trial"</span><span class="p">]</span>
+                <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">trial_id</span><span class="p">,</span> <span class="s2">"item"</span><span class="p">):</span>
                     <span class="n">trial_id</span> <span class="o">=</span> <span class="n">trial_id</span><span class="o">.</span><span class="n">item</span><span class="p">()</span>
                 <span class="k">yield</span> <span class="n">trial_id</span><span class="p">,</span> <span class="n">node</span><span class="o">.</span><span class="n">ds</span></div>
 
@@ -556,17 +556,17 @@
 <div class="viewcode-block" id="TrialTree.map_trials">
 <a class="viewcode-back" href="../../../api/trialtree.html#ethograph.io.trialtree.TrialTree.map_trials">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">map_trials</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">func</span><span class="p">:</span> <span class="n">Callable</span><span class="p">[[</span><span class="n">xr</span><span class="o">.</span><span class="n">Dataset</span><span class="p">],</span> <span class="n">xr</span><span class="o">.</span><span class="n">Dataset</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">TrialTree</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Apply *func* to every trial dataset and return a new TrialTree.</span>
+<span class="w">        </span><span class="sd">"""Apply *func* to every trial dataset and return a new TrialTree.</span>
 
 <span class="sd">        For continuous trees, materialises sliced datasets into a</span>
 <span class="sd">        standard per-node TrialTree so *func* results can be stored.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_is_continuous</span><span class="p">:</span>
             <span class="n">datasets</span> <span class="o">=</span> <span class="p">[</span><span class="n">func</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_slice_continuous</span><span class="p">(</span><span class="n">t</span><span class="p">))</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">sorted</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_trial_epochs</span><span class="o">.</span><span class="n">keys</span><span class="p">())]</span>
             <span class="k">return</span> <span class="n">TrialTree</span><span class="o">.</span><span class="n">from_datasets</span><span class="p">(</span><span class="n">datasets</span><span class="p">,</span> <span class="n">validate</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
 
         <span class="k">def</span><span class="w"> </span><span class="nf">_apply</span><span class="p">(</span><span class="n">ds</span><span class="p">):</span>
-            <span class="k">if</span> <span class="n">ds</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="s2">&quot;trial&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">ds</span><span class="o">.</span><span class="n">attrs</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">ds</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="s2">"trial"</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">ds</span><span class="o">.</span><span class="n">attrs</span><span class="p">:</span>
                 <span class="k">return</span> <span class="n">ds</span>
             <span class="k">return</span> <span class="n">func</span><span class="p">(</span><span class="n">ds</span><span class="p">)</span>
 
@@ -580,13 +580,13 @@
 <div class="viewcode-block" id="TrialTree.update_trial">
 <a class="viewcode-back" href="../../../api/trialtree.html#ethograph.io.trialtree.TrialTree.update_trial">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">update_trial</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">trial</span><span class="p">,</span> <span class="n">func</span><span class="p">:</span> <span class="n">Callable</span><span class="p">[[</span><span class="n">xr</span><span class="o">.</span><span class="n">Dataset</span><span class="p">],</span> <span class="n">xr</span><span class="o">.</span><span class="n">Dataset</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Read-modify-write a single trial&#39;s dataset.</span>
+<span class="w">        </span><span class="sd">"""Read-modify-write a single trial's dataset.</span>
 
 <span class="sd">        Not supported for continuous trees — call :meth:`materialise`</span>
 <span class="sd">        first if you need per-trial mutation.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_is_continuous</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">&quot;Cannot update trials in a continuous TrialTree. &quot;</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">"Cannot update trials in a continuous TrialTree. "</span><span class="p">)</span>
         <span class="n">node_name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_trial_node_name</span><span class="p">(</span><span class="n">trial</span><span class="p">)</span>
         <span class="bp">self</span><span class="p">[</span><span class="n">node_name</span><span class="p">]</span> <span class="o">=</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataTree</span><span class="p">(</span><span class="n">func</span><span class="p">(</span><span class="bp">self</span><span class="p">[</span><span class="n">node_name</span><span class="p">]</span><span class="o">.</span><span class="n">ds</span><span class="p">))</span></div>
 
@@ -598,37 +598,37 @@
 <div class="viewcode-block" id="TrialTree.trial">
 <a class="viewcode-back" href="../../../api/trialtree.html#ethograph.io.trialtree.TrialTree.trial">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">trial</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">trial</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">xr</span><span class="o">.</span><span class="n">Dataset</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the dataset for the given trial ID.</span>
+<span class="w">        </span><span class="sd">"""Return the dataset for the given trial ID.</span>
 
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
 <span class="sd">        trial : int or str</span>
-<span class="sd">            Trial identifier matching ``ds.attrs[&quot;trial&quot;]``.</span>
+<span class="sd">            Trial identifier matching ``ds.attrs["trial"]``.</span>
 
 <span class="sd">        Examples</span>
 <span class="sd">        --------</span>
 <span class="sd">        &gt;&gt;&gt; import ethograph as eto</span>
-<span class="sd">        &gt;&gt;&gt; dt = eto.open(&quot;session.nc&quot;)</span>
+<span class="sd">        &gt;&gt;&gt; dt = eto.open("session.nc")</span>
 <span class="sd">        &gt;&gt;&gt; ds = dt.trial(1)</span>
-<span class="sd">        &gt;&gt;&gt; ds.attrs[&quot;trial&quot;]</span>
+<span class="sd">        &gt;&gt;&gt; ds.attrs["trial"]</span>
 <span class="sd">        1</span>
-<span class="sd">        &gt;&gt;&gt; ds[&quot;speed&quot;]  # access a feature variable</span>
-<span class="sd">        &lt;xarray.DataArray &#39;speed&#39; (time: 9000, keypoint: 4)&gt;</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        &gt;&gt;&gt; ds["speed"]  # access a feature variable</span>
+<span class="sd">        &lt;xarray.DataArray 'speed' (time: 9000, keypoint: 4)&gt;</span>
+<span class="sd">        """</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_is_continuous</span><span class="p">:</span>
             <span class="k">if</span> <span class="n">trial</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_trial_epochs</span><span class="p">:</span>
-                <span class="k">raise</span> <span class="ne">KeyError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;No epoch found for trial </span><span class="si">{</span><span class="n">trial</span><span class="si">!r}</span><span class="s2">&quot;</span><span class="p">)</span>
+                <span class="k">raise</span> <span class="ne">KeyError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"No epoch found for trial </span><span class="si">{</span><span class="n">trial</span><span class="si">!r}</span><span class="s2">"</span><span class="p">)</span>
             <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_slice_continuous</span><span class="p">(</span><span class="n">trial</span><span class="p">)</span>
         <span class="n">ds</span> <span class="o">=</span> <span class="bp">self</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_trial_node_name</span><span class="p">(</span><span class="n">trial</span><span class="p">)]</span><span class="o">.</span><span class="n">ds</span>
         <span class="k">if</span> <span class="n">ds</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Trial </span><span class="si">{</span><span class="n">trial</span><span class="si">}</span><span class="s2"> has no dataset&quot;</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Trial </span><span class="si">{</span><span class="n">trial</span><span class="si">}</span><span class="s2"> has no dataset"</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">ds</span></div>
 
 
 <div class="viewcode-block" id="TrialTree.itrial">
 <a class="viewcode-back" href="../../../api/trialtree.html#ethograph.io.trialtree.TrialTree.itrial">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">itrial</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">trial_idx</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">xr</span><span class="o">.</span><span class="n">Dataset</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the dataset at an integer index (0-based).</span>
+<span class="w">        </span><span class="sd">"""Return the dataset at an integer index (0-based).</span>
 
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
@@ -638,44 +638,44 @@
 <span class="sd">        Examples</span>
 <span class="sd">        --------</span>
 <span class="sd">        &gt;&gt;&gt; import ethograph as eto</span>
-<span class="sd">        &gt;&gt;&gt; dt = eto.open(&quot;session.nc&quot;)</span>
+<span class="sd">        &gt;&gt;&gt; dt = eto.open("session.nc")</span>
 <span class="sd">        &gt;&gt;&gt; dt.trials</span>
 <span class="sd">        [1, 2, 3]</span>
 <span class="sd">        &gt;&gt;&gt; ds = dt.itrial(0)  # same as dt.trial(1)</span>
-<span class="sd">        &gt;&gt;&gt; ds.attrs[&quot;trial&quot;]</span>
+<span class="sd">        &gt;&gt;&gt; ds.attrs["trial"]</span>
 <span class="sd">        1</span>
 <span class="sd">        &gt;&gt;&gt; ds = dt.itrial(2)  # same as dt.trial(3)</span>
-<span class="sd">        &gt;&gt;&gt; ds.attrs[&quot;trial&quot;]</span>
+<span class="sd">        &gt;&gt;&gt; ds.attrs["trial"]</span>
 <span class="sd">        3</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_is_continuous</span><span class="p">:</span>
             <span class="n">trial_ids</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_trial_epochs</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
             <span class="k">if</span> <span class="n">trial_idx</span> <span class="o">&gt;=</span> <span class="nb">len</span><span class="p">(</span><span class="n">trial_ids</span><span class="p">):</span>
-                <span class="k">raise</span> <span class="ne">IndexError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Trial index </span><span class="si">{</span><span class="n">trial_idx</span><span class="si">}</span><span class="s2"> out of range&quot;</span><span class="p">)</span>
+                <span class="k">raise</span> <span class="ne">IndexError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Trial index </span><span class="si">{</span><span class="n">trial_idx</span><span class="si">}</span><span class="s2"> out of range"</span><span class="p">)</span>
             <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_slice_continuous</span><span class="p">(</span><span class="n">trial_ids</span><span class="p">[</span><span class="n">trial_idx</span><span class="p">])</span>
 
         <span class="n">trial_nodes</span> <span class="o">=</span> <span class="p">[</span>
-            <span class="n">k</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">children</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">children</span><span class="p">[</span><span class="n">k</span><span class="p">]</span><span class="o">.</span><span class="n">ds</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="s2">&quot;trial&quot;</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">children</span><span class="p">[</span><span class="n">k</span><span class="p">]</span><span class="o">.</span><span class="n">ds</span><span class="o">.</span><span class="n">attrs</span>
+            <span class="n">k</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">children</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">children</span><span class="p">[</span><span class="n">k</span><span class="p">]</span><span class="o">.</span><span class="n">ds</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="s2">"trial"</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">children</span><span class="p">[</span><span class="n">k</span><span class="p">]</span><span class="o">.</span><span class="n">ds</span><span class="o">.</span><span class="n">attrs</span>
         <span class="p">]</span>
         <span class="k">if</span> <span class="n">trial_idx</span> <span class="o">&gt;=</span> <span class="nb">len</span><span class="p">(</span><span class="n">trial_nodes</span><span class="p">):</span>
-            <span class="k">raise</span> <span class="ne">IndexError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Trial index </span><span class="si">{</span><span class="n">trial_idx</span><span class="si">}</span><span class="s2"> out of range&quot;</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="ne">IndexError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Trial index </span><span class="si">{</span><span class="n">trial_idx</span><span class="si">}</span><span class="s2"> out of range"</span><span class="p">)</span>
         <span class="n">ds</span> <span class="o">=</span> <span class="bp">self</span><span class="p">[</span><span class="n">trial_nodes</span><span class="p">[</span><span class="n">trial_idx</span><span class="p">]]</span><span class="o">.</span><span class="n">ds</span>
         <span class="k">if</span> <span class="n">ds</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Trial at index </span><span class="si">{</span><span class="n">trial_idx</span><span class="si">}</span><span class="s2"> has no dataset&quot;</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Trial at index </span><span class="si">{</span><span class="n">trial_idx</span><span class="si">}</span><span class="s2"> has no dataset"</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">ds</span></div>
 
 
 <div class="viewcode-block" id="TrialTree.get_all_trials">
 <a class="viewcode-back" href="../../../api/trialtree.html#ethograph.io.trialtree.TrialTree.get_all_trials">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">get_all_trials</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">xr</span><span class="o">.</span><span class="n">Dataset</span><span class="p">]:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return a dict mapping trial ID to Dataset for all trials.&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""Return a dict mapping trial ID to Dataset for all trials."""</span>
         <span class="k">return</span> <span class="p">{</span><span class="n">num</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">trial</span><span class="p">(</span><span class="n">num</span><span class="p">)</span> <span class="k">for</span> <span class="n">num</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">trials</span><span class="p">}</span></div>
 
 
 <div class="viewcode-block" id="TrialTree.get_common_attrs">
 <a class="viewcode-back" href="../../../api/trialtree.html#ethograph.io.trialtree.TrialTree.get_common_attrs">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">get_common_attrs</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return attributes that are identical across all trials.&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""Return attributes that are identical across all trials."""</span>
         <span class="n">trials_dict</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_all_trials</span><span class="p">()</span>
         <span class="k">if</span> <span class="ow">not</span> <span class="n">trials_dict</span><span class="p">:</span>
             <span class="k">return</span> <span class="p">{}</span>
@@ -696,10 +696,10 @@
 <div class="viewcode-block" id="TrialTree.filter_by_attr">
 <a class="viewcode-back" href="../../../api/trialtree.html#ethograph.io.trialtree.TrialTree.filter_by_attr">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">filter_by_attr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">attr_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">attr_value</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">TrialTree</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return a new TrialTree containing only trials that match an attribute.</span>
+<span class="w">        </span><span class="sd">"""Return a new TrialTree containing only trials that match an attribute.</span>
 
 <span class="sd">        Checks the metadata table first; falls back to ``ds.attrs``.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
 
         <span class="k">def</span><span class="w"> </span><span class="nf">values_match</span><span class="p">(</span><span class="n">stored</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span> <span class="n">target</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
             <span class="k">if</span> <span class="n">stored</span> <span class="o">==</span> <span class="n">target</span><span class="p">:</span>
@@ -711,18 +711,18 @@
                     <span class="k">continue</span>
             <span class="k">return</span> <span class="kc">False</span>
 
-        <span class="n">mdf</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;_metadata_df&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="n">mdf</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">"_metadata_df"</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
         <span class="k">if</span> <span class="n">mdf</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">attr_name</span> <span class="ow">in</span> <span class="n">mdf</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
             <span class="n">matching_trials</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
             <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">mdf</span><span class="o">.</span><span class="n">iterrows</span><span class="p">():</span>
                 <span class="k">if</span> <span class="n">values_match</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="n">attr_name</span><span class="p">],</span> <span class="n">attr_value</span><span class="p">):</span>
-                    <span class="n">matching_trials</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;trial&quot;</span><span class="p">])</span>
+                    <span class="n">matching_trials</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">"trial"</span><span class="p">])</span>
             <span class="n">new_tree</span> <span class="o">=</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataTree</span><span class="p">()</span>
             <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">node</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">children</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
-                <span class="k">if</span> <span class="n">node</span><span class="o">.</span><span class="n">ds</span> <span class="ow">and</span> <span class="n">node</span><span class="o">.</span><span class="n">ds</span><span class="o">.</span><span class="n">attrs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;trial&quot;</span><span class="p">)</span> <span class="ow">in</span> <span class="n">matching_trials</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">node</span><span class="o">.</span><span class="n">ds</span> <span class="ow">and</span> <span class="n">node</span><span class="o">.</span><span class="n">ds</span><span class="o">.</span><span class="n">attrs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"trial"</span><span class="p">)</span> <span class="ow">in</span> <span class="n">matching_trials</span><span class="p">:</span>
                     <span class="n">new_tree</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">node</span>
             <span class="n">result</span> <span class="o">=</span> <span class="n">TrialTree</span><span class="p">(</span><span class="n">new_tree</span><span class="p">)</span>
-            <span class="n">result</span><span class="o">.</span><span class="n">_metadata_df</span> <span class="o">=</span> <span class="n">mdf</span><span class="p">[</span><span class="n">mdf</span><span class="p">[</span><span class="s2">&quot;trial&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">isin</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">trials</span><span class="p">)]</span><span class="o">.</span><span class="n">reset_index</span><span class="p">(</span><span class="n">drop</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+            <span class="n">result</span><span class="o">.</span><span class="n">_metadata_df</span> <span class="o">=</span> <span class="n">mdf</span><span class="p">[</span><span class="n">mdf</span><span class="p">[</span><span class="s2">"trial"</span><span class="p">]</span><span class="o">.</span><span class="n">isin</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">trials</span><span class="p">)]</span><span class="o">.</span><span class="n">reset_index</span><span class="p">(</span><span class="n">drop</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
             <span class="k">return</span> <span class="n">result</span>
 
         <span class="n">new_tree</span> <span class="o">=</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataTree</span><span class="p">()</span>
@@ -741,12 +741,12 @@
 <a class="viewcode-back" href="../../../api/trialtree.html#ethograph.io.trialtree.TrialTree.open">[docs]</a>
     <span class="nd">@classmethod</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">open</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">path</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">TrialTree</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Load a TrialTree from a NetCDF file.</span>
+<span class="w">        </span><span class="sd">"""Load a TrialTree from a NetCDF file.</span>
 
 <span class="sd">        Auto-discovers ``.ethograph/alignment.nwb`` next to the file.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
 
-        <span class="n">tree</span> <span class="o">=</span> <span class="n">xr</span><span class="o">.</span><span class="n">open_datatree</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="n">engine</span><span class="o">=</span><span class="s2">&quot;netcdf4&quot;</span><span class="p">)</span>
+        <span class="n">tree</span> <span class="o">=</span> <span class="n">xr</span><span class="o">.</span><span class="n">open_datatree</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="n">engine</span><span class="o">=</span><span class="s2">"netcdf4"</span><span class="p">)</span>
 
         <span class="n">tree</span><span class="o">.</span><span class="vm">__class__</span> <span class="o">=</span> <span class="bp">cls</span>
         <span class="n">tree</span><span class="o">.</span><span class="n">_source_path</span> <span class="o">=</span> <span class="n">path</span>
@@ -763,28 +763,28 @@
         <span class="n">datasets</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">xr</span><span class="o">.</span><span class="n">Dataset</span><span class="p">],</span>
         <span class="n">validate</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
     <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">TrialTree</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Build a TrialTree from a list of xarray Datasets.</span>
+<span class="w">        </span><span class="sd">"""Build a TrialTree from a list of xarray Datasets.</span>
 
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
 <span class="sd">        datasets</span>
-<span class="sd">            Each dataset must have a unique ``attrs[&quot;trial&quot;]`` key.</span>
+<span class="sd">            Each dataset must have a unique ``attrs["trial"]`` key.</span>
 <span class="sd">        validate</span>
 <span class="sd">            Run validation after construction.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="n">tree</span> <span class="o">=</span> <span class="bp">cls</span><span class="p">()</span>
         <span class="n">seen</span><span class="p">:</span> <span class="nb">set</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
         <span class="k">for</span> <span class="n">ds</span> <span class="ow">in</span> <span class="n">datasets</span><span class="p">:</span>
-            <span class="n">trial_num</span> <span class="o">=</span> <span class="n">ds</span><span class="o">.</span><span class="n">attrs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;trial&quot;</span><span class="p">)</span>
+            <span class="n">trial_num</span> <span class="o">=</span> <span class="n">ds</span><span class="o">.</span><span class="n">attrs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"trial"</span><span class="p">)</span>
             <span class="k">if</span> <span class="n">trial_num</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Each dataset must have &#39;trial&#39; attribute&quot;</span><span class="p">)</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"Each dataset must have 'trial' attribute"</span><span class="p">)</span>
             <span class="k">if</span> <span class="n">trial_num</span> <span class="ow">in</span> <span class="n">seen</span><span class="p">:</span>
-                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Duplicate trial number: </span><span class="si">{</span><span class="n">trial_num</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Duplicate trial number: </span><span class="si">{</span><span class="n">trial_num</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
             <span class="n">seen</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">trial_num</span><span class="p">)</span>
-            <span class="n">node_name</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">trial_num</span><span class="p">)</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;/&quot;</span><span class="p">,</span> <span class="s2">&quot;_&quot;</span><span class="p">)</span>
+            <span class="n">node_name</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">trial_num</span><span class="p">)</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">"/"</span><span class="p">,</span> <span class="s2">"_"</span><span class="p">)</span>
             <span class="n">tree</span><span class="p">[</span><span class="n">node_name</span><span class="p">]</span> <span class="o">=</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataTree</span><span class="p">(</span><span class="n">ds</span><span class="p">)</span>
         <span class="c1"># Ensure nwb_alignment is always set (inherited from __init__, but explicit)</span>
-        <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">tree</span><span class="p">,</span> <span class="s2">&quot;nwb_alignment&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="n">tree</span><span class="o">.</span><span class="n">nwb_alignment</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">tree</span><span class="p">,</span> <span class="s2">"nwb_alignment"</span><span class="p">)</span> <span class="ow">or</span> <span class="n">tree</span><span class="o">.</span><span class="n">nwb_alignment</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
             <span class="n">tree</span><span class="o">.</span><span class="n">nwb_alignment</span> <span class="o">=</span> <span class="n">EmpytAlignment</span><span class="p">()</span>
         <span class="k">if</span> <span class="n">validate</span><span class="p">:</span>
             <span class="n">tree</span><span class="o">.</span><span class="n">_validate_tree</span><span class="p">()</span>
@@ -797,9 +797,9 @@
     <span class="k">def</span><span class="w"> </span><span class="nf">from_continuous</span><span class="p">(</span>
         <span class="bp">cls</span><span class="p">,</span>
         <span class="n">ds</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">Dataset</span><span class="p">,</span>
-        <span class="n">epochs</span><span class="p">:</span> <span class="s2">&quot;pd.DataFrame | nap.IntervalSet&quot;</span><span class="p">,</span>
+        <span class="n">epochs</span><span class="p">:</span> <span class="s2">"pd.DataFrame | nap.IntervalSet"</span><span class="p">,</span>
     <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">TrialTree</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Build a TrialTree from a single continuous recording + trial epochs.</span>
+<span class="w">        </span><span class="sd">"""Build a TrialTree from a single continuous recording + trial epochs.</span>
 
 <span class="sd">        Unlike :meth:`from_datasets` which requires pre-split data, this</span>
 <span class="sd">        stores one shared dataset and slices on demand when :meth:`trial`</span>
@@ -809,13 +809,13 @@
 <span class="sd">        ----------</span>
 <span class="sd">        ds</span>
 <span class="sd">            Full recording dataset.  Must have at least one dimension</span>
-<span class="sd">            whose name contains ``&quot;time&quot;``.</span>
+<span class="sd">            whose name contains ``"time"``.</span>
 <span class="sd">        epochs</span>
 <span class="sd">            Trial boundaries.  Accepts:</span>
 
 <span class="sd">            - ``pd.DataFrame`` with columns ``trial``, ``start_time``,</span>
 <span class="sd">              ``stop_time``.</span>
-<span class="sd">            - ``nap.IntervalSet`` — trial IDs taken from a ``&quot;trial&quot;``</span>
+<span class="sd">            - ``nap.IntervalSet`` — trial IDs taken from a ``"trial"``</span>
 <span class="sd">              metadata column, or ``1, 2, …`` if absent.</span>
 
 <span class="sd">        Examples</span>
@@ -823,48 +823,48 @@
 <span class="sd">        &gt;&gt;&gt; import pandas as pd</span>
 <span class="sd">        &gt;&gt;&gt; epochs = pd.DataFrame(</span>
 <span class="sd">        ...     {</span>
-<span class="sd">        ...         &quot;trial&quot;: [1, 2, 3],</span>
-<span class="sd">        ...         &quot;start_time&quot;: [0.0, 60.0, 120.0],</span>
-<span class="sd">        ...         &quot;stop_time&quot;: [60.0, 120.0, 180.0],</span>
+<span class="sd">        ...         "trial": [1, 2, 3],</span>
+<span class="sd">        ...         "start_time": [0.0, 60.0, 120.0],</span>
+<span class="sd">        ...         "stop_time": [60.0, 120.0, 180.0],</span>
 <span class="sd">        ...     }</span>
 <span class="sd">        ... )</span>
 <span class="sd">        &gt;&gt;&gt; dt = TrialTree.from_continuous(ds, epochs)</span>
 <span class="sd">        &gt;&gt;&gt; dt.trial(2)  # returns 60-120s slice, time shifted to 0</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="n">tree</span> <span class="o">=</span> <span class="bp">cls</span><span class="p">()</span>
 
         <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">epochs</span><span class="p">,</span> <span class="n">nap</span><span class="o">.</span><span class="n">IntervalSet</span><span class="p">):</span>
             <span class="n">epoch_dict</span> <span class="o">=</span> <span class="p">{}</span>
-            <span class="n">has_trial</span> <span class="o">=</span> <span class="s2">&quot;trial&quot;</span> <span class="ow">in</span> <span class="n">epochs</span><span class="o">.</span><span class="n">metadata</span><span class="o">.</span><span class="n">columns</span>
+            <span class="n">has_trial</span> <span class="o">=</span> <span class="s2">"trial"</span> <span class="ow">in</span> <span class="n">epochs</span><span class="o">.</span><span class="n">metadata</span><span class="o">.</span><span class="n">columns</span>
             <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">epochs</span><span class="p">)):</span>
-                <span class="n">trial_id</span> <span class="o">=</span> <span class="n">epochs</span><span class="o">.</span><span class="n">metadata</span><span class="p">[</span><span class="s2">&quot;trial&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="k">if</span> <span class="n">has_trial</span> <span class="k">else</span> <span class="n">i</span> <span class="o">+</span> <span class="mi">1</span>
-                <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">trial_id</span><span class="p">,</span> <span class="s2">&quot;item&quot;</span><span class="p">):</span>
+                <span class="n">trial_id</span> <span class="o">=</span> <span class="n">epochs</span><span class="o">.</span><span class="n">metadata</span><span class="p">[</span><span class="s2">"trial"</span><span class="p">]</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="k">if</span> <span class="n">has_trial</span> <span class="k">else</span> <span class="n">i</span> <span class="o">+</span> <span class="mi">1</span>
+                <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">trial_id</span><span class="p">,</span> <span class="s2">"item"</span><span class="p">):</span>
                     <span class="n">trial_id</span> <span class="o">=</span> <span class="n">trial_id</span><span class="o">.</span><span class="n">item</span><span class="p">()</span>
                 <span class="n">epoch_dict</span><span class="p">[</span><span class="n">trial_id</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">epochs</span><span class="o">.</span><span class="n">start</span><span class="p">[</span><span class="n">i</span><span class="p">]),</span> <span class="nb">float</span><span class="p">(</span><span class="n">epochs</span><span class="o">.</span><span class="n">end</span><span class="p">[</span><span class="n">i</span><span class="p">]))</span>
 
         <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">epochs</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">):</span>
             <span class="n">epoch_dict</span> <span class="o">=</span> <span class="p">{}</span>
 
-            <span class="k">if</span> <span class="s2">&quot;trial&quot;</span> <span class="ow">in</span> <span class="n">epochs</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
-                <span class="n">trials_col</span> <span class="o">=</span> <span class="n">epochs</span><span class="p">[</span><span class="s2">&quot;trial&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">values</span>
+            <span class="k">if</span> <span class="s2">"trial"</span> <span class="ow">in</span> <span class="n">epochs</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
+                <span class="n">trials_col</span> <span class="o">=</span> <span class="n">epochs</span><span class="p">[</span><span class="s2">"trial"</span><span class="p">]</span><span class="o">.</span><span class="n">values</span>
             <span class="k">else</span><span class="p">:</span>
                 <span class="n">trials_col</span> <span class="o">=</span> <span class="kc">None</span>
 
-            <span class="n">starts_col</span> <span class="o">=</span> <span class="n">epochs</span><span class="p">[</span><span class="s2">&quot;start_time&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">values</span>
-            <span class="n">stops_col</span> <span class="o">=</span> <span class="n">epochs</span><span class="p">[</span><span class="s2">&quot;stop_time&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">values</span>
+            <span class="n">starts_col</span> <span class="o">=</span> <span class="n">epochs</span><span class="p">[</span><span class="s2">"start_time"</span><span class="p">]</span><span class="o">.</span><span class="n">values</span>
+            <span class="n">stops_col</span> <span class="o">=</span> <span class="n">epochs</span><span class="p">[</span><span class="s2">"stop_time"</span><span class="p">]</span><span class="o">.</span><span class="n">values</span>
             <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">epochs</span><span class="p">)):</span>
                 <span class="n">trial_id</span> <span class="o">=</span> <span class="n">trials_col</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="k">if</span> <span class="n">trials_col</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">i</span> <span class="o">+</span> <span class="mi">1</span>
-                <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">trial_id</span><span class="p">,</span> <span class="s2">&quot;item&quot;</span><span class="p">):</span>
+                <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">trial_id</span><span class="p">,</span> <span class="s2">"item"</span><span class="p">):</span>
                     <span class="n">trial_id</span> <span class="o">=</span> <span class="n">trial_id</span><span class="o">.</span><span class="n">item</span><span class="p">()</span>
                 <span class="n">epoch_dict</span><span class="p">[</span><span class="n">trial_id</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">starts_col</span><span class="p">[</span><span class="n">i</span><span class="p">]),</span> <span class="nb">float</span><span class="p">(</span><span class="n">stops_col</span><span class="p">[</span><span class="n">i</span><span class="p">]))</span>
         <span class="k">else</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;epochs must be a pandas DataFrame or pynapple IntervalSet&quot;</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"epochs must be a pandas DataFrame or pynapple IntervalSet"</span><span class="p">)</span>
 
         <span class="n">tree</span><span class="o">.</span><span class="n">_continuous_ds</span> <span class="o">=</span> <span class="n">ds</span>
         <span class="n">tree</span><span class="o">.</span><span class="n">_trial_epochs</span> <span class="o">=</span> <span class="n">epoch_dict</span>
 
         <span class="c1"># Ensure nwb_alignment is always set (inherited from __init__, but explicit)</span>
-        <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">tree</span><span class="p">,</span> <span class="s2">&quot;nwb_alignment&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="n">tree</span><span class="o">.</span><span class="n">nwb_alignment</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">tree</span><span class="p">,</span> <span class="s2">"nwb_alignment"</span><span class="p">)</span> <span class="ow">or</span> <span class="n">tree</span><span class="o">.</span><span class="n">nwb_alignment</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
             <span class="n">tree</span><span class="o">.</span><span class="n">nwb_alignment</span> <span class="o">=</span> <span class="n">EmpytAlignment</span><span class="p">()</span>
         <span class="k">return</span> <span class="n">tree</span></div>
 
@@ -877,15 +877,15 @@
         <span class="n">dt</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataTree</span><span class="p">,</span>
         <span class="n">attrs</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
         <span class="o">*</span><span class="p">,</span>
-        <span class="n">source</span><span class="p">:</span> <span class="s2">&quot;TrialTree | None&quot;</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">source</span><span class="p">:</span> <span class="s2">"TrialTree | None"</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
     <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">TrialTree</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Wrap an existing DataTree as a TrialTree.</span>
+<span class="w">        </span><span class="sd">"""Wrap an existing DataTree as a TrialTree.</span>
 
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
 <span class="sd">        source</span>
 <span class="sd">            Original TrialTree to copy ``nwb_alignment`` and ``_source_path`` from.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="n">tree</span> <span class="o">=</span> <span class="bp">cls</span><span class="p">()</span>
         <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">child</span> <span class="ow">in</span> <span class="n">dt</span><span class="o">.</span><span class="n">children</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
             <span class="n">tree</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">child</span>
@@ -894,10 +894,10 @@
         <span class="n">tree</span><span class="o">.</span><span class="n">attrs</span> <span class="o">=</span> <span class="p">(</span><span class="n">attrs</span> <span class="k">if</span> <span class="n">attrs</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">dt</span><span class="o">.</span><span class="n">attrs</span><span class="p">)</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
         <span class="k">if</span> <span class="n">source</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
             <span class="n">tree</span><span class="o">.</span><span class="n">nwb_alignment</span> <span class="o">=</span> <span class="n">source</span><span class="o">.</span><span class="n">nwb_alignment</span>
-            <span class="n">sp</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="s2">&quot;_source_path&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+            <span class="n">sp</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="s2">"_source_path"</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
             <span class="k">if</span> <span class="n">sp</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
                 <span class="n">tree</span><span class="o">.</span><span class="n">_source_path</span> <span class="o">=</span> <span class="n">sp</span>
-            <span class="n">mdf</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="s2">&quot;_metadata_df&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+            <span class="n">mdf</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="s2">"_metadata_df"</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
             <span class="k">if</span> <span class="n">mdf</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
                 <span class="n">tree</span><span class="o">.</span><span class="n">_metadata_df</span> <span class="o">=</span> <span class="n">mdf</span>
         <span class="k">return</span> <span class="n">tree</span></div>
@@ -906,7 +906,7 @@
 <div class="viewcode-block" id="TrialTree.save">
 <a class="viewcode-back" href="../../../api/trialtree.html#ethograph.io.trialtree.TrialTree.save">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">save</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Write the TrialTree to a NetCDF file.</span>
+<span class="w">        </span><span class="sd">"""Write the TrialTree to a NetCDF file.</span>
 
 <span class="sd">        Continuous trees are materialised into per-trial nodes before</span>
 <span class="sd">        saving so the file can be re-opened with :meth:`open`.</span>
@@ -915,21 +915,21 @@
 <span class="sd">        If an alignment NWB exists and the save directory differs from where</span>
 <span class="sd">        the NWB lives, a copy is placed in ``&lt;save_dir&gt;/.ethograph/`` so that</span>
 <span class="sd">        :meth:`open` can discover it.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_is_continuous</span><span class="p">:</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">materialise</span><span class="p">()</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
             <span class="k">return</span>
 
-        <span class="n">source_path</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;_source_path&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="n">source_path</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">"_source_path"</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
         <span class="k">if</span> <span class="n">path</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">source_path</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;No path provided and no source path stored.&quot;</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"No path provided and no source path stored."</span><span class="p">)</span>
 
         <span class="n">path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">path</span><span class="p">)</span> <span class="k">if</span> <span class="n">path</span> <span class="k">else</span> <span class="n">Path</span><span class="p">(</span><span class="n">source_path</span><span class="p">)</span>
-        <span class="n">temp_path</span> <span class="o">=</span> <span class="n">path</span><span class="o">.</span><span class="n">with_suffix</span><span class="p">(</span><span class="s2">&quot;.tmp.nc&quot;</span><span class="p">)</span>
+        <span class="n">temp_path</span> <span class="o">=</span> <span class="n">path</span><span class="o">.</span><span class="n">with_suffix</span><span class="p">(</span><span class="s2">".tmp.nc"</span><span class="p">)</span>
 
         <span class="k">try</span><span class="p">:</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">load</span><span class="p">()</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">to_netcdf</span><span class="p">(</span><span class="n">temp_path</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s2">&quot;w&quot;</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">to_netcdf</span><span class="p">(</span><span class="n">temp_path</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s2">"w"</span><span class="p">)</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
             <span class="n">temp_path</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_source_path</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
@@ -939,7 +939,7 @@
 
 
     <span class="k">def</span><span class="w"> </span><span class="nf">_ensure_alignment_nwb</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">save_dir</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Copy alignment NWB next to the save location if needed.&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""Copy alignment NWB next to the save location if needed."""</span>
         <span class="kn">import</span><span class="w"> </span><span class="nn">shutil</span>
 
         <span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.io.nwb_alignment</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
@@ -970,7 +970,7 @@
     <span class="k">def</span><span class="w"> </span><span class="nf">_validate_tree</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
         <span class="n">errors</span> <span class="o">=</span> <span class="n">validate_datatree</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
         <span class="k">if</span> <span class="n">errors</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;TrialTree validation failed:</span><span class="se">\n</span><span class="s2">&quot;</span> <span class="o">+</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;• </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span> <span class="k">for</span> <span class="n">e</span> <span class="ow">in</span> <span class="n">errors</span><span class="p">))</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"TrialTree validation failed:</span><span class="se">\n</span><span class="s2">"</span> <span class="o">+</span> <span class="s2">"</span><span class="se">\n</span><span class="s2">"</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="sa">f</span><span class="s2">"• </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">"</span> <span class="k">for</span> <span class="n">e</span> <span class="ow">in</span> <span class="n">errors</span><span class="p">))</span>
         <span class="k">return</span> <span class="n">errors</span>
 
     <span class="c1"># ------------------------------------------------------------------</span>
@@ -979,28 +979,28 @@
 
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">session</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">xr</span><span class="o">.</span><span class="n">Dataset</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Legacy session access. Returns None for NWB-backed trees.&quot;&quot;&quot;</span>
-        <span class="k">if</span> <span class="s2">&quot;session&quot;</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">children</span><span class="p">:</span>
-            <span class="k">return</span> <span class="bp">self</span><span class="p">[</span><span class="s2">&quot;session&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">ds</span>
+<span class="w">        </span><span class="sd">"""Legacy session access. Returns None for NWB-backed trees."""</span>
+        <span class="k">if</span> <span class="s2">"session"</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">children</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="p">[</span><span class="s2">"session"</span><span class="p">]</span><span class="o">.</span><span class="n">ds</span>
         <span class="k">return</span> <span class="kc">None</span>
 
 <div class="viewcode-block" id="TrialTree.get_trial_metadata">
 <a class="viewcode-back" href="../../../api/trialtree.html#ethograph.io.trialtree.TrialTree.get_trial_metadata">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">get_trial_metadata</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">trial</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return condition metadata for a single trial as a dict.&quot;&quot;&quot;</span>
-        <span class="n">df</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;_metadata_df&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+<span class="w">        </span><span class="sd">"""Return condition metadata for a single trial as a dict."""</span>
+        <span class="n">df</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">"_metadata_df"</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
         <span class="k">if</span> <span class="n">df</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
             <span class="k">return</span> <span class="p">{}</span>
         <span class="k">if</span> <span class="n">df</span><span class="o">.</span><span class="n">empty</span><span class="p">:</span>
             <span class="k">return</span> <span class="p">{}</span>
-        <span class="n">row</span> <span class="o">=</span> <span class="n">df</span><span class="p">[</span><span class="n">df</span><span class="p">[</span><span class="s2">&quot;trial&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="n">trial</span><span class="p">]</span>
+        <span class="n">row</span> <span class="o">=</span> <span class="n">df</span><span class="p">[</span><span class="n">df</span><span class="p">[</span><span class="s2">"trial"</span><span class="p">]</span> <span class="o">==</span> <span class="n">trial</span><span class="p">]</span>
         <span class="k">if</span> <span class="n">row</span><span class="o">.</span><span class="n">empty</span><span class="p">:</span>
-            <span class="n">row</span> <span class="o">=</span> <span class="n">df</span><span class="p">[</span><span class="n">df</span><span class="p">[</span><span class="s2">&quot;trial&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="nb">str</span><span class="p">(</span><span class="n">trial</span><span class="p">)]</span>
+            <span class="n">row</span> <span class="o">=</span> <span class="n">df</span><span class="p">[</span><span class="n">df</span><span class="p">[</span><span class="s2">"trial"</span><span class="p">]</span> <span class="o">==</span> <span class="nb">str</span><span class="p">(</span><span class="n">trial</span><span class="p">)]</span>
         <span class="k">if</span> <span class="n">row</span><span class="o">.</span><span class="n">empty</span> <span class="ow">and</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">trial</span><span class="p">,</span> <span class="p">(</span><span class="nb">int</span><span class="p">,</span> <span class="nb">float</span><span class="p">)):</span>
-            <span class="n">row</span> <span class="o">=</span> <span class="n">df</span><span class="p">[</span><span class="n">df</span><span class="p">[</span><span class="s2">&quot;trial&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">str</span><span class="p">)</span> <span class="o">==</span> <span class="nb">str</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">trial</span><span class="p">))]</span>
+            <span class="n">row</span> <span class="o">=</span> <span class="n">df</span><span class="p">[</span><span class="n">df</span><span class="p">[</span><span class="s2">"trial"</span><span class="p">]</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">str</span><span class="p">)</span> <span class="o">==</span> <span class="nb">str</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">trial</span><span class="p">))]</span>
         <span class="k">if</span> <span class="n">row</span><span class="o">.</span><span class="n">empty</span><span class="p">:</span>
             <span class="k">return</span> <span class="p">{}</span>
-        <span class="k">return</span> <span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">v</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">row</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">to_dict</span><span class="p">()</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">k</span> <span class="o">!=</span> <span class="s2">&quot;trial&quot;</span> <span class="ow">and</span> <span class="n">pd</span><span class="o">.</span><span class="n">notna</span><span class="p">(</span><span class="n">v</span><span class="p">)}</span></div>
+        <span class="k">return</span> <span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">v</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">row</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">to_dict</span><span class="p">()</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">k</span> <span class="o">!=</span> <span class="s2">"trial"</span> <span class="ow">and</span> <span class="n">pd</span><span class="o">.</span><span class="n">notna</span><span class="p">(</span><span class="n">v</span><span class="p">)}</span></div>
 </div>
 
 </pre></div>

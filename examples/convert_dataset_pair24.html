@@ -463,12 +463,12 @@
     <span class="n">_here</span> <span class="o">=</span> <span class="n">Path</span><span class="p">()</span><span class="o">.</span><span class="n">resolve</span><span class="p">()</span>
 
 <span class="c1"># TODO: adjust to your local copy of the PAIR-R24M dataset</span>
-<span class="n">path</span> <span class="o">=</span> <span class="sa">r</span><span class="s2">&quot;C:\Users\aksel\Documents\Code\EthoGraph\data\20210119_Recording_SR1_SR2_social_vidtwo\markerDataset.csv&quot;</span>
+<span class="n">path</span> <span class="o">=</span> <span class="sa">r</span><span class="s2">"C:\Users\aksel\Documents\Code\EthoGraph\data\20210119_Recording_SR1_SR2_social_vidtwo\markerDataset.csv"</span>
 
-<span class="n">SESSION</span> <span class="o">=</span> <span class="s2">&quot;20210119_Recording_SR1_SR2_social_vidtwo&quot;</span>
-<span class="n">DATA_DIR</span> <span class="o">=</span> <span class="n">_here</span><span class="o">.</span><span class="n">parent</span> <span class="o">/</span> <span class="s2">&quot;data&quot;</span> <span class="o">/</span> <span class="n">SESSION</span>
-<span class="n">VIDEO_DIR</span> <span class="o">=</span> <span class="n">DATA_DIR</span> <span class="o">/</span> <span class="s2">&quot;videos&quot;</span>
-<span class="n">CAMERAS</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;Camera1&quot;</span><span class="p">,</span> <span class="s2">&quot;Camera2&quot;</span><span class="p">,</span> <span class="s2">&quot;Camera3&quot;</span><span class="p">,</span> <span class="s2">&quot;Camera4&quot;</span><span class="p">,</span> <span class="s2">&quot;Camera5&quot;</span><span class="p">,</span> <span class="s2">&quot;Camera6&quot;</span><span class="p">]</span>
+<span class="n">SESSION</span> <span class="o">=</span> <span class="s2">"20210119_Recording_SR1_SR2_social_vidtwo"</span>
+<span class="n">DATA_DIR</span> <span class="o">=</span> <span class="n">_here</span><span class="o">.</span><span class="n">parent</span> <span class="o">/</span> <span class="s2">"data"</span> <span class="o">/</span> <span class="n">SESSION</span>
+<span class="n">VIDEO_DIR</span> <span class="o">=</span> <span class="n">DATA_DIR</span> <span class="o">/</span> <span class="s2">"videos"</span>
+<span class="n">CAMERAS</span> <span class="o">=</span> <span class="p">[</span><span class="s2">"Camera1"</span><span class="p">,</span> <span class="s2">"Camera2"</span><span class="p">,</span> <span class="s2">"Camera3"</span><span class="p">,</span> <span class="s2">"Camera4"</span><span class="p">,</span> <span class="s2">"Camera5"</span><span class="p">,</span> <span class="s2">"Camera6"</span><span class="p">]</span>
 <span class="n">CHUNK_SIZE</span> <span class="o">=</span> <span class="mi">3500</span>
 <span class="n">FPS</span> <span class="o">=</span> <span class="mi">120</span>
 </pre></div>
@@ -484,21 +484,21 @@
     <span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_csv</span><span class="p">(</span><span class="n">file_path</span><span class="p">)</span>
 
     <span class="n">keypoint_names</span> <span class="o">=</span> <span class="p">[</span>
-        <span class="s2">&quot;HeadF&quot;</span><span class="p">,</span>
-        <span class="s2">&quot;HeadB&quot;</span><span class="p">,</span>
-        <span class="s2">&quot;HeadL&quot;</span><span class="p">,</span>
-        <span class="s2">&quot;SpineF&quot;</span><span class="p">,</span>
-        <span class="s2">&quot;SpineM&quot;</span><span class="p">,</span>
-        <span class="s2">&quot;SpineL&quot;</span><span class="p">,</span>
-        <span class="s2">&quot;Offset1&quot;</span><span class="p">,</span>
-        <span class="s2">&quot;Offset2&quot;</span><span class="p">,</span>
-        <span class="s2">&quot;HipL&quot;</span><span class="p">,</span>
-        <span class="s2">&quot;HipR&quot;</span><span class="p">,</span>
-        <span class="s2">&quot;ShoulderL&quot;</span><span class="p">,</span>
-        <span class="s2">&quot;ShoulderR&quot;</span><span class="p">,</span>
+        <span class="s2">"HeadF"</span><span class="p">,</span>
+        <span class="s2">"HeadB"</span><span class="p">,</span>
+        <span class="s2">"HeadL"</span><span class="p">,</span>
+        <span class="s2">"SpineF"</span><span class="p">,</span>
+        <span class="s2">"SpineM"</span><span class="p">,</span>
+        <span class="s2">"SpineL"</span><span class="p">,</span>
+        <span class="s2">"Offset1"</span><span class="p">,</span>
+        <span class="s2">"Offset2"</span><span class="p">,</span>
+        <span class="s2">"HipL"</span><span class="p">,</span>
+        <span class="s2">"HipR"</span><span class="p">,</span>
+        <span class="s2">"ShoulderL"</span><span class="p">,</span>
+        <span class="s2">"ShoulderR"</span><span class="p">,</span>
     <span class="p">]</span>
-    <span class="n">individual_names</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;an1&quot;</span><span class="p">,</span> <span class="s2">&quot;an2&quot;</span><span class="p">]</span>
-    <span class="n">position_types</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;aligned&quot;</span><span class="p">,</span> <span class="s2">&quot;absolute&quot;</span><span class="p">]</span>
+    <span class="n">individual_names</span> <span class="o">=</span> <span class="p">[</span><span class="s2">"an1"</span><span class="p">,</span> <span class="s2">"an2"</span><span class="p">]</span>
+    <span class="n">position_types</span> <span class="o">=</span> <span class="p">[</span><span class="s2">"aligned"</span><span class="p">,</span> <span class="s2">"absolute"</span><span class="p">]</span>
     <span class="n">n_frames</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">df</span><span class="p">)</span>
     <span class="n">n_keypoints</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">keypoint_names</span><span class="p">)</span>
     <span class="n">n_individuals</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">individual_names</span><span class="p">)</span>
@@ -508,11 +508,11 @@
     <span class="n">confidence_array</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">((</span><span class="n">n_frames</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">position_types</span><span class="p">),</span> <span class="n">n_keypoints</span><span class="p">,</span> <span class="n">n_individuals</span><span class="p">))</span>
 
     <span class="k">for</span> <span class="n">p</span><span class="p">,</span> <span class="n">pos_type</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">position_types</span><span class="p">):</span>
-        <span class="n">csv_prefix</span> <span class="o">=</span> <span class="s2">&quot;alignedPosition&quot;</span> <span class="k">if</span> <span class="n">pos_type</span> <span class="o">==</span> <span class="s2">&quot;aligned&quot;</span> <span class="k">else</span> <span class="s2">&quot;absolutePosition&quot;</span>
+        <span class="n">csv_prefix</span> <span class="o">=</span> <span class="s2">"alignedPosition"</span> <span class="k">if</span> <span class="n">pos_type</span> <span class="o">==</span> <span class="s2">"aligned"</span> <span class="k">else</span> <span class="s2">"absolutePosition"</span>
         <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">individual</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">individual_names</span><span class="p">):</span>
             <span class="k">for</span> <span class="n">j</span><span class="p">,</span> <span class="n">keypoint</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">keypoint_names</span><span class="p">):</span>
-                <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">coord</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">([</span><span class="s2">&quot;x&quot;</span><span class="p">,</span> <span class="s2">&quot;y&quot;</span><span class="p">,</span> <span class="s2">&quot;z&quot;</span><span class="p">]):</span>
-                    <span class="n">col_name</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">csv_prefix</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">individual</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">keypoint</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">coord</span><span class="si">}</span><span class="s2">&quot;</span>
+                <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">coord</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">([</span><span class="s2">"x"</span><span class="p">,</span> <span class="s2">"y"</span><span class="p">,</span> <span class="s2">"z"</span><span class="p">]):</span>
+                    <span class="n">col_name</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">csv_prefix</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">individual</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">keypoint</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">coord</span><span class="si">}</span><span class="s2">"</span>
                     <span class="k">if</span> <span class="n">col_name</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
                         <span class="n">position_array</span><span class="p">[:,</span> <span class="n">p</span><span class="p">,</span> <span class="n">k</span><span class="p">,</span> <span class="n">j</span><span class="p">,</span> <span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">df</span><span class="p">[</span><span class="n">col_name</span><span class="p">]</span><span class="o">.</span><span class="n">values</span>
 
@@ -520,32 +520,32 @@
 
     <span class="n">ds</span> <span class="o">=</span> <span class="n">xr</span><span class="o">.</span><span class="n">Dataset</span><span class="p">(</span>
         <span class="n">data_vars</span><span class="o">=</span><span class="p">{</span>
-            <span class="s2">&quot;position&quot;</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">(</span>
+            <span class="s2">"position"</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">(</span>
                 <span class="n">position_array</span><span class="p">,</span>
-                <span class="n">dims</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;time&quot;</span><span class="p">,</span> <span class="s2">&quot;position_type&quot;</span><span class="p">,</span> <span class="s2">&quot;space&quot;</span><span class="p">,</span> <span class="s2">&quot;keypoints&quot;</span><span class="p">,</span> <span class="s2">&quot;individuals&quot;</span><span class="p">],</span>
+                <span class="n">dims</span><span class="o">=</span><span class="p">[</span><span class="s2">"time"</span><span class="p">,</span> <span class="s2">"position_type"</span><span class="p">,</span> <span class="s2">"space"</span><span class="p">,</span> <span class="s2">"keypoints"</span><span class="p">,</span> <span class="s2">"individuals"</span><span class="p">],</span>
             <span class="p">),</span>
-            <span class="s2">&quot;confidence&quot;</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">(</span>
+            <span class="s2">"confidence"</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">(</span>
                 <span class="n">confidence_array</span><span class="p">,</span>
-                <span class="n">dims</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;time&quot;</span><span class="p">,</span> <span class="s2">&quot;position_type&quot;</span><span class="p">,</span> <span class="s2">&quot;keypoints&quot;</span><span class="p">,</span> <span class="s2">&quot;individuals&quot;</span><span class="p">],</span>
+                <span class="n">dims</span><span class="o">=</span><span class="p">[</span><span class="s2">"time"</span><span class="p">,</span> <span class="s2">"position_type"</span><span class="p">,</span> <span class="s2">"keypoints"</span><span class="p">,</span> <span class="s2">"individuals"</span><span class="p">],</span>
             <span class="p">),</span>
         <span class="p">},</span>
         <span class="n">coords</span><span class="o">=</span><span class="p">{</span>
-            <span class="s2">&quot;time&quot;</span><span class="p">:</span> <span class="n">time_coords</span><span class="p">,</span>
-            <span class="s2">&quot;position_type&quot;</span><span class="p">:</span> <span class="n">position_types</span><span class="p">,</span>
-            <span class="s2">&quot;space&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;x&quot;</span><span class="p">,</span> <span class="s2">&quot;y&quot;</span><span class="p">,</span> <span class="s2">&quot;z&quot;</span><span class="p">],</span>
-            <span class="s2">&quot;keypoints&quot;</span><span class="p">:</span> <span class="n">keypoint_names</span><span class="p">,</span>
-            <span class="s2">&quot;individuals&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;mouse 1&quot;</span><span class="p">,</span> <span class="s2">&quot;mouse 2&quot;</span><span class="p">],</span>
+            <span class="s2">"time"</span><span class="p">:</span> <span class="n">time_coords</span><span class="p">,</span>
+            <span class="s2">"position_type"</span><span class="p">:</span> <span class="n">position_types</span><span class="p">,</span>
+            <span class="s2">"space"</span><span class="p">:</span> <span class="p">[</span><span class="s2">"x"</span><span class="p">,</span> <span class="s2">"y"</span><span class="p">,</span> <span class="s2">"z"</span><span class="p">],</span>
+            <span class="s2">"keypoints"</span><span class="p">:</span> <span class="n">keypoint_names</span><span class="p">,</span>
+            <span class="s2">"individuals"</span><span class="p">:</span> <span class="p">[</span><span class="s2">"mouse 1"</span><span class="p">,</span> <span class="s2">"mouse 2"</span><span class="p">],</span>
         <span class="p">},</span>
-        <span class="n">attrs</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;source_software&quot;</span><span class="p">:</span> <span class="s2">&quot;DeepLabCut&quot;</span><span class="p">,</span> <span class="s2">&quot;fps&quot;</span><span class="p">:</span> <span class="n">fps</span><span class="p">},</span>
+        <span class="n">attrs</span><span class="o">=</span><span class="p">{</span><span class="s2">"source_software"</span><span class="p">:</span> <span class="s2">"DeepLabCut"</span><span class="p">,</span> <span class="s2">"fps"</span><span class="p">:</span> <span class="n">fps</span><span class="p">},</span>
     <span class="p">)</span>
 
     <span class="n">com_data</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n_frames</span><span class="p">,</span> <span class="n">n_space</span><span class="p">,</span> <span class="n">n_individuals</span><span class="p">))</span>
     <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">individual</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">individual_names</span><span class="p">):</span>
-        <span class="k">for</span> <span class="n">j</span><span class="p">,</span> <span class="n">coord</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">([</span><span class="s2">&quot;x&quot;</span><span class="p">,</span> <span class="s2">&quot;y&quot;</span><span class="p">,</span> <span class="s2">&quot;z&quot;</span><span class="p">]):</span>
-            <span class="n">col_name</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;centerOfmass_</span><span class="si">{</span><span class="n">individual</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">coord</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="k">for</span> <span class="n">j</span><span class="p">,</span> <span class="n">coord</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">([</span><span class="s2">"x"</span><span class="p">,</span> <span class="s2">"y"</span><span class="p">,</span> <span class="s2">"z"</span><span class="p">]):</span>
+            <span class="n">col_name</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"centerOfmass_</span><span class="si">{</span><span class="n">individual</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">coord</span><span class="si">}</span><span class="s2">"</span>
             <span class="k">if</span> <span class="n">col_name</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
                 <span class="n">com_data</span><span class="p">[:,</span> <span class="n">j</span><span class="p">,</span> <span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">df</span><span class="p">[</span><span class="n">col_name</span><span class="p">]</span><span class="o">.</span><span class="n">values</span>
-    <span class="n">ds</span><span class="p">[</span><span class="s2">&quot;center_of_mass&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">(</span><span class="n">com_data</span><span class="p">,</span> <span class="n">dims</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;time&quot;</span><span class="p">,</span> <span class="s2">&quot;space&quot;</span><span class="p">,</span> <span class="s2">&quot;individuals&quot;</span><span class="p">])</span>
+    <span class="n">ds</span><span class="p">[</span><span class="s2">"center_of_mass"</span><span class="p">]</span> <span class="o">=</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">(</span><span class="n">com_data</span><span class="p">,</span> <span class="n">dims</span><span class="o">=</span><span class="p">[</span><span class="s2">"time"</span><span class="p">,</span> <span class="s2">"space"</span><span class="p">,</span> <span class="s2">"individuals"</span><span class="p">])</span>
 
     <span class="k">return</span> <span class="n">ds</span>
 
@@ -556,7 +556,7 @@
     <span class="n">cameras</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
     <span class="n">fps</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">list</span><span class="p">[</span><span class="n">xr</span><span class="o">.</span><span class="n">Dataset</span><span class="p">],</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">]:</span>
-    <span class="n">n_frames</span> <span class="o">=</span> <span class="n">ds_full</span><span class="o">.</span><span class="n">sizes</span><span class="p">[</span><span class="s2">&quot;time&quot;</span><span class="p">]</span>
+    <span class="n">n_frames</span> <span class="o">=</span> <span class="n">ds_full</span><span class="o">.</span><span class="n">sizes</span><span class="p">[</span><span class="s2">"time"</span><span class="p">]</span>
     <span class="n">n_chunks</span> <span class="o">=</span> <span class="n">n_frames</span> <span class="o">//</span> <span class="n">chunk_size</span>
 
     <span class="n">datasets</span> <span class="o">=</span> <span class="p">[]</span>
@@ -569,32 +569,32 @@
 
         <span class="n">ds_chunk</span> <span class="o">=</span> <span class="n">ds_full</span><span class="o">.</span><span class="n">isel</span><span class="p">(</span><span class="n">time</span><span class="o">=</span><span class="nb">slice</span><span class="p">(</span><span class="n">start_idx</span><span class="p">,</span> <span class="n">end_idx</span><span class="p">))</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
         <span class="n">ds_chunk</span> <span class="o">=</span> <span class="n">ds_chunk</span><span class="o">.</span><span class="n">assign_coords</span><span class="p">(</span><span class="n">time</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">chunk_size</span><span class="p">)</span> <span class="o">/</span> <span class="n">fps</span><span class="p">)</span>
-        <span class="n">ds_chunk</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s2">&quot;trial&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">i</span>
+        <span class="n">ds_chunk</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s2">"trial"</span><span class="p">]</span> <span class="o">=</span> <span class="n">i</span>
 
-        <span class="n">ds_chunk</span><span class="p">[</span><span class="s2">&quot;pairwise_distance&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">compute_norm</span><span class="p">(</span>
-            <span class="n">ds_chunk</span><span class="o">.</span><span class="n">center_of_mass</span><span class="o">.</span><span class="n">sel</span><span class="p">(</span><span class="n">individuals</span><span class="o">=</span><span class="s2">&quot;mouse 1&quot;</span><span class="p">)</span> <span class="o">-</span> <span class="n">ds_chunk</span><span class="o">.</span><span class="n">center_of_mass</span><span class="o">.</span><span class="n">sel</span><span class="p">(</span><span class="n">individuals</span><span class="o">=</span><span class="s2">&quot;mouse 2&quot;</span><span class="p">)</span>
+        <span class="n">ds_chunk</span><span class="p">[</span><span class="s2">"pairwise_distance"</span><span class="p">]</span> <span class="o">=</span> <span class="n">compute_norm</span><span class="p">(</span>
+            <span class="n">ds_chunk</span><span class="o">.</span><span class="n">center_of_mass</span><span class="o">.</span><span class="n">sel</span><span class="p">(</span><span class="n">individuals</span><span class="o">=</span><span class="s2">"mouse 1"</span><span class="p">)</span> <span class="o">-</span> <span class="n">ds_chunk</span><span class="o">.</span><span class="n">center_of_mass</span><span class="o">.</span><span class="n">sel</span><span class="p">(</span><span class="n">individuals</span><span class="o">=</span><span class="s2">"mouse 2"</span><span class="p">)</span>
         <span class="p">)</span>
-        <span class="n">ds_chunk</span><span class="p">[</span><span class="s2">&quot;nose_nose_distance&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">compute_norm</span><span class="p">(</span>
-            <span class="n">ds_chunk</span><span class="o">.</span><span class="n">position</span><span class="o">.</span><span class="n">sel</span><span class="p">(</span><span class="n">keypoints</span><span class="o">=</span><span class="s2">&quot;HeadF&quot;</span><span class="p">,</span> <span class="n">individuals</span><span class="o">=</span><span class="s2">&quot;mouse 1&quot;</span><span class="p">,</span> <span class="n">position_type</span><span class="o">=</span><span class="s2">&quot;absolute&quot;</span><span class="p">)</span>
-            <span class="o">-</span> <span class="n">ds_chunk</span><span class="o">.</span><span class="n">position</span><span class="o">.</span><span class="n">sel</span><span class="p">(</span><span class="n">keypoints</span><span class="o">=</span><span class="s2">&quot;HeadF&quot;</span><span class="p">,</span> <span class="n">individuals</span><span class="o">=</span><span class="s2">&quot;mouse 2&quot;</span><span class="p">,</span> <span class="n">position_type</span><span class="o">=</span><span class="s2">&quot;absolute&quot;</span><span class="p">)</span>
+        <span class="n">ds_chunk</span><span class="p">[</span><span class="s2">"nose_nose_distance"</span><span class="p">]</span> <span class="o">=</span> <span class="n">compute_norm</span><span class="p">(</span>
+            <span class="n">ds_chunk</span><span class="o">.</span><span class="n">position</span><span class="o">.</span><span class="n">sel</span><span class="p">(</span><span class="n">keypoints</span><span class="o">=</span><span class="s2">"HeadF"</span><span class="p">,</span> <span class="n">individuals</span><span class="o">=</span><span class="s2">"mouse 1"</span><span class="p">,</span> <span class="n">position_type</span><span class="o">=</span><span class="s2">"absolute"</span><span class="p">)</span>
+            <span class="o">-</span> <span class="n">ds_chunk</span><span class="o">.</span><span class="n">position</span><span class="o">.</span><span class="n">sel</span><span class="p">(</span><span class="n">keypoints</span><span class="o">=</span><span class="s2">"HeadF"</span><span class="p">,</span> <span class="n">individuals</span><span class="o">=</span><span class="s2">"mouse 2"</span><span class="p">,</span> <span class="n">position_type</span><span class="o">=</span><span class="s2">"absolute"</span><span class="p">)</span>
         <span class="p">)</span>
-        <span class="n">ds_chunk</span><span class="p">[</span><span class="s2">&quot;velocity&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">compute_velocity</span><span class="p">(</span><span class="n">ds_chunk</span><span class="o">.</span><span class="n">position</span><span class="o">.</span><span class="n">sel</span><span class="p">(</span><span class="n">position_type</span><span class="o">=</span><span class="s2">&quot;aligned&quot;</span><span class="p">))</span>
-        <span class="n">ds_chunk</span><span class="p">[</span><span class="s2">&quot;speed&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">compute_speed</span><span class="p">(</span><span class="n">ds_chunk</span><span class="o">.</span><span class="n">position</span><span class="o">.</span><span class="n">sel</span><span class="p">(</span><span class="n">position_type</span><span class="o">=</span><span class="s2">&quot;aligned&quot;</span><span class="p">))</span>
+        <span class="n">ds_chunk</span><span class="p">[</span><span class="s2">"velocity"</span><span class="p">]</span> <span class="o">=</span> <span class="n">compute_velocity</span><span class="p">(</span><span class="n">ds_chunk</span><span class="o">.</span><span class="n">position</span><span class="o">.</span><span class="n">sel</span><span class="p">(</span><span class="n">position_type</span><span class="o">=</span><span class="s2">"aligned"</span><span class="p">))</span>
+        <span class="n">ds_chunk</span><span class="p">[</span><span class="s2">"speed"</span><span class="p">]</span> <span class="o">=</span> <span class="n">compute_speed</span><span class="p">(</span><span class="n">ds_chunk</span><span class="o">.</span><span class="n">position</span><span class="o">.</span><span class="n">sel</span><span class="p">(</span><span class="n">position_type</span><span class="o">=</span><span class="s2">"aligned"</span><span class="p">))</span>
 
-        <span class="k">for</span> <span class="n">feature</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;nose_nose_distance&quot;</span><span class="p">,</span> <span class="s2">&quot;velocity&quot;</span><span class="p">,</span> <span class="s2">&quot;speed&quot;</span><span class="p">]:</span>
-            <span class="n">ds_chunk</span><span class="p">[</span><span class="n">feature</span><span class="p">]</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s2">&quot;type&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;features&quot;</span>
+        <span class="k">for</span> <span class="n">feature</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">"nose_nose_distance"</span><span class="p">,</span> <span class="s2">"velocity"</span><span class="p">,</span> <span class="s2">"speed"</span><span class="p">]:</span>
+            <span class="n">ds_chunk</span><span class="p">[</span><span class="n">feature</span><span class="p">]</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s2">"type"</span><span class="p">]</span> <span class="o">=</span> <span class="s2">"features"</span>
 
         <span class="n">datasets</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ds_chunk</span><span class="p">)</span>
 
-        <span class="n">row</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;trial&quot;</span><span class="p">:</span> <span class="n">i</span><span class="p">}</span>
+        <span class="n">row</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"trial"</span><span class="p">:</span> <span class="n">i</span><span class="p">}</span>
         <span class="k">for</span> <span class="n">cam</span> <span class="ow">in</span> <span class="n">cameras</span><span class="p">:</span>
-            <span class="n">row</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;video_</span><span class="si">{</span><span class="n">cam</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">VIDEO_DIR</span> <span class="o">/</span> <span class="n">cam</span> <span class="o">/</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">start_frame</span><span class="si">}</span><span class="s2">.mp4&quot;</span><span class="p">)</span>
+            <span class="n">row</span><span class="p">[</span><span class="sa">f</span><span class="s2">"video_</span><span class="si">{</span><span class="n">cam</span><span class="si">}</span><span class="s2">"</span><span class="p">]</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">VIDEO_DIR</span> <span class="o">/</span> <span class="n">cam</span> <span class="o">/</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">start_frame</span><span class="si">}</span><span class="s2">.mp4"</span><span class="p">)</span>
         <span class="n">rows</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">row</span><span class="p">)</span>
 
     <span class="n">remaining</span> <span class="o">=</span> <span class="n">n_frames</span> <span class="o">%</span> <span class="n">chunk_size</span>
     <span class="k">if</span> <span class="n">remaining</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
-        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Discarded </span><span class="si">{</span><span class="n">remaining</span><span class="si">}</span><span class="s2"> frames at the end (not a full chunk)&quot;</span><span class="p">)</span>
-    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Created </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">datasets</span><span class="p">)</span><span class="si">}</span><span class="s2"> chunks of </span><span class="si">{</span><span class="n">chunk_size</span><span class="si">}</span><span class="s2"> frames each&quot;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Discarded </span><span class="si">{</span><span class="n">remaining</span><span class="si">}</span><span class="s2"> frames at the end (not a full chunk)"</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Created </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">datasets</span><span class="p">)</span><span class="si">}</span><span class="s2"> chunks of </span><span class="si">{</span><span class="n">chunk_size</span><span class="si">}</span><span class="s2"> frames each"</span><span class="p">)</span>
 
     <span class="k">return</span> <span class="n">datasets</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">rows</span><span class="p">)</span>
 </pre></div>
@@ -618,21 +618,21 @@
 </div>
 <div class="cell docutils container">
 <div class="cell_input docutils container">
-<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">output_path</span> <span class="o">=</span> <span class="n">DATA_DIR</span> <span class="o">/</span> <span class="s2">&quot;Trial_data.nc&quot;</span>
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">output_path</span> <span class="o">=</span> <span class="n">DATA_DIR</span> <span class="o">/</span> <span class="s2">"Trial_data.nc"</span>
 <span class="n">output_path</span><span class="o">.</span><span class="n">parent</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 
 <span class="c1"># Build NWB alignment</span>
-<span class="n">nwb_path</span> <span class="o">=</span> <span class="n">output_path</span><span class="o">.</span><span class="n">parent</span> <span class="o">/</span> <span class="s2">&quot;.ethograph&quot;</span> <span class="o">/</span> <span class="s2">&quot;alignment.nwb&quot;</span>
+<span class="n">nwb_path</span> <span class="o">=</span> <span class="n">output_path</span><span class="o">.</span><span class="n">parent</span> <span class="o">/</span> <span class="s2">".ethograph"</span> <span class="o">/</span> <span class="s2">"alignment.nwb"</span>
 <span class="n">align_media_per_trial</span><span class="p">(</span>
     <span class="n">trial_table</span><span class="o">=</span><span class="n">session_table</span><span class="p">,</span>
-    <span class="n">stream_rates</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;video&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">FPS</span><span class="p">)},</span>
+    <span class="n">stream_rates</span><span class="o">=</span><span class="p">{</span><span class="s2">"video"</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">FPS</span><span class="p">)},</span>
     <span class="n">output_path</span><span class="o">=</span><span class="n">nwb_path</span><span class="p">,</span>
 <span class="p">)</span>
 
 <span class="c1"># Build and save TrialTree</span>
 <span class="n">dt</span> <span class="o">=</span> <span class="n">eto</span><span class="o">.</span><span class="n">from_datasets</span><span class="p">(</span><span class="n">datasets</span><span class="p">)</span>
 <span class="n">dt</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">output_path</span><span class="p">)</span>
-<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Saved dataset to </span><span class="si">{</span><span class="n">output_path</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Saved dataset to </span><span class="si">{</span><span class="n">output_path</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 </pre></div>
 </div>
 </div>
@@ -643,23 +643,23 @@
 <span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.utils.paths</span><span class="w"> </span><span class="kn">import</span> <span class="n">SETTINGS_DIR</span>
 
 <span class="n">mapping</span> <span class="o">=</span> <span class="p">{</span>
-    <span class="s2">&quot;Background&quot;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span>
-    <span class="s2">&quot;Idle&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span>
-    <span class="s2">&quot;SmallMovement&quot;</span><span class="p">:</span> <span class="mi">2</span><span class="p">,</span>
-    <span class="s2">&quot;HeadTilt&quot;</span><span class="p">:</span> <span class="mi">3</span><span class="p">,</span>
-    <span class="s2">&quot;Groom&quot;</span><span class="p">:</span> <span class="mi">4</span><span class="p">,</span>
-    <span class="s2">&quot;Sniff&quot;</span><span class="p">:</span> <span class="mi">5</span><span class="p">,</span>
-    <span class="s2">&quot;Investigate&quot;</span><span class="p">:</span> <span class="mi">6</span><span class="p">,</span>
-    <span class="s2">&quot;RearUp&quot;</span><span class="p">:</span> <span class="mi">7</span><span class="p">,</span>
-    <span class="s2">&quot;RearDown&quot;</span><span class="p">:</span> <span class="mi">8</span><span class="p">,</span>
-    <span class="s2">&quot;CrouchExplore&quot;</span><span class="p">:</span> <span class="mi">9</span><span class="p">,</span>
-    <span class="s2">&quot;Amble&quot;</span><span class="p">:</span> <span class="mi">10</span><span class="p">,</span>
-    <span class="s2">&quot;Locomotion&quot;</span><span class="p">:</span> <span class="mi">11</span><span class="p">,</span>
+    <span class="s2">"Background"</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span>
+    <span class="s2">"Idle"</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span>
+    <span class="s2">"SmallMovement"</span><span class="p">:</span> <span class="mi">2</span><span class="p">,</span>
+    <span class="s2">"HeadTilt"</span><span class="p">:</span> <span class="mi">3</span><span class="p">,</span>
+    <span class="s2">"Groom"</span><span class="p">:</span> <span class="mi">4</span><span class="p">,</span>
+    <span class="s2">"Sniff"</span><span class="p">:</span> <span class="mi">5</span><span class="p">,</span>
+    <span class="s2">"Investigate"</span><span class="p">:</span> <span class="mi">6</span><span class="p">,</span>
+    <span class="s2">"RearUp"</span><span class="p">:</span> <span class="mi">7</span><span class="p">,</span>
+    <span class="s2">"RearDown"</span><span class="p">:</span> <span class="mi">8</span><span class="p">,</span>
+    <span class="s2">"CrouchExplore"</span><span class="p">:</span> <span class="mi">9</span><span class="p">,</span>
+    <span class="s2">"Amble"</span><span class="p">:</span> <span class="mi">10</span><span class="p">,</span>
+    <span class="s2">"Locomotion"</span><span class="p">:</span> <span class="mi">11</span><span class="p">,</span>
 <span class="p">}</span>
 
-<span class="n">mapping_path</span> <span class="o">=</span> <span class="n">output_path</span><span class="o">.</span><span class="n">parent</span> <span class="o">/</span> <span class="n">SETTINGS_DIR</span> <span class="o">/</span> <span class="s2">&quot;mapping.txt&quot;</span>
+<span class="n">mapping_path</span> <span class="o">=</span> <span class="n">output_path</span><span class="o">.</span><span class="n">parent</span> <span class="o">/</span> <span class="n">SETTINGS_DIR</span> <span class="o">/</span> <span class="s2">"mapping.txt"</span>
 <span class="n">write_mapping_file</span><span class="p">(</span><span class="n">mapping_path</span><span class="p">,</span> <span class="n">mapping</span><span class="p">)</span>
-<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Saved mapping to </span><span class="si">{</span><span class="n">mapping_path</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Saved mapping to </span><span class="si">{</span><span class="n">mapping_path</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 </pre></div>
 </div>
 </div>

@@ -547,6 +547,20 @@ NWB was generated without real session timing.</p>
 </dd></dl>
 
 <dl class="py method">
+<dt class="sig sig-object py" id="ethograph.NWBAlignment.reload">
+<span class="sig-name descname"><span class="pre">reload</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/io/nwb_alignment.html#NWBAlignment.reload"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.NWBAlignment.reload" title="Link to this definition">#</a></dt>
+<dd><p>Drop the open handle and every cached table.</p>
+<p>Required around writing to this same file: pynwb holds it open for
+reading and HDF5 refuses a second, writable handle — and afterwards the
+cached trials table would still describe the pre-write file.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></a></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
 <dt class="sig sig-object py" id="ethograph.NWBAlignment.resolve_media_path">
 <span class="sig-name descname"><span class="pre">resolve_media_path</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">trial</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">stream</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fallback_folder</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/io/nwb_alignment.html#NWBAlignment.resolve_media_path"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.NWBAlignment.resolve_media_path" title="Link to this definition">#</a></dt>
 <dd><p>Resolve the full path for a media file.</p>
@@ -636,6 +650,7 @@ Does not compute duration — external files must be probed for that.</p>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.NWBAlignment.get_stream_rate"><code class="docutils literal notranslate"><span class="pre">NWBAlignment.get_stream_rate()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.NWBAlignment.has_real_timing"><code class="docutils literal notranslate"><span class="pre">NWBAlignment.has_real_timing</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.NWBAlignment.pose_keys"><code class="docutils literal notranslate"><span class="pre">NWBAlignment.pose_keys</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.NWBAlignment.reload"><code class="docutils literal notranslate"><span class="pre">NWBAlignment.reload()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.NWBAlignment.resolve_media_path"><code class="docutils literal notranslate"><span class="pre">NWBAlignment.resolve_media_path()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.NWBAlignment.stream_offset_for_trial"><code class="docutils literal notranslate"><span class="pre">NWBAlignment.stream_offset_for_trial()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.NWBAlignment.stream_rates"><code class="docutils literal notranslate"><span class="pre">NWBAlignment.stream_rates()</span></code></a></li>

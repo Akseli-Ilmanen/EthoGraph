@@ -539,13 +539,13 @@ string names (resolved via <code class="docutils literal notranslate"><span clas
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.labels.crowsetta_format</span><span class="w"> </span><span class="kn">import</span> <span class="n">EthographSeq</span>
 
 <span class="c1"># Export: int labels -&gt; string labels via mapping</span>
-<span class="n">ethoseq</span> <span class="o">=</span> <span class="n">EthographSeq</span><span class="o">.</span><span class="n">from_intervals_df</span><span class="p">(</span><span class="n">df</span><span class="p">,</span> <span class="n">id_to_name</span><span class="o">=</span><span class="p">{</span><span class="mi">1</span><span class="p">:</span> <span class="s2">&quot;Head bob&quot;</span><span class="p">,</span> <span class="mi">2</span><span class="p">:</span> <span class="s2">&quot;Song&quot;</span><span class="p">})</span>
-<span class="n">ethoseq</span><span class="o">.</span><span class="n">to_file</span><span class="p">(</span><span class="s2">&quot;labels_for_sharing.tsv&quot;</span><span class="p">)</span>
+<span class="n">ethoseq</span> <span class="o">=</span> <span class="n">EthographSeq</span><span class="o">.</span><span class="n">from_intervals_df</span><span class="p">(</span><span class="n">df</span><span class="p">,</span> <span class="n">id_to_name</span><span class="o">=</span><span class="p">{</span><span class="mi">1</span><span class="p">:</span> <span class="s2">"Head bob"</span><span class="p">,</span> <span class="mi">2</span><span class="p">:</span> <span class="s2">"Song"</span><span class="p">})</span>
+<span class="n">ethoseq</span><span class="o">.</span><span class="n">to_file</span><span class="p">(</span><span class="s2">"labels_for_sharing.tsv"</span><span class="p">)</span>
 
 <span class="c1"># Import via crowsetta</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">crowsetta</span>
-<span class="n">scribe</span> <span class="o">=</span> <span class="n">crowsetta</span><span class="o">.</span><span class="n">Transcriber</span><span class="p">(</span><span class="nb">format</span><span class="o">=</span><span class="s2">&quot;ethograph-seq&quot;</span><span class="p">)</span>
-<span class="n">annot</span> <span class="o">=</span> <span class="n">scribe</span><span class="o">.</span><span class="n">from_file</span><span class="p">(</span><span class="s2">&quot;labels_for_sharing.tsv&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">to_annot</span><span class="p">()</span>
+<span class="n">scribe</span> <span class="o">=</span> <span class="n">crowsetta</span><span class="o">.</span><span class="n">Transcriber</span><span class="p">(</span><span class="nb">format</span><span class="o">=</span><span class="s2">"ethograph-seq"</span><span class="p">)</span>
+<span class="n">annot</span> <span class="o">=</span> <span class="n">scribe</span><span class="o">.</span><span class="n">from_file</span><span class="p">(</span><span class="s2">"labels_for_sharing.tsv"</span><span class="p">)</span><span class="o">.</span><span class="n">to_annot</span><span class="p">()</span>
 </pre></div>
 </div>
 <p>On import, the GUI checks the active <code class="docutils literal notranslate"><span class="pre">mapping.txt</span></code> against the labels found
@@ -563,12 +563,12 @@ back through <code class="docutils literal notranslate"><span class="pre">existi
 <span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.labels.converters</span><span class="w"> </span><span class="kn">import</span> <span class="n">PynappleLabelConverter</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">pynapple</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">nap</span>
 
-<span class="n">data</span> <span class="o">=</span> <span class="n">nap</span><span class="o">.</span><span class="n">load_file</span><span class="p">(</span><span class="s2">&quot;session.nwb&quot;</span><span class="p">)</span>
-<span class="n">trials_ep</span> <span class="o">=</span> <span class="n">data</span><span class="p">[</span><span class="s2">&quot;trials&quot;</span><span class="p">]</span> <span class="k">if</span> <span class="s2">&quot;trials&quot;</span> <span class="ow">in</span> <span class="n">data</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span> <span class="k">else</span> <span class="kc">None</span>
+<span class="n">data</span> <span class="o">=</span> <span class="n">nap</span><span class="o">.</span><span class="n">load_file</span><span class="p">(</span><span class="s2">"session.nwb"</span><span class="p">)</span>
+<span class="n">trials_ep</span> <span class="o">=</span> <span class="n">data</span><span class="p">[</span><span class="s2">"trials"</span><span class="p">]</span> <span class="k">if</span> <span class="s2">"trials"</span> <span class="ow">in</span> <span class="n">data</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span> <span class="k">else</span> <span class="kc">None</span>
 
 <span class="n">converter</span> <span class="o">=</span> <span class="n">PynappleLabelConverter</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">trials_ep</span><span class="o">=</span><span class="n">trials_ep</span><span class="p">)</span>
 <span class="n">df</span> <span class="o">=</span> <span class="n">converter</span><span class="o">.</span><span class="n">resolve_labels</span><span class="p">(</span>
-    <span class="n">source_path</span><span class="o">=</span><span class="n">Path</span><span class="p">(</span><span class="s2">&quot;session.nwb&quot;</span><span class="p">),</span>
+    <span class="n">source_path</span><span class="o">=</span><span class="n">Path</span><span class="p">(</span><span class="s2">"session.nwb"</span><span class="p">),</span>
     <span class="n">trial_ids</span><span class="o">=</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">],</span>
 <span class="p">)</span>
 </pre></div>

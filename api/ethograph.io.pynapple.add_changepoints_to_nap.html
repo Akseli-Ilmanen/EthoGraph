@@ -453,10 +453,10 @@ binary indicator of the same length).</p></li>
 <p class="rubric">Examples</p>
 <div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">ethograph</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">eto</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.features.changepoints</span><span class="w"> </span><span class="kn">import</span> <span class="n">find_troughs</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">data</span> <span class="o">=</span> <span class="n">eto</span><span class="o">.</span><span class="n">load_nap_data</span><span class="p">(</span><span class="s2">&quot;experiment.nwb&quot;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">data</span> <span class="o">=</span> <span class="n">eto</span><span class="o">.</span><span class="n">load_nap_data</span><span class="p">(</span><span class="s2">"experiment.nwb"</span><span class="p">)</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">cp_group</span> <span class="o">=</span> <span class="n">eto</span><span class="o">.</span><span class="n">add_changepoints_to_nap</span><span class="p">(</span>
-<span class="gp">... </span>    <span class="n">data</span><span class="p">[</span><span class="s2">&quot;speed&quot;</span><span class="p">],</span>
-<span class="gp">... </span>    <span class="n">target_feature</span><span class="o">=</span><span class="s2">&quot;speed&quot;</span><span class="p">,</span>
+<span class="gp">... </span>    <span class="n">data</span><span class="p">[</span><span class="s2">"speed"</span><span class="p">],</span>
+<span class="gp">... </span>    <span class="n">target_feature</span><span class="o">=</span><span class="s2">"speed"</span><span class="p">,</span>
 <span class="gp">... </span>    <span class="n">changepoint_func</span><span class="o">=</span><span class="n">find_troughs</span><span class="p">,</span>
 <span class="gp">... </span>    <span class="n">prominence</span><span class="o">=</span><span class="mf">0.3</span><span class="p">,</span>
 <span class="gp">... </span><span class="p">)</span>

@@ -405,7 +405,7 @@
                 <article class="bd-article">
                   
   <h1>Source code for ethograph.labels.ml</h1><div class="highlight"><pre>
-<span></span><span class="sd">&quot;&quot;&quot;Dense (array-based) label operations for ML pipelines.</span>
+<span></span><span class="sd">"""Dense (array-based) label operations for ML pipelines.</span>
 
 <span class="sd">This module provides tools for converting between the interval-based label</span>
 <span class="sd">format (used by the GUI and TSV storage) and dense integer arrays (used by</span>
@@ -426,7 +426,7 @@
 <span class="sd">The ``n_samples`` value stored in the TSV file (per-trial metadata) tells you</span>
 <span class="sd">exactly how long the dense array should be — you only need to additionally</span>
 <span class="sd">know the ``sample_rate`` to drive the conversion.</span>
-<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">"""</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
 
@@ -441,7 +441,7 @@
 <div class="viewcode-block" id="find_blocks">
 <a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.ml.find_blocks">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">find_blocks</span><span class="p">(</span><span class="n">mask</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Find contiguous True blocks in a boolean array.</span>
+<span class="w">    </span><span class="sd">"""Find contiguous True blocks in a boolean array.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
@@ -464,7 +464,7 @@
 <span class="sd">    array([1, 4])</span>
 <span class="sd">    &gt;&gt;&gt; ends</span>
 <span class="sd">    array([2, 4])</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="n">padded</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(([</span><span class="mi">0</span><span class="p">],</span> <span class="n">mask</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">int</span><span class="p">),</span> <span class="p">[</span><span class="mi">0</span><span class="p">]))</span>
     <span class="n">diff</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">diff</span><span class="p">(</span><span class="n">padded</span><span class="p">)</span>
     <span class="n">starts</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">diff</span> <span class="o">==</span> <span class="mi">1</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
@@ -474,11 +474,11 @@
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">_get_segments</span><span class="p">(</span><span class="n">col</span><span class="p">,</span> <span class="n">bg_class</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Find contiguous labeled segments in a 1-D array.</span>
+<span class="w">    </span><span class="sd">"""Find contiguous labeled segments in a 1-D array.</span>
 
 <span class="sd">    Example: ``[0,1,1,1,0,2,2]`` → ``[(1,1,4), (2,5,7)]``</span>
 <span class="sd">    Each tuple is ``(label, start_index, end_index_exclusive)``.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="n">padded</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([[</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="n">col</span><span class="p">,</span> <span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]])</span>
     <span class="n">change_indices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nonzero</span><span class="p">(</span><span class="n">padded</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">!=</span> <span class="n">padded</span><span class="p">[</span><span class="mi">1</span><span class="p">:])[</span><span class="mi">0</span><span class="p">]</span>
 
@@ -493,14 +493,14 @@
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">_get_labels_start_end_times</span><span class="p">(</span><span class="n">col</span><span class="p">,</span> <span class="n">time_coord</span><span class="p">,</span> <span class="n">individual</span><span class="p">,</span> <span class="n">bg_class</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Convert segments to time intervals (inclusive end).&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""Convert segments to time intervals (inclusive end)."""</span>
     <span class="n">segments</span> <span class="o">=</span> <span class="n">_get_segments</span><span class="p">(</span><span class="n">col</span><span class="p">,</span> <span class="n">bg_class</span><span class="p">)</span>
     <span class="k">return</span> <span class="p">[</span>
         <span class="p">{</span>
-            <span class="s2">&quot;onset_s&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">time_coord</span><span class="p">[</span><span class="n">start</span><span class="p">]),</span>
-            <span class="s2">&quot;offset_s&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">time_coord</span><span class="p">[</span><span class="n">end</span> <span class="o">-</span> <span class="mi">1</span><span class="p">]),</span>
-            <span class="s2">&quot;labels&quot;</span><span class="p">:</span> <span class="n">label</span><span class="p">,</span>
-            <span class="s2">&quot;individual&quot;</span><span class="p">:</span> <span class="n">individual</span><span class="p">,</span>
+            <span class="s2">"onset_s"</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">time_coord</span><span class="p">[</span><span class="n">start</span><span class="p">]),</span>
+            <span class="s2">"offset_s"</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">time_coord</span><span class="p">[</span><span class="n">end</span> <span class="o">-</span> <span class="mi">1</span><span class="p">]),</span>
+            <span class="s2">"labels"</span><span class="p">:</span> <span class="n">label</span><span class="p">,</span>
+            <span class="s2">"individual"</span><span class="p">:</span> <span class="n">individual</span><span class="p">,</span>
         <span class="p">}</span>
         <span class="k">for</span> <span class="n">label</span><span class="p">,</span> <span class="n">start</span><span class="p">,</span> <span class="n">end</span> <span class="ow">in</span> <span class="n">segments</span>
     <span class="p">]</span>
@@ -518,7 +518,7 @@
     <span class="n">sample_rate</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
     <span class="n">time_coord</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Convert a dense label array to an intervals DataFrame.</span>
+<span class="w">    </span><span class="sd">"""Convert a dense label array to an intervals DataFrame.</span>
 
 <span class="sd">    Provide either *sample_rate* (uniform spacing starting at t = 0) or an</span>
 <span class="sd">    explicit *time_coord* array.</span>
@@ -557,21 +557,21 @@
 <span class="sd">    &gt;&gt;&gt; import numpy as np</span>
 <span class="sd">    &gt;&gt;&gt; from ethograph.labels.ml import dense_to_intervals</span>
 <span class="sd">    &gt;&gt;&gt; labels = np.array([0, 1, 1, 1, 0, 2, 2])</span>
-<span class="sd">    &gt;&gt;&gt; df = dense_to_intervals(labels, [&quot;crow_A&quot;], sample_rate=10.0)</span>
-<span class="sd">    &gt;&gt;&gt; df[[&quot;onset_s&quot;, &quot;offset_s&quot;, &quot;labels&quot;]].values.tolist()</span>
+<span class="sd">    &gt;&gt;&gt; df = dense_to_intervals(labels, ["crow_A"], sample_rate=10.0)</span>
+<span class="sd">    &gt;&gt;&gt; df[["onset_s", "offset_s", "labels"]].values.tolist()</span>
 <span class="sd">    [[0.1, 0.3, 1], [0.5, 0.6, 2]]</span>
 
 <span class="sd">    With explicit timestamps:</span>
 
 <span class="sd">    &gt;&gt;&gt; times = np.array([0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6])</span>
-<span class="sd">    &gt;&gt;&gt; df = dense_to_intervals(labels, [&quot;crow_A&quot;], time_coord=times)</span>
-<span class="sd">    &gt;&gt;&gt; df[&quot;onset_s&quot;].tolist()</span>
+<span class="sd">    &gt;&gt;&gt; df = dense_to_intervals(labels, ["crow_A"], time_coord=times)</span>
+<span class="sd">    &gt;&gt;&gt; df["onset_s"].tolist()</span>
 <span class="sd">    [0.1, 0.5]</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="n">dense_array</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">dense_array</span><span class="p">)</span>
 
     <span class="k">if</span> <span class="n">sample_rate</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">time_coord</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Provide either sample_rate or time_coord&quot;</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"Provide either sample_rate or time_coord"</span><span class="p">)</span>
 
     <span class="k">if</span> <span class="n">time_coord</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
         <span class="n">time_coord</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">dense_array</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="o">/</span> <span class="n">sample_rate</span>
@@ -582,7 +582,7 @@
         <span class="n">dense_array</span> <span class="o">=</span> <span class="n">dense_array</span><span class="p">[:,</span> <span class="n">np</span><span class="o">.</span><span class="n">newaxis</span><span class="p">]</span>
 
     <span class="k">if</span> <span class="n">dense_array</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="n">individuals</span><span class="p">):</span>
-        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;dense_array has </span><span class="si">{</span><span class="n">dense_array</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="si">}</span><span class="s2"> columns but </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">individuals</span><span class="p">)</span><span class="si">}</span><span class="s2"> individuals given&quot;</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"dense_array has </span><span class="si">{</span><span class="n">dense_array</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="si">}</span><span class="s2"> columns but </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">individuals</span><span class="p">)</span><span class="si">}</span><span class="s2"> individuals given"</span><span class="p">)</span>
 
     <span class="n">rows</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
     <span class="k">for</span> <span class="n">ind_idx</span><span class="p">,</span> <span class="n">ind_name</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">individuals</span><span class="p">):</span>
@@ -601,7 +601,7 @@
     <span class="n">individuals</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
     <span class="n">n_samples</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Convert an intervals DataFrame to a dense label array.</span>
+<span class="w">    </span><span class="sd">"""Convert an intervals DataFrame to a dense label array.</span>
 
 <span class="sd">    Each interval is mapped onto the nearest sample indices using</span>
 <span class="sd">    ``round(time * sample_rate)``.  Overlapping intervals for the same</span>
@@ -632,29 +632,29 @@
 <span class="sd">    &gt;&gt;&gt; from ethograph.labels.ml import intervals_to_dense</span>
 <span class="sd">    &gt;&gt;&gt; df = pd.DataFrame(</span>
 <span class="sd">    ...     {</span>
-<span class="sd">    ...         &quot;onset_s&quot;: [0.1, 0.5],</span>
-<span class="sd">    ...         &quot;offset_s&quot;: [0.3, 0.6],</span>
-<span class="sd">    ...         &quot;labels&quot;: [1, 2],</span>
-<span class="sd">    ...         &quot;individual&quot;: [&quot;A&quot;, &quot;A&quot;],</span>
+<span class="sd">    ...         "onset_s": [0.1, 0.5],</span>
+<span class="sd">    ...         "offset_s": [0.3, 0.6],</span>
+<span class="sd">    ...         "labels": [1, 2],</span>
+<span class="sd">    ...         "individual": ["A", "A"],</span>
 <span class="sd">    ...     }</span>
 <span class="sd">    ... )</span>
-<span class="sd">    &gt;&gt;&gt; dense = intervals_to_dense(df, sample_rate=10.0, individuals=[&quot;A&quot;], n_samples=7)</span>
+<span class="sd">    &gt;&gt;&gt; dense = intervals_to_dense(df, sample_rate=10.0, individuals=["A"], n_samples=7)</span>
 <span class="sd">    &gt;&gt;&gt; dense[:, 0].tolist()</span>
 <span class="sd">    [0, 1, 1, 1, 0, 2, 2]</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="n">dense</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n_samples</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">individuals</span><span class="p">)),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int8</span><span class="p">)</span>
     <span class="n">ind_to_idx</span> <span class="o">=</span> <span class="p">{</span><span class="n">name</span><span class="p">:</span> <span class="n">i</span> <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">name</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">individuals</span><span class="p">)}</span>
     <span class="n">df</span> <span class="o">=</span> <span class="n">states_only</span><span class="p">(</span><span class="n">df</span><span class="p">)</span>
 
     <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">iterrows</span><span class="p">():</span>
-        <span class="n">ind_idx</span> <span class="o">=</span> <span class="n">ind_to_idx</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;individual&quot;</span><span class="p">])</span>
+        <span class="n">ind_idx</span> <span class="o">=</span> <span class="n">ind_to_idx</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">"individual"</span><span class="p">])</span>
         <span class="k">if</span> <span class="n">ind_idx</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
             <span class="k">continue</span>
-        <span class="n">start_idx</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="nb">round</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;onset_s&quot;</span><span class="p">]</span> <span class="o">*</span> <span class="n">sample_rate</span><span class="p">))</span>
-        <span class="n">end_idx</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="nb">round</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;offset_s&quot;</span><span class="p">]</span> <span class="o">*</span> <span class="n">sample_rate</span><span class="p">))</span>
+        <span class="n">start_idx</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="nb">round</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">"onset_s"</span><span class="p">]</span> <span class="o">*</span> <span class="n">sample_rate</span><span class="p">))</span>
+        <span class="n">end_idx</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="nb">round</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">"offset_s"</span><span class="p">]</span> <span class="o">*</span> <span class="n">sample_rate</span><span class="p">))</span>
         <span class="n">start_idx</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">start_idx</span><span class="p">)</span>
         <span class="n">end_idx</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">n_samples</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="n">end_idx</span><span class="p">)</span>
-        <span class="n">dense</span><span class="p">[</span><span class="n">start_idx</span> <span class="p">:</span> <span class="n">end_idx</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="n">ind_idx</span><span class="p">]</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;labels&quot;</span><span class="p">])</span>
+        <span class="n">dense</span><span class="p">[</span><span class="n">start_idx</span> <span class="p">:</span> <span class="n">end_idx</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="n">ind_idx</span><span class="p">]</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">"labels"</span><span class="p">])</span>
 
     <span class="k">return</span> <span class="n">dense</span></div>
 
@@ -666,7 +666,7 @@
 <div class="viewcode-block" id="get_labels_start_end_indices">
 <a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.ml.get_labels_start_end_indices">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">get_labels_start_end_indices</span><span class="p">(</span><span class="n">col</span><span class="p">,</span> <span class="n">bg_class</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Return segment boundaries as sample indices (exclusive end).</span>
+<span class="w">    </span><span class="sd">"""Return segment boundaries as sample indices (exclusive end).</span>
 
 <span class="sd">    Useful for slicing dense arrays or computing segment-level metrics.</span>
 
@@ -698,7 +698,7 @@
 <span class="sd">    [4, 7]</span>
 <span class="sd">    &gt;&gt;&gt; # To extract the first segment from a feature array:</span>
 <span class="sd">    &gt;&gt;&gt; # segment_features = features[starts[0]:ends[0], :]</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="n">segments</span> <span class="o">=</span> <span class="n">_get_segments</span><span class="p">(</span><span class="n">col</span><span class="p">,</span> <span class="n">bg_class</span><span class="p">)</span>
     <span class="n">labels</span> <span class="o">=</span> <span class="p">[</span><span class="n">s</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">segments</span><span class="p">]</span>
     <span class="n">starts</span> <span class="o">=</span> <span class="p">[</span><span class="n">s</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">segments</span><span class="p">]</span>
@@ -717,7 +717,7 @@
     <span class="n">max_gap_len</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
     <span class="n">skip_labels</span><span class="p">:</span> <span class="nb">set</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Fill small background gaps between same-label segments.</span>
+<span class="w">    </span><span class="sd">"""Fill small background gaps between same-label segments.</span>
 
 <span class="sd">    Scans the dense label array for short runs of zeros (background) flanked</span>
 <span class="sd">    by the same non-zero label on both sides.  When the gap is at most</span>
@@ -762,7 +762,7 @@
 <span class="sd">    &gt;&gt;&gt; pred = np.array([3, 3, 0, 3, 3])</span>
 <span class="sd">    &gt;&gt;&gt; stitch_gaps(pred, max_gap_len=2, skip_labels={3}).tolist()</span>
 <span class="sd">    [3, 3, 0, 3, 3]</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="k">if</span> <span class="n">skip_labels</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
         <span class="n">skip_labels</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
 
@@ -795,7 +795,7 @@
     <span class="n">min_length</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
     <span class="n">label_thresholds</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Remove label blocks shorter than a threshold (set to background).</span>
+<span class="w">    </span><span class="sd">"""Remove label blocks shorter than a threshold (set to background).</span>
 
 <span class="sd">    Scans the dense label array for contiguous runs of the same non-zero</span>
 <span class="sd">    label.  If a run is shorter than its threshold, every sample in it is</span>
@@ -846,7 +846,7 @@
 <span class="sd">    [1, 1, 1, 0, 0, 0, 1, 1, 1]</span>
 <span class="sd">    &gt;&gt;&gt; stitch_gaps(cleaned, max_gap_len=4).tolist()</span>
 <span class="sd">    [1, 1, 1, 1, 1, 1, 1, 1, 1]</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="n">labels</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">labels</span><span class="p">)</span>
     <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">labels</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">labels</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
@@ -886,7 +886,7 @@
 <div class="viewcode-block" id="fix_endings">
 <a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.ml.fix_endings">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">fix_endings</span><span class="p">(</span><span class="n">labels</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">changepoints</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Extend label endings by one sample at changepoint boundaries.</span>
+<span class="w">    </span><span class="sd">"""Extend label endings by one sample at changepoint boundaries.</span>
 
 <span class="sd">    When a labelled segment ends and the very next sample is a changepoint,</span>
 <span class="sd">    the segment is extended by one sample.  This accounts for the common</span>
@@ -916,7 +916,7 @@
 
 <span class="sd">    The segment of label 1 ended at index 2, and index 3 is a changepoint,</span>
 <span class="sd">    so label 1 is extended to index 3.  Same for label 2 at index 7.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="n">labels_out</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">labels</span><span class="p">)</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span>
 
     <span class="n">changepoints_arr</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">changepoints</span><span class="p">)</span>

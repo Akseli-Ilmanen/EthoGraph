@@ -405,19 +405,19 @@
                 <article class="bd-article">
                   
   <h1>Source code for ethograph.labels.intervals</h1><div class="highlight"><pre>
-<span></span><span class="sd">&quot;&quot;&quot;Interval-based label representation and core primitives for EthoGraph.</span>
+<span></span><span class="sd">"""Interval-based label representation and core primitives for EthoGraph.</span>
 
 <span class="sd">Labels are stored as a pandas DataFrame with columns:</span>
 <span class="sd">    onset_s    (float64) - start time in seconds</span>
 <span class="sd">    offset_s   (float64) - end time in seconds (NaN for point events)</span>
 <span class="sd">    labels     (int32)   - label class ID (nonzero)</span>
 <span class="sd">    individual (str)     - individual identifier</span>
-<span class="sd">    event_type (str)     - &quot;state&quot; (interval) or &quot;point&quot; (instantaneous)</span>
+<span class="sd">    event_type (str)     - "state" (interval) or "point" (instantaneous)</span>
 
 <span class="sd">Use ``split_by_kind(df)`` at the top of every interval operation so points</span>
 <span class="sd">pass through untouched. ``states_only(df)`` / ``points_only(df)`` are for</span>
 <span class="sd">read-only consumers (dense conversion, plot rendering).</span>
-<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">"""</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
 
@@ -429,18 +429,18 @@
 
 <span class="c1"># ── Constants ────────────────────────────────────────────────────────────</span>
 
-<span class="n">EVENT_TYPE_STATE</span> <span class="o">=</span> <span class="s2">&quot;state&quot;</span>
-<span class="n">EVENT_TYPE_POINT</span> <span class="o">=</span> <span class="s2">&quot;point&quot;</span>
+<span class="n">EVENT_TYPE_STATE</span> <span class="o">=</span> <span class="s2">"state"</span>
+<span class="n">EVENT_TYPE_POINT</span> <span class="o">=</span> <span class="s2">"point"</span>
 <span class="n">EVENT_TYPES</span> <span class="o">=</span> <span class="p">(</span><span class="n">EVENT_TYPE_STATE</span><span class="p">,</span> <span class="n">EVENT_TYPE_POINT</span><span class="p">)</span>
 
-<span class="n">INTERVAL_COLUMNS</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;onset_s&quot;</span><span class="p">,</span> <span class="s2">&quot;offset_s&quot;</span><span class="p">,</span> <span class="s2">&quot;labels&quot;</span><span class="p">,</span> <span class="s2">&quot;individual&quot;</span><span class="p">,</span> <span class="s2">&quot;event_type&quot;</span><span class="p">]</span>
+<span class="n">INTERVAL_COLUMNS</span> <span class="o">=</span> <span class="p">[</span><span class="s2">"onset_s"</span><span class="p">,</span> <span class="s2">"offset_s"</span><span class="p">,</span> <span class="s2">"labels"</span><span class="p">,</span> <span class="s2">"individual"</span><span class="p">,</span> <span class="s2">"event_type"</span><span class="p">]</span>
 
 <span class="n">INTERVAL_DTYPES</span> <span class="o">=</span> <span class="p">{</span>
-    <span class="s2">&quot;onset_s&quot;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">,</span>
-    <span class="s2">&quot;offset_s&quot;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">,</span>
-    <span class="s2">&quot;labels&quot;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">,</span>
-    <span class="s2">&quot;individual&quot;</span><span class="p">:</span> <span class="nb">object</span><span class="p">,</span>
-    <span class="s2">&quot;event_type&quot;</span><span class="p">:</span> <span class="nb">object</span><span class="p">,</span>
+    <span class="s2">"onset_s"</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">,</span>
+    <span class="s2">"offset_s"</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">,</span>
+    <span class="s2">"labels"</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">,</span>
+    <span class="s2">"individual"</span><span class="p">:</span> <span class="nb">object</span><span class="p">,</span>
+    <span class="s2">"event_type"</span><span class="p">:</span> <span class="nb">object</span><span class="p">,</span>
 <span class="p">}</span>
 
 
@@ -450,7 +450,7 @@
 <div class="viewcode-block" id="empty_intervals">
 <a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.intervals.empty_intervals">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">empty_intervals</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Create an empty intervals DataFrame with the correct columns and dtypes.</span>
+<span class="w">    </span><span class="sd">"""Create an empty intervals DataFrame with the correct columns and dtypes.</span>
 
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
@@ -463,10 +463,10 @@
 <span class="sd">    &gt;&gt;&gt; from ethograph.labels.intervals import empty_intervals</span>
 <span class="sd">    &gt;&gt;&gt; df = empty_intervals()</span>
 <span class="sd">    &gt;&gt;&gt; df.columns.tolist()</span>
-<span class="sd">    [&#39;onset_s&#39;, &#39;offset_s&#39;, &#39;labels&#39;, &#39;individual&#39;, &#39;event_type&#39;]</span>
+<span class="sd">    ['onset_s', 'offset_s', 'labels', 'individual', 'event_type']</span>
 <span class="sd">    &gt;&gt;&gt; len(df)</span>
 <span class="sd">    0</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="k">return</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span><span class="n">col</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="n">INTERVAL_DTYPES</span><span class="p">[</span><span class="n">col</span><span class="p">])</span> <span class="k">for</span> <span class="n">col</span> <span class="ow">in</span> <span class="n">INTERVAL_COLUMNS</span><span class="p">})</span></div>
 
 
@@ -475,38 +475,38 @@
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">ensure_event_type</span><span class="p">(</span><span class="n">df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Add an ``event_type`` column defaulting to ``&quot;state&quot;`` if missing.</span>
+<span class="w">    </span><span class="sd">"""Add an ``event_type`` column defaulting to ``"state"`` if missing.</span>
 
 <span class="sd">    Mutates and returns *df*.  Use on freshly-loaded DataFrames so downstream</span>
 <span class="sd">    code can rely on the column existing.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">if</span> <span class="s2">&quot;event_type&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
-        <span class="n">df</span><span class="p">[</span><span class="s2">&quot;event_type&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">EVENT_TYPE_STATE</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="s2">"event_type"</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
+        <span class="n">df</span><span class="p">[</span><span class="s2">"event_type"</span><span class="p">]</span> <span class="o">=</span> <span class="n">EVENT_TYPE_STATE</span>
     <span class="k">else</span><span class="p">:</span>
-        <span class="n">df</span><span class="p">[</span><span class="s2">&quot;event_type&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">df</span><span class="p">[</span><span class="s2">&quot;event_type&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">fillna</span><span class="p">(</span><span class="n">EVENT_TYPE_STATE</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">object</span><span class="p">)</span>
+        <span class="n">df</span><span class="p">[</span><span class="s2">"event_type"</span><span class="p">]</span> <span class="o">=</span> <span class="n">df</span><span class="p">[</span><span class="s2">"event_type"</span><span class="p">]</span><span class="o">.</span><span class="n">fillna</span><span class="p">(</span><span class="n">EVENT_TYPE_STATE</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">object</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">df</span>
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">states_only</span><span class="p">(</span><span class="n">df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Return rows that are state events (intervals).</span>
+<span class="w">    </span><span class="sd">"""Return rows that are state events (intervals).</span>
 
 <span class="sd">    Backwards-compatible: a DataFrame without ``event_type`` is treated as</span>
 <span class="sd">    all-states.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">if</span> <span class="n">df</span><span class="o">.</span><span class="n">empty</span> <span class="ow">or</span> <span class="s2">&quot;event_type&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="n">df</span><span class="o">.</span><span class="n">empty</span> <span class="ow">or</span> <span class="s2">"event_type"</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">df</span>
-    <span class="k">return</span> <span class="n">df</span><span class="p">[</span><span class="n">df</span><span class="p">[</span><span class="s2">&quot;event_type&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="n">EVENT_TYPE_STATE</span><span class="p">]</span>
+    <span class="k">return</span> <span class="n">df</span><span class="p">[</span><span class="n">df</span><span class="p">[</span><span class="s2">"event_type"</span><span class="p">]</span> <span class="o">==</span> <span class="n">EVENT_TYPE_STATE</span><span class="p">]</span>
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">points_only</span><span class="p">(</span><span class="n">df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Return rows that are point events (instantaneous).&quot;&quot;&quot;</span>
-    <span class="k">if</span> <span class="n">df</span><span class="o">.</span><span class="n">empty</span> <span class="ow">or</span> <span class="s2">&quot;event_type&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Return rows that are point events (instantaneous)."""</span>
+    <span class="k">if</span> <span class="n">df</span><span class="o">.</span><span class="n">empty</span> <span class="ow">or</span> <span class="s2">"event_type"</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">df</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="mi">0</span><span class="p">:</span><span class="mi">0</span><span class="p">]</span>
-    <span class="k">return</span> <span class="n">df</span><span class="p">[</span><span class="n">df</span><span class="p">[</span><span class="s2">&quot;event_type&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="n">EVENT_TYPE_POINT</span><span class="p">]</span>
+    <span class="k">return</span> <span class="n">df</span><span class="p">[</span><span class="n">df</span><span class="p">[</span><span class="s2">"event_type"</span><span class="p">]</span> <span class="o">==</span> <span class="n">EVENT_TYPE_POINT</span><span class="p">]</span>
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">split_by_kind</span><span class="p">(</span><span class="n">df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">]:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Split a DataFrame into ``(states, points)``.</span>
+<span class="w">    </span><span class="sd">"""Split a DataFrame into ``(states, points)``.</span>
 
 <span class="sd">    Use at the top of any interval-aware operation::</span>
 
@@ -516,16 +516,16 @@
 
 <span class="sd">    This is the canonical way to keep point events unaffected by interval</span>
 <span class="sd">    operations (purge, stitch, snap, etc.).</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="k">return</span> <span class="n">states_only</span><span class="p">(</span><span class="n">df</span><span class="p">),</span> <span class="n">points_only</span><span class="p">(</span><span class="n">df</span><span class="p">)</span>
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">_recombine</span><span class="p">(</span><span class="n">transformed_states</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">points</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Concat transformed states with untouched points, sorted by onset.&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""Concat transformed states with untouched points, sorted by onset."""</span>
     <span class="k">if</span> <span class="n">points</span><span class="o">.</span><span class="n">empty</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">transformed_states</span><span class="o">.</span><span class="n">reset_index</span><span class="p">(</span><span class="n">drop</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
     <span class="n">out</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">concat</span><span class="p">([</span><span class="n">transformed_states</span><span class="p">,</span> <span class="n">points</span><span class="p">],</span> <span class="n">ignore_index</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-    <span class="n">out</span><span class="o">.</span><span class="n">sort_values</span><span class="p">(</span><span class="s2">&quot;onset_s&quot;</span><span class="p">,</span> <span class="n">inplace</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">kind</span><span class="o">=</span><span class="s2">&quot;stable&quot;</span><span class="p">,</span> <span class="n">na_position</span><span class="o">=</span><span class="s2">&quot;last&quot;</span><span class="p">)</span>
+    <span class="n">out</span><span class="o">.</span><span class="n">sort_values</span><span class="p">(</span><span class="s2">"onset_s"</span><span class="p">,</span> <span class="n">inplace</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">kind</span><span class="o">=</span><span class="s2">"stable"</span><span class="p">,</span> <span class="n">na_position</span><span class="o">=</span><span class="s2">"last"</span><span class="p">)</span>
     <span class="n">out</span><span class="o">.</span><span class="n">reset_index</span><span class="p">(</span><span class="n">drop</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">inplace</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">out</span>
 
@@ -536,7 +536,7 @@
 <div class="viewcode-block" id="load_mapping">
 <a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.intervals.load_mapping">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">load_mapping</span><span class="p">(</span><span class="n">mapping_file</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">],</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Load a class-name ↔ index mapping file.</span>
+<span class="w">    </span><span class="sd">"""Load a class-name ↔ index mapping file.</span>
 
 <span class="sd">    The file is whitespace-delimited with lines ``&lt;index&gt; &lt;name&gt;``.</span>
 
@@ -552,15 +552,15 @@
 
 <span class="sd">    Examples</span>
 <span class="sd">    --------</span>
-<span class="sd">    &gt;&gt;&gt; class_to_idx, idx_to_class = load_mapping(&quot;mapping.txt&quot;)</span>
-<span class="sd">    &gt;&gt;&gt; class_to_idx[&quot;walk&quot;]</span>
+<span class="sd">    &gt;&gt;&gt; class_to_idx, idx_to_class = load_mapping("mapping.txt")</span>
+<span class="sd">    &gt;&gt;&gt; class_to_idx["walk"]</span>
 <span class="sd">    1</span>
 <span class="sd">    &gt;&gt;&gt; idx_to_class[1]</span>
-<span class="sd">    &#39;walk&#39;</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    'walk'</span>
+<span class="sd">    """</span>
     <span class="n">class_to_idx</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
     <span class="n">idx_to_class</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
-    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">mapping_file</span><span class="p">,</span> <span class="s2">&quot;r&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">mapping_file</span><span class="p">,</span> <span class="s2">"r"</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
         <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">f</span><span class="p">:</span>
             <span class="k">if</span> <span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">():</span>
                 <span class="n">parts</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
@@ -617,10 +617,10 @@
 <div class="viewcode-block" id="load_label_mapping">
 <a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.intervals.load_label_mapping">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">load_label_mapping</span><span class="p">(</span>
-    <span class="n">mapping_file</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span> <span class="o">=</span> <span class="s2">&quot;mapping.txt&quot;</span><span class="p">,</span>
+    <span class="n">mapping_file</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span> <span class="o">=</span> <span class="s2">"mapping.txt"</span><span class="p">,</span>
     <span class="n">order</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">Dict</span><span class="p">]:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Load a label mapping with colors for visualization.</span>
+<span class="w">    </span><span class="sd">"""Load a label mapping with colors for visualization.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
@@ -628,8 +628,8 @@
 <span class="sd">        Path to the mapping file. Each line is</span>
 <span class="sd">        ``&lt;id&gt; &lt;name&gt; [&lt;branch&gt;] [&lt;event_type&gt;]`` where *branch* is an</span>
 <span class="sd">        optional integer (default 0) grouping labels into branches for</span>
-<span class="sd">        independent labeling, and *event_type* is ``&quot;state&quot;`` (default) or</span>
-<span class="sd">        ``&quot;point&quot;``.</span>
+<span class="sd">        independent labeling, and *event_type* is ``"state"`` (default) or</span>
+<span class="sd">        ``"point"``.</span>
 <span class="sd">    order : list[int] or None</span>
 <span class="sd">        Label IDs in the desired display sequence. If provided, overrides</span>
 <span class="sd">        the default order (which follows label ID). Any ID not listed</span>
@@ -638,8 +638,8 @@
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
 <span class="sd">    dict[int, dict]</span>
-<span class="sd">        ``{label_id: {&quot;name&quot;: str, &quot;color&quot;: ndarray(3,), &quot;order&quot;: int,</span>
-<span class="sd">        &quot;branch&quot;: int, &quot;event_type&quot;: str}}``.</span>
+<span class="sd">        ``{label_id: {"name": str, "color": ndarray(3,), "order": int,</span>
+<span class="sd">        "branch": int, "event_type": str}}``.</span>
 
 <span class="sd">    Raises</span>
 <span class="sd">    ------</span>
@@ -648,32 +648,32 @@
 
 <span class="sd">    Examples</span>
 <span class="sd">    --------</span>
-<span class="sd">    &gt;&gt;&gt; mappings = load_label_mapping(&quot;mapping.txt&quot;)</span>
-<span class="sd">    &gt;&gt;&gt; mappings[1][&quot;name&quot;]</span>
-<span class="sd">    &#39;walk&#39;</span>
+<span class="sd">    &gt;&gt;&gt; mappings = load_label_mapping("mapping.txt")</span>
+<span class="sd">    &gt;&gt;&gt; mappings[1]["name"]</span>
+<span class="sd">    'walk'</span>
 
 <span class="sd">    Reorder labels for display without changing the file::</span>
 
-<span class="sd">        mappings = load_label_mapping(&quot;mapping.txt&quot;, order=[0, 3, 1, 2])</span>
+<span class="sd">        mappings = load_label_mapping("mapping.txt", order=[0, 3, 1, 2])</span>
 
 <span class="sd">    Draw labelled intervals on a plot::</span>
 
 <span class="sd">        import matplotlib.pyplot as plt</span>
 <span class="sd">        import matplotlib.patches as mpatches</span>
 
-<span class="sd">        mappings = load_label_mapping(&quot;mapping.txt&quot;)</span>
+<span class="sd">        mappings = load_label_mapping("mapping.txt")</span>
 <span class="sd">        fig, ax = plt.subplots()</span>
 <span class="sd">        ax.plot(time, signal)</span>
 <span class="sd">        for _, row in intervals_df.iterrows():</span>
-<span class="sd">            color = mappings[int(row[&quot;labels&quot;])][&quot;color&quot;]</span>
-<span class="sd">            ax.axvspan(row[&quot;onset_s&quot;], row[&quot;offset_s&quot;], alpha=0.5, color=color)</span>
-<span class="sd">        handles = [mpatches.Patch(color=m[&quot;color&quot;], label=m[&quot;name&quot;]) for m in mappings.values()]</span>
+<span class="sd">            color = mappings[int(row["labels"])]["color"]</span>
+<span class="sd">            ax.axvspan(row["onset_s"], row["offset_s"], alpha=0.5, color=color)</span>
+<span class="sd">        handles = [mpatches.Patch(color=m["color"], label=m["name"]) for m in mappings.values()]</span>
 <span class="sd">        ax.legend(handles=handles)</span>
 <span class="sd">        plt.show()</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="n">mapping_file</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">mapping_file</span><span class="p">)</span>
     <span class="k">if</span> <span class="ow">not</span> <span class="n">mapping_file</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
-        <span class="k">raise</span> <span class="ne">FileNotFoundError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Mapping file not found: </span><span class="si">{</span><span class="n">mapping_file</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="ne">FileNotFoundError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Mapping file not found: </span><span class="si">{</span><span class="n">mapping_file</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 
     <span class="n">label_mappings</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">=</span> <span class="p">{}</span>
     <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">mapping_file</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
@@ -681,14 +681,14 @@
             <span class="n">parts</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
             <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">parts</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mi">2</span><span class="p">:</span>
                 <span class="k">continue</span>
-            <span class="k">if</span> <span class="n">parts</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;(&quot;</span><span class="p">):</span>
-                <span class="n">nums</span> <span class="o">=</span> <span class="n">parts</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">strip</span><span class="p">(</span><span class="s2">&quot;()&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;,&quot;</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">parts</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">"("</span><span class="p">):</span>
+                <span class="n">nums</span> <span class="o">=</span> <span class="n">parts</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">strip</span><span class="p">(</span><span class="s2">"()"</span><span class="p">)</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">","</span><span class="p">)</span>
                 <span class="n">label_id</span> <span class="o">=</span> <span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">nums</span><span class="p">[</span><span class="mi">0</span><span class="p">]),</span> <span class="nb">int</span><span class="p">(</span><span class="n">nums</span><span class="p">[</span><span class="mi">1</span><span class="p">]))</span>
                 <span class="n">label_mappings</span><span class="p">[</span><span class="n">label_id</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
-                    <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="n">parts</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span>
-                    <span class="s2">&quot;color&quot;</span><span class="p">:</span> <span class="n">_GAP_COLOR</span><span class="p">,</span>
-                    <span class="s2">&quot;branch&quot;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span>
-                    <span class="s2">&quot;event_type&quot;</span><span class="p">:</span> <span class="n">EVENT_TYPE_STATE</span><span class="p">,</span>
+                    <span class="s2">"name"</span><span class="p">:</span> <span class="n">parts</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span>
+                    <span class="s2">"color"</span><span class="p">:</span> <span class="n">_GAP_COLOR</span><span class="p">,</span>
+                    <span class="s2">"branch"</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span>
+                    <span class="s2">"event_type"</span><span class="p">:</span> <span class="n">EVENT_TYPE_STATE</span><span class="p">,</span>
                 <span class="p">}</span>
             <span class="k">else</span><span class="p">:</span>
                 <span class="n">label_id</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">parts</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
@@ -697,10 +697,10 @@
                 <span class="k">if</span> <span class="n">event_type</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">EVENT_TYPES</span><span class="p">:</span>
                     <span class="n">event_type</span> <span class="o">=</span> <span class="n">EVENT_TYPE_STATE</span>
                 <span class="n">label_mappings</span><span class="p">[</span><span class="n">label_id</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
-                    <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="n">parts</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span>
-                    <span class="s2">&quot;color&quot;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">_LABEL_COLORS</span><span class="p">[</span><span class="n">label_id</span> <span class="o">%</span> <span class="nb">len</span><span class="p">(</span><span class="n">_LABEL_COLORS</span><span class="p">)])</span> <span class="o">/</span> <span class="mf">255.0</span><span class="p">,</span>
-                    <span class="s2">&quot;branch&quot;</span><span class="p">:</span> <span class="n">branch</span><span class="p">,</span>
-                    <span class="s2">&quot;event_type&quot;</span><span class="p">:</span> <span class="n">event_type</span><span class="p">,</span>
+                    <span class="s2">"name"</span><span class="p">:</span> <span class="n">parts</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span>
+                    <span class="s2">"color"</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">_LABEL_COLORS</span><span class="p">[</span><span class="n">label_id</span> <span class="o">%</span> <span class="nb">len</span><span class="p">(</span><span class="n">_LABEL_COLORS</span><span class="p">)])</span> <span class="o">/</span> <span class="mf">255.0</span><span class="p">,</span>
+                    <span class="s2">"branch"</span><span class="p">:</span> <span class="n">branch</span><span class="p">,</span>
+                    <span class="s2">"event_type"</span><span class="p">:</span> <span class="n">event_type</span><span class="p">,</span>
                 <span class="p">}</span>
 
     <span class="k">if</span> <span class="n">order</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
@@ -713,11 +713,11 @@
 <div class="viewcode-block" id="save_label_mapping">
 <a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.intervals.save_label_mapping">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">save_label_mapping</span><span class="p">(</span><span class="n">mapping_file</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">,</span> <span class="n">mappings</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">Dict</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Write a label mapping back to disk, preserving branch and event_type.</span>
+<span class="w">    </span><span class="sd">"""Write a label mapping back to disk, preserving branch and event_type.</span>
 
 <span class="sd">    Lines have the form ``&lt;id&gt; &lt;name&gt; &lt;branch&gt; &lt;event_type&gt;`` for scalar IDs.</span>
 <span class="sd">    The ``event_type`` column is omitted when it equals the default</span>
-<span class="sd">    (``&quot;state&quot;``) so files stay backward-compatible with older readers.</span>
+<span class="sd">    (``"state"``) so files stay backward-compatible with older readers.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
@@ -725,20 +725,20 @@
 <span class="sd">        Destination path.</span>
 <span class="sd">    mappings : dict[int, dict]</span>
 <span class="sd">        The mapping dict as returned by :func:`load_label_mapping`.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="n">mapping_file</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">mapping_file</span><span class="p">)</span>
     <span class="n">mapping_file</span><span class="o">.</span><span class="n">parent</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
     <span class="n">lines</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
     <span class="k">for</span> <span class="n">label_id</span><span class="p">,</span> <span class="n">data</span> <span class="ow">in</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">mappings</span><span class="o">.</span><span class="n">items</span><span class="p">(),</span> <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">kv</span><span class="p">:</span> <span class="n">kv</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">kv</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="nb">int</span><span class="p">)</span> <span class="k">else</span> <span class="n">kv</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">]):</span>
         <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">label_id</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">):</span>
-            <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;(</span><span class="si">{</span><span class="n">label_id</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="si">}</span><span class="s2">,</span><span class="si">{</span><span class="n">label_id</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="si">}</span><span class="s2">) </span><span class="si">{</span><span class="n">data</span><span class="p">[</span><span class="s1">&#39;name&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">data</span><span class="p">[</span><span class="s1">&#39;order&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">"(</span><span class="si">{</span><span class="n">label_id</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="si">}</span><span class="s2">,</span><span class="si">{</span><span class="n">label_id</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="si">}</span><span class="s2">) </span><span class="si">{</span><span class="n">data</span><span class="p">[</span><span class="s1">'name'</span><span class="p">]</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">data</span><span class="p">[</span><span class="s1">'order'</span><span class="p">]</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
         <span class="k">else</span><span class="p">:</span>
-            <span class="n">event_type</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;event_type&quot;</span><span class="p">,</span> <span class="n">EVENT_TYPE_STATE</span><span class="p">)</span>
-            <span class="n">base</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">label_id</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">data</span><span class="p">[</span><span class="s1">&#39;name&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;branch&#39;</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="n">event_type</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"event_type"</span><span class="p">,</span> <span class="n">EVENT_TYPE_STATE</span><span class="p">)</span>
+            <span class="n">base</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">label_id</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">data</span><span class="p">[</span><span class="s1">'name'</span><span class="p">]</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">'branch'</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span>
             <span class="k">if</span> <span class="n">event_type</span> <span class="o">!=</span> <span class="n">EVENT_TYPE_STATE</span><span class="p">:</span>
-                <span class="n">base</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">base</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">event_type</span><span class="si">}</span><span class="s2">&quot;</span>
+                <span class="n">base</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">base</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">event_type</span><span class="si">}</span><span class="s2">"</span>
             <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">base</span><span class="p">)</span>
-    <span class="n">mapping_file</span><span class="o">.</span><span class="n">write_text</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">lines</span><span class="p">)</span> <span class="o">+</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s2">&quot;utf-8&quot;</span><span class="p">)</span></div>
+    <span class="n">mapping_file</span><span class="o">.</span><span class="n">write_text</span><span class="p">(</span><span class="s2">"</span><span class="se">\n</span><span class="s2">"</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">lines</span><span class="p">)</span> <span class="o">+</span> <span class="s2">"</span><span class="se">\n</span><span class="s2">"</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s2">"utf-8"</span><span class="p">)</span></div>
 
 
 
@@ -751,10 +751,10 @@
     <span class="n">labels</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
     <span class="n">individual</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Add a point event (instantaneous label) at *time_s*.</span>
+<span class="w">    </span><span class="sd">"""Add a point event (instantaneous label) at *time_s*.</span>
 
 <span class="sd">    Point events are stored with ``offset_s = NaN`` and</span>
-<span class="sd">    ``event_type = &quot;point&quot;``.  They are never trimmed, split, or merged by</span>
+<span class="sd">    ``event_type = "point"``.  They are never trimmed, split, or merged by</span>
 <span class="sd">    :func:`add_interval`, :func:`purge_short_intervals`,</span>
 <span class="sd">    :func:`stitch_intervals`, or :func:`snap_boundaries`.</span>
 
@@ -762,19 +762,19 @@
 <span class="sd">    -------</span>
 <span class="sd">    pd.DataFrame</span>
 <span class="sd">        Updated DataFrame sorted by ``onset_s``.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="n">new_row</span> <span class="o">=</span> <span class="p">{</span>
-        <span class="s2">&quot;onset_s&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">time_s</span><span class="p">),</span>
-        <span class="s2">&quot;offset_s&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="s2">&quot;nan&quot;</span><span class="p">),</span>
-        <span class="s2">&quot;labels&quot;</span><span class="p">:</span> <span class="nb">int</span><span class="p">(</span><span class="n">labels</span><span class="p">),</span>
-        <span class="s2">&quot;individual&quot;</span><span class="p">:</span> <span class="n">individual</span><span class="p">,</span>
-        <span class="s2">&quot;event_type&quot;</span><span class="p">:</span> <span class="n">EVENT_TYPE_POINT</span><span class="p">,</span>
+        <span class="s2">"onset_s"</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">time_s</span><span class="p">),</span>
+        <span class="s2">"offset_s"</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="s2">"nan"</span><span class="p">),</span>
+        <span class="s2">"labels"</span><span class="p">:</span> <span class="nb">int</span><span class="p">(</span><span class="n">labels</span><span class="p">),</span>
+        <span class="s2">"individual"</span><span class="p">:</span> <span class="n">individual</span><span class="p">,</span>
+        <span class="s2">"event_type"</span><span class="p">:</span> <span class="n">EVENT_TYPE_POINT</span><span class="p">,</span>
     <span class="p">}</span>
     <span class="n">new_df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">([</span><span class="n">new_row</span><span class="p">])</span>
     <span class="k">for</span> <span class="n">col</span><span class="p">,</span> <span class="n">dtype</span> <span class="ow">in</span> <span class="n">INTERVAL_DTYPES</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
         <span class="n">new_df</span><span class="p">[</span><span class="n">col</span><span class="p">]</span> <span class="o">=</span> <span class="n">new_df</span><span class="p">[</span><span class="n">col</span><span class="p">]</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">dtype</span><span class="p">)</span>
     <span class="n">result</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">concat</span><span class="p">([</span><span class="n">df</span><span class="p">,</span> <span class="n">new_df</span><span class="p">],</span> <span class="n">ignore_index</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-    <span class="n">result</span><span class="o">.</span><span class="n">sort_values</span><span class="p">(</span><span class="s2">&quot;onset_s&quot;</span><span class="p">,</span> <span class="n">inplace</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">kind</span><span class="o">=</span><span class="s2">&quot;stable&quot;</span><span class="p">,</span> <span class="n">na_position</span><span class="o">=</span><span class="s2">&quot;last&quot;</span><span class="p">)</span>
+    <span class="n">result</span><span class="o">.</span><span class="n">sort_values</span><span class="p">(</span><span class="s2">"onset_s"</span><span class="p">,</span> <span class="n">inplace</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">kind</span><span class="o">=</span><span class="s2">"stable"</span><span class="p">,</span> <span class="n">na_position</span><span class="o">=</span><span class="s2">"last"</span><span class="p">)</span>
     <span class="n">result</span><span class="o">.</span><span class="n">reset_index</span><span class="p">(</span><span class="n">drop</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">inplace</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">result</span>
 
@@ -789,7 +789,7 @@
     <span class="n">individual</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
     <span class="n">protected_label_ids</span><span class="p">:</span> <span class="nb">set</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Add an interval, resolving overlaps for the same individual.</span>
+<span class="w">    </span><span class="sd">"""Add an interval, resolving overlaps for the same individual.</span>
 
 <span class="sd">    If the new interval overlaps existing intervals for the same individual,</span>
 <span class="sd">    the existing intervals are trimmed or split — unless their label ID is in</span>
@@ -817,25 +817,25 @@
 <span class="sd">    Examples</span>
 <span class="sd">    --------</span>
 <span class="sd">    &gt;&gt;&gt; df = empty_intervals()</span>
-<span class="sd">    &gt;&gt;&gt; df = add_interval(df, 0.0, 1.0, 1, &quot;crow_A&quot;)</span>
-<span class="sd">    &gt;&gt;&gt; df = add_interval(df, 0.5, 1.5, 2, &quot;crow_A&quot;)</span>
+<span class="sd">    &gt;&gt;&gt; df = add_interval(df, 0.0, 1.0, 1, "crow_A")</span>
+<span class="sd">    &gt;&gt;&gt; df = add_interval(df, 0.5, 1.5, 2, "crow_A")</span>
 <span class="sd">    &gt;&gt;&gt; len(df)</span>
 <span class="sd">    2</span>
-<span class="sd">    &gt;&gt;&gt; float(df.iloc[0][&quot;offset_s&quot;])  # first interval trimmed</span>
+<span class="sd">    &gt;&gt;&gt; float(df.iloc[0]["offset_s"])  # first interval trimmed</span>
 <span class="sd">    0.499</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="k">if</span> <span class="n">onset_s</span> <span class="o">&gt;</span> <span class="n">offset_s</span><span class="p">:</span>
         <span class="n">onset_s</span><span class="p">,</span> <span class="n">offset_s</span> <span class="o">=</span> <span class="n">offset_s</span><span class="p">,</span> <span class="n">onset_s</span>
 
     <span class="n">states_df</span><span class="p">,</span> <span class="n">points_df</span> <span class="o">=</span> <span class="n">split_by_kind</span><span class="p">(</span><span class="n">df</span><span class="p">)</span>
-    <span class="n">mask_same_ind</span> <span class="o">=</span> <span class="n">states_df</span><span class="p">[</span><span class="s2">&quot;individual&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="n">individual</span>
+    <span class="n">mask_same_ind</span> <span class="o">=</span> <span class="n">states_df</span><span class="p">[</span><span class="s2">"individual"</span><span class="p">]</span> <span class="o">==</span> <span class="n">individual</span>
     <span class="n">other</span> <span class="o">=</span> <span class="n">states_df</span><span class="p">[</span><span class="o">~</span><span class="n">mask_same_ind</span><span class="p">]</span>
     <span class="n">same</span> <span class="o">=</span> <span class="n">states_df</span><span class="p">[</span><span class="n">mask_same_ind</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
 
     <span class="n">kept</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
     <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">same</span><span class="o">.</span><span class="n">iterrows</span><span class="p">():</span>
-        <span class="n">ro</span><span class="p">,</span> <span class="n">rf</span> <span class="o">=</span> <span class="n">row</span><span class="p">[</span><span class="s2">&quot;onset_s&quot;</span><span class="p">],</span> <span class="n">row</span><span class="p">[</span><span class="s2">&quot;offset_s&quot;</span><span class="p">]</span>
-        <span class="n">rid</span> <span class="o">=</span> <span class="n">row</span><span class="p">[</span><span class="s2">&quot;labels&quot;</span><span class="p">]</span>
+        <span class="n">ro</span><span class="p">,</span> <span class="n">rf</span> <span class="o">=</span> <span class="n">row</span><span class="p">[</span><span class="s2">"onset_s"</span><span class="p">],</span> <span class="n">row</span><span class="p">[</span><span class="s2">"offset_s"</span><span class="p">]</span>
+        <span class="n">rid</span> <span class="o">=</span> <span class="n">row</span><span class="p">[</span><span class="s2">"labels"</span><span class="p">]</span>
 
         <span class="c1"># Never trim/split intervals from protected (inactive) branches</span>
         <span class="k">if</span> <span class="n">protected_label_ids</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="nb">int</span><span class="p">(</span><span class="n">rid</span><span class="p">)</span> <span class="ow">in</span> <span class="n">protected_label_ids</span><span class="p">:</span>
@@ -850,28 +850,28 @@
         <span class="k">if</span> <span class="n">ro</span> <span class="o">&lt;</span> <span class="n">onset_s</span><span class="p">:</span>
             <span class="n">kept</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
                 <span class="p">{</span>
-                    <span class="s2">&quot;onset_s&quot;</span><span class="p">:</span> <span class="n">ro</span><span class="p">,</span>
-                    <span class="s2">&quot;offset_s&quot;</span><span class="p">:</span> <span class="n">onset_s</span> <span class="o">-</span> <span class="n">eps</span><span class="p">,</span>
-                    <span class="s2">&quot;labels&quot;</span><span class="p">:</span> <span class="n">rid</span><span class="p">,</span>
-                    <span class="s2">&quot;individual&quot;</span><span class="p">:</span> <span class="n">individual</span><span class="p">,</span>
+                    <span class="s2">"onset_s"</span><span class="p">:</span> <span class="n">ro</span><span class="p">,</span>
+                    <span class="s2">"offset_s"</span><span class="p">:</span> <span class="n">onset_s</span> <span class="o">-</span> <span class="n">eps</span><span class="p">,</span>
+                    <span class="s2">"labels"</span><span class="p">:</span> <span class="n">rid</span><span class="p">,</span>
+                    <span class="s2">"individual"</span><span class="p">:</span> <span class="n">individual</span><span class="p">,</span>
                 <span class="p">}</span>
             <span class="p">)</span>
         <span class="k">if</span> <span class="n">rf</span> <span class="o">&gt;</span> <span class="n">offset_s</span><span class="p">:</span>
             <span class="n">kept</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
                 <span class="p">{</span>
-                    <span class="s2">&quot;onset_s&quot;</span><span class="p">:</span> <span class="n">offset_s</span> <span class="o">+</span> <span class="n">eps</span><span class="p">,</span>
-                    <span class="s2">&quot;offset_s&quot;</span><span class="p">:</span> <span class="n">rf</span><span class="p">,</span>
-                    <span class="s2">&quot;labels&quot;</span><span class="p">:</span> <span class="n">rid</span><span class="p">,</span>
-                    <span class="s2">&quot;individual&quot;</span><span class="p">:</span> <span class="n">individual</span><span class="p">,</span>
+                    <span class="s2">"onset_s"</span><span class="p">:</span> <span class="n">offset_s</span> <span class="o">+</span> <span class="n">eps</span><span class="p">,</span>
+                    <span class="s2">"offset_s"</span><span class="p">:</span> <span class="n">rf</span><span class="p">,</span>
+                    <span class="s2">"labels"</span><span class="p">:</span> <span class="n">rid</span><span class="p">,</span>
+                    <span class="s2">"individual"</span><span class="p">:</span> <span class="n">individual</span><span class="p">,</span>
                 <span class="p">}</span>
             <span class="p">)</span>
 
     <span class="n">kept</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
         <span class="p">{</span>
-            <span class="s2">&quot;onset_s&quot;</span><span class="p">:</span> <span class="n">onset_s</span><span class="p">,</span>
-            <span class="s2">&quot;offset_s&quot;</span><span class="p">:</span> <span class="n">offset_s</span><span class="p">,</span>
-            <span class="s2">&quot;labels&quot;</span><span class="p">:</span> <span class="n">labels</span><span class="p">,</span>
-            <span class="s2">&quot;individual&quot;</span><span class="p">:</span> <span class="n">individual</span><span class="p">,</span>
+            <span class="s2">"onset_s"</span><span class="p">:</span> <span class="n">onset_s</span><span class="p">,</span>
+            <span class="s2">"offset_s"</span><span class="p">:</span> <span class="n">offset_s</span><span class="p">,</span>
+            <span class="s2">"labels"</span><span class="p">:</span> <span class="n">labels</span><span class="p">,</span>
+            <span class="s2">"individual"</span><span class="p">:</span> <span class="n">individual</span><span class="p">,</span>
         <span class="p">}</span>
     <span class="p">)</span>
 
@@ -884,7 +884,7 @@
 <div class="viewcode-block" id="delete_interval">
 <a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.intervals.delete_interval">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">delete_interval</span><span class="p">(</span><span class="n">df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">idx</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Drop interval by DataFrame index.&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""Drop interval by DataFrame index."""</span>
     <span class="k">return</span> <span class="n">df</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="n">index</span><span class="o">=</span><span class="n">idx</span><span class="p">)</span><span class="o">.</span><span class="n">reset_index</span><span class="p">(</span><span class="n">drop</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span></div>
 
 
@@ -897,7 +897,7 @@
     <span class="n">individual</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
     <span class="n">label_ids</span><span class="p">:</span> <span class="nb">set</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Return DataFrame index of state interval containing *time_s* for *individual*.</span>
+<span class="w">    </span><span class="sd">"""Return DataFrame index of state interval containing *time_s* for *individual*.</span>
 
 <span class="sd">    Point events are never returned here — use :func:`find_point_at` for those.</span>
 
@@ -905,20 +905,20 @@
 <span class="sd">    ----------</span>
 <span class="sd">    individual : str | None</span>
 <span class="sd">        ``None`` matches any individual — used as a selection fallback when</span>
-<span class="sd">        the current individual name doesn&#39;t match what a loaded file stores.</span>
+<span class="sd">        the current individual name doesn't match what a loaded file stores.</span>
 <span class="sd">    label_ids : set[int] | None</span>
 <span class="sd">        When given, only match intervals whose ``labels`` value is in this set.</span>
 <span class="sd">        Useful for restricting to the active branch.</span>
 
 <span class="sd">    Returns ``None`` if no non-background interval contains the time.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="n">mask</span> <span class="o">=</span> <span class="p">(</span><span class="n">df</span><span class="p">[</span><span class="s2">&quot;onset_s&quot;</span><span class="p">]</span> <span class="o">&lt;=</span> <span class="n">time_s</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">df</span><span class="p">[</span><span class="s2">&quot;offset_s&quot;</span><span class="p">]</span> <span class="o">&gt;=</span> <span class="n">time_s</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">df</span><span class="p">[</span><span class="s2">&quot;labels&quot;</span><span class="p">]</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">)</span>
+<span class="sd">    """</span>
+    <span class="n">mask</span> <span class="o">=</span> <span class="p">(</span><span class="n">df</span><span class="p">[</span><span class="s2">"onset_s"</span><span class="p">]</span> <span class="o">&lt;=</span> <span class="n">time_s</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">df</span><span class="p">[</span><span class="s2">"offset_s"</span><span class="p">]</span> <span class="o">&gt;=</span> <span class="n">time_s</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">df</span><span class="p">[</span><span class="s2">"labels"</span><span class="p">]</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">individual</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="n">mask</span> <span class="o">=</span> <span class="n">mask</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">df</span><span class="p">[</span><span class="s2">&quot;individual&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="n">individual</span><span class="p">)</span>
-    <span class="k">if</span> <span class="s2">&quot;event_type&quot;</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
-        <span class="n">mask</span> <span class="o">=</span> <span class="n">mask</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">df</span><span class="p">[</span><span class="s2">&quot;event_type&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="n">EVENT_TYPE_STATE</span><span class="p">)</span>
+        <span class="n">mask</span> <span class="o">=</span> <span class="n">mask</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">df</span><span class="p">[</span><span class="s2">"individual"</span><span class="p">]</span> <span class="o">==</span> <span class="n">individual</span><span class="p">)</span>
+    <span class="k">if</span> <span class="s2">"event_type"</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
+        <span class="n">mask</span> <span class="o">=</span> <span class="n">mask</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">df</span><span class="p">[</span><span class="s2">"event_type"</span><span class="p">]</span> <span class="o">==</span> <span class="n">EVENT_TYPE_STATE</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">label_ids</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="n">mask</span> <span class="o">=</span> <span class="n">mask</span> <span class="o">&amp;</span> <span class="n">df</span><span class="p">[</span><span class="s2">&quot;labels&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">isin</span><span class="p">(</span><span class="n">label_ids</span><span class="p">)</span>
+        <span class="n">mask</span> <span class="o">=</span> <span class="n">mask</span> <span class="o">&amp;</span> <span class="n">df</span><span class="p">[</span><span class="s2">"labels"</span><span class="p">]</span><span class="o">.</span><span class="n">isin</span><span class="p">(</span><span class="n">label_ids</span><span class="p">)</span>
     <span class="n">matches</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">index</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span>
     <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">matches</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
         <span class="k">return</span> <span class="kc">None</span>
@@ -933,21 +933,21 @@
     <span class="n">tolerance_s</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
     <span class="n">label_ids</span><span class="p">:</span> <span class="nb">set</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Return DataFrame index of point event near *time_s* for *individual*.</span>
+<span class="w">    </span><span class="sd">"""Return DataFrame index of point event near *time_s* for *individual*.</span>
 
 <span class="sd">    A point matches if ``|onset_s - time_s| &lt;= tolerance_s``.  Caller chooses</span>
-<span class="sd">    the tolerance — typically a few pixels&#39; worth of plot time.</span>
+<span class="sd">    the tolerance — typically a few pixels' worth of plot time.</span>
 <span class="sd">    ``individual=None`` matches any individual (selection fallback).</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">if</span> <span class="s2">&quot;event_type&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">columns</span> <span class="ow">or</span> <span class="n">df</span><span class="o">.</span><span class="n">empty</span><span class="p">:</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="s2">"event_type"</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">columns</span> <span class="ow">or</span> <span class="n">df</span><span class="o">.</span><span class="n">empty</span><span class="p">:</span>
         <span class="k">return</span> <span class="kc">None</span>
     <span class="n">mask</span> <span class="o">=</span> <span class="p">(</span>
-        <span class="p">(</span><span class="n">df</span><span class="p">[</span><span class="s2">&quot;event_type&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="n">EVENT_TYPE_POINT</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">((</span><span class="n">df</span><span class="p">[</span><span class="s2">&quot;onset_s&quot;</span><span class="p">]</span> <span class="o">-</span> <span class="n">time_s</span><span class="p">)</span><span class="o">.</span><span class="n">abs</span><span class="p">()</span> <span class="o">&lt;=</span> <span class="n">tolerance_s</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">df</span><span class="p">[</span><span class="s2">&quot;labels&quot;</span><span class="p">]</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">)</span>
+        <span class="p">(</span><span class="n">df</span><span class="p">[</span><span class="s2">"event_type"</span><span class="p">]</span> <span class="o">==</span> <span class="n">EVENT_TYPE_POINT</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">((</span><span class="n">df</span><span class="p">[</span><span class="s2">"onset_s"</span><span class="p">]</span> <span class="o">-</span> <span class="n">time_s</span><span class="p">)</span><span class="o">.</span><span class="n">abs</span><span class="p">()</span> <span class="o">&lt;=</span> <span class="n">tolerance_s</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">df</span><span class="p">[</span><span class="s2">"labels"</span><span class="p">]</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">)</span>
     <span class="p">)</span>
     <span class="k">if</span> <span class="n">individual</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="n">mask</span> <span class="o">=</span> <span class="n">mask</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">df</span><span class="p">[</span><span class="s2">&quot;individual&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="n">individual</span><span class="p">)</span>
+        <span class="n">mask</span> <span class="o">=</span> <span class="n">mask</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">df</span><span class="p">[</span><span class="s2">"individual"</span><span class="p">]</span> <span class="o">==</span> <span class="n">individual</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">label_ids</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="n">mask</span> <span class="o">=</span> <span class="n">mask</span> <span class="o">&amp;</span> <span class="n">df</span><span class="p">[</span><span class="s2">&quot;labels&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">isin</span><span class="p">(</span><span class="n">label_ids</span><span class="p">)</span>
+        <span class="n">mask</span> <span class="o">=</span> <span class="n">mask</span> <span class="o">&amp;</span> <span class="n">df</span><span class="p">[</span><span class="s2">"labels"</span><span class="p">]</span><span class="o">.</span><span class="n">isin</span><span class="p">(</span><span class="n">label_ids</span><span class="p">)</span>
     <span class="n">matches</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">index</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span>
     <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">matches</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
         <span class="k">return</span> <span class="kc">None</span>
@@ -957,9 +957,9 @@
 <div class="viewcode-block" id="get_interval_bounds">
 <a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.intervals.get_interval_bounds">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">get_interval_bounds</span><span class="p">(</span><span class="n">df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">idx</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">,</span> <span class="nb">int</span><span class="p">]:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Return ``(onset_s, offset_s, labels)`` for interval at *idx*.&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""Return ``(onset_s, offset_s, labels)`` for interval at *idx*."""</span>
     <span class="n">row</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
-    <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;onset_s&quot;</span><span class="p">]),</span> <span class="nb">float</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;offset_s&quot;</span><span class="p">]),</span> <span class="nb">int</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;labels&quot;</span><span class="p">])</span></div>
+    <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">"onset_s"</span><span class="p">]),</span> <span class="nb">float</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">"offset_s"</span><span class="p">]),</span> <span class="nb">int</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">"labels"</span><span class="p">])</span></div>
 
 
 
@@ -970,7 +970,7 @@
     <span class="n">min_duration_s</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
     <span class="n">label_thresholds_s</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">float</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Drop intervals shorter than a threshold.</span>
+<span class="w">    </span><span class="sd">"""Drop intervals shorter than a threshold.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
@@ -988,18 +988,18 @@
 
 <span class="sd">    Examples</span>
 <span class="sd">    --------</span>
-<span class="sd">    &gt;&gt;&gt; df = add_interval(empty_intervals(), 0.0, 0.01, 1, &quot;A&quot;)</span>
-<span class="sd">    &gt;&gt;&gt; df = add_interval(df, 1.0, 2.0, 2, &quot;A&quot;)</span>
+<span class="sd">    &gt;&gt;&gt; df = add_interval(empty_intervals(), 0.0, 0.01, 1, "A")</span>
+<span class="sd">    &gt;&gt;&gt; df = add_interval(df, 1.0, 2.0, 2, "A")</span>
 <span class="sd">    &gt;&gt;&gt; purged = purge_short_intervals(df, min_duration_s=0.1)</span>
 <span class="sd">    &gt;&gt;&gt; len(purged)</span>
 <span class="sd">    1</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="k">if</span> <span class="n">label_thresholds_s</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
         <span class="n">label_thresholds_s</span> <span class="o">=</span> <span class="p">{}</span>
 
     <span class="n">states_df</span><span class="p">,</span> <span class="n">points_df</span> <span class="o">=</span> <span class="n">split_by_kind</span><span class="p">(</span><span class="n">df</span><span class="p">)</span>
-    <span class="n">durations</span> <span class="o">=</span> <span class="n">states_df</span><span class="p">[</span><span class="s2">&quot;offset_s&quot;</span><span class="p">]</span> <span class="o">-</span> <span class="n">states_df</span><span class="p">[</span><span class="s2">&quot;onset_s&quot;</span><span class="p">]</span>
-    <span class="n">thresholds</span> <span class="o">=</span> <span class="n">states_df</span><span class="p">[</span><span class="s2">&quot;labels&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">map</span><span class="p">(</span><span class="k">lambda</span> <span class="n">lid</span><span class="p">:</span> <span class="n">label_thresholds_s</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">lid</span><span class="p">,</span> <span class="n">min_duration_s</span><span class="p">))</span>
+    <span class="n">durations</span> <span class="o">=</span> <span class="n">states_df</span><span class="p">[</span><span class="s2">"offset_s"</span><span class="p">]</span> <span class="o">-</span> <span class="n">states_df</span><span class="p">[</span><span class="s2">"onset_s"</span><span class="p">]</span>
+    <span class="n">thresholds</span> <span class="o">=</span> <span class="n">states_df</span><span class="p">[</span><span class="s2">"labels"</span><span class="p">]</span><span class="o">.</span><span class="n">map</span><span class="p">(</span><span class="k">lambda</span> <span class="n">lid</span><span class="p">:</span> <span class="n">label_thresholds_s</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">lid</span><span class="p">,</span> <span class="n">min_duration_s</span><span class="p">))</span>
     <span class="n">keep</span> <span class="o">=</span> <span class="n">durations</span> <span class="o">&gt;=</span> <span class="n">thresholds</span>
     <span class="k">return</span> <span class="n">_recombine</span><span class="p">(</span><span class="n">states_df</span><span class="p">[</span><span class="n">keep</span><span class="p">],</span> <span class="n">points_df</span><span class="p">)</span></div>
 
@@ -1012,7 +1012,7 @@
     <span class="n">max_gap_s</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
     <span class="n">individual</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Merge adjacent same-label intervals where gap &lt;= *max_gap_s*.</span>
+<span class="w">    </span><span class="sd">"""Merge adjacent same-label intervals where gap &lt;= *max_gap_s*.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
@@ -1030,28 +1030,28 @@
 
 <span class="sd">    Examples</span>
 <span class="sd">    --------</span>
-<span class="sd">    &gt;&gt;&gt; df = add_interval(empty_intervals(), 0.0, 1.0, 1, &quot;A&quot;)</span>
-<span class="sd">    &gt;&gt;&gt; df = add_interval(df, 1.05, 2.0, 1, &quot;A&quot;)</span>
+<span class="sd">    &gt;&gt;&gt; df = add_interval(empty_intervals(), 0.0, 1.0, 1, "A")</span>
+<span class="sd">    &gt;&gt;&gt; df = add_interval(df, 1.05, 2.0, 1, "A")</span>
 <span class="sd">    &gt;&gt;&gt; stitched = stitch_intervals(df, max_gap_s=0.1)</span>
 <span class="sd">    &gt;&gt;&gt; len(stitched)</span>
 <span class="sd">    1</span>
-<span class="sd">    &gt;&gt;&gt; float(stitched.iloc[0][&quot;offset_s&quot;])</span>
+<span class="sd">    &gt;&gt;&gt; float(stitched.iloc[0]["offset_s"])</span>
 <span class="sd">    2.0</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="k">if</span> <span class="n">df</span><span class="o">.</span><span class="n">empty</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">df</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
 
     <span class="n">states_df</span><span class="p">,</span> <span class="n">points_df</span> <span class="o">=</span> <span class="n">split_by_kind</span><span class="p">(</span><span class="n">df</span><span class="p">)</span>
 
     <span class="k">if</span> <span class="n">individual</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="n">mask</span> <span class="o">=</span> <span class="n">states_df</span><span class="p">[</span><span class="s2">&quot;individual&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="n">individual</span>
+        <span class="n">mask</span> <span class="o">=</span> <span class="n">states_df</span><span class="p">[</span><span class="s2">"individual"</span><span class="p">]</span> <span class="o">==</span> <span class="n">individual</span>
         <span class="n">other</span> <span class="o">=</span> <span class="n">states_df</span><span class="p">[</span><span class="o">~</span><span class="n">mask</span><span class="p">]</span>
         <span class="n">target</span> <span class="o">=</span> <span class="n">states_df</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
     <span class="k">else</span><span class="p">:</span>
         <span class="n">other</span> <span class="o">=</span> <span class="n">empty_intervals</span><span class="p">()</span>
         <span class="n">target</span> <span class="o">=</span> <span class="n">states_df</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
 
-    <span class="n">target</span><span class="o">.</span><span class="n">sort_values</span><span class="p">([</span><span class="s2">&quot;individual&quot;</span><span class="p">,</span> <span class="s2">&quot;onset_s&quot;</span><span class="p">],</span> <span class="n">inplace</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">target</span><span class="o">.</span><span class="n">sort_values</span><span class="p">([</span><span class="s2">"individual"</span><span class="p">,</span> <span class="s2">"onset_s"</span><span class="p">],</span> <span class="n">inplace</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
     <span class="n">target</span><span class="o">.</span><span class="n">reset_index</span><span class="p">(</span><span class="n">drop</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">inplace</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 
     <span class="n">merged</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
@@ -1063,11 +1063,11 @@
         <span class="k">while</span> <span class="n">j</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">target</span><span class="p">):</span>
             <span class="n">nxt</span> <span class="o">=</span> <span class="n">target</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="n">j</span><span class="p">]</span>
             <span class="k">if</span> <span class="p">(</span>
-                <span class="n">nxt</span><span class="p">[</span><span class="s2">&quot;individual&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="n">current</span><span class="p">[</span><span class="s2">&quot;individual&quot;</span><span class="p">]</span>
-                <span class="ow">and</span> <span class="n">nxt</span><span class="p">[</span><span class="s2">&quot;labels&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="n">current</span><span class="p">[</span><span class="s2">&quot;labels&quot;</span><span class="p">]</span>
-                <span class="ow">and</span> <span class="p">(</span><span class="n">nxt</span><span class="p">[</span><span class="s2">&quot;onset_s&quot;</span><span class="p">]</span> <span class="o">-</span> <span class="n">current</span><span class="p">[</span><span class="s2">&quot;offset_s&quot;</span><span class="p">])</span> <span class="o">&lt;</span> <span class="n">max_gap_s</span>
+                <span class="n">nxt</span><span class="p">[</span><span class="s2">"individual"</span><span class="p">]</span> <span class="o">==</span> <span class="n">current</span><span class="p">[</span><span class="s2">"individual"</span><span class="p">]</span>
+                <span class="ow">and</span> <span class="n">nxt</span><span class="p">[</span><span class="s2">"labels"</span><span class="p">]</span> <span class="o">==</span> <span class="n">current</span><span class="p">[</span><span class="s2">"labels"</span><span class="p">]</span>
+                <span class="ow">and</span> <span class="p">(</span><span class="n">nxt</span><span class="p">[</span><span class="s2">"onset_s"</span><span class="p">]</span> <span class="o">-</span> <span class="n">current</span><span class="p">[</span><span class="s2">"offset_s"</span><span class="p">])</span> <span class="o">&lt;</span> <span class="n">max_gap_s</span>
             <span class="p">):</span>
-                <span class="n">current</span><span class="p">[</span><span class="s2">&quot;offset_s&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">nxt</span><span class="p">[</span><span class="s2">&quot;offset_s&quot;</span><span class="p">]</span>
+                <span class="n">current</span><span class="p">[</span><span class="s2">"offset_s"</span><span class="p">]</span> <span class="o">=</span> <span class="n">nxt</span><span class="p">[</span><span class="s2">"offset_s"</span><span class="p">]</span>
                 <span class="n">j</span> <span class="o">+=</span> <span class="mi">1</span>
             <span class="k">else</span><span class="p">:</span>
                 <span class="k">break</span>
@@ -1087,7 +1087,7 @@
     <span class="n">max_expansion_s</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
     <span class="n">max_shrink_s</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Snap interval onset/offset to nearest changepoint times.</span>
+<span class="w">    </span><span class="sd">"""Snap interval onset/offset to nearest changepoint times.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
@@ -1104,7 +1104,7 @@
 <span class="sd">    -------</span>
 <span class="sd">    pd.DataFrame</span>
 <span class="sd">        Snapped intervals with overlaps resolved.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="k">if</span> <span class="n">df</span><span class="o">.</span><span class="n">empty</span> <span class="ow">or</span> <span class="nb">len</span><span class="p">(</span><span class="n">cp_times</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">df</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
 
@@ -1113,8 +1113,8 @@
     <span class="n">rows</span> <span class="o">=</span> <span class="p">[]</span>
 
     <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">states_df</span><span class="o">.</span><span class="n">iterrows</span><span class="p">():</span>
-        <span class="n">onset</span> <span class="o">=</span> <span class="n">row</span><span class="p">[</span><span class="s2">&quot;onset_s&quot;</span><span class="p">]</span>
-        <span class="n">offset</span> <span class="o">=</span> <span class="n">row</span><span class="p">[</span><span class="s2">&quot;offset_s&quot;</span><span class="p">]</span>
+        <span class="n">onset</span> <span class="o">=</span> <span class="n">row</span><span class="p">[</span><span class="s2">"onset_s"</span><span class="p">]</span>
+        <span class="n">offset</span> <span class="o">=</span> <span class="n">row</span><span class="p">[</span><span class="s2">"offset_s"</span><span class="p">]</span>
 
         <span class="n">snap_onset</span> <span class="o">=</span> <span class="n">_snap_onset</span><span class="p">(</span><span class="n">onset</span><span class="p">,</span> <span class="n">cp_times</span><span class="p">,</span> <span class="n">max_expansion_s</span><span class="p">,</span> <span class="n">max_shrink_s</span><span class="p">)</span>
         <span class="n">snap_offset</span> <span class="o">=</span> <span class="n">_snap_offset</span><span class="p">(</span><span class="n">offset</span><span class="p">,</span> <span class="n">cp_times</span><span class="p">,</span> <span class="n">max_expansion_s</span><span class="p">,</span> <span class="n">max_shrink_s</span><span class="p">)</span>
@@ -1125,15 +1125,15 @@
 
         <span class="n">rows</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
             <span class="p">{</span>
-                <span class="s2">&quot;onset_s&quot;</span><span class="p">:</span> <span class="n">snap_onset</span><span class="p">,</span>
-                <span class="s2">&quot;offset_s&quot;</span><span class="p">:</span> <span class="n">snap_offset</span><span class="p">,</span>
-                <span class="s2">&quot;labels&quot;</span><span class="p">:</span> <span class="n">row</span><span class="p">[</span><span class="s2">&quot;labels&quot;</span><span class="p">],</span>
-                <span class="s2">&quot;individual&quot;</span><span class="p">:</span> <span class="n">row</span><span class="p">[</span><span class="s2">&quot;individual&quot;</span><span class="p">],</span>
+                <span class="s2">"onset_s"</span><span class="p">:</span> <span class="n">snap_onset</span><span class="p">,</span>
+                <span class="s2">"offset_s"</span><span class="p">:</span> <span class="n">snap_offset</span><span class="p">,</span>
+                <span class="s2">"labels"</span><span class="p">:</span> <span class="n">row</span><span class="p">[</span><span class="s2">"labels"</span><span class="p">],</span>
+                <span class="s2">"individual"</span><span class="p">:</span> <span class="n">row</span><span class="p">[</span><span class="s2">"individual"</span><span class="p">],</span>
             <span class="p">}</span>
         <span class="p">)</span>
 
     <span class="n">transformed</span> <span class="o">=</span> <span class="n">_rows_to_df</span><span class="p">(</span><span class="n">rows</span><span class="p">)</span>
-    <span class="n">transformed</span><span class="o">.</span><span class="n">sort_values</span><span class="p">([</span><span class="s2">&quot;individual&quot;</span><span class="p">,</span> <span class="s2">&quot;onset_s&quot;</span><span class="p">],</span> <span class="n">inplace</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">transformed</span><span class="o">.</span><span class="n">sort_values</span><span class="p">([</span><span class="s2">"individual"</span><span class="p">,</span> <span class="s2">"onset_s"</span><span class="p">],</span> <span class="n">inplace</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
     <span class="n">transformed</span><span class="o">.</span><span class="n">reset_index</span><span class="p">(</span><span class="n">drop</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">inplace</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
     <span class="n">transformed</span> <span class="o">=</span> <span class="n">_resolve_overlaps</span><span class="p">(</span><span class="n">transformed</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">_recombine</span><span class="p">(</span><span class="n">transformed</span><span class="p">,</span> <span class="n">points_df</span><span class="p">)</span></div>
@@ -1170,16 +1170,16 @@
         <span class="k">return</span> <span class="n">df</span>
 
     <span class="n">groups</span> <span class="o">=</span> <span class="p">[]</span>
-    <span class="k">for</span> <span class="n">ind</span><span class="p">,</span> <span class="n">group</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="s2">&quot;individual&quot;</span><span class="p">,</span> <span class="n">sort</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
-        <span class="n">group</span> <span class="o">=</span> <span class="n">group</span><span class="o">.</span><span class="n">sort_values</span><span class="p">(</span><span class="s2">&quot;onset_s&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">reset_index</span><span class="p">(</span><span class="n">drop</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">ind</span><span class="p">,</span> <span class="n">group</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="s2">"individual"</span><span class="p">,</span> <span class="n">sort</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="n">group</span> <span class="o">=</span> <span class="n">group</span><span class="o">.</span><span class="n">sort_values</span><span class="p">(</span><span class="s2">"onset_s"</span><span class="p">)</span><span class="o">.</span><span class="n">reset_index</span><span class="p">(</span><span class="n">drop</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
         <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">group</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">):</span>
-            <span class="k">if</span> <span class="n">group</span><span class="o">.</span><span class="n">at</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="s2">&quot;offset_s&quot;</span><span class="p">]</span> <span class="o">&gt;</span> <span class="n">group</span><span class="o">.</span><span class="n">at</span><span class="p">[</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">&quot;onset_s&quot;</span><span class="p">]</span> <span class="o">-</span> <span class="n">eps</span><span class="p">:</span>
-                <span class="k">if</span> <span class="n">group</span><span class="o">.</span><span class="n">at</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="s2">&quot;labels&quot;</span><span class="p">]</span> <span class="o">!=</span> <span class="n">group</span><span class="o">.</span><span class="n">at</span><span class="p">[</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">&quot;labels&quot;</span><span class="p">]:</span>
-                    <span class="n">group</span><span class="o">.</span><span class="n">at</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="s2">&quot;offset_s&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">group</span><span class="o">.</span><span class="n">at</span><span class="p">[</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">&quot;onset_s&quot;</span><span class="p">]</span> <span class="o">-</span> <span class="n">eps</span>
+            <span class="k">if</span> <span class="n">group</span><span class="o">.</span><span class="n">at</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="s2">"offset_s"</span><span class="p">]</span> <span class="o">&gt;</span> <span class="n">group</span><span class="o">.</span><span class="n">at</span><span class="p">[</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">"onset_s"</span><span class="p">]</span> <span class="o">-</span> <span class="n">eps</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">group</span><span class="o">.</span><span class="n">at</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="s2">"labels"</span><span class="p">]</span> <span class="o">!=</span> <span class="n">group</span><span class="o">.</span><span class="n">at</span><span class="p">[</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">"labels"</span><span class="p">]:</span>
+                    <span class="n">group</span><span class="o">.</span><span class="n">at</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="s2">"offset_s"</span><span class="p">]</span> <span class="o">=</span> <span class="n">group</span><span class="o">.</span><span class="n">at</span><span class="p">[</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">"onset_s"</span><span class="p">]</span> <span class="o">-</span> <span class="n">eps</span>
         <span class="n">groups</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">group</span><span class="p">)</span>
 
     <span class="n">result</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">concat</span><span class="p">(</span><span class="n">groups</span><span class="p">,</span> <span class="n">ignore_index</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-    <span class="n">result</span><span class="o">.</span><span class="n">sort_values</span><span class="p">(</span><span class="s2">&quot;onset_s&quot;</span><span class="p">,</span> <span class="n">inplace</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">result</span><span class="o">.</span><span class="n">sort_values</span><span class="p">(</span><span class="s2">"onset_s"</span><span class="p">,</span> <span class="n">inplace</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
     <span class="n">result</span><span class="o">.</span><span class="n">reset_index</span><span class="p">(</span><span class="n">drop</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">inplace</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">result</span>
 
@@ -1188,10 +1188,10 @@
     <span class="k">if</span> <span class="ow">not</span> <span class="n">rows</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">empty_intervals</span><span class="p">()</span>
     <span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">rows</span><span class="p">)</span>
-    <span class="k">if</span> <span class="s2">&quot;event_type&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
-        <span class="n">df</span><span class="p">[</span><span class="s2">&quot;event_type&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">EVENT_TYPE_STATE</span>
+    <span class="k">if</span> <span class="s2">"event_type"</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
+        <span class="n">df</span><span class="p">[</span><span class="s2">"event_type"</span><span class="p">]</span> <span class="o">=</span> <span class="n">EVENT_TYPE_STATE</span>
     <span class="k">else</span><span class="p">:</span>
-        <span class="n">df</span><span class="p">[</span><span class="s2">&quot;event_type&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">df</span><span class="p">[</span><span class="s2">&quot;event_type&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">fillna</span><span class="p">(</span><span class="n">EVENT_TYPE_STATE</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">object</span><span class="p">)</span>
+        <span class="n">df</span><span class="p">[</span><span class="s2">"event_type"</span><span class="p">]</span> <span class="o">=</span> <span class="n">df</span><span class="p">[</span><span class="s2">"event_type"</span><span class="p">]</span><span class="o">.</span><span class="n">fillna</span><span class="p">(</span><span class="n">EVENT_TYPE_STATE</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">object</span><span class="p">)</span>
     <span class="n">df</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">reindex</span><span class="p">(</span><span class="n">columns</span><span class="o">=</span><span class="n">INTERVAL_COLUMNS</span><span class="p">)</span>
     <span class="k">for</span> <span class="n">col</span><span class="p">,</span> <span class="n">dtype</span> <span class="ow">in</span> <span class="n">INTERVAL_DTYPES</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
         <span class="n">df</span><span class="p">[</span><span class="n">col</span><span class="p">]</span> <span class="o">=</span> <span class="n">df</span><span class="p">[</span><span class="n">col</span><span class="p">]</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">dtype</span><span class="p">)</span>

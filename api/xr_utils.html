@@ -472,14 +472,14 @@ for building plot titles.</p></li>
 <div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">xarray</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">xr</span><span class="o">,</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">da</span> <span class="o">=</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">(</span>
 <span class="gp">... </span>    <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="mi">100</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span>
-<span class="gp">... </span>    <span class="n">dims</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;time&quot;</span><span class="p">,</span> <span class="s2">&quot;space&quot;</span><span class="p">],</span>
-<span class="gp">... </span>    <span class="n">coords</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;time&quot;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">100</span><span class="p">),</span> <span class="s2">&quot;space&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;x&quot;</span><span class="p">,</span> <span class="s2">&quot;y&quot;</span><span class="p">,</span> <span class="s2">&quot;z&quot;</span><span class="p">]},</span>
+<span class="gp">... </span>    <span class="n">dims</span><span class="o">=</span><span class="p">[</span><span class="s2">"time"</span><span class="p">,</span> <span class="s2">"space"</span><span class="p">],</span>
+<span class="gp">... </span>    <span class="n">coords</span><span class="o">=</span><span class="p">{</span><span class="s2">"time"</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">100</span><span class="p">),</span> <span class="s2">"space"</span><span class="p">:</span> <span class="p">[</span><span class="s2">"x"</span><span class="p">,</span> <span class="s2">"y"</span><span class="p">,</span> <span class="s2">"z"</span><span class="p">]},</span>
 <span class="gp">... </span><span class="p">)</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">data</span><span class="p">,</span> <span class="n">used</span> <span class="o">=</span> <span class="n">eto</span><span class="o">.</span><span class="n">sel_valid</span><span class="p">(</span><span class="n">da</span><span class="p">,</span> <span class="p">{</span><span class="s2">&quot;space&quot;</span><span class="p">:</span> <span class="s2">&quot;x&quot;</span><span class="p">,</span> <span class="s2">&quot;individuals&quot;</span><span class="p">:</span> <span class="s2">&quot;mouse1&quot;</span><span class="p">})</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">data</span><span class="p">,</span> <span class="n">used</span> <span class="o">=</span> <span class="n">eto</span><span class="o">.</span><span class="n">sel_valid</span><span class="p">(</span><span class="n">da</span><span class="p">,</span> <span class="p">{</span><span class="s2">"space"</span><span class="p">:</span> <span class="s2">"x"</span><span class="p">,</span> <span class="s2">"individuals"</span><span class="p">:</span> <span class="s2">"mouse1"</span><span class="p">})</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">data</span><span class="o">.</span><span class="n">shape</span>
 <span class="go">(100,)</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">used</span>
-<span class="go">{&#39;space&#39;: &#39;x&#39;}</span>
+<span class="go">{'space': 'x'}</span>
 </pre></div>
 </div>
 </dd></dl>
@@ -512,18 +512,18 @@ contains <code class="docutils literal notranslate"><span class="pre">&quot;time
 </dl>
 <p class="rubric">Examples</p>
 <div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">ethograph</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">eto</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">dt</span> <span class="o">=</span> <span class="n">eto</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="s2">&quot;experiment.nc&quot;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">dt</span> <span class="o">=</span> <span class="n">eto</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="s2">"experiment.nc"</span><span class="p">)</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">ds</span> <span class="o">=</span> <span class="n">dt</span><span class="o">.</span><span class="n">itrial</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
 </pre></div>
 </div>
 <p>Feature with the default <code class="docutils literal notranslate"><span class="pre">time</span></code> dimension:</p>
-<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">eto</span><span class="o">.</span><span class="n">get_time_coord</span><span class="p">(</span><span class="n">ds</span><span class="p">[</span><span class="s2">&quot;speed&quot;</span><span class="p">])</span>
-<span class="go">&lt;xarray.DataArray &#39;time&#39; (time: 9000)&gt; ...</span>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">eto</span><span class="o">.</span><span class="n">get_time_coord</span><span class="p">(</span><span class="n">ds</span><span class="p">[</span><span class="s2">"speed"</span><span class="p">])</span>
+<span class="go">&lt;xarray.DataArray 'time' (time: 9000)&gt; ...</span>
 </pre></div>
 </div>
 <p>Audio stored on a higher-rate <code class="docutils literal notranslate"><span class="pre">time_aux</span></code> axis:</p>
-<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">eto</span><span class="o">.</span><span class="n">get_time_coord</span><span class="p">(</span><span class="n">ds</span><span class="p">[</span><span class="s2">&quot;audio_waveform&quot;</span><span class="p">])</span>
-<span class="go">&lt;xarray.DataArray &#39;time_aux&#39; (time_aux: 441000)&gt; ...</span>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">eto</span><span class="o">.</span><span class="n">get_time_coord</span><span class="p">(</span><span class="n">ds</span><span class="p">[</span><span class="s2">"audio_waveform"</span><span class="p">])</span>
+<span class="go">&lt;xarray.DataArray 'time_aux' (time_aux: 441000)&gt; ...</span>
 </pre></div>
 </div>
 <p>Used internally by <code class="xref py py-func docutils literal notranslate"><span class="pre">add_changepoints_to_ds</span></code> to discover which time

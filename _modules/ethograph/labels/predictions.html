@@ -405,7 +405,7 @@
                 <article class="bd-article">
                   
   <h1>Source code for ethograph.labels.predictions</h1><div class="highlight"><pre>
-<span></span><span class="sd">&quot;&quot;&quot;Load model predictions from per-trial files and convert to label intervals.</span>
+<span></span><span class="sd">"""Load model predictions from per-trial files and convert to label intervals.</span>
 
 <span class="sd">Predictions are stored as per-trial files in a folder:</span>
 <span class="sd">    predictions_dlc2action/</span>
@@ -414,7 +414,7 @@
 
 <span class="sd">If shape (T, n_classes): softmax probabilities → labels via argmax, confidence via 1-entropy.</span>
 <span class="sd">If shape (T,): dense labels directly, no confidence available.</span>
-<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">"""</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
 
@@ -435,31 +435,31 @@
 <div class="viewcode-block" id="load_prediction_file">
 <a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.predictions.load_prediction_file">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">load_prediction_file</span><span class="p">(</span><span class="n">path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Load a prediction file (.npy or .pickle). Returns a numpy array.</span>
+<span class="w">    </span><span class="sd">"""Load a prediction file (.npy or .pickle). Returns a numpy array.</span>
 
 <span class="sd">    For .npy files with shape (T,) (confidence or dense labels), uses</span>
-<span class="sd">    memory-mapping (mmap_mode=&#39;r&#39;) so no data is copied into RAM until accessed.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    memory-mapping (mmap_mode='r') so no data is copied into RAM until accessed.</span>
+<span class="sd">    """</span>
     <span class="n">path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
-    <span class="k">if</span> <span class="n">path</span><span class="o">.</span><span class="n">suffix</span> <span class="o">==</span> <span class="s2">&quot;.npy&quot;</span><span class="p">:</span>
-        <span class="n">arr</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="n">mmap_mode</span><span class="o">=</span><span class="s2">&quot;r&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">path</span><span class="o">.</span><span class="n">suffix</span> <span class="o">==</span> <span class="s2">".npy"</span><span class="p">:</span>
+        <span class="n">arr</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="n">mmap_mode</span><span class="o">=</span><span class="s2">"r"</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">arr</span>
-    <span class="k">elif</span> <span class="n">path</span><span class="o">.</span><span class="n">suffix</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;.pickle&quot;</span><span class="p">,</span> <span class="s2">&quot;.pkl&quot;</span><span class="p">):</span>
-        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="s2">&quot;rb&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+    <span class="k">elif</span> <span class="n">path</span><span class="o">.</span><span class="n">suffix</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">".pickle"</span><span class="p">,</span> <span class="s2">".pkl"</span><span class="p">):</span>
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="s2">"rb"</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
             <span class="n">data</span> <span class="o">=</span> <span class="n">pickle</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
         <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">):</span>
             <span class="k">return</span> <span class="n">data</span>
         <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
-            <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;predictions&quot;</span><span class="p">,</span> <span class="s2">&quot;softmax&quot;</span><span class="p">,</span> <span class="s2">&quot;probs&quot;</span><span class="p">,</span> <span class="s2">&quot;probabilities&quot;</span><span class="p">):</span>
+            <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">"predictions"</span><span class="p">,</span> <span class="s2">"softmax"</span><span class="p">,</span> <span class="s2">"probs"</span><span class="p">,</span> <span class="s2">"probabilities"</span><span class="p">):</span>
                 <span class="k">if</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">data</span><span class="p">:</span>
                     <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">data</span><span class="p">[</span><span class="n">key</span><span class="p">])</span>
             <span class="n">first_array</span> <span class="o">=</span> <span class="nb">next</span><span class="p">((</span><span class="n">v</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">data</span><span class="o">.</span><span class="n">values</span><span class="p">()</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">v</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)),</span> <span class="kc">None</span><span class="p">)</span>
             <span class="k">if</span> <span class="n">first_array</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
                 <span class="k">return</span> <span class="n">first_array</span>
-            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;No numpy array found in pickle keys: </span><span class="si">{</span><span class="nb">list</span><span class="p">(</span><span class="n">data</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Unexpected pickle type: </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">data</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"No numpy array found in pickle keys: </span><span class="si">{</span><span class="nb">list</span><span class="p">(</span><span class="n">data</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Unexpected pickle type: </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">data</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
     <span class="k">else</span><span class="p">:</span>
-        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Unsupported prediction file format: </span><span class="si">{</span><span class="n">path</span><span class="o">.</span><span class="n">suffix</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span></div>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Unsupported prediction file format: </span><span class="si">{</span><span class="n">path</span><span class="o">.</span><span class="n">suffix</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span></div>
 
 
 
@@ -468,7 +468,7 @@
 <span class="k">def</span><span class="w"> </span><span class="nf">prediction_to_labels_and_confidence</span><span class="p">(</span>
     <span class="n">pred</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span> <span class="o">|</span> <span class="kc">None</span><span class="p">]:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Convert prediction array to dense labels and optional confidence.</span>
+<span class="w">    </span><span class="sd">"""Convert prediction array to dense labels and optional confidence.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
@@ -482,7 +482,7 @@
 <span class="sd">    confidence : np.ndarray or None</span>
 <span class="sd">        Shape (T,) confidence scores. For softmax input: 1 - normalized_entropy.</span>
 <span class="sd">        None if input is already dense labels.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="n">pred</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">pred</span><span class="p">)</span>
 
     <span class="k">if</span> <span class="n">pred</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
@@ -503,7 +503,7 @@
 <div class="viewcode-block" id="PredictionsStore">
 <a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.predictions.PredictionsStore">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">PredictionsStore</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Lazy per-trial loader for a predictions folder.</span>
+<span class="w">    </span><span class="sd">"""Lazy per-trial loader for a predictions folder.</span>
 
 <span class="sd">    Scans the folder at construction time (fast — filesystem only, no file reads).</span>
 <span class="sd">    Individual trial data is loaded on demand via :meth:`get_confidence`.</span>
@@ -520,20 +520,20 @@
 <span class="sd">    -------</span>
 <span class="sd">    ::</span>
 
-<span class="sd">        store = PredictionsStore(&quot;predictions_cetnet_20260330/uncorr&quot;)</span>
+<span class="sd">        store = PredictionsStore("predictions_cetnet_20260330/uncorr")</span>
 <span class="sd">        confidence = store.get_confidence(trial=5, dt=dt)</span>
-<span class="sd">        labels_df, levels = store.load_all(dt, individual=&quot;Poppy&quot;, threshold=0.75)</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">        labels_df, levels = store.load_all(dt, individual="Poppy", threshold=0.75)</span>
+<span class="sd">    """</span>
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">folder</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">):</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">folder</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">folder</span><span class="p">)</span>
         <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">folder</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
-            <span class="k">raise</span> <span class="ne">FileNotFoundError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Predictions folder not found: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">folder</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">_files</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">Path</span><span class="p">]</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">p</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">folder</span><span class="o">.</span><span class="n">iterdir</span><span class="p">()</span> <span class="k">if</span> <span class="n">p</span><span class="o">.</span><span class="n">suffix</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;.npy&quot;</span><span class="p">,</span> <span class="s2">&quot;.pickle&quot;</span><span class="p">,</span> <span class="s2">&quot;.pkl&quot;</span><span class="p">))</span>
+            <span class="k">raise</span> <span class="ne">FileNotFoundError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Predictions folder not found: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">folder</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_files</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">Path</span><span class="p">]</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">p</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">folder</span><span class="o">.</span><span class="n">iterdir</span><span class="p">()</span> <span class="k">if</span> <span class="n">p</span><span class="o">.</span><span class="n">suffix</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">".npy"</span><span class="p">,</span> <span class="s2">".pickle"</span><span class="p">,</span> <span class="s2">".pkl"</span><span class="p">))</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_index</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">=</span> <span class="p">{}</span>  <span class="c1"># {trial: Path} — populated lazily on first access</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">_resolve</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">trial_list</span><span class="p">:</span> <span class="nb">list</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Build the trial→file index if not already done.&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""Build the trial→file index if not already done."""</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_index</span><span class="p">:</span>
             <span class="k">return</span>
         <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_files</span><span class="p">:</span>
@@ -544,7 +544,7 @@
 <div class="viewcode-block" id="PredictionsStore.get_file">
 <a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.predictions.PredictionsStore.get_file">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">get_file</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">trial</span><span class="p">,</span> <span class="n">trial_list</span><span class="p">:</span> <span class="nb">list</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the prediction file path for a trial, or None.&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""Return the prediction file path for a trial, or None."""</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_resolve</span><span class="p">(</span><span class="n">trial_list</span><span class="p">)</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_index</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">trial</span><span class="p">)</span></div>
 
@@ -552,12 +552,12 @@
 <div class="viewcode-block" id="PredictionsStore.get_confidence">
 <a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.predictions.PredictionsStore.get_confidence">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">get_confidence</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">trial</span><span class="p">,</span> <span class="n">dt</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Load and return the confidence array for one trial.</span>
+<span class="w">        </span><span class="sd">"""Load and return the confidence array for one trial.</span>
 
 <span class="sd">        For ``.npy`` probability files the array is memory-mapped; for ``.pkl``</span>
 <span class="sd">        files the full file is read (typically ~150 KB — a few milliseconds).</span>
 <span class="sd">        The returned array is not cached — call again to re-load if needed.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="n">path</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_file</span><span class="p">(</span><span class="n">trial</span><span class="p">,</span> <span class="n">dt</span><span class="o">.</span><span class="n">trials</span><span class="p">)</span>
         <span class="k">if</span> <span class="n">path</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
             <span class="k">return</span> <span class="kc">None</span>
@@ -575,31 +575,31 @@
         <span class="n">confidence_threshold</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.75</span><span class="p">,</span>
         <span class="n">segment_confidence_threshold</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.6</span><span class="p">,</span>
     <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">int</span> <span class="o">|</span> <span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Load all trials — convert to intervals and compute confidence levels.</span>
+<span class="w">        </span><span class="sd">"""Load all trials — convert to intervals and compute confidence levels.</span>
 
 <span class="sd">        Confidence arrays are computed in one pass then discarded; only the</span>
 <span class="sd">        per-trial high/low classification is kept.  The same two-condition</span>
-<span class="sd">        criterion used in the confidence PDF is applied: a trial is &quot;low&quot; if</span>
+<span class="sd">        criterion used in the confidence PDF is applied: a trial is "low" if</span>
 <span class="sd">        its overall mean confidence &lt; *confidence_threshold* OR any labeled</span>
-<span class="sd">        segment&#39;s mean confidence &lt; *segment_confidence_threshold*.</span>
+<span class="sd">        segment's mean confidence &lt; *segment_confidence_threshold*.</span>
 
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
 <span class="sd">        dt : TrialTree</span>
 <span class="sd">        individual : str</span>
 <span class="sd">        confidence_threshold : float</span>
-<span class="sd">            Frame-level threshold; overall trial mean below this → &quot;low&quot;.</span>
+<span class="sd">            Frame-level threshold; overall trial mean below this → "low".</span>
 <span class="sd">        segment_confidence_threshold : float</span>
-<span class="sd">            Segment-level threshold; any segment mean below this → &quot;low&quot;.</span>
+<span class="sd">            Segment-level threshold; any segment mean below this → "low".</span>
 
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
 <span class="sd">        all_labels_df : pd.DataFrame</span>
 <span class="sd">        confidence_levels : dict</span>
-<span class="sd">            ``{trial: &quot;low&quot; | &quot;high&quot;}``</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">            ``{trial: "low" | "high"}``</span>
+<span class="sd">        """</span>
         <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_files</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="ne">FileNotFoundError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;No prediction files found in </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">folder</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="ne">FileNotFoundError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"No prediction files found in </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">folder</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 
         <span class="n">rows</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
         <span class="n">confidence_levels</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">=</span> <span class="p">{}</span>
@@ -607,43 +607,43 @@
         <span class="k">for</span> <span class="n">pred_file</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_files</span><span class="p">:</span>
             <span class="n">trial</span> <span class="o">=</span> <span class="n">_extract_trial_from_filename</span><span class="p">(</span><span class="n">pred_file</span><span class="p">,</span> <span class="n">dt</span><span class="o">.</span><span class="n">trials</span><span class="p">)</span>
             <span class="k">if</span> <span class="n">trial</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-                <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&quot;Could not match </span><span class="si">%s</span><span class="s2"> to a trial, skipping&quot;</span><span class="p">,</span> <span class="n">pred_file</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
+                <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">"Could not match </span><span class="si">%s</span><span class="s2"> to a trial, skipping"</span><span class="p">,</span> <span class="n">pred_file</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
                 <span class="k">continue</span>
 
             <span class="n">pred</span> <span class="o">=</span> <span class="n">load_prediction_file</span><span class="p">(</span><span class="n">pred_file</span><span class="p">)</span>
             <span class="n">labels</span><span class="p">,</span> <span class="n">confidence</span> <span class="o">=</span> <span class="n">prediction_to_labels_and_confidence</span><span class="p">(</span><span class="n">pred</span><span class="p">)</span>
 
             <span class="n">ds</span> <span class="o">=</span> <span class="n">dt</span><span class="o">.</span><span class="n">trial</span><span class="p">(</span><span class="n">trial</span><span class="p">)</span>
-            <span class="n">time_coord</span> <span class="o">=</span> <span class="n">ds</span><span class="o">.</span><span class="n">time</span><span class="o">.</span><span class="n">values</span> <span class="k">if</span> <span class="s2">&quot;time&quot;</span> <span class="ow">in</span> <span class="n">ds</span><span class="o">.</span><span class="n">coords</span> <span class="k">else</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">labels</span><span class="p">))</span> <span class="o">/</span> <span class="mf">30.0</span>
+            <span class="n">time_coord</span> <span class="o">=</span> <span class="n">ds</span><span class="o">.</span><span class="n">time</span><span class="o">.</span><span class="n">values</span> <span class="k">if</span> <span class="s2">"time"</span> <span class="ow">in</span> <span class="n">ds</span><span class="o">.</span><span class="n">coords</span> <span class="k">else</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">labels</span><span class="p">))</span> <span class="o">/</span> <span class="mf">30.0</span>
             <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">labels</span><span class="p">)</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="n">time_coord</span><span class="p">),</span> <span class="p">(</span>
-                <span class="sa">f</span><span class="s2">&quot;Trial </span><span class="si">{</span><span class="n">trial</span><span class="si">}</span><span class="s2">: predictions length </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">labels</span><span class="p">)</span><span class="si">}</span><span class="s2"> != time_coord length </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">time_coord</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span>
+                <span class="sa">f</span><span class="s2">"Trial </span><span class="si">{</span><span class="n">trial</span><span class="si">}</span><span class="s2">: predictions length </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">labels</span><span class="p">)</span><span class="si">}</span><span class="s2"> != time_coord length </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">time_coord</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span>
             <span class="p">)</span>
 
             <span class="n">intervals</span> <span class="o">=</span> <span class="n">dense_to_intervals</span><span class="p">(</span><span class="n">labels</span><span class="p">,</span> <span class="p">[</span><span class="n">individual</span><span class="p">],</span> <span class="n">time_coord</span><span class="o">=</span><span class="n">time_coord</span><span class="p">)</span>
             <span class="k">if</span> <span class="ow">not</span> <span class="n">intervals</span><span class="o">.</span><span class="n">empty</span><span class="p">:</span>
-                <span class="n">intervals</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="s2">&quot;trial&quot;</span><span class="p">,</span> <span class="n">trial</span><span class="p">)</span>
-                <span class="n">intervals</span><span class="p">[</span><span class="s2">&quot;prediction_source&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">pred_file</span><span class="p">)</span>
-                <span class="n">intervals</span><span class="p">[</span><span class="s2">&quot;human_verified&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
-                <span class="n">intervals</span><span class="p">[</span><span class="s2">&quot;changepoint_corrected&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
+                <span class="n">intervals</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="s2">"trial"</span><span class="p">,</span> <span class="n">trial</span><span class="p">)</span>
+                <span class="n">intervals</span><span class="p">[</span><span class="s2">"prediction_source"</span><span class="p">]</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">pred_file</span><span class="p">)</span>
+                <span class="n">intervals</span><span class="p">[</span><span class="s2">"human_verified"</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
+                <span class="n">intervals</span><span class="p">[</span><span class="s2">"changepoint_corrected"</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
                 <span class="n">rows</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">intervals</span><span class="p">)</span>
 
             <span class="k">if</span> <span class="n">confidence</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
                 <span class="n">mean_conf</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">confidence</span><span class="p">))</span>
                 <span class="n">has_low_segment</span> <span class="o">=</span> <span class="kc">False</span>
-                <span class="k">if</span> <span class="ow">not</span> <span class="n">intervals</span><span class="o">.</span><span class="n">empty</span> <span class="ow">and</span> <span class="s2">&quot;onset_s&quot;</span> <span class="ow">in</span> <span class="n">intervals</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">intervals</span><span class="o">.</span><span class="n">empty</span> <span class="ow">and</span> <span class="s2">"onset_s"</span> <span class="ow">in</span> <span class="n">intervals</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
                     <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">seg</span> <span class="ow">in</span> <span class="n">intervals</span><span class="o">.</span><span class="n">iterrows</span><span class="p">():</span>
-                        <span class="n">seg_mask</span> <span class="o">=</span> <span class="p">(</span><span class="n">time_coord</span> <span class="o">&gt;=</span> <span class="n">seg</span><span class="p">[</span><span class="s2">&quot;onset_s&quot;</span><span class="p">])</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">time_coord</span> <span class="o">&lt;=</span> <span class="n">seg</span><span class="p">[</span><span class="s2">&quot;offset_s&quot;</span><span class="p">])</span>
+                        <span class="n">seg_mask</span> <span class="o">=</span> <span class="p">(</span><span class="n">time_coord</span> <span class="o">&gt;=</span> <span class="n">seg</span><span class="p">[</span><span class="s2">"onset_s"</span><span class="p">])</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">time_coord</span> <span class="o">&lt;=</span> <span class="n">seg</span><span class="p">[</span><span class="s2">"offset_s"</span><span class="p">])</span>
                         <span class="k">if</span> <span class="n">seg_mask</span><span class="o">.</span><span class="n">any</span><span class="p">()</span> <span class="ow">and</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">confidence</span><span class="p">[</span><span class="n">seg_mask</span><span class="p">]))</span> <span class="o">&lt;</span> <span class="n">segment_confidence_threshold</span><span class="p">:</span>
                             <span class="n">has_low_segment</span> <span class="o">=</span> <span class="kc">True</span>
                             <span class="k">break</span>
                 <span class="n">low</span> <span class="o">=</span> <span class="n">mean_conf</span> <span class="o">&lt;</span> <span class="n">confidence_threshold</span> <span class="ow">or</span> <span class="n">has_low_segment</span>
-                <span class="n">confidence_levels</span><span class="p">[</span><span class="n">trial</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;low&quot;</span> <span class="k">if</span> <span class="n">low</span> <span class="k">else</span> <span class="s2">&quot;high&quot;</span>
+                <span class="n">confidence_levels</span><span class="p">[</span><span class="n">trial</span><span class="p">]</span> <span class="o">=</span> <span class="s2">"low"</span> <span class="k">if</span> <span class="n">low</span> <span class="k">else</span> <span class="s2">"high"</span>
 
         <span class="k">if</span> <span class="n">rows</span><span class="p">:</span>
             <span class="n">all_df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">concat</span><span class="p">(</span><span class="n">rows</span><span class="p">,</span> <span class="n">ignore_index</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
         <span class="k">else</span><span class="p">:</span>
             <span class="n">all_df</span> <span class="o">=</span> <span class="n">empty_intervals</span><span class="p">()</span>
-            <span class="n">all_df</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="s2">&quot;trial&quot;</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="nb">object</span><span class="p">))</span>
+            <span class="n">all_df</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="s2">"trial"</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="nb">object</span><span class="p">))</span>
 
         <span class="k">return</span> <span class="n">all_df</span><span class="p">,</span> <span class="n">confidence_levels</span></div>
 </div>
@@ -651,11 +651,11 @@
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">_extract_trial_from_filename</span><span class="p">(</span><span class="n">path</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span> <span class="n">trial_list</span><span class="p">:</span> <span class="nb">list</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span> <span class="o">|</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Try to extract a trial ID from a prediction filename.&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""Try to extract a trial ID from a prediction filename."""</span>
     <span class="n">stem</span> <span class="o">=</span> <span class="n">path</span><span class="o">.</span><span class="n">stem</span>
 
-    <span class="c1"># Extract the number after &#39;trial&#39; (e.g. cetnet_trial10_uncorr -&gt; 10)</span>
-    <span class="n">match</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;trial(\d+)&quot;</span><span class="p">,</span> <span class="n">stem</span><span class="p">)</span>
+    <span class="c1"># Extract the number after 'trial' (e.g. cetnet_trial10_uncorr -&gt; 10)</span>
+    <span class="n">match</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="sa">r</span><span class="s2">"trial(\d+)"</span><span class="p">,</span> <span class="n">stem</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">match</span><span class="p">:</span>
         <span class="n">num</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">match</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">1</span><span class="p">))</span>
         <span class="k">if</span> <span class="n">num</span> <span class="ow">in</span> <span class="n">trial_list</span><span class="p">:</span>
@@ -665,7 +665,7 @@
             <span class="k">return</span> <span class="n">num</span>
 
     <span class="c1"># Fallback: trailing number in stem</span>
-    <span class="n">match</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;(\d+)$&quot;</span><span class="p">,</span> <span class="n">stem</span><span class="p">)</span>
+    <span class="n">match</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="sa">r</span><span class="s2">"(\d+)$"</span><span class="p">,</span> <span class="n">stem</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">match</span><span class="p">:</span>
         <span class="n">num</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">match</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">1</span><span class="p">))</span>
         <span class="k">if</span> <span class="n">num</span> <span class="ow">in</span> <span class="n">trial_list</span><span class="p">:</span>

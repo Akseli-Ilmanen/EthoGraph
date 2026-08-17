@@ -421,7 +421,7 @@
 <div class="viewcode-block" id="downsample_trialtree">
 <a class="viewcode-back" href="../../../api/ethograph.io.dataset.downsample_trialtree.html#ethograph.io.dataset.downsample_trialtree">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">downsample_trialtree</span><span class="p">(</span><span class="n">dt</span><span class="p">:</span> <span class="n">TrialTree</span><span class="p">,</span> <span class="n">factor</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">TrialTree</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Downsample every trial in a TrialTree using a min-max envelope.</span>
+<span class="w">    </span><span class="sd">"""Downsample every trial in a TrialTree using a min-max envelope.</span>
 
 <span class="sd">    For each contiguous block of *factor* samples, two values are kept:</span>
 <span class="sd">    the block minimum and maximum.  This preserves peaks and troughs</span>
@@ -443,16 +443,16 @@
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
 <span class="sd">    TrialTree</span>
-<span class="sd">        New tree with downsampled data.  Each trial&#39;s ``attrs`` includes</span>
+<span class="sd">        New tree with downsampled data.  Each trial's ``attrs`` includes</span>
 <span class="sd">        ``downsample_factor`` and ``downsample_method``.</span>
 
 <span class="sd">    Examples</span>
 <span class="sd">    --------</span>
 <span class="sd">    &gt;&gt;&gt; import ethograph as eto</span>
-<span class="sd">    &gt;&gt;&gt; dt = eto.open(&quot;high_rate_experiment.nc&quot;)</span>
+<span class="sd">    &gt;&gt;&gt; dt = eto.open("high_rate_experiment.nc")</span>
 <span class="sd">    &gt;&gt;&gt; dt_small = eto.downsample_trialtree(dt, factor=20)</span>
-<span class="sd">    &gt;&gt;&gt; dt_small.save(&quot;experiment_downsampled.nc&quot;)</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    &gt;&gt;&gt; dt_small.save("experiment_downsampled.nc")</span>
+<span class="sd">    """</span>
     <span class="k">return</span> <span class="n">dt</span><span class="o">.</span><span class="n">map_trials</span><span class="p">(</span><span class="k">lambda</span> <span class="n">ds</span><span class="p">:</span> <span class="n">_downsample_dataset</span><span class="p">(</span><span class="n">ds</span><span class="p">,</span> <span class="n">factor</span><span class="p">))</span></div>
 
 
@@ -467,8 +467,8 @@
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">_find_time_dims</span><span class="p">(</span><span class="n">ds</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">Dataset</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">set</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Find all time-like dimension names in a dataset.&quot;&quot;&quot;</span>
-    <span class="k">return</span> <span class="p">{</span><span class="n">dim</span> <span class="k">for</span> <span class="n">dim</span> <span class="ow">in</span> <span class="n">ds</span><span class="o">.</span><span class="n">dims</span> <span class="k">if</span> <span class="s2">&quot;time&quot;</span> <span class="ow">in</span> <span class="n">dim</span><span class="o">.</span><span class="n">lower</span><span class="p">()}</span>
+<span class="w">    </span><span class="sd">"""Find all time-like dimension names in a dataset."""</span>
+    <span class="k">return</span> <span class="p">{</span><span class="n">dim</span> <span class="k">for</span> <span class="n">dim</span> <span class="ow">in</span> <span class="n">ds</span><span class="o">.</span><span class="n">dims</span> <span class="k">if</span> <span class="s2">"time"</span> <span class="ow">in</span> <span class="n">dim</span><span class="o">.</span><span class="n">lower</span><span class="p">()}</span>
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">_downsample_along_time_dim</span><span class="p">(</span>
@@ -476,10 +476,10 @@
     <span class="n">time_dim</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
     <span class="n">factor</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">dict</span><span class="p">,</span> <span class="nb">dict</span><span class="p">]:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Downsample variables along a single time dimension.</span>
+<span class="w">    </span><span class="sd">"""Downsample variables along a single time dimension.</span>
 
 <span class="sd">    Returns (new_coord_entry, downsampled_vars) for the given time_dim.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="n">n_time</span> <span class="o">=</span> <span class="n">ds</span><span class="o">.</span><span class="n">sizes</span><span class="p">[</span><span class="n">time_dim</span><span class="p">]</span>
     <span class="n">n_segments</span> <span class="o">=</span> <span class="n">n_time</span> <span class="o">//</span> <span class="n">factor</span>
     <span class="k">if</span> <span class="n">n_segments</span> <span class="o">&lt;</span> <span class="mi">2</span><span class="p">:</span>
@@ -537,21 +537,21 @@
             <span class="n">all_data_vars</span><span class="p">[</span><span class="n">var_name</span><span class="p">]</span> <span class="o">=</span> <span class="n">var_data</span>
 
     <span class="n">new_attrs</span> <span class="o">=</span> <span class="n">ds</span><span class="o">.</span><span class="n">attrs</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
-    <span class="n">new_attrs</span><span class="p">[</span><span class="s2">&quot;downsample_factor&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">factor</span>
-    <span class="n">new_attrs</span><span class="p">[</span><span class="s2">&quot;downsample_method&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;minmax_envelope&quot;</span>
+    <span class="n">new_attrs</span><span class="p">[</span><span class="s2">"downsample_factor"</span><span class="p">]</span> <span class="o">=</span> <span class="n">factor</span>
+    <span class="n">new_attrs</span><span class="p">[</span><span class="s2">"downsample_method"</span><span class="p">]</span> <span class="o">=</span> <span class="s2">"minmax_envelope"</span>
     <span class="k">return</span> <span class="n">xr</span><span class="o">.</span><span class="n">Dataset</span><span class="p">(</span><span class="n">all_data_vars</span><span class="p">,</span> <span class="n">coords</span><span class="o">=</span><span class="n">new_coords</span><span class="p">,</span> <span class="n">attrs</span><span class="o">=</span><span class="n">new_attrs</span><span class="p">)</span>
 
 
 <div class="viewcode-block" id="add_changepoints_to_ds">
 <a class="viewcode-back" href="../../../api/ethograph.io.dataset.add_changepoints_to_ds.html#ethograph.io.dataset.add_changepoints_to_ds">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">add_changepoints_to_ds</span><span class="p">(</span><span class="n">ds</span><span class="p">,</span> <span class="n">target_feature</span><span class="p">,</span> <span class="n">changepoint_name</span><span class="p">,</span> <span class="n">changepoint_func</span><span class="p">,</span> <span class="o">**</span><span class="n">func_kwargs</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Detect changepoints in a feature and store them in the dataset.</span>
+<span class="w">    </span><span class="sd">"""Detect changepoints in a feature and store them in the dataset.</span>
 
 <span class="sd">    Applies *changepoint_func* independently along every non-time</span>
 <span class="sd">    dimension (e.g. per keypoint, per individual) using</span>
 <span class="sd">    :func:`xarray.apply_ufunc` with ``vectorize=True``.  The result is an</span>
 <span class="sd">    ``int8`` binary array (1 = changepoint, 0 = not) stored as</span>
-<span class="sd">    ``ds[&quot;{target_feature}_{changepoint_name}&quot;]``.</span>
+<span class="sd">    ``ds["{target_feature}_{changepoint_name}"]``.</span>
 
 
 <span class="sd">    Parameters</span>
@@ -559,11 +559,11 @@
 <span class="sd">    ds : xarray.Dataset</span>
 <span class="sd">        Trial dataset containing *target_feature*.</span>
 <span class="sd">    target_feature : str</span>
-<span class="sd">        Name of the variable to run detection on (e.g. ``&quot;speed&quot;``).</span>
+<span class="sd">        Name of the variable to run detection on (e.g. ``"speed"``).</span>
 <span class="sd">    changepoint_name : str</span>
 <span class="sd">        Suffix for the output variable name.  The stored variable will be</span>
-<span class="sd">        called ``&quot;{target_feature}_{changepoint_name}&quot;`` (e.g.</span>
-<span class="sd">        ``&quot;speed_troughs&quot;``).</span>
+<span class="sd">        called ``"{target_feature}_{changepoint_name}"`` (e.g.</span>
+<span class="sd">        ``"speed_troughs"``).</span>
 <span class="sd">    changepoint_func : callable</span>
 <span class="sd">        A function ``f(x, **kwargs) -&gt; array[int8]`` that takes a 1-D</span>
 <span class="sd">        numpy array and returns a same-length binary indicator.</span>
@@ -579,18 +579,18 @@
 <span class="sd">    --------</span>
 <span class="sd">    &gt;&gt;&gt; import ethograph as eto</span>
 <span class="sd">    &gt;&gt;&gt; from ethograph.features.changepoints import find_troughs_binary</span>
-<span class="sd">    &gt;&gt;&gt; dt = eto.open(&quot;experiment.nc&quot;)</span>
+<span class="sd">    &gt;&gt;&gt; dt = eto.open("experiment.nc")</span>
 <span class="sd">    &gt;&gt;&gt; ds = dt.itrial(0)</span>
 <span class="sd">    &gt;&gt;&gt; ds = eto.add_changepoints_to_ds(</span>
 <span class="sd">    ...     ds,</span>
-<span class="sd">    ...     target_feature=&quot;speed&quot;,</span>
-<span class="sd">    ...     changepoint_name=&quot;troughs&quot;,</span>
+<span class="sd">    ...     target_feature="speed",</span>
+<span class="sd">    ...     changepoint_name="troughs",</span>
 <span class="sd">    ...     changepoint_func=find_troughs_binary,</span>
 <span class="sd">    ...     prominence=0.3,</span>
 <span class="sd">    ... )</span>
-<span class="sd">    &gt;&gt;&gt; ds[&quot;speed_troughs&quot;]</span>
-<span class="sd">    &lt;xarray.DataArray &#39;speed_troughs&#39; (time: 9000, keypoint: 7)&gt;</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    &gt;&gt;&gt; ds["speed_troughs"]</span>
+<span class="sd">    &lt;xarray.DataArray 'speed_troughs' (time: 9000, keypoint: 7)&gt;</span>
+<span class="sd">    """</span>
     <span class="n">feature_data</span> <span class="o">=</span> <span class="n">ds</span><span class="p">[</span><span class="n">target_feature</span><span class="p">]</span>
     <span class="n">func</span> <span class="o">=</span> <span class="n">partial</span><span class="p">(</span><span class="n">changepoint_func</span><span class="p">,</span> <span class="o">**</span><span class="n">func_kwargs</span><span class="p">)</span>
 
@@ -601,18 +601,18 @@
         <span class="n">input_core_dims</span><span class="o">=</span><span class="p">[[</span><span class="n">time_dim</span><span class="p">]],</span>
         <span class="n">output_core_dims</span><span class="o">=</span><span class="p">[[</span><span class="n">time_dim</span><span class="p">]],</span>
         <span class="n">vectorize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
-        <span class="n">dask</span><span class="o">=</span><span class="s2">&quot;parallelized&quot;</span><span class="p">,</span>
+        <span class="n">dask</span><span class="o">=</span><span class="s2">"parallelized"</span><span class="p">,</span>
         <span class="n">output_dtypes</span><span class="o">=</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">int8</span><span class="p">],</span>
     <span class="p">)</span>
 
     <span class="n">changepoints</span><span class="o">.</span><span class="n">attrs</span><span class="o">.</span><span class="n">update</span><span class="p">(</span>
         <span class="p">{</span>
-            <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;changepoints&quot;</span><span class="p">,</span>
-            <span class="s2">&quot;target_feature&quot;</span><span class="p">:</span> <span class="n">target_feature</span><span class="p">,</span>
+            <span class="s2">"type"</span><span class="p">:</span> <span class="s2">"changepoints"</span><span class="p">,</span>
+            <span class="s2">"target_feature"</span><span class="p">:</span> <span class="n">target_feature</span><span class="p">,</span>
         <span class="p">}</span>
     <span class="p">)</span>
 
-    <span class="n">ds</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">target_feature</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">changepoint_name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">changepoints</span>
+    <span class="n">ds</span><span class="p">[</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">target_feature</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">changepoint_name</span><span class="si">}</span><span class="s2">"</span><span class="p">]</span> <span class="o">=</span> <span class="n">changepoints</span>
     <span class="k">return</span> <span class="n">ds</span></div>
 
 
@@ -620,7 +620,7 @@
 <div class="viewcode-block" id="add_angle_rgb_to_ds">
 <a class="viewcode-back" href="../../../api/ethograph.io.dataset.add_angle_rgb_to_ds.html#ethograph.io.dataset.add_angle_rgb_to_ds">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">add_angle_rgb_to_ds</span><span class="p">(</span><span class="n">ds</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">Dataset</span><span class="p">,</span> <span class="n">smoothing_params</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">xr</span><span class="o">.</span><span class="n">Dataset</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Compute heading angles and RGB color-coding from 2-D position data.</span>
+<span class="w">    </span><span class="sd">"""Compute heading angles and RGB color-coding from 2-D position data.</span>
 
 <span class="sd">    For each individual/keypoint combination, calculates the heading angle</span>
 <span class="sd">    from consecutive (x, y) positions and maps it to an RGB color via</span>
@@ -636,17 +636,17 @@
 <span class="sd">    ----------</span>
 <span class="sd">    ds : xarray.Dataset</span>
 <span class="sd">        Dataset containing a ``position`` variable with at least</span>
-<span class="sd">        ``space=[&quot;x&quot;, &quot;y&quot;]`` and a time dimension.</span>
+<span class="sd">        ``space=["x", "y"]`` and a time dimension.</span>
 <span class="sd">    smoothing_params : dict</span>
 <span class="sd">        Keyword arguments forwarded to</span>
-<span class="sd">        :func:`scipy.ndimage.gaussian_filter1d` (e.g. ``{&quot;sigma&quot;: 3}``).</span>
+<span class="sd">        :func:`scipy.ndimage.gaussian_filter1d` (e.g. ``{"sigma": 3}``).</span>
 
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
 <span class="sd">    xarray.Dataset</span>
 <span class="sd">        The input dataset with ``angles`` and ``angle_rgb`` added in-place.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="n">xy_pos</span> <span class="o">=</span> <span class="n">ds</span><span class="o">.</span><span class="n">position</span><span class="o">.</span><span class="n">sel</span><span class="p">(</span><span class="n">space</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;x&quot;</span><span class="p">,</span> <span class="s2">&quot;y&quot;</span><span class="p">])</span>
+<span class="sd">    """</span>
+    <span class="n">xy_pos</span> <span class="o">=</span> <span class="n">ds</span><span class="o">.</span><span class="n">position</span><span class="o">.</span><span class="n">sel</span><span class="p">(</span><span class="n">space</span><span class="o">=</span><span class="p">[</span><span class="s2">"x"</span><span class="p">,</span> <span class="s2">"y"</span><span class="p">])</span>
     <span class="n">time_dim</span> <span class="o">=</span> <span class="n">get_time_coord</span><span class="p">(</span><span class="n">xy_pos</span><span class="p">)</span><span class="o">.</span><span class="n">dims</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">process_angles</span><span class="p">(</span><span class="n">xy</span><span class="p">):</span>
@@ -656,13 +656,13 @@
     <span class="n">angles</span> <span class="o">=</span> <span class="n">xr</span><span class="o">.</span><span class="n">apply_ufunc</span><span class="p">(</span>
         <span class="n">process_angles</span><span class="p">,</span>
         <span class="n">xy_pos</span><span class="p">,</span>
-        <span class="n">input_core_dims</span><span class="o">=</span><span class="p">[[</span><span class="n">time_dim</span><span class="p">,</span> <span class="s2">&quot;space&quot;</span><span class="p">]],</span>
+        <span class="n">input_core_dims</span><span class="o">=</span><span class="p">[[</span><span class="n">time_dim</span><span class="p">,</span> <span class="s2">"space"</span><span class="p">]],</span>
         <span class="n">output_core_dims</span><span class="o">=</span><span class="p">[[</span><span class="n">time_dim</span><span class="p">]],</span>
         <span class="n">vectorize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
-        <span class="n">dask</span><span class="o">=</span><span class="s2">&quot;parallelized&quot;</span><span class="p">,</span>
+        <span class="n">dask</span><span class="o">=</span><span class="s2">"parallelized"</span><span class="p">,</span>
         <span class="n">output_dtypes</span><span class="o">=</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">],</span>
     <span class="p">)</span>
-    <span class="n">ds</span><span class="p">[</span><span class="s2">&quot;angles&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">angles</span>
+    <span class="n">ds</span><span class="p">[</span><span class="s2">"angles"</span><span class="p">]</span> <span class="o">=</span> <span class="n">angles</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">process_rgb</span><span class="p">(</span><span class="n">xy</span><span class="p">):</span>
         <span class="n">rgb</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">get_angle_rgb</span><span class="p">(</span><span class="n">xy</span><span class="p">,</span> <span class="n">smooth_func</span><span class="o">=</span><span class="n">gaussian_filter1d</span><span class="p">,</span> <span class="n">smoothing_params</span><span class="o">=</span><span class="n">smoothing_params</span><span class="p">)</span>
@@ -671,15 +671,15 @@
     <span class="n">angle_rgb</span> <span class="o">=</span> <span class="n">xr</span><span class="o">.</span><span class="n">apply_ufunc</span><span class="p">(</span>
         <span class="n">process_rgb</span><span class="p">,</span>
         <span class="n">xy_pos</span><span class="p">,</span>
-        <span class="n">input_core_dims</span><span class="o">=</span><span class="p">[[</span><span class="n">time_dim</span><span class="p">,</span> <span class="s2">&quot;space&quot;</span><span class="p">]],</span>
-        <span class="n">output_core_dims</span><span class="o">=</span><span class="p">[[</span><span class="n">time_dim</span><span class="p">,</span> <span class="s2">&quot;RGB&quot;</span><span class="p">]],</span>
+        <span class="n">input_core_dims</span><span class="o">=</span><span class="p">[[</span><span class="n">time_dim</span><span class="p">,</span> <span class="s2">"space"</span><span class="p">]],</span>
+        <span class="n">output_core_dims</span><span class="o">=</span><span class="p">[[</span><span class="n">time_dim</span><span class="p">,</span> <span class="s2">"RGB"</span><span class="p">]],</span>
         <span class="n">vectorize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
-        <span class="n">dask</span><span class="o">=</span><span class="s2">&quot;parallelized&quot;</span><span class="p">,</span>
+        <span class="n">dask</span><span class="o">=</span><span class="s2">"parallelized"</span><span class="p">,</span>
         <span class="n">output_dtypes</span><span class="o">=</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">],</span>
-        <span class="n">dask_gufunc_kwargs</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;output_sizes&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;RGB&quot;</span><span class="p">:</span> <span class="mi">3</span><span class="p">}},</span>
+        <span class="n">dask_gufunc_kwargs</span><span class="o">=</span><span class="p">{</span><span class="s2">"output_sizes"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"RGB"</span><span class="p">:</span> <span class="mi">3</span><span class="p">}},</span>
     <span class="p">)</span>
 
-    <span class="n">ds</span><span class="p">[</span><span class="s2">&quot;angle_rgb&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">angle_rgb</span>
+    <span class="n">ds</span><span class="p">[</span><span class="s2">"angle_rgb"</span><span class="p">]</span> <span class="o">=</span> <span class="n">angle_rgb</span>
 
     <span class="k">return</span> <span class="n">ds</span></div>
 

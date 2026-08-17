@@ -466,22 +466,22 @@
 <span class="k">except</span> <span class="ne">NameError</span><span class="p">:</span>
     <span class="n">_here</span> <span class="o">=</span> <span class="n">Path</span><span class="p">()</span><span class="o">.</span><span class="n">resolve</span><span class="p">()</span>
 
-<span class="n">data_folder</span> <span class="o">=</span> <span class="n">_here</span><span class="o">.</span><span class="n">parent</span> <span class="o">/</span> <span class="s2">&quot;data&quot;</span> <span class="o">/</span> <span class="s2">&quot;birdpark&quot;</span>
+<span class="n">data_folder</span> <span class="o">=</span> <span class="n">_here</span><span class="o">.</span><span class="n">parent</span> <span class="o">/</span> <span class="s2">"data"</span> <span class="o">/</span> <span class="s2">"birdpark"</span>
 <span class="n">data_folder</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 
-<span class="n">response</span> <span class="o">=</span> <span class="n">requests</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;https://zenodo.org/api/records/13144875&quot;</span><span class="p">)</span>
+<span class="n">response</span> <span class="o">=</span> <span class="n">requests</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"https://zenodo.org/api/records/13144875"</span><span class="p">)</span>
 <span class="n">data</span> <span class="o">=</span> <span class="n">response</span><span class="o">.</span><span class="n">json</span><span class="p">()</span>
 
-<span class="k">for</span> <span class="n">file</span> <span class="ow">in</span> <span class="n">data</span><span class="p">[</span><span class="s2">&quot;files&quot;</span><span class="p">]:</span>
-    <span class="k">if</span> <span class="n">file</span><span class="p">[</span><span class="s2">&quot;checksum&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;md5:32d1ae6049556c803f68b6d354c952ca&quot;</span><span class="p">:</span>
-        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Checksum matches: </span><span class="si">{</span><span class="n">file</span><span class="p">[</span><span class="s1">&#39;key&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-        <span class="n">output_path</span> <span class="o">=</span> <span class="n">data_folder</span> <span class="o">/</span> <span class="n">file</span><span class="p">[</span><span class="s2">&quot;key&quot;</span><span class="p">]</span>
-        <span class="n">r</span> <span class="o">=</span> <span class="n">requests</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">file</span><span class="p">[</span><span class="s2">&quot;links&quot;</span><span class="p">][</span><span class="s2">&quot;self&quot;</span><span class="p">],</span> <span class="n">stream</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">output_path</span><span class="p">,</span> <span class="s2">&quot;wb&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+<span class="k">for</span> <span class="n">file</span> <span class="ow">in</span> <span class="n">data</span><span class="p">[</span><span class="s2">"files"</span><span class="p">]:</span>
+    <span class="k">if</span> <span class="n">file</span><span class="p">[</span><span class="s2">"checksum"</span><span class="p">]</span> <span class="o">==</span> <span class="s2">"md5:32d1ae6049556c803f68b6d354c952ca"</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Checksum matches: </span><span class="si">{</span><span class="n">file</span><span class="p">[</span><span class="s1">'key'</span><span class="p">]</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+        <span class="n">output_path</span> <span class="o">=</span> <span class="n">data_folder</span> <span class="o">/</span> <span class="n">file</span><span class="p">[</span><span class="s2">"key"</span><span class="p">]</span>
+        <span class="n">r</span> <span class="o">=</span> <span class="n">requests</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">file</span><span class="p">[</span><span class="s2">"links"</span><span class="p">][</span><span class="s2">"self"</span><span class="p">],</span> <span class="n">stream</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">output_path</span><span class="p">,</span> <span class="s2">"wb"</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
             <span class="k">for</span> <span class="n">chunk</span> <span class="ow">in</span> <span class="n">r</span><span class="o">.</span><span class="n">iter_content</span><span class="p">(</span><span class="n">chunk_size</span><span class="o">=</span><span class="mi">8192</span><span class="p">):</span>
                 <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">chunk</span><span class="p">)</span>
-        <span class="k">if</span> <span class="n">output_path</span><span class="o">.</span><span class="n">suffix</span> <span class="o">==</span> <span class="s2">&quot;.zip&quot;</span><span class="p">:</span>
-            <span class="k">with</span> <span class="n">zipfile</span><span class="o">.</span><span class="n">ZipFile</span><span class="p">(</span><span class="n">output_path</span><span class="p">,</span> <span class="s2">&quot;r&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">zip_ref</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">output_path</span><span class="o">.</span><span class="n">suffix</span> <span class="o">==</span> <span class="s2">".zip"</span><span class="p">:</span>
+            <span class="k">with</span> <span class="n">zipfile</span><span class="o">.</span><span class="n">ZipFile</span><span class="p">(</span><span class="n">output_path</span><span class="p">,</span> <span class="s2">"r"</span><span class="p">)</span> <span class="k">as</span> <span class="n">zip_ref</span><span class="p">:</span>
                 <span class="n">zip_ref</span><span class="o">.</span><span class="n">extractall</span><span class="p">(</span><span class="n">data_folder</span><span class="p">)</span>
         <span class="k">break</span>
 </pre></div>
@@ -497,15 +497,15 @@
 <span class="n">fps</span> <span class="o">=</span> <span class="mf">47.6837158203125</span>
 <span class="n">audio_sr</span> <span class="o">=</span> <span class="mf">24414.0625</span>  <span class="c1"># audio and accelerometer sampling rate (from dataset metadata)</span>
 
-<span class="n">h5_path</span> <span class="o">=</span> <span class="n">data_folder</span> <span class="o">/</span> <span class="s2">&quot;copExpBP08&quot;</span> <span class="o">/</span> <span class="s2">&quot;BP_2021-05-25_08-12-51_655154_0380000.h5&quot;</span>
-<span class="n">video_path</span> <span class="o">=</span> <span class="n">data_folder</span> <span class="o">/</span> <span class="s2">&quot;copExpBP08&quot;</span> <span class="o">/</span> <span class="s2">&quot;BP_2021-05-25_08-12-51_655154_0380000.mp4&quot;</span>
-<span class="n">audio_path</span> <span class="o">=</span> <span class="n">video_path</span><span class="o">.</span><span class="n">with_suffix</span><span class="p">(</span><span class="s2">&quot;.wav&quot;</span><span class="p">)</span>
-<span class="n">nc_path</span> <span class="o">=</span> <span class="n">video_path</span><span class="o">.</span><span class="n">with_suffix</span><span class="p">(</span><span class="s2">&quot;.nc&quot;</span><span class="p">)</span>
+<span class="n">h5_path</span> <span class="o">=</span> <span class="n">data_folder</span> <span class="o">/</span> <span class="s2">"copExpBP08"</span> <span class="o">/</span> <span class="s2">"BP_2021-05-25_08-12-51_655154_0380000.h5"</span>
+<span class="n">video_path</span> <span class="o">=</span> <span class="n">data_folder</span> <span class="o">/</span> <span class="s2">"copExpBP08"</span> <span class="o">/</span> <span class="s2">"BP_2021-05-25_08-12-51_655154_0380000.mp4"</span>
+<span class="n">audio_path</span> <span class="o">=</span> <span class="n">video_path</span><span class="o">.</span><span class="n">with_suffix</span><span class="p">(</span><span class="s2">".wav"</span><span class="p">)</span>
+<span class="n">nc_path</span> <span class="o">=</span> <span class="n">video_path</span><span class="o">.</span><span class="n">with_suffix</span><span class="p">(</span><span class="s2">".nc"</span><span class="p">)</span>
 
 <span class="c1"># Read H5 file</span>
-<span class="k">with</span> <span class="n">h5py</span><span class="o">.</span><span class="n">File</span><span class="p">(</span><span class="n">h5_path</span><span class="p">,</span> <span class="s2">&quot;r&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f1</span><span class="p">:</span>
-    <span class="n">radioSignals</span> <span class="o">=</span> <span class="n">f1</span><span class="p">[</span><span class="s2">&quot;/radioSignals&quot;</span><span class="p">][()]</span>  <span class="c1"># accelerometer (one row per channel)</span>
-    <span class="n">daqSignals</span> <span class="o">=</span> <span class="n">f1</span><span class="p">[</span><span class="s2">&quot;/daqSignals&quot;</span><span class="p">][()]</span>  <span class="c1"># microphone channels</span>
+<span class="k">with</span> <span class="n">h5py</span><span class="o">.</span><span class="n">File</span><span class="p">(</span><span class="n">h5_path</span><span class="p">,</span> <span class="s2">"r"</span><span class="p">)</span> <span class="k">as</span> <span class="n">f1</span><span class="p">:</span>
+    <span class="n">radioSignals</span> <span class="o">=</span> <span class="n">f1</span><span class="p">[</span><span class="s2">"/radioSignals"</span><span class="p">][()]</span>  <span class="c1"># accelerometer (one row per channel)</span>
+    <span class="n">daqSignals</span> <span class="o">=</span> <span class="n">f1</span><span class="p">[</span><span class="s2">"/daqSignals"</span><span class="p">][()]</span>  <span class="c1"># microphone channels</span>
 
 <span class="c1"># Create .wav file from microphone channels</span>
 <span class="n">write_audio</span><span class="p">(</span><span class="n">audio_path</span><span class="p">,</span> <span class="n">daqSignals</span><span class="o">.</span><span class="n">T</span><span class="p">,</span> <span class="n">audio_sr</span><span class="p">)</span>
@@ -514,16 +514,16 @@
 <span class="c1"># trial=1 matches the ID assigned when loading a plain Dataset as a single-trial TrialTree</span>
 <span class="n">session_table</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span>
     <span class="p">{</span>
-        <span class="s2">&quot;trial&quot;</span><span class="p">:</span> <span class="p">[</span><span class="mi">1</span><span class="p">],</span>
-        <span class="s2">&quot;video_0&quot;</span><span class="p">:</span> <span class="p">[</span><span class="nb">str</span><span class="p">(</span><span class="n">video_path</span><span class="p">)],</span>
-        <span class="s2">&quot;audio_0&quot;</span><span class="p">:</span> <span class="p">[</span><span class="nb">str</span><span class="p">(</span><span class="n">audio_path</span><span class="p">)],</span>
+        <span class="s2">"trial"</span><span class="p">:</span> <span class="p">[</span><span class="mi">1</span><span class="p">],</span>
+        <span class="s2">"video_0"</span><span class="p">:</span> <span class="p">[</span><span class="nb">str</span><span class="p">(</span><span class="n">video_path</span><span class="p">)],</span>
+        <span class="s2">"audio_0"</span><span class="p">:</span> <span class="p">[</span><span class="nb">str</span><span class="p">(</span><span class="n">audio_path</span><span class="p">)],</span>
     <span class="p">}</span>
 <span class="p">)</span>
 
-<span class="n">nwb_path</span> <span class="o">=</span> <span class="n">data_folder</span> <span class="o">/</span> <span class="s2">&quot;copExpBP08&quot;</span> <span class="o">/</span> <span class="s2">&quot;.ethograph&quot;</span> <span class="o">/</span> <span class="s2">&quot;alignment.nwb&quot;</span>
+<span class="n">nwb_path</span> <span class="o">=</span> <span class="n">data_folder</span> <span class="o">/</span> <span class="s2">"copExpBP08"</span> <span class="o">/</span> <span class="s2">".ethograph"</span> <span class="o">/</span> <span class="s2">"alignment.nwb"</span>
 <span class="n">align_media_per_trial</span><span class="p">(</span>
     <span class="n">trial_table</span><span class="o">=</span><span class="n">session_table</span><span class="p">,</span>
-    <span class="n">stream_rates</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;video&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">fps</span><span class="p">),</span> <span class="s2">&quot;audio&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">audio_sr</span><span class="p">)},</span>
+    <span class="n">stream_rates</span><span class="o">=</span><span class="p">{</span><span class="s2">"video"</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">fps</span><span class="p">),</span> <span class="s2">"audio"</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">audio_sr</span><span class="p">)},</span>
     <span class="n">output_path</span><span class="o">=</span><span class="n">nwb_path</span><span class="p">,</span>
 <span class="p">)</span>
 
@@ -532,23 +532,23 @@
 
 <span class="n">ds</span> <span class="o">=</span> <span class="n">xr</span><span class="o">.</span><span class="n">Dataset</span><span class="p">(</span>
     <span class="n">data_vars</span><span class="o">=</span><span class="p">{</span>
-        <span class="s2">&quot;vibration&quot;</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">(</span>
+        <span class="s2">"vibration"</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">(</span>
             <span class="n">radioSignals</span><span class="o">.</span><span class="n">T</span><span class="p">,</span>
-            <span class="n">dims</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;time&quot;</span><span class="p">,</span> <span class="s2">&quot;individuals&quot;</span><span class="p">],</span>
+            <span class="n">dims</span><span class="o">=</span><span class="p">[</span><span class="s2">"time"</span><span class="p">,</span> <span class="s2">"individuals"</span><span class="p">],</span>
         <span class="p">),</span>
     <span class="p">},</span>
     <span class="n">coords</span><span class="o">=</span><span class="p">{</span>
-        <span class="s2">&quot;time&quot;</span><span class="p">:</span> <span class="n">time_coords</span><span class="p">,</span>
-        <span class="s2">&quot;individuals&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;male (red radio)&quot;</span><span class="p">,</span> <span class="s2">&quot;female (yellow radio)&quot;</span><span class="p">],</span>  <span class="c1"># specific to copExpBP08</span>
+        <span class="s2">"time"</span><span class="p">:</span> <span class="n">time_coords</span><span class="p">,</span>
+        <span class="s2">"individuals"</span><span class="p">:</span> <span class="p">[</span><span class="s2">"male (red radio)"</span><span class="p">,</span> <span class="s2">"female (yellow radio)"</span><span class="p">],</span>  <span class="c1"># specific to copExpBP08</span>
     <span class="p">},</span>
     <span class="n">attrs</span><span class="o">=</span><span class="p">{</span>
-        <span class="s2">&quot;fps&quot;</span><span class="p">:</span> <span class="n">fps</span><span class="p">,</span>
-        <span class="s2">&quot;audio_sr&quot;</span><span class="p">:</span> <span class="n">audio_sr</span><span class="p">,</span>
+        <span class="s2">"fps"</span><span class="p">:</span> <span class="n">fps</span><span class="p">,</span>
+        <span class="s2">"audio_sr"</span><span class="p">:</span> <span class="n">audio_sr</span><span class="p">,</span>
     <span class="p">},</span>
 <span class="p">)</span>
 
 <span class="n">ds</span><span class="o">.</span><span class="n">to_netcdf</span><span class="p">(</span><span class="n">nc_path</span><span class="p">)</span>
-<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Saved to </span><span class="si">{</span><span class="n">nc_path</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Saved to </span><span class="si">{</span><span class="n">nc_path</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 </pre></div>
 </div>
 </div>

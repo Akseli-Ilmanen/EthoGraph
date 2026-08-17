@@ -471,9 +471,9 @@
 <span class="k">except</span> <span class="ne">NameError</span><span class="p">:</span>
     <span class="n">_here</span> <span class="o">=</span> <span class="n">Path</span><span class="p">()</span><span class="o">.</span><span class="n">resolve</span><span class="p">()</span>
 
-<span class="n">data_folder</span> <span class="o">=</span> <span class="n">_here</span><span class="o">.</span><span class="n">parent</span> <span class="o">/</span> <span class="s2">&quot;data&quot;</span> <span class="o">/</span> <span class="s2">&quot;philodoptera&quot;</span>
-<span class="n">download_example_dataset</span><span class="p">(</span><span class="s2">&quot;philodoptera&quot;</span><span class="p">,</span> <span class="n">data_folder</span><span class="p">)</span>
-<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">data_folder: </span><span class="si">{</span><span class="n">data_folder</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="n">data_folder</span> <span class="o">=</span> <span class="n">_here</span><span class="o">.</span><span class="n">parent</span> <span class="o">/</span> <span class="s2">"data"</span> <span class="o">/</span> <span class="s2">"philodoptera"</span>
+<span class="n">download_example_dataset</span><span class="p">(</span><span class="s2">"philodoptera"</span><span class="p">,</span> <span class="n">data_folder</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="se">\n</span><span class="s2">data_folder: </span><span class="si">{</span><span class="n">data_folder</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 </pre></div>
 </div>
 </div>
@@ -493,9 +493,9 @@ data_folder: d:\Akseli\Code\ethograph\data\philodoptera
 <h2>Build NWB alignment<a class="headerlink" href="#build-nwb-alignment" title="Link to this heading">#</a></h2>
 <div class="cell docutils container">
 <div class="cell_input docutils container">
-<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">video_path</span> <span class="o">=</span> <span class="n">data_folder</span> <span class="o">/</span> <span class="s2">&quot;philodoptera.mp4&quot;</span>
-<span class="n">audio_path</span> <span class="o">=</span> <span class="n">data_folder</span> <span class="o">/</span> <span class="s2">&quot;philodoptera.wav&quot;</span>
-<span class="n">poses_csv_path</span> <span class="o">=</span> <span class="n">data_folder</span> <span class="o">/</span> <span class="s2">&quot;philodoptera.csv&quot;</span>
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">video_path</span> <span class="o">=</span> <span class="n">data_folder</span> <span class="o">/</span> <span class="s2">"philodoptera.mp4"</span>
+<span class="n">audio_path</span> <span class="o">=</span> <span class="n">data_folder</span> <span class="o">/</span> <span class="s2">"philodoptera.wav"</span>
+<span class="n">poses_csv_path</span> <span class="o">=</span> <span class="n">data_folder</span> <span class="o">/</span> <span class="s2">"philodoptera.csv"</span>
 <span class="n">fps</span> <span class="o">=</span> <span class="mi">240</span>
 
 <span class="c1"># Probe audio sample rate from file</span>
@@ -505,17 +505,17 @@ data_folder: d:\Akseli\Code\ethograph\data\philodoptera
 <span class="c1"># Single-session dataset: one row in the session table</span>
 <span class="n">session_table</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span>
     <span class="p">{</span>
-        <span class="s2">&quot;trial&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;session&quot;</span><span class="p">],</span>
-        <span class="s2">&quot;video_0&quot;</span><span class="p">:</span> <span class="p">[</span><span class="nb">str</span><span class="p">(</span><span class="n">video_path</span><span class="p">)],</span>
-        <span class="s2">&quot;audio_0&quot;</span><span class="p">:</span> <span class="p">[</span><span class="nb">str</span><span class="p">(</span><span class="n">audio_path</span><span class="p">)],</span>
-        <span class="s2">&quot;pose_0&quot;</span><span class="p">:</span> <span class="p">[</span><span class="nb">str</span><span class="p">(</span><span class="n">poses_csv_path</span><span class="p">)],</span>
+        <span class="s2">"trial"</span><span class="p">:</span> <span class="p">[</span><span class="s2">"session"</span><span class="p">],</span>
+        <span class="s2">"video_0"</span><span class="p">:</span> <span class="p">[</span><span class="nb">str</span><span class="p">(</span><span class="n">video_path</span><span class="p">)],</span>
+        <span class="s2">"audio_0"</span><span class="p">:</span> <span class="p">[</span><span class="nb">str</span><span class="p">(</span><span class="n">audio_path</span><span class="p">)],</span>
+        <span class="s2">"pose_0"</span><span class="p">:</span> <span class="p">[</span><span class="nb">str</span><span class="p">(</span><span class="n">poses_csv_path</span><span class="p">)],</span>
     <span class="p">}</span>
 <span class="p">)</span>
 
-<span class="n">nwb_path</span> <span class="o">=</span> <span class="n">data_folder</span> <span class="o">/</span> <span class="s2">&quot;.ethograph&quot;</span> <span class="o">/</span> <span class="s2">&quot;alignment.nwb&quot;</span>
+<span class="n">nwb_path</span> <span class="o">=</span> <span class="n">data_folder</span> <span class="o">/</span> <span class="s2">".ethograph"</span> <span class="o">/</span> <span class="s2">"alignment.nwb"</span>
 <span class="n">align_media_per_trial</span><span class="p">(</span>
     <span class="n">trial_table</span><span class="o">=</span><span class="n">session_table</span><span class="p">,</span>
-    <span class="n">stream_rates</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;video&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">fps</span><span class="p">),</span> <span class="s2">&quot;audio&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">audio_sr</span><span class="p">),</span> <span class="s2">&quot;pose&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">fps</span><span class="p">)},</span>
+    <span class="n">stream_rates</span><span class="o">=</span><span class="p">{</span><span class="s2">"video"</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">fps</span><span class="p">),</span> <span class="s2">"audio"</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">audio_sr</span><span class="p">),</span> <span class="s2">"pose"</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">fps</span><span class="p">)},</span>
     <span class="n">output_path</span><span class="o">=</span><span class="n">nwb_path</span><span class="p">,</span>
     <span class="n">pose_fps</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">fps</span><span class="p">),</span>
 <span class="p">)</span>
@@ -530,20 +530,20 @@ data_folder: d:\Akseli\Code\ethograph\data\philodoptera
 <div class="cell_input docutils container">
 <div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1"># Load pose data and compute kinematics</span>
 <span class="n">ds</span> <span class="o">=</span> <span class="n">load_poses</span><span class="o">.</span><span class="n">from_dlc_file</span><span class="p">(</span><span class="n">poses_csv_path</span><span class="p">,</span> <span class="n">fps</span><span class="o">=</span><span class="n">fps</span><span class="p">)</span>
-<span class="n">ds</span><span class="p">[</span><span class="s2">&quot;velocity&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">compute_velocity</span><span class="p">(</span><span class="n">ds</span><span class="o">.</span><span class="n">position</span><span class="p">)</span>
-<span class="n">ds</span><span class="p">[</span><span class="s2">&quot;speed&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">compute_speed</span><span class="p">(</span><span class="n">ds</span><span class="o">.</span><span class="n">position</span><span class="p">)</span>
-<span class="n">ds</span><span class="p">[</span><span class="s2">&quot;acceleration&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">compute_acceleration</span><span class="p">(</span><span class="n">ds</span><span class="o">.</span><span class="n">position</span><span class="p">)</span>
+<span class="n">ds</span><span class="p">[</span><span class="s2">"velocity"</span><span class="p">]</span> <span class="o">=</span> <span class="n">compute_velocity</span><span class="p">(</span><span class="n">ds</span><span class="o">.</span><span class="n">position</span><span class="p">)</span>
+<span class="n">ds</span><span class="p">[</span><span class="s2">"speed"</span><span class="p">]</span> <span class="o">=</span> <span class="n">compute_speed</span><span class="p">(</span><span class="n">ds</span><span class="o">.</span><span class="n">position</span><span class="p">)</span>
+<span class="n">ds</span><span class="p">[</span><span class="s2">"acceleration"</span><span class="p">]</span> <span class="o">=</span> <span class="n">compute_acceleration</span><span class="p">(</span><span class="n">ds</span><span class="o">.</span><span class="n">position</span><span class="p">)</span>
 
-<span class="n">ds</span><span class="p">[</span><span class="s2">&quot;individuals&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;Pholidoptera_littoralis_1&quot;</span><span class="p">]</span>
-<span class="n">ds</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s2">&quot;Recording info&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
-    <span class="s2">&quot;This cricket species Pholidoptera littoralis was recorded on a field trip &quot;</span>
-    <span class="s2">&quot;in Slovenia in 2025. The video was recorded with an iPhone and the audio &quot;</span>
-    <span class="s2">&quot;with a Zoom recorder. Synchronization may not be perfect.&quot;</span>
+<span class="n">ds</span><span class="p">[</span><span class="s2">"individuals"</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="s2">"Pholidoptera_littoralis_1"</span><span class="p">]</span>
+<span class="n">ds</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s2">"Recording info"</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+    <span class="s2">"This cricket species Pholidoptera littoralis was recorded on a field trip "</span>
+    <span class="s2">"in Slovenia in 2025. The video was recorded with an iPhone and the audio "</span>
+    <span class="s2">"with a Zoom recorder. Synchronization may not be perfect."</span>
 <span class="p">)</span>
 
 
-<span class="n">ds</span><span class="o">.</span><span class="n">to_netcdf</span><span class="p">(</span><span class="n">data_folder</span> <span class="o">/</span> <span class="s2">&quot;philodoptera.nc&quot;</span><span class="p">)</span>
-<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Saved to </span><span class="si">{</span><span class="n">data_folder</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="s1">&#39;philodoptera.nc&#39;</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="n">ds</span><span class="o">.</span><span class="n">to_netcdf</span><span class="p">(</span><span class="n">data_folder</span> <span class="o">/</span> <span class="s2">"philodoptera.nc"</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Saved to </span><span class="si">{</span><span class="n">data_folder</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="s1">'philodoptera.nc'</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 </pre></div>
 </div>
 </div>

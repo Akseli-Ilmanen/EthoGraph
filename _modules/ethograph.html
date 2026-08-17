@@ -405,7 +405,7 @@
 <span></span><span class="kn">from</span><span class="w"> </span><span class="nn">importlib.metadata</span><span class="w"> </span><span class="kn">import</span> <span class="n">PackageNotFoundError</span><span class="p">,</span> <span class="n">version</span>
 
 <span class="k">try</span><span class="p">:</span>
-    <span class="n">__version__</span> <span class="o">=</span> <span class="n">version</span><span class="p">(</span><span class="s2">&quot;ethograph&quot;</span><span class="p">)</span>
+    <span class="n">__version__</span> <span class="o">=</span> <span class="n">version</span><span class="p">(</span><span class="s2">"ethograph"</span><span class="p">)</span>
 <span class="k">except</span> <span class="n">PackageNotFoundError</span><span class="p">:</span>
     <span class="c1"># package is not installed</span>
     <span class="k">pass</span>
@@ -445,7 +445,7 @@
 <div class="viewcode-block" id="open">
 <a class="viewcode-back" href="../api/ethograph.open.html#ethograph.open">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">open</span><span class="p">(</span><span class="n">path</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">TrialTree</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Load a TrialTree from a saved NetCDF file.</span>
+<span class="w">    </span><span class="sd">"""Load a TrialTree from a saved NetCDF file.</span>
 
 <span class="sd">    Shorthand for :meth:`TrialTree.open &lt;ethograph.io.trialtree.TrialTree.open&gt;`.</span>
 
@@ -461,11 +461,11 @@
 <span class="sd">    Examples</span>
 <span class="sd">    --------</span>
 <span class="sd">    &gt;&gt;&gt; import ethograph as eto</span>
-<span class="sd">    &gt;&gt;&gt; dt = eto.open(&quot;experiment.nc&quot;)</span>
+<span class="sd">    &gt;&gt;&gt; dt = eto.open("experiment.nc")</span>
 <span class="sd">    &gt;&gt;&gt; dt.trials</span>
 <span class="sd">    [1, 2, 3]</span>
 <span class="sd">    &gt;&gt;&gt; ds = dt.itrial(0)</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="k">return</span> <span class="n">TrialTree</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="n">path</span><span class="p">)</span></div>
 
 
@@ -473,11 +473,11 @@
 <div class="viewcode-block" id="from_datasets">
 <a class="viewcode-back" href="../api/ethograph.from_datasets.html#ethograph.from_datasets">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">from_datasets</span><span class="p">(</span><span class="n">datasets</span><span class="p">:</span> <span class="nb">list</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">TrialTree</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Build a TrialTree from a list of per-trial xarray Datasets.</span>
+<span class="w">    </span><span class="sd">"""Build a TrialTree from a list of per-trial xarray Datasets.</span>
 
 <span class="sd">    Shorthand for :meth:`TrialTree.from_datasets &lt;ethograph.io.trialtree.TrialTree.from_datasets&gt;`.</span>
 
-<span class="sd">    Each dataset must have ``attrs[&quot;trial&quot;]`` set to a unique trial</span>
+<span class="sd">    Each dataset must have ``attrs["trial"]`` set to a unique trial</span>
 <span class="sd">    identifier.</span>
 
 <span class="sd">    Parameters</span>
@@ -494,19 +494,19 @@
 <span class="sd">    &gt;&gt;&gt; import xarray as xr, numpy as np, ethograph as eto</span>
 <span class="sd">    &gt;&gt;&gt; trials = []</span>
 <span class="sd">    &gt;&gt;&gt; for i in range(1, 4):</span>
-<span class="sd">    ...     ds = xr.Dataset({&quot;speed&quot;: xr.DataArray(np.random.rand(300), dims=[&quot;time&quot;])})</span>
-<span class="sd">    ...     ds.attrs[&quot;trial&quot;] = i</span>
+<span class="sd">    ...     ds = xr.Dataset({"speed": xr.DataArray(np.random.rand(300), dims=["time"])})</span>
+<span class="sd">    ...     ds.attrs["trial"] = i</span>
 <span class="sd">    ...     trials.append(ds)</span>
 <span class="sd">    &gt;&gt;&gt; dt = eto.from_datasets(trials)</span>
 <span class="sd">    &gt;&gt;&gt; dt.trials</span>
 <span class="sd">    [1, 2, 3]</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="k">return</span> <span class="n">TrialTree</span><span class="o">.</span><span class="n">from_datasets</span><span class="p">(</span><span class="n">datasets</span><span class="p">)</span></div>
 
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">from_continuous</span><span class="p">(</span><span class="n">ds</span><span class="p">,</span> <span class="n">epochs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">TrialTree</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Build a TrialTree from a single continuous recording + trial epochs.</span>
+<span class="w">    </span><span class="sd">"""Build a TrialTree from a single continuous recording + trial epochs.</span>
 
 <span class="sd">    Shorthand for :meth:`TrialTree.from_continuous`.</span>
 
@@ -521,7 +521,7 @@
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
 <span class="sd">    TrialTree</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="k">return</span> <span class="n">TrialTree</span><span class="o">.</span><span class="n">from_continuous</span><span class="p">(</span><span class="n">ds</span><span class="p">,</span> <span class="n">epochs</span><span class="p">)</span>
 </pre></div>
 

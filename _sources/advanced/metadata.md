@@ -86,6 +86,29 @@ short labels, apply only to the filtered trials.
 
 ---
 
+## Editing metadata as you watch
+
+Some metadata is only knowable once you have watched the trial — whether the
+animal engaged, whether the recording is usable. Tick **Edit values on
+double-click**, above the trials table, and the table becomes editable.
+
+Double-click a cell in the current trial's row (the tinted one) to change its
+value; the editor offers the values that column already uses, and accepts
+anything else you type. **Add column…** starts a new column to fill in.
+
+### Where the edits go
+
+Straight back into the source the metadata was read from — the tabular file, or
+the NWB trials table (edited columns only). Anything else (pynapple
+`IntervalSet`, no metadata yet) gets a sidecar `{stem}_metadata.tsv`, which
+outranks it on the next load. There is no undo.
+
+**One limit:** an NWB column keeps the dtype it was written with, so text
+cannot go into a numeric NWB column. Use a new column (or a TSV metadata file)
+for free-text values.
+
+---
+
 ## Export
 
 Metadata is merged into exported label DataFrames by `enrich_labels_df()`, so

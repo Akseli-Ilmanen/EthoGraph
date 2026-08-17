@@ -494,7 +494,7 @@
 <code class="docutils literal notranslate"><span class="pre">[gui]</span></code> or <code class="docutils literal notranslate"><span class="pre">[all]</span></code>. The dependency tree (pygfx + movement + pynwb) is too
 complex for pip’s resolver.</p>
 <p><strong>Fix:</strong> Use <code class="docutils literal notranslate"><span class="pre">uv</span></code> instead of <code class="docutils literal notranslate"><span class="pre">pip</span></code>:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;ethograph[all]&quot;</span>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">"ethograph[all]"</span>
 </pre></div>
 </div>
 <p>See <a class="reference internal" href="../getting_started/installation.html"><span class="doc">Installation</span></a> for full instructions.</p>
@@ -502,7 +502,7 @@ complex for pip’s resolver.</p>
 <section id="silent-audio-on-linux">
 <span id="no-audio-device"></span><h3>Silent audio on Linux<a class="headerlink" href="#silent-audio-on-linux" title="Link to this heading">#</a></h3>
 <p>If playback is silent, check what PortAudio sees:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;import sounddevice as sd; print(sd.query_devices())&quot;</span>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>-c<span class="w"> </span><span class="s2">"import sounddevice as sd; print(sd.query_devices())"</span>
 </pre></div>
 </div>
 <p>A default device of <code class="docutils literal notranslate"><span class="pre">[-1,</span> <span class="pre">-1]</span></code> means PortAudio found no device. On a
@@ -564,7 +564,7 @@ your videos to audio <strong>in bulk yourself</strong> before loading (one WAV/F
 clip), then point the loader at those files. This route uses the <code class="docutils literal notranslate"><span class="pre">ffmpeg</span></code> CLI —
 handy for many files at once, but not something EthoGraph itself needs. For
 example:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="k">for</span><span class="w"> </span>f<span class="w"> </span><span class="k">in</span><span class="w"> </span>*.mp4<span class="p">;</span><span class="w"> </span><span class="k">do</span><span class="w"> </span>ffmpeg<span class="w"> </span>-i<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$f</span><span class="s2">&quot;</span><span class="w"> </span>-vn<span class="w"> </span>-acodec<span class="w"> </span>pcm_s16le<span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">f</span><span class="p">%.mp4</span><span class="si">}</span><span class="s2">.wav&quot;</span><span class="p">;</span><span class="w"> </span><span class="k">done</span>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="k">for</span><span class="w"> </span>f<span class="w"> </span><span class="k">in</span><span class="w"> </span>*.mp4<span class="p">;</span><span class="w"> </span><span class="k">do</span><span class="w"> </span>ffmpeg<span class="w"> </span>-i<span class="w"> </span><span class="s2">"</span><span class="nv">$f</span><span class="s2">"</span><span class="w"> </span>-vn<span class="w"> </span>-acodec<span class="w"> </span>pcm_s16le<span class="w"> </span><span class="s2">"</span><span class="si">${</span><span class="nv">f</span><span class="p">%.mp4</span><span class="si">}</span><span class="s2">.wav"</span><span class="p">;</span><span class="w"> </span><span class="k">done</span>
 </pre></div>
 </div>
 <p>Extracting once, up front, is faster and more reliable than re-decoding the

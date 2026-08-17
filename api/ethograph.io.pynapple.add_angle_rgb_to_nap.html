@@ -450,13 +450,13 @@ same time support as <em>tsdframe</em>.</p>
 </dl>
 <p class="rubric">Examples</p>
 <div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">ethograph</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">eto</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">data</span> <span class="o">=</span> <span class="n">eto</span><span class="o">.</span><span class="n">load_nap_data</span><span class="p">(</span><span class="s2">&quot;experiment.nwb&quot;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">data</span> <span class="o">=</span> <span class="n">eto</span><span class="o">.</span><span class="n">load_nap_data</span><span class="p">(</span><span class="s2">"experiment.nwb"</span><span class="p">)</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">rgb</span> <span class="o">=</span> <span class="n">eto</span><span class="o">.</span><span class="n">add_angle_rgb_to_nap</span><span class="p">(</span>
-<span class="gp">... </span>    <span class="n">data</span><span class="p">[</span><span class="s2">&quot;position&quot;</span><span class="p">],</span>
-<span class="gp">... </span>    <span class="n">smoothing_params</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;sigma&quot;</span><span class="p">:</span> <span class="mi">3</span><span class="p">},</span>
+<span class="gp">... </span>    <span class="n">data</span><span class="p">[</span><span class="s2">"position"</span><span class="p">],</span>
+<span class="gp">... </span>    <span class="n">smoothing_params</span><span class="o">=</span><span class="p">{</span><span class="s2">"sigma"</span><span class="p">:</span> <span class="mi">3</span><span class="p">},</span>
 <span class="gp">... </span><span class="p">)</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">rgb</span><span class="o">.</span><span class="n">columns</span>
-<span class="go">[&#39;R&#39;, &#39;G&#39;, &#39;B&#39;]</span>
+<span class="go">['R', 'G', 'B']</span>
 </pre></div>
 </div>
 </dd></dl>

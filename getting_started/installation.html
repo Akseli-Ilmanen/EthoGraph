@@ -458,7 +458,7 @@ Windows</label><div class="sd-tab-content docutils">
 <p>Use this if you just want to <strong>run the ethograph GUI</strong> — for teaching, for
 annotating data, or to try it out. It is one command, and there is no
 environment to create or activate.</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>tool<span class="w"> </span>install<span class="w"> </span>--python<span class="w"> </span><span class="m">3</span>.12<span class="w"> </span><span class="s2">&quot;ethograph[gui,audio]&quot;</span>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>tool<span class="w"> </span>install<span class="w"> </span>--python<span class="w"> </span><span class="m">3</span>.12<span class="w"> </span><span class="s2">"ethograph[gui,audio]"</span>
 </pre></div>
 </div>
 <p>Then launch it from any terminal:</p>
@@ -519,7 +519,7 @@ terminal prompt.</p>
 <section id="with-the-gui-recommended">
 <h3>With the GUI (recommended)<a class="headerlink" href="#with-the-gui-recommended" title="Link to this heading">#</a></h3>
 <p>The GUI bundles PyQtGraph, pygfx (via pynaviz), and neural analysis tools:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;ethograph[gui]&quot;</span>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">"ethograph[gui]"</span>
 </pre></div>
 </div>
 <section id="adding-audio-support">
@@ -529,7 +529,7 @@ terminal prompt.</p>
 <input checked="checked" id="sd-tab-item-4" name="sd-tab-set-2" type="radio">
 <label class="sd-tab-label" for="sd-tab-item-4">
 macOS / Windows</label><div class="sd-tab-content docutils">
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;ethograph[gui,audio]&quot;</span>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">"ethograph[gui,audio]"</span>
 </pre></div>
 </div>
 </div>
@@ -539,7 +539,7 @@ Linux</label><div class="sd-tab-content docutils">
 <p>First install the PortAudio system library <strong>and the ALSA plugins</strong>, then
 install the audio extra:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>sudo<span class="w"> </span>apt<span class="w"> </span>install<span class="w"> </span>libportaudio2<span class="w"> </span>libasound2-plugins<span class="w">   </span><span class="c1"># Debian / Ubuntu</span>
-uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;ethograph[gui,audio]&quot;</span>
+uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">"ethograph[gui,audio]"</span>
 </pre></div>
 </div>
 <p><code class="docutils literal notranslate"><span class="pre">libasound2-plugins</span></code> is the ALSA→PipeWire/PulseAudio bridge; without it
@@ -576,7 +576,7 @@ pipelines without pulling in GUI dependencies.</p>
 <h3>DANDI archive downloads<a class="headerlink" href="#dandi-archive-downloads" title="Link to this heading">#</a></h3>
 <p>To browse and download datasets from the <a class="reference external" href="https://dandiarchive.org/">DANDI
 archive</a> via the GUI wizard:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;ethograph[dandi]&quot;</span>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">"ethograph[dandi]"</span>
 </pre></div>
 </div>
 </section>
@@ -589,7 +589,7 @@ copy of a video that makes seeking through long, high-resolution recordings
 smoother. Video always plays at full resolution without it, so for short teaching
 clips it buys nothing.</p>
 <p>If you do work with long recordings, add ffmpeg with:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;ethograph[proxy]&quot;</span>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">"ethograph[proxy]"</span>
 </pre></div>
 </div>
 <p>This bundles a private ffmpeg binary (via <code class="docutils literal notranslate"><span class="pre">imageio-ffmpeg</span></code>) with no PATH setup.
@@ -642,7 +642,7 @@ You can combine them as needed:</p>
 <code class="docutils literal notranslate"><span class="pre">sudo</span> <span class="pre">apt</span> <span class="pre">install</span> <span class="pre">libportaudio2</span> <span class="pre">libasound2-plugins</span></code></p>
 </div>
 <p>Combine extras with commas:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;ethograph[gui,audio,dandi,dev,docs]&quot;</span>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">"ethograph[gui,audio,dandi,dev,docs]"</span>
 </pre></div>
 </div>
 </section>
@@ -653,9 +653,9 @@ You can combine them as needed:</p>
 </section>
 <section id="update-the-package">
 <h2>Update the package<a class="headerlink" href="#update-the-package" title="Link to this heading">#</a></h2>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>-U<span class="w"> </span><span class="s2">&quot;ethograph[gui]&quot;</span>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>-U<span class="w"> </span><span class="s2">"ethograph[gui]"</span>
 <span class="c1"># With audio:</span>
-uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>-U<span class="w"> </span><span class="s2">&quot;ethograph[gui,audio]&quot;</span>
+uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>-U<span class="w"> </span><span class="s2">"ethograph[gui,audio]"</span>
 </pre></div>
 </div>
 <div class="admonition hint">
@@ -704,7 +704,7 @@ tab, which reads AprilTag <code class="docutils literal notranslate"><span class
 you fill with — OpenCV and <code class="docutils literal notranslate"><span class="pre">pupil-apriltags</span></code> both come with <code class="docutils literal notranslate"><span class="pre">ethograph[gui]</span></code>.</p>
 <p>Only PosePAL is a separate install — GPU only, and <code class="docutils literal notranslate"><span class="pre">--torch-backend=auto</span></code>
 matters since PyPI’s Windows torch wheels are CPU-only:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>--torch-backend<span class="o">=</span>auto<span class="w"> </span>torch<span class="w"> </span><span class="s2">&quot;cotracker @ git+https://github.com/facebookresearch/co-tracker.git@82e02e8029753ad4ef13cf06be7f4fc5facdda4d&quot;</span>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>--torch-backend<span class="o">=</span>auto<span class="w"> </span>torch<span class="w"> </span><span class="s2">"cotracker @ git+https://github.com/facebookresearch/co-tracker.git@82e02e8029753ad4ef13cf06be7f4fc5facdda4d"</span>
 </pre></div>
 </div>
 <div class="admonition seealso">
@@ -723,7 +723,7 @@ detector instead are covered in <a class="reference internal" href="../advanced/
 <p>Install PyTorch with the correct CUDA version for your system, then install
 the model extra along with <code class="docutils literal notranslate"><span class="pre">omegaconf</span></code>:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>conda<span class="w"> </span>install<span class="w"> </span><span class="nv">pytorch</span><span class="o">=</span><span class="m">2</span>.5.1<span class="w"> </span><span class="nv">torchvision</span><span class="o">=</span><span class="m">0</span>.20.1<span class="w"> </span><span class="nv">torchaudio</span><span class="o">=</span><span class="m">2</span>.5.1<span class="w"> </span>pytorch-cuda<span class="o">=</span><span class="m">12</span>.1<span class="w"> </span>-c<span class="w"> </span>pytorch<span class="w"> </span>-c<span class="w"> </span>nvidia
-uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;ethograph[model]&quot;</span><span class="w"> </span>omegaconf
+uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">"ethograph[model]"</span><span class="w"> </span>omegaconf
 </pre></div>
 </div>
 <div class="admonition tip">

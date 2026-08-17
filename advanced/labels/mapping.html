@@ -499,11 +499,11 @@ default branch explicitly, because the columns are positional:
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.labels.intervals</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_mapping</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.labels.converters</span><span class="w"> </span><span class="kn">import</span> <span class="n">write_mapping_file</span>
 
-<span class="n">class_to_idx</span><span class="p">,</span> <span class="n">idx_to_class</span> <span class="o">=</span> <span class="n">load_mapping</span><span class="p">(</span><span class="s2">&quot;mapping.txt&quot;</span><span class="p">)</span>
-<span class="n">class_to_idx</span><span class="p">[</span><span class="s2">&quot;pullOutStick&quot;</span><span class="p">]</span>  <span class="c1"># 1</span>
-<span class="n">idx_to_class</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>               <span class="c1"># &quot;pullOutStick&quot;</span>
+<span class="n">class_to_idx</span><span class="p">,</span> <span class="n">idx_to_class</span> <span class="o">=</span> <span class="n">load_mapping</span><span class="p">(</span><span class="s2">"mapping.txt"</span><span class="p">)</span>
+<span class="n">class_to_idx</span><span class="p">[</span><span class="s2">"pullOutStick"</span><span class="p">]</span>  <span class="c1"># 1</span>
+<span class="n">idx_to_class</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>               <span class="c1"># "pullOutStick"</span>
 
-<span class="n">write_mapping_file</span><span class="p">(</span><span class="s2">&quot;mapping.txt&quot;</span><span class="p">,</span> <span class="p">{</span><span class="s2">&quot;background&quot;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span> <span class="s2">&quot;walk&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">&quot;run&quot;</span><span class="p">:</span> <span class="mi">2</span><span class="p">})</span>
+<span class="n">write_mapping_file</span><span class="p">(</span><span class="s2">"mapping.txt"</span><span class="p">,</span> <span class="p">{</span><span class="s2">"background"</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span> <span class="s2">"walk"</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">"run"</span><span class="p">:</span> <span class="mi">2</span><span class="p">})</span>
 </pre></div>
 </div>
 <p>See <a class="reference internal" href="../../api/labels.html#ethograph.labels.intervals.load_mapping" title="ethograph.labels.intervals.load_mapping"><code class="xref py py-func docutils literal notranslate"><span class="pre">load_mapping()</span></code></a> and

@@ -417,26 +417,26 @@ references go into ImageSeries acquisition items.</p>
 <li><p><strong>trials</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html#pandas.DataFrame" title="(in pandas v3.0.5)"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code></a></span>) – DataFrame with <code class="docutils literal notranslate"><span class="pre">trial</span></code>, <code class="docutils literal notranslate"><span class="pre">start_time</span></code>, <code class="docutils literal notranslate"><span class="pre">stop_time</span></code>.</p></li>
 <li><p><strong>streams</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code></a>[<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code></a>]</span>) – <p>List of stream dicts, each with:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
-    <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;video_cam-1&quot;</span><span class="p">,</span>  <span class="c1"># acquisition item name</span>
-    <span class="s2">&quot;files&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;t1.mp4&quot;</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span>  <span class="c1"># one per trial (full paths)</span>
-    <span class="s2">&quot;rate&quot;</span><span class="p">:</span> <span class="mf">30.0</span><span class="p">,</span>  <span class="c1"># sampling rate</span>
+    <span class="s2">"name"</span><span class="p">:</span> <span class="s2">"video_cam-1"</span><span class="p">,</span>  <span class="c1"># acquisition item name</span>
+    <span class="s2">"files"</span><span class="p">:</span> <span class="p">[</span><span class="s2">"t1.mp4"</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span>  <span class="c1"># one per trial (full paths)</span>
+    <span class="s2">"rate"</span><span class="p">:</span> <span class="mf">30.0</span><span class="p">,</span>  <span class="c1"># sampling rate</span>
 <span class="p">}</span>
 </pre></div>
 </div>
 <p>For session-wide files (one file spanning all trials):</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
-    <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;audio_mic-1&quot;</span><span class="p">,</span>
-    <span class="s2">&quot;files&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;session.wav&quot;</span><span class="p">],</span>
-    <span class="s2">&quot;rate&quot;</span><span class="p">:</span> <span class="mf">44100.0</span><span class="p">,</span>
-    <span class="s2">&quot;starting_time&quot;</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">,</span>  <span class="c1"># when file starts in session time</span>
+    <span class="s2">"name"</span><span class="p">:</span> <span class="s2">"audio_mic-1"</span><span class="p">,</span>
+    <span class="s2">"files"</span><span class="p">:</span> <span class="p">[</span><span class="s2">"session.wav"</span><span class="p">],</span>
+    <span class="s2">"rate"</span><span class="p">:</span> <span class="mf">44100.0</span><span class="p">,</span>
+    <span class="s2">"starting_time"</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">,</span>  <span class="c1"># when file starts in session time</span>
 <span class="p">}</span>
 </pre></div>
 </div>
 <p>For streams with explicit timestamps (irregular):</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
-    <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;ephys_probe-1&quot;</span><span class="p">,</span>
-    <span class="s2">&quot;files&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;session.dat&quot;</span><span class="p">],</span>
-    <span class="s2">&quot;timestamps&quot;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.001</span><span class="p">,</span> <span class="o">...</span><span class="p">]),</span>
+    <span class="s2">"name"</span><span class="p">:</span> <span class="s2">"ephys_probe-1"</span><span class="p">,</span>
+    <span class="s2">"files"</span><span class="p">:</span> <span class="p">[</span><span class="s2">"session.dat"</span><span class="p">],</span>
+    <span class="s2">"timestamps"</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.001</span><span class="p">,</span> <span class="o">...</span><span class="p">]),</span>
 <span class="p">}</span>
 </pre></div>
 </div>
@@ -451,16 +451,16 @@ references go into ImageSeries acquisition items.</p>
 <p class="rubric">Examples</p>
 <p>Per-trial video + pose, session-wide audio:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">trials</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span>
-<span class="gp">... </span>    <span class="s2">&quot;trial&quot;</span><span class="p">:</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">],</span>
-<span class="gp">... </span>    <span class="s2">&quot;start_time&quot;</span><span class="p">:</span> <span class="p">[</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">10.5</span><span class="p">,</span> <span class="mf">22.3</span><span class="p">],</span>
-<span class="gp">... </span>    <span class="s2">&quot;stop_time&quot;</span><span class="p">:</span> <span class="p">[</span><span class="mf">8.2</span><span class="p">,</span> <span class="mf">19.1</span><span class="p">,</span> <span class="mf">30.0</span><span class="p">],</span>
+<span class="gp">... </span>    <span class="s2">"trial"</span><span class="p">:</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">],</span>
+<span class="gp">... </span>    <span class="s2">"start_time"</span><span class="p">:</span> <span class="p">[</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">10.5</span><span class="p">,</span> <span class="mf">22.3</span><span class="p">],</span>
+<span class="gp">... </span>    <span class="s2">"stop_time"</span><span class="p">:</span> <span class="p">[</span><span class="mf">8.2</span><span class="p">,</span> <span class="mf">19.1</span><span class="p">,</span> <span class="mf">30.0</span><span class="p">],</span>
 <span class="gp">... </span><span class="p">})</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">streams</span> <span class="o">=</span> <span class="p">[</span>
-<span class="gp">... </span>    <span class="p">{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;video_cam-1&quot;</span><span class="p">,</span> <span class="s2">&quot;files&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;t1.mp4&quot;</span><span class="p">,</span> <span class="s2">&quot;t2.mp4&quot;</span><span class="p">,</span> <span class="s2">&quot;t3.mp4&quot;</span><span class="p">],</span> <span class="s2">&quot;rate&quot;</span><span class="p">:</span> <span class="mf">30.0</span><span class="p">},</span>
-<span class="gp">... </span>    <span class="p">{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;pose_cam-1&quot;</span><span class="p">,</span> <span class="s2">&quot;files&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;t1.h5&quot;</span><span class="p">,</span> <span class="s2">&quot;t2.h5&quot;</span><span class="p">,</span> <span class="s2">&quot;t3.h5&quot;</span><span class="p">],</span> <span class="s2">&quot;rate&quot;</span><span class="p">:</span> <span class="mf">30.0</span><span class="p">},</span>
-<span class="gp">... </span>    <span class="p">{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;audio_mic-1&quot;</span><span class="p">,</span> <span class="s2">&quot;files&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;session.wav&quot;</span><span class="p">],</span> <span class="s2">&quot;rate&quot;</span><span class="p">:</span> <span class="mf">48000.0</span><span class="p">,</span> <span class="s2">&quot;starting_time&quot;</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">},</span>
+<span class="gp">... </span>    <span class="p">{</span><span class="s2">"name"</span><span class="p">:</span> <span class="s2">"video_cam-1"</span><span class="p">,</span> <span class="s2">"files"</span><span class="p">:</span> <span class="p">[</span><span class="s2">"t1.mp4"</span><span class="p">,</span> <span class="s2">"t2.mp4"</span><span class="p">,</span> <span class="s2">"t3.mp4"</span><span class="p">],</span> <span class="s2">"rate"</span><span class="p">:</span> <span class="mf">30.0</span><span class="p">},</span>
+<span class="gp">... </span>    <span class="p">{</span><span class="s2">"name"</span><span class="p">:</span> <span class="s2">"pose_cam-1"</span><span class="p">,</span> <span class="s2">"files"</span><span class="p">:</span> <span class="p">[</span><span class="s2">"t1.h5"</span><span class="p">,</span> <span class="s2">"t2.h5"</span><span class="p">,</span> <span class="s2">"t3.h5"</span><span class="p">],</span> <span class="s2">"rate"</span><span class="p">:</span> <span class="mf">30.0</span><span class="p">},</span>
+<span class="gp">... </span>    <span class="p">{</span><span class="s2">"name"</span><span class="p">:</span> <span class="s2">"audio_mic-1"</span><span class="p">,</span> <span class="s2">"files"</span><span class="p">:</span> <span class="p">[</span><span class="s2">"session.wav"</span><span class="p">],</span> <span class="s2">"rate"</span><span class="p">:</span> <span class="mf">48000.0</span><span class="p">,</span> <span class="s2">"starting_time"</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">},</span>
 <span class="gp">... </span><span class="p">]</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">eto</span><span class="o">.</span><span class="n">align_media_from_streams</span><span class="p">(</span><span class="n">trials</span><span class="p">,</span> <span class="n">streams</span><span class="p">,</span> <span class="s2">&quot;.ethograph/alignment.nwb&quot;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">eto</span><span class="o">.</span><span class="n">align_media_from_streams</span><span class="p">(</span><span class="n">trials</span><span class="p">,</span> <span class="n">streams</span><span class="p">,</span> <span class="s2">".ethograph/alignment.nwb"</span><span class="p">)</span>
 </pre></div>
 </div>
 </dd></dl>

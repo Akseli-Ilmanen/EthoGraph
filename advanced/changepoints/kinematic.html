@@ -543,12 +543,12 @@ same time dimension as their target feature. They require:</p>
 <li><p><code class="docutils literal notranslate"><span class="pre">attrs[&quot;type&quot;]</span> <span class="pre">=</span> <span class="pre">&quot;changepoints&quot;</span></code></p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">attrs[&quot;target_feature&quot;]</span></code> — name of the feature variable they annotate</p></li>
 </ul>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">ds</span><span class="p">[</span><span class="s2">&quot;speed_troughs&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">(</span>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">ds</span><span class="p">[</span><span class="s2">"speed_troughs"</span><span class="p">]</span> <span class="o">=</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">(</span>
     <span class="n">cp_binary</span><span class="p">,</span>                           <span class="c1"># shape: (time, keypoint, individual), values 0 or 1</span>
-    <span class="n">dims</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;time&quot;</span><span class="p">,</span> <span class="s2">&quot;keypoint&quot;</span><span class="p">,</span> <span class="s2">&quot;individual&quot;</span><span class="p">],</span>
+    <span class="n">dims</span><span class="o">=</span><span class="p">[</span><span class="s2">"time"</span><span class="p">,</span> <span class="s2">"keypoint"</span><span class="p">,</span> <span class="s2">"individual"</span><span class="p">],</span>
     <span class="n">attrs</span><span class="o">=</span><span class="p">{</span>
-        <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;changepoints&quot;</span><span class="p">,</span>
-        <span class="s2">&quot;target_feature&quot;</span><span class="p">:</span> <span class="s2">&quot;speed&quot;</span><span class="p">,</span>
+        <span class="s2">"type"</span><span class="p">:</span> <span class="s2">"changepoints"</span><span class="p">,</span>
+        <span class="s2">"target_feature"</span><span class="p">:</span> <span class="s2">"speed"</span><span class="p">,</span>
     <span class="p">},</span>
 <span class="p">)</span>
 </pre></div>
@@ -560,8 +560,8 @@ same time dimension as their target feature. They require:</p>
 
 <span class="n">ds</span> <span class="o">=</span> <span class="n">eto</span><span class="o">.</span><span class="n">add_changepoints_to_ds</span><span class="p">(</span>
     <span class="n">ds</span><span class="p">,</span>
-    <span class="n">target_feature</span><span class="o">=</span><span class="s2">&quot;speed&quot;</span><span class="p">,</span>
-    <span class="n">changepoint_name</span><span class="o">=</span><span class="s2">&quot;troughs&quot;</span><span class="p">,</span>
+    <span class="n">target_feature</span><span class="o">=</span><span class="s2">"speed"</span><span class="p">,</span>
+    <span class="n">changepoint_name</span><span class="o">=</span><span class="s2">"troughs"</span><span class="p">,</span>
     <span class="n">changepoint_func</span><span class="o">=</span><span class="n">find_troughs_binary</span><span class="p">,</span>
 <span class="p">)</span>
 </pre></div>
@@ -584,19 +584,19 @@ channel, neuron, …) with metadata columns marking it as a changepoint set.</p>
 <span class="n">speed</span> <span class="o">=</span> <span class="n">nap</span><span class="o">.</span><span class="n">TsdFrame</span><span class="p">(</span>
     <span class="n">t</span><span class="o">=</span><span class="n">time_s</span><span class="p">,</span>
     <span class="n">d</span><span class="o">=</span><span class="n">speed_array</span><span class="p">,</span>                       <span class="c1"># shape: (n_time, n_keypoints)</span>
-    <span class="n">columns</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;nose&quot;</span><span class="p">,</span> <span class="s2">&quot;left_ear&quot;</span><span class="p">,</span> <span class="s2">&quot;right_ear&quot;</span><span class="p">,</span> <span class="s2">&quot;tail&quot;</span><span class="p">],</span>
+    <span class="n">columns</span><span class="o">=</span><span class="p">[</span><span class="s2">"nose"</span><span class="p">,</span> <span class="s2">"left_ear"</span><span class="p">,</span> <span class="s2">"right_ear"</span><span class="p">,</span> <span class="s2">"tail"</span><span class="p">],</span>
 <span class="p">)</span>
 
 <span class="n">cps</span> <span class="o">=</span> <span class="n">add_changepoints_to_nap</span><span class="p">(</span>
     <span class="n">speed</span><span class="p">,</span>
-    <span class="n">target_feature</span><span class="o">=</span><span class="s2">&quot;speed&quot;</span><span class="p">,</span>
+    <span class="n">target_feature</span><span class="o">=</span><span class="s2">"speed"</span><span class="p">,</span>
     <span class="n">changepoint_func</span><span class="o">=</span><span class="n">find_troughs</span><span class="p">,</span>
     <span class="n">prominence</span><span class="o">=</span><span class="mf">0.1</span><span class="p">,</span>
 <span class="p">)</span>
 <span class="c1"># cps is a TsGroup — one Ts per column with:</span>
-<span class="c1">#   metadata.source_label = column name (e.g. &quot;nose&quot;)</span>
-<span class="c1">#   metadata.target_feature = &quot;speed&quot;</span>
-<span class="c1">#   metadata.type = &quot;changepoints&quot;</span>
+<span class="c1">#   metadata.source_label = column name (e.g. "nose")</span>
+<span class="c1">#   metadata.target_feature = "speed"</span>
+<span class="c1">#   metadata.type = "changepoints"</span>
 </pre></div>
 </div>
 <p>Accepts <a class="reference external" href="https://pynapple.org/generated/pynapple.Tsd.html#pynapple.Tsd" title="(in pynapple v0.11.3)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tsd</span></code></a>, <a class="reference external" href="https://pynapple.org/generated/pynapple.TsdFrame.html#pynapple.TsdFrame" title="(in pynapple v0.11.3)"><code class="xref py py-class docutils literal notranslate"><span class="pre">TsdFrame</span></code></a>, or

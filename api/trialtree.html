@@ -442,29 +442,29 @@ then access each trial by ID or index:</p>
 <span class="c1"># Build: one xr.Dataset per trial</span>
 <span class="n">datasets</span> <span class="o">=</span> <span class="p">[]</span>
 <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">4</span><span class="p">):</span>
-    <span class="n">ds</span> <span class="o">=</span> <span class="n">xr</span><span class="o">.</span><span class="n">Dataset</span><span class="p">({</span><span class="s2">&quot;speed&quot;</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="mi">300</span><span class="p">),</span> <span class="n">dims</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;time&quot;</span><span class="p">],</span>
-                                            <span class="n">coords</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;time&quot;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mi">300</span><span class="p">)</span> <span class="o">/</span> <span class="mf">30.0</span><span class="p">})})</span>
-    <span class="n">ds</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s2">&quot;trial&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">i</span>
-    <span class="n">ds</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s2">&quot;fps&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="mf">30.0</span>
+    <span class="n">ds</span> <span class="o">=</span> <span class="n">xr</span><span class="o">.</span><span class="n">Dataset</span><span class="p">({</span><span class="s2">"speed"</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="mi">300</span><span class="p">),</span> <span class="n">dims</span><span class="o">=</span><span class="p">[</span><span class="s2">"time"</span><span class="p">],</span>
+                                            <span class="n">coords</span><span class="o">=</span><span class="p">{</span><span class="s2">"time"</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mi">300</span><span class="p">)</span> <span class="o">/</span> <span class="mf">30.0</span><span class="p">})})</span>
+    <span class="n">ds</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s2">"trial"</span><span class="p">]</span> <span class="o">=</span> <span class="n">i</span>
+    <span class="n">ds</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s2">"fps"</span><span class="p">]</span> <span class="o">=</span> <span class="mf">30.0</span>
     <span class="n">datasets</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ds</span><span class="p">)</span>
 
 <span class="n">dt</span> <span class="o">=</span> <span class="n">eto</span><span class="o">.</span><span class="n">from_datasets</span><span class="p">(</span><span class="n">datasets</span><span class="p">)</span>
 
 <span class="c1"># Access by trial ID (label-based, like xr.Dataset.sel)</span>
 <span class="n">ds</span> <span class="o">=</span> <span class="n">dt</span><span class="o">.</span><span class="n">trial</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>
-<span class="n">ds</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s2">&quot;trial&quot;</span><span class="p">]</span>   <span class="c1"># 2</span>
-<span class="n">ds</span><span class="p">[</span><span class="s2">&quot;speed&quot;</span><span class="p">]</span>          <span class="c1"># the speed DataArray for trial 2</span>
+<span class="n">ds</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s2">"trial"</span><span class="p">]</span>   <span class="c1"># 2</span>
+<span class="n">ds</span><span class="p">[</span><span class="s2">"speed"</span><span class="p">]</span>          <span class="c1"># the speed DataArray for trial 2</span>
 
 <span class="c1"># Access by integer index (0-based, like xr.Dataset.isel)</span>
 <span class="n">ds</span> <span class="o">=</span> <span class="n">dt</span><span class="o">.</span><span class="n">itrial</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
-<span class="n">ds</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s2">&quot;trial&quot;</span><span class="p">]</span>   <span class="c1"># 1</span>
+<span class="n">ds</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s2">"trial"</span><span class="p">]</span>   <span class="c1"># 1</span>
 
 <span class="c1"># List all trial IDs</span>
 <span class="n">dt</span><span class="o">.</span><span class="n">trials</span>            <span class="c1"># [1, 2, 3]</span>
 
 <span class="c1"># Save / load</span>
-<span class="n">dt</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="s2">&quot;session.nc&quot;</span><span class="p">)</span>
-<span class="n">dt</span> <span class="o">=</span> <span class="n">eto</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="s2">&quot;session.nc&quot;</span><span class="p">)</span>
+<span class="n">dt</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="s2">"session.nc"</span><span class="p">)</span>
+<span class="n">dt</span> <span class="o">=</span> <span class="n">eto</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="s2">"session.nc"</span><span class="p">)</span>
 </pre></div>
 </div>
 <p>For the <a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><code class="xref py py-class docutils literal notranslate"><span class="pre">xarray.Dataset</span></code></a> structure expected inside each trial, see
@@ -536,9 +536,9 @@ metadata column, or <code class="docutils literal notranslate"><span class="pre"
 <div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">epochs</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span>
 <span class="gp">... </span>    <span class="p">{</span>
-<span class="gp">... </span>        <span class="s2">&quot;trial&quot;</span><span class="p">:</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">],</span>
-<span class="gp">... </span>        <span class="s2">&quot;start_time&quot;</span><span class="p">:</span> <span class="p">[</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">60.0</span><span class="p">,</span> <span class="mf">120.0</span><span class="p">],</span>
-<span class="gp">... </span>        <span class="s2">&quot;stop_time&quot;</span><span class="p">:</span> <span class="p">[</span><span class="mf">60.0</span><span class="p">,</span> <span class="mf">120.0</span><span class="p">,</span> <span class="mf">180.0</span><span class="p">],</span>
+<span class="gp">... </span>        <span class="s2">"trial"</span><span class="p">:</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">],</span>
+<span class="gp">... </span>        <span class="s2">"start_time"</span><span class="p">:</span> <span class="p">[</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">60.0</span><span class="p">,</span> <span class="mf">120.0</span><span class="p">],</span>
+<span class="gp">... </span>        <span class="s2">"stop_time"</span><span class="p">:</span> <span class="p">[</span><span class="mf">60.0</span><span class="p">,</span> <span class="mf">120.0</span><span class="p">,</span> <span class="mf">180.0</span><span class="p">],</span>
 <span class="gp">... </span>    <span class="p">}</span>
 <span class="gp">... </span><span class="p">)</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">dt</span> <span class="o">=</span> <span class="n">TrialTree</span><span class="o">.</span><span class="n">from_continuous</span><span class="p">(</span><span class="n">ds</span><span class="p">,</span> <span class="n">epochs</span><span class="p">)</span>
@@ -552,9 +552,9 @@ slices on demand instead of copying data:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
 
 <span class="n">epochs</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span>
-    <span class="s2">&quot;trial&quot;</span><span class="p">:</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">],</span>
-    <span class="s2">&quot;start_time&quot;</span><span class="p">:</span> <span class="p">[</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">60.0</span><span class="p">,</span> <span class="mf">120.0</span><span class="p">],</span>
-    <span class="s2">&quot;stop_time&quot;</span><span class="p">:</span> <span class="p">[</span><span class="mf">60.0</span><span class="p">,</span> <span class="mf">120.0</span><span class="p">,</span> <span class="mf">180.0</span><span class="p">],</span>
+    <span class="s2">"trial"</span><span class="p">:</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">],</span>
+    <span class="s2">"start_time"</span><span class="p">:</span> <span class="p">[</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">60.0</span><span class="p">,</span> <span class="mf">120.0</span><span class="p">],</span>
+    <span class="s2">"stop_time"</span><span class="p">:</span> <span class="p">[</span><span class="mf">60.0</span><span class="p">,</span> <span class="mf">120.0</span><span class="p">,</span> <span class="mf">180.0</span><span class="p">],</span>
 <span class="p">})</span>
 <span class="n">dt</span> <span class="o">=</span> <span class="n">eto</span><span class="o">.</span><span class="n">from_continuous</span><span class="p">(</span><span class="n">ds</span><span class="p">,</span> <span class="n">epochs</span><span class="p">)</span>
 <span class="n">dt</span><span class="o">.</span><span class="n">trial</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>  <span class="c1"># returns 60–120 s slice, time shifted to 0</span>
@@ -592,12 +592,12 @@ slices on demand instead of copying data:</p>
 </dl>
 <p class="rubric">Examples</p>
 <div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">ethograph</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">eto</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">dt</span> <span class="o">=</span> <span class="n">eto</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="s2">&quot;session.nc&quot;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">dt</span> <span class="o">=</span> <span class="n">eto</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="s2">"session.nc"</span><span class="p">)</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">ds</span> <span class="o">=</span> <span class="n">dt</span><span class="o">.</span><span class="n">trial</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">ds</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s2">&quot;trial&quot;</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">ds</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s2">"trial"</span><span class="p">]</span>
 <span class="go">1</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">ds</span><span class="p">[</span><span class="s2">&quot;speed&quot;</span><span class="p">]</span>  <span class="c1"># access a feature variable</span>
-<span class="go">&lt;xarray.DataArray &#39;speed&#39; (time: 9000, keypoint: 4)&gt;</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">ds</span><span class="p">[</span><span class="s2">"speed"</span><span class="p">]</span>  <span class="c1"># access a feature variable</span>
+<span class="go">&lt;xarray.DataArray 'speed' (time: 9000, keypoint: 4)&gt;</span>
 </pre></div>
 </div>
 </dd></dl>
@@ -616,14 +616,14 @@ slices on demand instead of copying data:</p>
 </dl>
 <p class="rubric">Examples</p>
 <div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">ethograph</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">eto</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">dt</span> <span class="o">=</span> <span class="n">eto</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="s2">&quot;session.nc&quot;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">dt</span> <span class="o">=</span> <span class="n">eto</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="s2">"session.nc"</span><span class="p">)</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">dt</span><span class="o">.</span><span class="n">trials</span>
 <span class="go">[1, 2, 3]</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">ds</span> <span class="o">=</span> <span class="n">dt</span><span class="o">.</span><span class="n">itrial</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>  <span class="c1"># same as dt.trial(1)</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">ds</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s2">&quot;trial&quot;</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">ds</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s2">"trial"</span><span class="p">]</span>
 <span class="go">1</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">ds</span> <span class="o">=</span> <span class="n">dt</span><span class="o">.</span><span class="n">itrial</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>  <span class="c1"># same as dt.trial(3)</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">ds</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s2">&quot;trial&quot;</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">ds</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s2">"trial"</span><span class="p">]</span>
 <span class="go">3</span>
 </pre></div>
 </div>
@@ -673,7 +673,7 @@ slices on demand instead of copying data:</p>
 <section id="iterating-over-trials">
 <h2>Iterating over trials<a class="headerlink" href="#iterating-over-trials" title="Link to this heading">#</a></h2>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">for</span> <span class="n">trial_id</span><span class="p">,</span> <span class="n">ds</span> <span class="ow">in</span> <span class="n">dt</span><span class="o">.</span><span class="n">trial_items</span><span class="p">():</span>
-    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Trial </span><span class="si">{</span><span class="n">trial_id</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">ds</span><span class="o">.</span><span class="n">time</span><span class="p">)</span><span class="si">}</span><span class="s2"> timepoints&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Trial </span><span class="si">{</span><span class="n">trial_id</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">ds</span><span class="o">.</span><span class="n">time</span><span class="p">)</span><span class="si">}</span><span class="s2"> timepoints"</span><span class="p">)</span>
 
 <span class="c1"># Apply a function to every trial, returning a new TrialTree</span>
 <span class="n">dt_smoothed</span> <span class="o">=</span> <span class="n">dt</span><span class="o">.</span><span class="n">map_trials</span><span class="p">(</span><span class="k">lambda</span> <span class="n">ds</span><span class="p">:</span> <span class="n">smooth</span><span class="p">(</span><span class="n">ds</span><span class="p">))</span>
@@ -704,14 +704,14 @@ standard per-node TrialTree so <em>func</em> results can be stored.</p>
 <h2>Modifying trials<a class="headerlink" href="#modifying-trials" title="Link to this heading">#</a></h2>
 <p><strong>In-place mutations</strong> work directly through <a class="reference internal" href="#ethograph.io.trialtree.TrialTree.trial" title="ethograph.io.trialtree.TrialTree.trial"><code class="xref py py-meth docutils literal notranslate"><span class="pre">trial()</span></code></a> because
 the returned dataset shares its underlying data with the tree:</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">dt</span><span class="o">.</span><span class="n">trial</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s2">&quot;human_verified&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span>
-<span class="n">dt</span><span class="o">.</span><span class="n">trial</span><span class="p">(</span><span class="mi">1</span><span class="p">)[</span><span class="s2">&quot;speed&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="p">[:</span><span class="mi">10</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.0</span>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">dt</span><span class="o">.</span><span class="n">trial</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s2">"human_verified"</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span>
+<span class="n">dt</span><span class="o">.</span><span class="n">trial</span><span class="p">(</span><span class="mi">1</span><span class="p">)[</span><span class="s2">"speed"</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="p">[:</span><span class="mi">10</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.0</span>
 </pre></div>
 </div>
 <p><strong>Structural changes</strong> (adding/removing variables) require
 <a class="reference internal" href="#ethograph.io.trialtree.TrialTree.update_trial" title="ethograph.io.trialtree.TrialTree.update_trial"><code class="xref py py-meth docutils literal notranslate"><span class="pre">update_trial()</span></code></a>:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">dt</span><span class="o">.</span><span class="n">update_trial</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="k">lambda</span> <span class="n">ds</span><span class="p">:</span> <span class="n">ds</span><span class="o">.</span><span class="n">assign</span><span class="p">(</span>
-    <span class="n">smoothed_speed</span><span class="o">=</span><span class="n">ds</span><span class="p">[</span><span class="s2">&quot;speed&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">rolling</span><span class="p">(</span><span class="n">time</span><span class="o">=</span><span class="mi">5</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span>
+    <span class="n">smoothed_speed</span><span class="o">=</span><span class="n">ds</span><span class="p">[</span><span class="s2">"speed"</span><span class="p">]</span><span class="o">.</span><span class="n">rolling</span><span class="p">(</span><span class="n">time</span><span class="o">=</span><span class="mi">5</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span>
 <span class="p">))</span>
 </pre></div>
 </div>
@@ -732,7 +732,7 @@ first if you need per-trial mutation.</p>
 <hr class="docutils" />
 <section id="filtering">
 <h2>Filtering<a class="headerlink" href="#filtering" title="Link to this heading">#</a></h2>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">dt_tone_a</span> <span class="o">=</span> <span class="n">dt</span><span class="o">.</span><span class="n">filter_by_attr</span><span class="p">(</span><span class="s2">&quot;stimulus&quot;</span><span class="p">,</span> <span class="s2">&quot;tone_A&quot;</span><span class="p">)</span>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">dt_tone_a</span> <span class="o">=</span> <span class="n">dt</span><span class="o">.</span><span class="n">filter_by_attr</span><span class="p">(</span><span class="s2">"stimulus"</span><span class="p">,</span> <span class="s2">"tone_A"</span><span class="p">)</span>
 </pre></div>
 </div>
 <dl class="py method">
@@ -751,7 +751,7 @@ first if you need per-trial mutation.</p>
 <hr class="docutils" />
 <section id="saving">
 <h2>Saving<a class="headerlink" href="#saving" title="Link to this heading">#</a></h2>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">dt</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="s2">&quot;path/to/session.nc&quot;</span><span class="p">)</span>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">dt</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="s2">"path/to/session.nc"</span><span class="p">)</span>
 <span class="n">dt</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>  <span class="c1"># overwrite the file it was loaded from</span>
 </pre></div>
 </div>
