@@ -103,9 +103,7 @@ def _candidate_bounds(app_state) -> list:
     loader = getattr(app_state, "data_loader", None)
     offset = loader.display_offset() if hasattr(loader, "display_offset") else 0.0
     if offset:
-        candidates += [
-            TimeRange(c.start_s - offset, c.end_s - offset) for c in candidates[:2] if c is not None
-        ]
+        candidates += [TimeRange(c.start_s - offset, c.end_s - offset) for c in candidates[:2] if c is not None]
 
     out: list = []
     for candidate in candidates:

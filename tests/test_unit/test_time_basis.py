@@ -117,9 +117,7 @@ def _labels_df(onsets_by_trial: dict) -> pd.DataFrame:
     rows = []
     for trial, onsets in onsets_by_trial.items():
         for o in onsets:
-            rows.append(
-                {"trial": trial, "individual": "crow1", "labels": 1, "onset_s": o, "offset_s": o + 0.5}
-            )
+            rows.append({"trial": trial, "individual": "crow1", "labels": 1, "onset_s": o, "offset_s": o + 0.5})
     return pd.DataFrame(rows)
 
 

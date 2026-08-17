@@ -282,7 +282,6 @@ class VideoSync(QObject):
         loads that video and resumes playback.
         """
 
-
         if not self._session_playback() or self._session_end() is None:
             self.stop()
             return
@@ -297,7 +296,6 @@ class VideoSync(QObject):
             self._play_timer.start(int(1000 / self._render_cap()))
 
     def _advance_gap(self):
-
 
         speed = self._playback_speed()
         t = self._gap_t0 + (time.perf_counter() - self._gap_wall_start) * speed

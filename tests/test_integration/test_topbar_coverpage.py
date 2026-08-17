@@ -739,9 +739,7 @@ def test_cover_page_pose_only_drop_loads_as_features(gui):
     page = CoverPage(shell, meta.io_widget)
     buckets = classify_files([str(pose_csv)])
     assert buckets["pose"] == [str(pose_csv)]
-    page._populate_io_from_buckets(
-        buckets, {"data_sr": None, "source_software": "DeepLabCut", "pose_fps": 30.0}
-    )
+    page._populate_io_from_buckets(buckets, {"data_sr": None, "source_software": "DeepLabCut", "pose_fps": 30.0})
 
     app_state = meta.app_state
     assert app_state.nc_file_path and app_state.nc_file_path.endswith(".nc")

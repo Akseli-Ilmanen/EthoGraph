@@ -123,7 +123,6 @@ def test_load_metadata_df_uses_nwb_source_when_trials_present(monkeypatch, tmp_p
     assert list(mdf["trial"]) == [1, 2]
 
 
-
 # ---------------------------------------------------------------------------
 # Trials from a pynapple IntervalSet: explicit conversion to alignment.nwb
 # ---------------------------------------------------------------------------
