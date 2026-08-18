@@ -1,11 +1,15 @@
 """AudioClock arithmetic without an audio device.
 
-Covers the two timing bugs from the Windows tester reports:
+Covers the timing bugs from the Windows tester reports:
 
-- ``elapsed_s()`` used to clamp ``idx/out_rate - latency`` at 0, so for the
-  first device-latency window (0.1-0.3 s) the position was pinned to exactly
-  0.0 and short Play → Stop bursts never advanced the playhead. It now bridges
-  the window from the wall clock and must be monotonic and non-zero there.
+- ``elapsed_s()`` used to clamp ``idx/out_rate - latency`` at 0 (short
+  Play → Stop bursts never advanced the playhead), and the wall-clock bridge
+  that replaced it made the marker LEAD the sound by up to the device latency.
+  The position now extrapolates from the callback's DAC anchor
+  (``time_info.outputBufferDacTime``, the Audacity/mpv approach): it must hold
+  at 0 until the first sample is audible, then track the stream clock exactly,
+  and a Stop mid-burst must commit a non-zero position — on the fallback path
+  (garbage host timestamps) too.
 - ``_prepare_output`` used to resample the whole remaining trial with an
   unbounded polyphase ratio (48000/24414 → a ~160k-tap FIR) synchronously on
   the GUI thread. Resampling is now chunked with a bounded ratio; the chunks
@@ -39,7 +43,12 @@ class _FakeTime:
         return self.t
 
 
-class _DummyStream:
+class _FakeStream:
+    """Just enough of ``sd.OutputStream``: the stream clock + teardown."""
+
+    def __init__(self):
+        self.time = 0.0
+
     def abort(self):
         pass
 
@@ -47,65 +56,122 @@ class _DummyStream:
         pass
 
 
+class _FakeTimeInfo:
+    def __init__(self, current: float, dac: float):
+        self.currentTime = current
+        self.outputBufferDacTime = dac
+
+
 # ----------------------------------------------------------------------
-# elapsed_s: the latency-window bridge
+# elapsed_s: the DAC anchor
 # ----------------------------------------------------------------------
 
 
-def _start_counters(clock: AudioClock, latency_s: float) -> _FakeTime:
+def _start_stream(clock: AudioClock, latency_s: float = 0.3) -> tuple[_FakeStream, _FakeTime]:
     """Put the clock in the 'stream running' state without a device."""
     clock._init_producer()
     clock._latency_s = latency_s
+    clock._stream = _FakeStream()
     now = _FakeTime()
     clock._now = now
     clock._wall_start = 0.0
-    return now
+    return clock._stream, now
 
 
-def test_elapsed_moves_inside_the_latency_window():
+def _run_callback(clock: AudioClock, n_frames: int, current: float, dac: float) -> None:
+    out = np.zeros((n_frames, 1), dtype="float32")
+    clock._callback(out, n_frames, _FakeTimeInfo(current, dac), None)
+
+
+def test_marker_waits_until_the_sound_is_audible():
     clock = _clock()
-    now = _start_counters(clock, latency_s=0.3)
-    # Device prebuffers 0.1 s ahead of the wall clock: the naive
-    # idx/out_rate - latency stays negative until wall = 0.2 s.
-    now.t = 0.1
-    clock._idx = int((now.t + 0.1) * clock._out_rate)
-    assert clock.elapsed_s() > 0.05  # was exactly 0.0 before the fix
-
-
-def test_elapsed_is_monotonic_across_the_handover():
-    clock = _clock()
-    now = _start_counters(clock, latency_s=0.3)
-    values = []
-    for step in range(150):
-        now.t = step * 0.01
-        clock._idx = int((now.t + 0.1) * clock._out_rate)
-        values.append(clock.elapsed_s())
-    assert all(b >= a for a, b in zip(values, values[1:]))
-    # Well past the window the device counter is back in charge.
-    assert values[-1] == pytest.approx((now.t + 0.1) - 0.3, abs=0.02)
+    stream, _ = _start_stream(clock)
+    # 0.1 s of audio handed over; its first sample hits the DAC at t=1.2.
+    _run_callback(clock, int(0.1 * clock._out_rate), current=1.0, dac=1.2)
+    stream.time = 1.1
+    assert clock.elapsed_s() == 0.0  # handed, but not audible yet
+    stream.time = 1.25
+    assert clock.elapsed_s() == pytest.approx(0.05, abs=1e-6)
+    stream.time = 1.28
+    assert clock.elapsed_s() == pytest.approx(0.08, abs=1e-6)
 
 
 def test_elapsed_never_leads_the_frames_handed_to_the_device():
     clock = _clock()
-    now = _start_counters(clock, latency_s=0.3)
-    # Wall clock runs, but the device has consumed almost nothing yet.
-    now.t = 0.5
-    clock._idx = int(0.05 * clock._out_rate)
-    assert clock.elapsed_s() <= 0.05 + 1e-9
+    stream, _ = _start_stream(clock)
+    _run_callback(clock, int(0.1 * clock._out_rate), current=1.0, dac=1.2)
+    # Stream clock far past the one buffer handed: clamp at what was handed.
+    stream.time = 6.0
+    assert clock.elapsed_s() == pytest.approx(0.1, abs=1e-6)
 
 
-def test_stop_freezes_the_position():
+def test_elapsed_is_monotonic_across_anchor_updates():
     clock = _clock()
-    now = _start_counters(clock, latency_s=0.3)
-    now.t = 0.15
-    clock._idx = int((now.t + 0.1) * clock._out_rate)
-    clock._stream = _DummyStream()
+    stream, _ = _start_stream(clock)
+    block = int(0.05 * clock._out_rate)
+    values = []
+    for i in range(20):
+        # Slightly jittered DAC timestamps, as a real host delivers them.
+        dac = 0.3 + i * 0.05 + (0.004 if i % 3 else -0.003)
+        _run_callback(clock, block, current=dac - 0.2, dac=dac)
+        for tick in range(5):
+            stream.time = 0.15 + i * 0.05 + tick * 0.01
+            values.append(clock.elapsed_s())
+    assert all(b >= a for a, b in zip(values, values[1:]))
+
+
+def test_stop_commits_the_audible_burst_position():
+    clock = _clock()
+    stream, _ = _start_stream(clock)
+    _run_callback(clock, int(0.5 * clock._out_rate), current=0.4, dac=0.5)
+    stream.time = 0.65  # 0.15 s audible — a short Play → Stop burst
     clock.stop()
     frozen = clock.elapsed_s()
-    assert frozen > 0.0
-    now.t = 5.0
-    clock._idx = int(1.0 * clock._out_rate)
+    assert frozen == pytest.approx(0.15, abs=1e-6)
+    stream.time = 5.0
     assert clock.elapsed_s() == frozen
+
+
+# ----------------------------------------------------------------------
+# elapsed_s: the fallback when the host's time_info is garbage
+# ----------------------------------------------------------------------
+
+
+def test_garbage_timestamps_never_publish_an_anchor():
+    clock = _clock()
+    _start_stream(clock)
+    _run_callback(clock, int(0.1 * clock._out_rate), current=0.0, dac=0.0)
+    assert clock._dac_anchor is None
+    assert clock._dac_bad == 1
+
+
+def test_fallback_is_monotonic_and_never_leads():
+    clock = _clock()
+    stream, now = _start_stream(clock, latency_s=0.3)
+    stream.time = 0.0  # invalid stream clock → fallback path
+    values = []
+    for step in range(150):
+        now.t = step * 0.01
+        clock._idx = int(min(now.t + 0.1, 1.4) * clock._out_rate)
+        values.append(clock.elapsed_s())
+    assert values[0] == 0.0  # no wall-clock lead at Play
+    assert all(b >= a for a, b in zip(values, values[1:]))
+    # Warm: wall - latency, still capped by frames handed minus latency.
+    assert values[-1] == pytest.approx(min(now.t, 1.4) - 0.3, abs=0.02)
+
+
+def test_stop_commits_a_short_burst_even_without_an_anchor():
+    # The conservative display fallback reads 0 inside the latency window;
+    # committing that would re-create the tester's burst bug. Stop must
+    # commit the optimistic wall span instead.
+    clock = _clock()
+    stream, now = _start_stream(clock, latency_s=0.3)
+    stream.time = 0.0  # no usable stream clock
+    now.t = 0.15
+    clock._idx = int(0.25 * clock._out_rate)
+    assert clock.elapsed_s() == 0.0  # display holds inside the window
+    clock.stop()
+    assert clock.elapsed_s() == pytest.approx(0.15, abs=1e-6)
 
 
 # ----------------------------------------------------------------------

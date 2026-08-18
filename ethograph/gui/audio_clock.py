@@ -1,11 +1,16 @@
 """Audio-output-driven master clock for drift-free playback (Phase 3).
 
 The audio device plays a preloaded mono span through a
-:class:`sounddevice.OutputStream`. The number of frames the device has consumed
-is the *authoritative* playback position — it is exactly what the listener
-hears. Callers drive the timeline marker and the video frame from
-:meth:`AudioClock.elapsed_s`, so those can never drift away from the sound
-(unlike a wall-clock or a frame-count timer, which accumulate error).
+:class:`sounddevice.OutputStream`. The *audible* playback position is the
+authoritative one — it is exactly what the listener hears. Like Audacity and
+mpv, the position comes from the device's own timestamps: the stream callback
+anchors "output frame N becomes audible at stream time T" from
+``time_info.outputBufferDacTime``, and :meth:`AudioClock.elapsed_s`
+extrapolates from that anchor against the stream clock. Callers drive the
+timeline marker and the video frame from it, so those can never drift away
+from the sound (unlike a wall-clock or a frame-count timer, which accumulate
+error — and unlike the frames-handed counter, which leads the ear by the
+device's output buffering).
 
 The span is resampled (offline) to a fixed device-friendly output rate, so
 **any** playback speed and **any** source sample rate can play: the device's
@@ -94,10 +99,16 @@ class AudioClock:
         self._produce_done = False
         self._stop_producing = False
 
-        # Wall-clock bridge over the device-latency window, and the frozen
-        # final position after stop() — see elapsed_s() / stop().
+        # Audible-position tracking. The callback publishes a DAC anchor —
+        # (output frames handed before a buffer, the stream-clock time its
+        # first sample becomes audible) — read lock-free by elapsed_s().
+        # The wall-clock fields back a conservative fallback for host APIs
+        # whose time_info is garbage (Windows MME); _dac_bad counts rejected
+        # timestamps for the debug launcher.
         self._now = time.perf_counter  # injectable for tests
         self._wall_start: float | None = None
+        self._dac_anchor: tuple[int, float] | None = None
+        self._dac_bad = 0
         self._last_media_s = 0.0
         self._final_media_s: float | None = None
 
@@ -223,9 +234,8 @@ class AudioClock:
         return True
 
     def _callback(self, outdata, frames, time_info, status):
-        import sounddevice as sd
-
         out = outdata[:, 0]
+        idx0 = self._idx
         filled = 0
         while filled < frames and self._chunk_i < len(self._chunks):
             chunk = self._chunks[self._chunk_i]
@@ -238,10 +248,22 @@ class AudioClock:
                 self._chunk_off = 0
         # Only real audio advances the position: a producer underrun pads
         # silence without counting, so the marker waits with the sound.
-        self._idx += filled
+        self._idx = idx0 + filled
+        # Anchor: output frame ``idx0`` becomes audible at stream time
+        # ``dac``. Sanity-gated — some host APIs (Windows MME) hand back
+        # zero/garbage time_info, and a bad anchor is worse than none.
+        dac = float(getattr(time_info, "outputBufferDacTime", 0.0) or 0.0)
+        now = float(getattr(time_info, "currentTime", 0.0) or 0.0)
+        prev_dac = self._dac_anchor[1] if self._dac_anchor is not None else 0.0
+        if filled and dac <= now + 2.0 and dac >= max(now, prev_dac) > 0.0:
+            self._dac_anchor = (idx0, dac)
+        elif filled:
+            self._dac_bad += 1
         if filled < frames:
             out[filled:] = 0.0
             if self._produce_done:
+                import sounddevice as sd
+
                 raise sd.CallbackStop
 
     def _on_finished(self):
@@ -258,38 +280,65 @@ class AudioClock:
     def elapsed_s(self) -> float:
         """Media-time seconds that are *audible now*, clamped to ``[0, duration]``.
 
-        The device counter (``_idx`` output frames handed over, minus the
-        device's output latency) is authoritative once playback is warm. For
-        the first latency window (0.1–0.3 s on Windows) that subtraction is
-        negative, and clamping it to zero froze the playhead — short
-        Play → Stop bursts never committed. A wall-clock bridge (capped at the
-        frames actually handed to the device) covers that window and blends
-        into the device counter over one further latency span; a monotonic
-        floor guarantees the position never steps backwards at the handover.
+        Extrapolated from the callback's DAC anchor against the stream clock:
+        before the first sample is physically audible the position holds at 0
+        — the marker waits exactly as long as the sound does, instead of
+        leading it by the device's output latency — and from then on it tracks
+        the ear sample-accurately. Hosts with unusable timestamps fall back to
+        a conservative wall-clock estimate that assumes sound starts one
+        device latency after Play; it may lag slightly but never leads. A
+        monotonic floor guarantees the position never steps backwards when
+        the anchor updates or the fallback hands over.
         """
         if self._final_media_s is not None:
             return self._final_media_s
         if self._out_rate <= 0:
             return 0.0
-        handed_s = self._idx / self._out_rate
-        real = handed_s - self._latency_s
-        if self._wall_start is not None and self._latency_s > 0 and real < self._latency_s:
-            bridge = min(self._now() - self._wall_start, handed_s)
-            frac = max(0.0, real) / self._latency_s
-            real = (1.0 - frac) * bridge + frac * real
-        media_s = max(0.0, min(real * self._speed, self.duration_s))
+        media_s = self._audible_media_s(self._stream)
+        if media_s is None:
+            media_s = self._fallback_estimate()
+        media_s = min(media_s, self.duration_s)
         media_s = max(media_s, self._last_media_s)
         self._last_media_s = media_s
         return media_s
+
+    def _audible_media_s(self, stream) -> float | None:
+        """Anchor-extrapolated audible media-seconds; ``None`` without one."""
+        anchor = self._dac_anchor
+        if anchor is None or stream is None:
+            return None
+        try:
+            t = float(stream.time)
+        except Exception:
+            return None
+        if t <= 0.0:
+            return None
+        idx0, dac0 = anchor
+        audible = idx0 + (t - dac0) * self._out_rate
+        audible = max(0.0, min(audible, self._idx))
+        return audible / self._out_rate * self._speed
+
+    def _fallback_estimate(self) -> float:
+        """Audible media-seconds when no DAC anchor exists.
+
+        Assumes audibility starts one device latency after the wall-clock
+        start and never exceeds the frames actually handed to the device.
+        Conservative: may lag the true position, never leads it.
+        """
+        est = self._idx / self._out_rate - self._latency_s
+        if self._wall_start is not None:
+            est = min(self._now() - self._wall_start - self._latency_s, est)
+        return max(0.0, est) * self._speed
 
     def stop(self):
         self._stop_producing = True
         stream, self._stream = self._stream, None
         if stream is not None:
             if self._final_media_s is None:
-                # Freeze the position where the listener last heard the sound;
+                # Freeze the position where the listener last heard the sound
+                # BEFORE aborting (the anchor needs the live stream clock);
                 # VideoSync commits it to current_frame on teardown.
-                self._final_media_s = self.elapsed_s()
+                self._final_media_s = self._commit_position(stream)
             try:
                 # abort(), not stop(): stop() drains pending buffers, adding
                 # up to a full device latency of blocking to every Stop press.
@@ -298,3 +347,21 @@ class AudioClock:
             except Exception:
                 pass
         self._finished = True
+
+    def _commit_position(self, stream) -> float:
+        """The position a Stop press leaves the playhead at.
+
+        With a DAC anchor this is the exact audible position. Without one
+        (unusable host timestamps) the *conservative* display fallback would
+        re-create the burst bug — a Play → Stop shorter than the device
+        latency would commit 0 — so commit the optimistic wall-clock span
+        capped by the frames handed instead: it overshoots by at most one
+        device latency, but a short burst always advances the playhead.
+        """
+        media_s = self._audible_media_s(stream)
+        if media_s is None:
+            handed_s = self._idx / self._out_rate if self._out_rate > 0 else 0.0
+            wall = self._now() - self._wall_start if self._wall_start is not None else handed_s
+            media_s = max(0.0, min(wall, handed_s)) * self._speed
+        media_s = min(media_s, self.duration_s)
+        return max(media_s, self._last_media_s)
