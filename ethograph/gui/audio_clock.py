@@ -7,19 +7,28 @@ hears. Callers drive the timeline marker and the video frame from
 :meth:`AudioClock.elapsed_s`, so those can never drift away from the sound
 (unlike a wall-clock or a frame-count timer, which accumulate error).
 
-The span is resampled once (offline, at preload) to a fixed device-friendly
-output rate, so **any** playback speed and **any** source sample rate can play:
-the device's maximum rate no longer limits playback. This is what makes fast
-pitch-shifted playback and high-rate (e.g. ultrasonic) recordings audible — the
-latter via slow "time-expansion" speeds that shift content into the audible band.
+The span is resampled (offline) to a fixed device-friendly output rate, so
+**any** playback speed and **any** source sample rate can play: the device's
+maximum rate no longer limits playback. This is what makes fast pitch-shifted
+playback and high-rate (e.g. ultrasonic) recordings audible — the latter via
+slow "time-expansion" speeds that shift content into the audible band.
 
-The stream callback runs on PortAudio's thread, so it only touches a preloaded
-NumPy array and an integer counter — no disk reads, no Qt, no Python-heavy work.
+Resampling is *chunked*: only the first chunk is prepared synchronously (so
+Play starts instantly), and a daemon thread keeps a bounded look-ahead of
+resampled audio queued while the device plays. Pressing Play early in a long
+trial therefore no longer resamples the whole remaining trial on the GUI
+thread.
+
+The stream callback runs on PortAudio's thread, so it only touches preloaded
+NumPy chunks and integer counters — no disk reads, no Qt, no Python-heavy work.
 """
 
 from __future__ import annotations
 
 import logging
+import threading
+import time
+from fractions import Fraction
 
 import numpy as np
 
@@ -29,6 +38,21 @@ logger = logging.getLogger(__name__)
 # full audible band, so we always resample the span to it rather than driving
 # the device at ``media_rate * speed`` (which the device's max rate would cap).
 OUTPUT_RATE = 48000.0
+
+# resample_poly designs a FIR of 2*10*max(up, down)+1 taps. The exact ratio
+# OUTPUT_RATE / (fs * speed) can reduce terribly (48000/24414 → 8000/4069: a
+# ~160k-tap filter, designed and run over the whole span at every Play press).
+# A bounded rational approximation keeps the filter a few thousand taps; the
+# rate error (< ~1/MAX_RESAMPLE_DENOM² relative) mis-times the clock by
+# microseconds per minute — far below a video frame.
+MAX_RESAMPLE_DENOM = 1000
+
+# Real-playback seconds of media resampled per producer step.
+CHUNK_REAL_S = 2.0
+
+# How much resampled audio the producer keeps ahead of the playhead. Playing
+# one second of a 30-minute trial must not resample the remaining 29 minutes.
+LOOKAHEAD_REAL_S = 30.0
 
 
 class AudioClock:
@@ -50,42 +74,120 @@ class AudioClock:
         self._media = np.ascontiguousarray(np.asarray(data).ravel(), dtype="float32")
         self._fs = float(samplerate)  # media sample rate
         self._speed = float(speed) if speed and speed > 0 else 1.0
-        # Output buffer + rate, filled by _prepare_output(); default is the
-        # legacy "drive the device at fs*speed" path used when scipy is absent.
-        self._data = self._media
-        self._out_rate = self._fs * self._speed
-        self._idx = 0  # output frames handed to the device
+        self._out_rate = self._fs * self._speed  # overwritten by _init_producer()
+        self._idx = 0  # output frames of real audio served to the device
         self._finished = False
         self._stream = None
         self._latency_s = 0.0
+
+        # Chunked-resample producer state (see _init_producer).
+        self._resample = None  # scipy.signal.resample_poly when available
+        self._up = 1
+        self._down = 1
+        self._block_in = 0
+        self._margin_in = 0
+        self._next_in = 0
+        self._chunks: list[np.ndarray] = []
+        self._chunk_i = 0  # callback-thread read cursor
+        self._chunk_off = 0
+        self._produced_out = 0
+        self._produce_done = False
+        self._stop_producing = False
+
+        # Wall-clock bridge over the device-latency window, and the frozen
+        # final position after stop() — see elapsed_s() / stop().
+        self._now = time.perf_counter  # injectable for tests
+        self._wall_start: float | None = None
+        self._last_media_s = 0.0
+        self._final_media_s: float | None = None
 
     @property
     def duration_s(self) -> float:
         """Length of the span in media-time seconds."""
         return len(self._media) / self._fs if self._fs else 0.0
 
-    def _prepare_output(self) -> None:
-        """Resample the span to ``OUTPUT_RATE`` so any speed / source rate plays.
+    # ------------------------------------------------------------------
+    # Chunked resampling
+    # ------------------------------------------------------------------
+
+    def _init_producer(self) -> None:
+        """Plan the chunked resample and produce the first chunk synchronously.
 
         Falls back to streaming the raw media at ``fs * speed`` when SciPy is
         unavailable (works up to the device's max sample rate).
         """
         if len(self._media) == 0 or self._fs <= 0:
+            self._produce_done = True
             return
         try:
             from scipy.signal import resample_poly
         except ImportError:
-            self._data = self._media
+            self._chunks = [self._media]
+            self._produced_out = len(self._media)
             self._out_rate = self._fs * self._speed
+            self._produce_done = True
             return
-
-        # Output length so the span lasts (duration / speed) real-seconds at
-        # OUTPUT_RATE: resample by OUTPUT_RATE / (fs * speed).
-        up = int(round(OUTPUT_RATE))
-        down = max(1, int(round(self._fs * self._speed)))
-        out = resample_poly(self._media, up, down).astype("float32", copy=False)
-        self._data = np.ascontiguousarray(out)
+        self._resample = resample_poly
+        ratio = Fraction(OUTPUT_RATE / (self._fs * self._speed)).limit_denominator(MAX_RESAMPLE_DENOM)
+        if ratio <= 0:  # fs * speed beyond any real device rate — keep a sane floor
+            ratio = Fraction(1, MAX_RESAMPLE_DENOM)
+        self._up, self._down = ratio.numerator, ratio.denominator
         self._out_rate = OUTPUT_RATE
+        down = self._down
+        block = int(CHUNK_REAL_S * self._fs * self._speed)
+        self._block_in = max(down, block // down * down)
+        # resample_poly's FIR spans 10*max(up, down) samples of the up-rate
+        # grid to each side; chunks overlap by that much input (+2 cushion),
+        # rounded up to a multiple of ``down`` so output indices stay
+        # integral. Interior samples then match a whole-span resample exactly.
+        margin = 10 * max(self._up, self._down) // self._up + 2
+        self._margin_in = -(-margin // down) * down
+        if not self._produce_chunk():
+            self._produce_done = True
+
+    def _produce_chunk(self) -> bool:
+        """Resample the next input block; ``False`` once the span is exhausted."""
+        a = self._next_in
+        n = len(self._media)
+        if a >= n:
+            return False
+        b = min(a + self._block_in, n)
+        lo = max(0, a - self._margin_in)
+        hi = min(n, b + self._margin_in)
+        out = self._resample(self._media[lo:hi], self._up, self._down)
+        # Input index i (a multiple of ``down``) lands at output index
+        # i*up/down; the tail block keeps resample_poly's own ceil length.
+        o_lo = lo * self._up // self._down
+        o_a = a * self._up // self._down
+        if b == n:
+            o_b = -(-(b * self._up) // self._down)
+        else:
+            o_b = b * self._up // self._down
+        chunk = np.ascontiguousarray(out[o_a - o_lo : o_b - o_lo], dtype="float32")
+        self._chunks.append(chunk)
+        self._produced_out += len(chunk)
+        self._next_in = b
+        return b < n
+
+    def _produce_rest(self) -> None:
+        """Daemon-thread refill: keep ``LOOKAHEAD_REAL_S`` of resampled audio
+        ahead of the playhead until the span is exhausted or the clock stops."""
+        try:
+            while not self._stop_producing:
+                ahead = (self._produced_out - self._idx) / self._out_rate
+                if ahead > LOOKAHEAD_REAL_S:
+                    time.sleep(0.1)
+                    continue
+                if not self._produce_chunk():
+                    return
+        except Exception:
+            logger.warning("Audio resample producer failed; span truncated.", exc_info=True)
+        finally:
+            self._produce_done = True
+
+    # ------------------------------------------------------------------
+    # Stream lifecycle
+    # ------------------------------------------------------------------
 
     def start(self) -> bool:
         """Open and start the output stream. Returns ``False`` if audio is
@@ -97,8 +199,8 @@ class AudioClock:
             import sounddevice as sd
         except ImportError:
             return False
-        self._prepare_output()
-        if len(self._data) == 0 or self._out_rate <= 0:
+        self._init_producer()
+        if not self._chunks or self._out_rate <= 0:
             return False
         try:
             self._stream = sd.OutputStream(
@@ -110,24 +212,37 @@ class AudioClock:
             )
             self._stream.start()
             self._latency_s = float(getattr(self._stream, "latency", 0.0) or 0.0)
-            return True
+            self._wall_start = self._now()
         except Exception:
             logger.warning("AudioClock could not open an output stream; falling back.", exc_info=True)
             self._stream = None
+            self._stop_producing = True
             return False
+        if not self._produce_done:
+            threading.Thread(target=self._produce_rest, name="AudioClockResample", daemon=True).start()
+        return True
 
     def _callback(self, outdata, frames, time_info, status):
         import sounddevice as sd
 
-        i = self._idx
-        chunk = self._data[i : i + frames]
-        n = len(chunk)
-        outdata[:n, 0] = chunk
-        if n < frames:
-            outdata[n:, 0] = 0.0
-            self._idx = i + n
-            raise sd.CallbackStop
-        self._idx = i + frames
+        out = outdata[:, 0]
+        filled = 0
+        while filled < frames and self._chunk_i < len(self._chunks):
+            chunk = self._chunks[self._chunk_i]
+            take = chunk[self._chunk_off : self._chunk_off + (frames - filled)]
+            out[filled : filled + len(take)] = take
+            filled += len(take)
+            self._chunk_off += len(take)
+            if self._chunk_off >= len(chunk):
+                self._chunk_i += 1
+                self._chunk_off = 0
+        # Only real audio advances the position: a producer underrun pads
+        # silence without counting, so the marker waits with the sound.
+        self._idx += filled
+        if filled < frames:
+            out[filled:] = 0.0
+            if self._produce_done:
+                raise sd.CallbackStop
 
     def _on_finished(self):
         self._finished = True
@@ -143,20 +258,43 @@ class AudioClock:
     def elapsed_s(self) -> float:
         """Media-time seconds that are *audible now*, clamped to ``[0, duration]``.
 
-        The device has played ``idx`` output frames = ``idx / out_rate`` real
-        seconds; media time advances ``speed``× faster than real time.
+        The device counter (``_idx`` output frames handed over, minus the
+        device's output latency) is authoritative once playback is warm. For
+        the first latency window (0.1–0.3 s on Windows) that subtraction is
+        negative, and clamping it to zero froze the playhead — short
+        Play → Stop bursts never committed. A wall-clock bridge (capped at the
+        frames actually handed to the device) covers that window and blends
+        into the device counter over one further latency span; a monotonic
+        floor guarantees the position never steps backwards at the handover.
         """
+        if self._final_media_s is not None:
+            return self._final_media_s
         if self._out_rate <= 0:
             return 0.0
-        real_s = self._idx / self._out_rate - self._latency_s
-        return max(0.0, min(real_s * self._speed, self.duration_s))
+        handed_s = self._idx / self._out_rate
+        real = handed_s - self._latency_s
+        if self._wall_start is not None and self._latency_s > 0 and real < self._latency_s:
+            bridge = min(self._now() - self._wall_start, handed_s)
+            frac = max(0.0, real) / self._latency_s
+            real = (1.0 - frac) * bridge + frac * real
+        media_s = max(0.0, min(real * self._speed, self.duration_s))
+        media_s = max(media_s, self._last_media_s)
+        self._last_media_s = media_s
+        return media_s
 
     def stop(self):
-        if self._stream is not None:
+        self._stop_producing = True
+        stream, self._stream = self._stream, None
+        if stream is not None:
+            if self._final_media_s is None:
+                # Freeze the position where the listener last heard the sound;
+                # VideoSync commits it to current_frame on teardown.
+                self._final_media_s = self.elapsed_s()
             try:
-                self._stream.stop()
-                self._stream.close()
+                # abort(), not stop(): stop() drains pending buffers, adding
+                # up to a full device latency of blocking to every Stop press.
+                stream.abort()
+                stream.close()
             except Exception:
                 pass
-            self._stream = None
         self._finished = True

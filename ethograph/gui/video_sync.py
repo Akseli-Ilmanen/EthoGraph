@@ -61,7 +61,7 @@ class VideoSync(QObject):
         # driven from real audio output; the marker sits on the exact clock time
         # via ``marker_time_override`` (read by plots_container).
         self._audio_clock: Any = None
-        self._clock_start_frame: int = 0
+        self._clock_start_t: float = 0.0  # trial-relative seconds at clock start
         self._clock_start_marker: float = 0.0
         self.marker_time_override: Optional[float] = None
         # Smooth mode: decode-paced (synchronous) stepping, every frame, no audio.
@@ -87,6 +87,11 @@ class VideoSync(QObject):
         self.audio_sr = get_audio_sr(audio_source) if audio_source else None
 
         view.time_changed.connect(self._on_view_time_changed)
+        # A mid-playback channel switch rebuilds the audio clock on the new
+        # channel (guarded getattr — plain app-state fakes carry no signal).
+        self._mic_signal = getattr(app_state, "playback_mic_key_changed", None)
+        if self._mic_signal is not None:
+            self._mic_signal.connect(self._on_playback_channel_changed)
 
     # ------------------------------------------------------------------
     # Time mapping
@@ -190,7 +195,7 @@ class VideoSync(QObject):
             clock = self._build_audio_clock(t0, t1)
             if clock is not None and clock.start():
                 self._audio_clock = clock
-                self._clock_start_frame = self._current_frame
+                self._clock_start_t = t0
                 self._clock_start_marker = self.frame_to_time(self._current_frame)
                 render_fps = min(self.fps_playback, self._render_cap())
                 if render_fps > 0:
@@ -220,14 +225,53 @@ class VideoSync(QObject):
         self._play_timer.stop()
         self._segment_end_frame = None
         self._segment_end_time_s = None
-        if self._audio_clock is not None:
-            self._audio_clock.stop()
-            self._audio_clock = None
+        clock, self._audio_clock = self._audio_clock, None
+        if clock is not None:
+            clock.stop()
+            self._commit_clock_position(clock)
         self._smooth_mode = False
         if clear_marker_override:
             self.marker_time_override = None
         self._stop_audio()
         self.playback_stopped.emit()
+
+    def _commit_clock_position(self, clock) -> None:
+        """Leave the playhead where the listener last heard the audio.
+
+        Inside the device-latency window the per-tick frame may never have
+        advanced (a sub-0.4 s Play → Stop burst), so the clock's final
+        position is committed to ``current_frame`` at teardown — the next
+        Play continues from there instead of restarting the burst.
+        """
+        if self.fps <= 0:
+            return
+        frame = int(round((self._clock_start_t + clock.elapsed_s()) * self.fps))
+        frame = max(0, min(frame, self.total_frames - 1)) if self.total_frames else 0
+        if frame != self._current_frame:
+            self.view.seek_trial_frame(frame)
+            self._apply_frame(frame)
+
+    def _on_playback_channel_changed(self, *_args):
+        """Rebuild the audio clock when the playback channel moves mid-playback.
+
+        ``_build_audio_clock`` resolves the mic/channel once, at Play — without
+        a rebuild the audible channel only changed after Stop and the next
+        Play. The clock anchors advance by the old clock's elapsed time, so
+        marker and video carry on seamlessly from the same position.
+        """
+        if self._audio_clock is None or not self.is_playing or self.fps <= 0:
+            return
+        old, self._audio_clock = self._audio_clock, None
+        elapsed = old.elapsed_s()
+        old.stop()
+        self._clock_start_t += elapsed
+        self._clock_start_marker += elapsed
+        clock = self._build_audio_clock(self._clock_start_t, self.total_frames / self.fps)
+        if clock is not None and clock.start():
+            self._audio_clock = clock
+            return
+        # No usable stream for the new channel → carry on with silent frames.
+        self._start_timer()
 
     def _playback_speed(self) -> float:
         # Single speed lever for both video FPS and audio pitch/rate.
@@ -377,7 +421,7 @@ class VideoSync(QObject):
         clock = self._audio_clock
         elapsed = clock.elapsed_s()
         max_frame = self.total_frames - 1
-        frame = min(self._clock_start_frame + int(round(elapsed * self.fps)), max_frame)
+        frame = min(int(round((self._clock_start_t + elapsed) * self.fps)), max_frame)
         # The playhead sits on the exact (sub-frame) clock time; plots_container
         # reads this override so it isn't quantized to the displayed frame.
         self.marker_time_override = self._clock_start_marker + elapsed
@@ -514,7 +558,18 @@ class VideoSync(QObject):
             self.view.time_changed.disconnect(self._on_view_time_changed)
         except (RuntimeError, TypeError):
             pass
+        if self._mic_signal is not None:
+            try:
+                self._mic_signal.disconnect(self._on_playback_channel_changed)
+            except (RuntimeError, TypeError):
+                pass
+            self._mic_signal = None
         self._play_timer.stop()
+        if self._audio_clock is not None:
+            # Teardown mid-playback (trial/camera change) must close the
+            # output stream too, or the old span keeps sounding over the new.
+            self._audio_clock.stop()
+            self._audio_clock = None
         self._stop_audio()
         self._segment_end_frame = None
         self.playback_stopped.emit()

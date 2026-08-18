@@ -59,6 +59,11 @@ class AudioPlayer:
         self._segment_end: float | None = None
         # Optional hook invoked whenever playing flips (start/stop/auto-stop).
         self.on_state_changed: Callable[[], None] | None = None
+        # A mid-playback channel switch rebuilds the clock on the new channel
+        # (guarded getattr — plain app-state fakes carry no signal).
+        mic_signal = getattr(app_state, "playback_mic_key_changed", None)
+        if mic_signal is not None:
+            mic_signal.connect(self._on_playback_channel_changed)
 
     @property
     def playing(self) -> bool:
@@ -130,6 +135,21 @@ class AudioPlayer:
             self._clock = None
             self._start_time = marker_start
             self._start_wall = _time.perf_counter()
+
+    def _on_playback_channel_changed(self, *_args):
+        """Rebuild the clock on the new channel without stopping playback.
+
+        ``_build_clock`` resolves the mic/channel once, at start — without a
+        rebuild the audible channel only changed after Stop and the next Play.
+        """
+        if not self._playing or self._clock is None:
+            return
+        old, self._clock = self._clock, None
+        elapsed = old.elapsed_s()
+        old.stop()
+        current = self._clock_start_marker + elapsed
+        end = self._segment_end if self._segment_end is not None else self._get_xlim()[1]
+        self._begin_clock(current, end, marker_start=current)
 
     def stop(self):
         if self._clock is not None:
