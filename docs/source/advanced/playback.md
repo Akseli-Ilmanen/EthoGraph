@@ -41,12 +41,18 @@ When you click on a plot (waveform, spectrogram, line plot):
 - the video seeks to the **nearest frame** to that time and displays it;
 - a label you place is stored at the **exact clicked time**, not snapped to a frame.
 
+The same holds during playback and when playing a label segment: **audio and
+the marker are always exact, the video always shows the nearest frame.** There
+is no setting for this — the playhead never snaps to the frame grid.
+
 ```{note}
 Because the video can only show whole frames, the displayed frame and the red
 marker can sit up to half a frame apart (~10 ms). This is expected and lets you
 place a syllable boundary precisely between two frames — you judge the boundary
-from the waveform/spectrogram, and the video is a reference. Stepping frame by
-frame (arrow keys) moves the marker onto exact frame times.
+from the waveform/spectrogram, and the video is a reference. To see where the
+frames actually fall in time, step through them with the **left/right arrow
+keys**: that moves the marker onto exact frame times, so you can read off the
+frame boundaries around your label.
 ```
 
 
@@ -90,20 +96,12 @@ The bottom bar shows a small speaker icon with the active channel as
 ## Playing back a selected label segment
 
 Left-click a label to select it, then press **V** (or the segment play
-button) to play just that segment. The video always shows the **nearest
-frame** to the label's onset/offset, since it can only display whole frames —
-but where the red marker (and playback) **ends** is a choice:
-
-- **Nearest frame end** (default) — the marker stops on the time of the last
-  displayed frame, which may be up to half a frame before or after the
-  label's true offset.
-- **Exact time end** — the marker continues past the last displayed frame and
-  stops on the label's true (sub-frame) offset time, matching where the audio
-  actually ends.
-
-Toggle this with the **"Play to exact time (not nearest frame)"** checkbox at
-the top of the Labels panel. This is a global preference (applies across
-datasets).
+button) to play just that segment. The audio is sliced at the label's true
+(sub-frame) onset and offset, and the red marker stops on that exact offset —
+so playback ends where the label ends, not where the frame grid happens to
+fall. The video shows the **nearest frame** to each bound, since it can only
+display whole frames; use the **left/right arrow keys** afterwards to step
+frame by frame and see where those frames sit relative to the label.
 
 **Auto-play on navigate** starts playback immediately, even while the video
 decoder is still warming up after a trial or camera switch: until it is ready,

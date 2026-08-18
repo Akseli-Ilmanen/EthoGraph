@@ -52,9 +52,9 @@ def _capture_playback(meta, monkeypatch) -> dict:
         )
         real_play = type(video).play_segment
 
-        def spy(self, start_frame, end_frame, audio_t0=None, audio_t1=None):
+        def spy(self, start_frame, end_frame, exact_t0=None, exact_t1=None):
             captured["frames"] = (start_frame, end_frame)
-            return real_play(self, start_frame, end_frame, audio_t0=audio_t0, audio_t1=audio_t1)
+            return real_play(self, start_frame, end_frame, exact_t0=exact_t0, exact_t1=exact_t1)
 
         monkeypatch.setattr(type(video), "play_segment", spy)
     else:

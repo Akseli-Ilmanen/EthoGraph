@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import threading
-from pathlib import Path
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -27,14 +26,13 @@ from .plots_base import BasePlot, ThrottleDebounce  # noqa: E402
 
 def _audio_load_hint(audio_path, err: Exception) -> str:
     """Build a single actionable message for an unreadable audio file."""
-    from ..io.validation import VIDEO_EXTENSIONS
+    from ..io.audio_extract import is_video_container
 
-    ext = Path(str(audio_path)).suffix.lower()
-    if ext in VIDEO_EXTENSIONS:
+    if is_video_container(audio_path):
         return (
-            f"Cannot load audio from video container '{audio_path}': EthoGraph does "
-            "not decode embedded (e.g. AAC) audio in place. Re-drop the video with "
-            "the 'extract audio' option enabled, or supply a separate WAV/FLAC/OGG file."
+            f"Cannot use the audio track of '{audio_path}' ({err}). Embedded audio is "
+            "decoded to a cached WAV before use; the container has no readable audio "
+            "track, or it could not be decoded. Supply a separate WAV/FLAC/OGG file."
         )
     return (
         f"Failed to load audio file '{audio_path}' ({err}). Supported audio formats "
@@ -68,7 +66,12 @@ class SharedAudioCache:
                 try:
                     from audioio import AudioLoader
 
-                    cls._instances[audio_path] = AudioLoader(audio_path, buffersize=buffer_size)
+                    from ..io.audio_extract import resolve_audio_path
+
+                    # A video container's track is decoded to a cached WAV first:
+                    # audioio's seekable backends read no container format.
+                    readable = resolve_audio_path(audio_path)
+                    cls._instances[audio_path] = AudioLoader(readable, buffersize=buffer_size)
                 except (OSError, IOError, ValueError, RuntimeError) as e:
                     cls._failed.add(audio_path)
                     logger.error("%s", _audio_load_hint(audio_path, e))

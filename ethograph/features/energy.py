@@ -356,9 +356,9 @@ def get_lowpass_envelope(audio_path: str, audio_sr: int | None, fps: float) -> n
     Parameters
     ----------
     audio_path : str
-        Path to a decodable audio file (see :data:`AUDIO_EXTENSIONS`). Video
-        containers are not accepted — extract the audio track first, e.g. via
-        the cover page's "extract audio" option.
+        Path to a decodable audio file (see :data:`AUDIO_EXTENSIONS`), or a
+        video container whose audio track is decoded to a cached WAV first
+        (:func:`ethograph.io.audio_extract.resolve_audio_path`).
     audio_sr : int or None
         Override the file's sample rate. If None, use the file's own rate.
     fps : float
@@ -373,7 +373,9 @@ def get_lowpass_envelope(audio_path: str, audio_sr: int | None, fps: float) -> n
     import audioio as aio
     from scipy.interpolate import interp1d
 
-    data, sr = aio.load_audio(audio_path)
+    from ethograph.io.audio_extract import resolve_audio_path
+
+    data, sr = aio.load_audio(resolve_audio_path(audio_path))
     if audio_sr is not None:
         sr = audio_sr
     if data.ndim > 1:

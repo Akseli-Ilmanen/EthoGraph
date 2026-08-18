@@ -146,10 +146,6 @@ class AppStateSpec:
         # "auto" | "synced" | "smooth" | "skip" — global playback preference.
         "playback_mode": (str, "auto", True),
         "hide_label_text": (bool, False, True),
-        # Segment playback (V key / "Play segment"): when True, the red marker
-        # ends on the label's exact (sub-frame) offset time; when False (default)
-        # it ends on the nearest video frame's time. See docs/advanced/playback.md.
-        "segment_end_continuous_time": (bool, False, True),
         "filter_warnings": (bool, True, True),
         "center_playback": (bool, False, True),
         # "Auto-play on navigate": start segment playback (after the fixed
@@ -755,7 +751,16 @@ class ObservableAppState(QObject):
         if not mics_sel or not self.audio_source_map:
             return None, 0
 
-        mic_file, channel_idx = self.audio_source_map.get(mics_sel, (mics_sel, 0))
+        entry = self.audio_source_map.get(mics_sel)
+        if entry is None:
+            # A key that is not in the map is a stale pin (panel recreated, map
+            # rebuilt for another trial), never a path. Display keys carry the
+            # channel suffix — "mic1.wav (Ch 3)" — so reading one as a file name
+            # sent the audio loader after a file that cannot exist.
+            logger.warning("Unknown audio source '%s' — no audio for this panel.", mics_sel)
+            return None, 0
+
+        mic_file, channel_idx = entry
         if not mic_file:
             return None, channel_idx
 

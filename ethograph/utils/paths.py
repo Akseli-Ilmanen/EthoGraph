@@ -1,5 +1,6 @@
 """Path utilities with zero internal dependencies (stdlib only)."""
 
+import hashlib
 import logging
 import os
 import re
@@ -146,6 +147,21 @@ def check_paths_exist(nc_paths):
         for p in missing_paths:
             print(f"  {p}")
         exit(1)
+
+
+def media_cache_key(media_path: Path | str, recipe_version: int) -> str:
+    """Deterministic cache key from source identity (path, size, mtime).
+
+    Shared by every derived-media cache (video proxies, extracted audio
+    tracks): moving, renaming, or re-recording the source yields a new key, so
+    a stale derivative is never silently reused for changed media. Bumping the
+    caller's *recipe_version* invalidates everything it wrote before.
+    """
+    media_path = Path(media_path)
+    st = media_path.stat()
+    raw = f"{media_path.resolve()}|{st.st_size}|{int(st.st_mtime)}|{recipe_version}"
+    digest = hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
+    return f"{media_path.stem}_{digest}"
 
 
 def path_exists(value: str, kind: str = "any") -> bool:

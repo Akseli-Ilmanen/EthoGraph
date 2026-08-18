@@ -988,7 +988,8 @@ class NavigationWidget(QWidget):
         if self.app_state.video:
             start_frame = self.app_state.video.time_to_frame(onset_s)
             end_frame = self.app_state.video.time_to_frame(offset_s)
-            self.app_state.video.play_segment(start_frame, end_frame)
+            # Exact bounds for audio + playhead; the video shows nearest frames.
+            self.app_state.video.play_segment(start_frame, end_frame, exact_t0=onset_s, exact_t1=offset_s)
         elif self.plot_container and hasattr(self.plot_container, "audio_player"):
             self.plot_container.audio_player.play_segment(onset_s, offset_s)
 

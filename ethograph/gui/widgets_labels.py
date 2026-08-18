@@ -232,6 +232,10 @@ class LabelsWidget(QWidget):
         self.plot_container = plot_container
         plot_container.set_label_mappings(self._mappings)
         self._sync_active_label_ids()
+        # A half-placed state label belongs to the trial it was started in — its
+        # anchor must not survive into the next one (the second click would be
+        # refused as spanning two trials anyway).
+        self.app_state.trial_changed.connect(self._reset_label_clicks)
 
         for plot in [
             *plot_container.spectrogram_plots,
@@ -351,17 +355,6 @@ class LabelsWidget(QWidget):
         self.hide_label_cb.setChecked(bool(self.app_state.get_with_default("hide_label_text")))
         self.hide_label_cb.toggled.connect(lambda v: setattr(self.app_state, "hide_label_text", v))
 
-        self.segment_end_continuous_cb = QCheckBox("Play to exact time (not nearest frame)")
-        self.segment_end_continuous_cb.setToolTip(
-            "When playing a selected segment (V), stop the red marker on the label's exact "
-            "offset time. Unchecked (default), it stops on the nearest video frame's time instead."
-        )
-        self.segment_end_continuous_cb.setChecked(bool(self.app_state.get_with_default("segment_end_continuous_time")))
-        self.segment_end_continuous_cb.toggled.connect(
-            lambda v: setattr(self.app_state, "segment_end_continuous_time", v)
-        )
-        layout.addWidget(self.segment_end_continuous_cb)
-
         # Scrollable area for branch tables
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -441,14 +434,17 @@ class LabelsWidget(QWidget):
 
         show_checkbox = QCheckBox()
         show_checkbox.setChecked(self.app_state._branch_shown.setdefault(branch_idx, True))
-        show_checkbox.setToolTip("Show this branch as a label overlay")
+        show_checkbox.setToolTip(
+            "Show this branch's labels on the plots.\n"
+            "This does NOT choose which branch you edit — click the branch name for that."
+        )
         show_checkbox.stateChanged.connect(lambda qt_state, b=branch_idx: self._on_branch_shown_changed(b, qt_state))
         header_row.addWidget(show_checkbox)
 
-        header_label = QLabel(f"Branch {branch_idx} ({_BRANCH_POSITION_LABEL[branch_idx]})")
+        header_label = QLabel()
         header_label.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
         header_label.setCursor(Qt.PointingHandCursor)
-        header_label.setToolTip("Click to make this the active (editable) branch")
+        header_label.setToolTip("Click to make this the branch you edit (the checkbox only shows/hides it)")
         header_label.mousePressEvent = lambda _event, b=branch_idx: self.set_active_branch(b)
         header_row.addWidget(header_label)
 
@@ -485,13 +481,21 @@ class LabelsWidget(QWidget):
         self._update_branch_header_styles()
 
     def _update_branch_header_styles(self):
-        """Highlight the active (editable) branch's header label."""
+        """Mark which branch is the editable one.
+
+        The checkbox (display) and the header (editable) were easy to confuse
+        when the only difference between an active and an inactive branch was
+        the shade of its name, so the active one says so in words.
+        """
         active = self.app_state._active_branch
         for branch_idx, section in self._branch_sections.items():
+            name = f"Branch {branch_idx} ({_BRANCH_POSITION_LABEL[branch_idx]})"
             if branch_idx == active:
+                section["label"].setText(f"✎ {name} — editing")
                 section["label"].setStyleSheet("QLabel { color: #ffe066; font-weight: bold; }")
             else:
-                section["label"].setStyleSheet("QLabel { color: #ccc; font-weight: bold; }")
+                section["label"].setText(name)
+                section["label"].setStyleSheet("QLabel { color: #999; font-weight: normal; }")
 
     def set_active_branch(self, branch_idx: int):
         """Make *branch_idx* the active (editable) branch."""
@@ -506,7 +510,7 @@ class LabelsWidget(QWidget):
 
     def _on_branch_shown_changed(self, branch_idx: int, qt_state):
         """Handle a branch's visibility checkbox being toggled."""
-        self.app_state._branch_shown[branch_idx] = qt_state == Qt.Checked
+        self.app_state._branch_shown[branch_idx] = Qt.CheckState(qt_state) == Qt.Checked
         self._sync_active_label_ids()
         if self.data_widget:
             self.data_widget.update_main_plot(preserve_x_range=True)
@@ -958,8 +962,7 @@ class LabelsWidget(QWidget):
 
         self.selected_labels = _id
         self.ready_for_label_click = True
-        self.first_click = None
-        self.second_click = None
+        self._reset_label_clicks()
 
         # Find and select in the correct branch table
         for section in self._branch_sections.values():
@@ -1043,14 +1046,12 @@ class LabelsWidget(QWidget):
             placed = self.app_state.from_display(t_display, strict=True)
             if placed is None:
                 notify("Click falls between trials — no label placed", severity="warning")
-                self.first_click = None
-                self.second_click = None
+                self._reset_label_clicks()
                 return
             p_trial, p_rel = placed
             if self.first_click is not None and p_trial != self.app_state.trials_sel:
                 notify("Label would span two trials — cancelled", severity="warning")
-                self.first_click = None
-                self.second_click = None
+                self._reset_label_clicks()
                 return
             if p_trial != self.app_state.trials_sel:
                 self._switch_trial_for_click(p_trial)
@@ -1061,6 +1062,7 @@ class LabelsWidget(QWidget):
                 self._apply_point(p_rel)
             elif self.first_click is None:
                 self.first_click = p_rel
+                self._show_pending_label(p_rel)
             else:
                 self.second_click = p_rel
                 self._apply_label()
@@ -1289,8 +1291,7 @@ class LabelsWidget(QWidget):
         self.current_labels = self.selected_labels
         self.current_labels_is_prediction = False
 
-        self.first_click = None
-        self.second_click = None
+        self._reset_label_clicks()
         self.ready_for_label_click = False
 
         if self.io_widget:
@@ -1334,8 +1335,7 @@ class LabelsWidget(QWidget):
         self.current_labels = self.selected_labels
         self.current_labels_is_prediction = False
 
-        self.first_click = None
-        self.second_click = None
+        self._reset_label_clicks()
         self.ready_for_label_click = False
 
         if self.io_widget:
@@ -1349,6 +1349,23 @@ class LabelsWidget(QWidget):
     def _to_display(self, t_rel: float) -> float:
         """Current trial's trial-relative time → the plot axis's clock."""
         return self.app_state.to_display(self.app_state.trials_sel, t_rel)
+
+    def _show_pending_label(self, t_rel: float) -> None:
+        """Show where a state label started, until its second click lands."""
+        if self.plot_container is None:
+            return
+        mapping = self._mappings.get(self.selected_labels)
+        if mapping is None:
+            return
+        color_rgb = tuple(int(c * 255) for c in mapping["color"])
+        self.plot_container.show_pending_label(self._to_display(t_rel), color_rgb)
+
+    def _reset_label_clicks(self) -> None:
+        """Forget a half-placed state label and take its preview off the plots."""
+        self.first_click = None
+        self.second_click = None
+        if self.plot_container is not None:
+            self.plot_container.clear_pending_label()
 
     def _seek_to_frame(self, time_s: float):
         """Seek to display-clock *time_s*, keeping the red marker on the EXACT
@@ -1406,8 +1423,7 @@ class LabelsWidget(QWidget):
         self.selected_labels = self.current_labels
 
         self.ready_for_label_click = True
-        self.first_click = None
-        self.second_click = None
+        self._reset_label_clicks()
 
     def _play_segment(self):
         if self.current_labels_pos is None:
@@ -1432,14 +1448,13 @@ class LabelsWidget(QWidget):
             # Round to the nearest frame so the marker lands on the label
             # boundary instead of truncating up to a frame short. time_to_frame
             # speaks the display clock; the stored bounds are trial-relative.
-            start_frame = self.app_state.video.time_to_frame(self._to_display(onset_s), round_nearest=True)
-            end_frame = self.app_state.video.time_to_frame(self._to_display(offset_s), round_nearest=True)
-            # Video shows nearest frames; audio uses the exact label bounds so
-            # its tail isn't clipped to the frame grid (Phase 2). Whether the
-            # marker itself stops on the exact offset_s or the nearest frame's
-            # time is controlled by the "Play segment: end at exact time"
-            # checkbox (app_state.segment_end_continuous_time).
-            self.app_state.video.play_segment(start_frame, end_frame, audio_t0=onset_s, audio_t1=offset_s)
+            onset_d, offset_d = self._to_display(onset_s), self._to_display(offset_s)
+            start_frame = self.app_state.video.time_to_frame(onset_d, round_nearest=True)
+            end_frame = self.app_state.video.time_to_frame(offset_d, round_nearest=True)
+            # Video shows nearest frames; audio and the marker use the exact
+            # label bounds, so the tail isn't clipped to the frame grid and the
+            # playhead stops on the offset itself.
+            self.app_state.video.play_segment(start_frame, end_frame, exact_t0=onset_d, exact_t1=offset_d)
         else:
             self._play_audio_segment(onset_s, offset_s)
 

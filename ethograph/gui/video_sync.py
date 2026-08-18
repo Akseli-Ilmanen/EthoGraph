@@ -52,8 +52,8 @@ class VideoSync(QObject):
 
         self._audio_player: Any = None
         self._segment_end_frame: Optional[int] = None
-        # True (sub-frame) end time of the segment being played, set only when
-        # ``app_state.segment_end_continuous_time`` is on (see play_segment()).
+        # True (sub-frame) end time of the segment being played, when the
+        # caller knows it (see play_segment()).
         self._segment_end_time_s: Optional[float] = None
         self._current_frame: int = 0
 
@@ -158,8 +158,8 @@ class VideoSync(QObject):
         self.app_state.current_frame = frame
         finishing_segment = self._segment_end_frame is not None and frame >= self._segment_end_frame
         if finishing_segment and self._segment_end_time_s is not None:
-            # Continuous-end mode: snap the marker to the segment's true
-            # (sub-frame) end time rather than the nearest frame's time.
+            # The playhead is always exact: snap the marker to the segment's
+            # true (sub-frame) end time rather than the nearest frame's time.
             self.marker_time_override = self._segment_end_time_s
         self.frame_changed.emit(frame)
         if finishing_segment:
@@ -225,9 +225,9 @@ class VideoSync(QObject):
     def stop(self, clear_marker_override: bool = True):
         """Stop playback.
 
-        ``clear_marker_override=False`` lets a continuous-end segment finish
-        (see ``_apply_frame``) leave the marker frozen on the segment's exact
-        end time instead of snapping it back to the last frame's time.
+        ``clear_marker_override=False`` lets a finishing segment (see
+        ``_apply_frame``) leave the marker frozen on the segment's exact end
+        time instead of snapping it back to the last frame's time.
         """
         self._gap_run = False
         self._sync_until_ready = False
@@ -473,8 +473,10 @@ class VideoSync(QObject):
         except ImportError:
             return None
         try:
+            from ..io.audio_extract import resolve_audio_path
+
             file_off = self._audio_file_offset()
-            with AudioLoader(audio_path) as data:
+            with AudioLoader(resolve_audio_path(audio_path)) as data:
                 fs = data.rate
                 s0 = max(0, int((t0_s - file_off) * fs))
                 s1 = min(len(data), int((t1_s - file_off) * fs))
@@ -492,19 +494,16 @@ class VideoSync(QObject):
         self,
         start_frame: int,
         end_frame: int,
-        audio_t0: float | None = None,
-        audio_t1: float | None = None,
+        exact_t0: float | None = None,
+        exact_t1: float | None = None,
     ):
         """Play frames ``[start_frame, end_frame]`` with synchronized audio.
 
-        ``audio_t0``/``audio_t1`` are the true (sub-frame) segment bounds in
-        seconds; when given, audio is sliced from them so it isn't quantized to
-        the video frame grid (Phase 2). Video still shows the nearest frames.
-
-        When ``app_state.segment_end_continuous_time`` is on and ``audio_t1``
-        is given, the red marker snaps to that exact end time when the segment
-        finishes instead of stopping on the nearest frame's time — see
-        docs/advanced/playback.md.
+        ``exact_t0``/``exact_t1`` are the segment's true (sub-frame) bounds on
+        the **display clock**, like every other public time on this class. Given
+        them, audio is sliced from them rather than from the video frame grid
+        and the red marker stops on ``exact_t1`` itself; the video still shows
+        the nearest frames — see docs/advanced/playback.md.
         """
         self.stop()
 
@@ -514,9 +513,9 @@ class VideoSync(QObject):
             end_frame = min(start_frame + 1, self.total_frames - 1)
 
         self._segment_end_frame = end_frame
-        self._segment_end_time_s = (
-            audio_t1 if (audio_t1 is not None and self.app_state.segment_end_continuous_time) else None
-        )
+        # The marker override is read as a display-clock time, which is what
+        # the caller handed us.
+        self._segment_end_time_s = exact_t1
         # ASYNC initial seek, exactly like regular Play (space): a synchronous
         # decode here blocks the GUI on a far seek, which is the gap the user
         # feels between navigating and playback starting. The first timer tick
@@ -529,11 +528,19 @@ class VideoSync(QObject):
         self._render_watchdog.start()
 
         if self.fps > 0:
+            # _start_audio indexes the audio file on the trial clock.
+            audio_t0 = None if exact_t0 is None else self._trial_time(exact_t0)
+            audio_t1 = None if exact_t1 is None else self._trial_time(exact_t1)
             if audio_t0 is None or audio_t1 is None:
                 audio_t0, audio_t1 = start_frame / self.fps, end_frame / self.fps
             self._start_audio(audio_t0, audio_t1)
 
         self._start_timer()
+
+    def _trial_time(self, t_display: float) -> float | None:
+        """Display-clock second → trial-relative second (``None`` if unresolved)."""
+        resolved = self.app_state.from_display(t_display)
+        return None if resolved is None else float(resolved[1])
 
     def _start_audio(self, t0_s: float, t1_s: float):
         """Play the selected audio channel over the trial-relative span ``[t0_s, t1_s]``.
@@ -553,8 +560,10 @@ class VideoSync(QObject):
             return
 
         try:
+            from ..io.audio_extract import resolve_audio_path
+
             file_off = self._audio_file_offset()
-            with AudioLoader(audio_path) as data:
+            with AudioLoader(resolve_audio_path(audio_path)) as data:
                 audio_sr = data.rate
                 start_sample = max(0, int((t0_s - file_off) * audio_sr))
                 end_sample = int((t1_s - file_off) * audio_sr)

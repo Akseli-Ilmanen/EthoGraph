@@ -112,8 +112,14 @@ def discover_nwb(nc_path: str | Path) -> Path | None:
 
 def make_nwb_alignment(nwb_path: str | Path | None = None):
     """Create a EmpytAlignment from an NWB path, falling back to base EmpytAlignment."""
-    if nwb_path and Path(nwb_path).exists():
+    if nwb_path is None:
+        return EmpytAlignment()
+    if Path(nwb_path).exists():
         return NWBAlignment(nwb_path)
+    # A path that was asked for but isn't there is bad user input, not an
+    # absent alignment: without this the GUI silently behaves as if no
+    # alignment file had been named at all.
+    logger.warning("Alignment file not found: %s — continuing without alignment", nwb_path)
     return EmpytAlignment()
 
 

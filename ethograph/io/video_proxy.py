@@ -16,27 +16,20 @@ Two lifecycles:
 
 from __future__ import annotations
 
-import hashlib
 import subprocess
 import sys
 from pathlib import Path
 
 from ethograph.utils.ffmpeg import ffmpeg_executable
+from ethograph.utils.paths import media_cache_key
 
 #: Bump when the encode recipe changes so stale proxies are regenerated.
 _PROXY_RECIPE_VERSION = 1
 
 
 def _source_key(video_path: Path) -> str:
-    """Deterministic cache key from source identity (path, size, mtime).
-
-    Moving, renaming, or re-recording the source yields a new key, so a stale
-    proxy is never silently reused for changed media.
-    """
-    st = video_path.stat()
-    raw = f"{video_path.resolve()}|{st.st_size}|{int(st.st_mtime)}|{_PROXY_RECIPE_VERSION}"
-    digest = hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
-    return f"{video_path.stem}_{digest}"
+    """Deterministic cache key from source identity (path, size, mtime)."""
+    return media_cache_key(video_path, _PROXY_RECIPE_VERSION)
 
 
 def proxy_cache_path(video_path: Path | str, cache_dir: Path | str) -> Path:

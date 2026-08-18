@@ -619,7 +619,9 @@ class ChangepointsWidget(QWidget):
             return
         import audioio as aio
 
-        data, sample_rate = aio.load_audio(audio_path)
+        from ..io.audio_extract import resolve_audio_path
+
+        data, sample_rate = aio.load_audio(resolve_audio_path(audio_path))
         sample_rate = float(sample_rate)
         if data.ndim > 1:
             data = data[:, channel_idx]

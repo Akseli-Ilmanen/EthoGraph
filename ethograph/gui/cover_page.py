@@ -47,6 +47,7 @@ from qtpy.QtWidgets import (
 
 from ethograph.datasets import DATASETS
 from ethograph.gui.dialog_select_template import TEMPLATE_ASSETS_DIR
+from ethograph.io.audio_extract import ensure_extracted_audio, has_embedded_audio
 from ethograph.io.validation import (
     AUDIO_EXTENSIONS,
     EPHYS_EXTENSIONS,
@@ -172,51 +173,6 @@ def _audio_info(path: str) -> tuple[float, float]:
     with wave.open(path, "rb") as w:
         rate = float(w.getframerate())
         return rate, w.getnframes() / rate
-
-
-def _video_has_audio(path: str) -> bool:
-    """True when the video container holds at least one audio stream."""
-    try:
-        import av
-
-        with av.open(path) as container:
-            return any(s.type == "audio" for s in container.streams)
-    except Exception:  # noqa: BLE001 - unreadable container = no usable audio
-        return False
-
-
-def _extract_audio_wav(video_path: str, out_dir: Path) -> Path:
-    """Decode a video's embedded audio track to a throwaway .wav in *out_dir*.
-
-    The wav then flows through the normal audio pipeline (audioio/soundfile
-    readers, ``audio_mic-N`` alignment streams) exactly like a dropped audio
-    file.
-    """
-    import av
-    import numpy as np
-    import soundfile as sf
-
-    out_path = out_dir / f"{Path(video_path).stem}_audio-{uuid4().hex[:8]}.wav"
-    with av.open(video_path) as container:
-        streams = [s for s in container.streams if s.type == "audio"]
-        if not streams:
-            raise RuntimeError(f"No audio track in {Path(video_path).name}.")
-        stream = streams[0]
-        rate = int(stream.rate)
-        chunks: list[np.ndarray] = []
-        for frame in container.decode(stream):
-            arr = frame.to_ndarray()
-            if not frame.format.is_planar:
-                # Packed formats decode to (1, samples*channels) interleaved.
-                arr = arr.reshape(-1, len(frame.layout.channels)).T
-            chunks.append(arr)
-    if not chunks:
-        raise RuntimeError(f"Audio track in {Path(video_path).name} holds no samples.")
-    data = np.concatenate(chunks, axis=1).T  # (samples, channels)
-    if data.dtype not in (np.int16, np.int32, np.float32, np.float64):
-        data = data.astype(np.float32)
-    sf.write(out_path, data, rate)
-    return out_path
 
 
 def _pose_duration(pose_path: str, source_software: str | None, fps: float) -> float:
@@ -888,7 +844,7 @@ class CoverPage(QDialog):
         need_pose_fps = bool(buckets["pose"]) and not buckets["video"]
         # Videos with an embedded audio track: ask whether to extract it (npy
         # drops ignore audio, so don't offer it there).
-        audio_track_videos = [] if need_npy_sr else [v for v in buckets["video"] if _video_has_audio(v)]
+        audio_track_videos = [] if need_npy_sr else [v for v in buckets["video"] if has_embedded_audio(v)]
         if not need_npy_sr and not ambiguous_pose and not need_pose_fps and not audio_track_videos:
             return {
                 "data_sr": None,
@@ -1110,11 +1066,14 @@ class CoverPage(QDialog):
             app_state.neurons_path = neurons_path
 
     def _extract_video_audio(self, videos: list[str]) -> list[str]:
-        """Extract each video's audio track to a .wav behind a busy dialog."""
+        """Decode each video's audio track to a cached .wav behind a busy dialog."""
         from ethograph.gui.dialog_busy_progress import BusyProgressDialog
 
         dlg = BusyProgressDialog("Extracting audio from video…", parent=self)
-        paths, error = dlg.execute(lambda: [str(_extract_audio_wav(v, self._drop_tmp_dir)) for v in videos])
+        # Cached centrally (not in the per-drop temp dir): the extract is media,
+        # carries no local_settings, and re-dropping the same video should not
+        # decode it again.
+        paths, error = dlg.execute(lambda: [str(ensure_extracted_audio(v)) for v in videos])
         if error or paths is None:
             raise RuntimeError(f"Could not extract audio from video: {error}")
         return paths

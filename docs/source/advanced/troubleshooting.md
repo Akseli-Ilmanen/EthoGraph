@@ -75,33 +75,43 @@ The waveform, spectrogram and playback all read audio through
 | OGG    | `.ogg`    | Vorbis. |
 | MP3    | `.mp3`    | Requires a recent libsndfile (≥ 1.1). |
 
-**Audio embedded in a video (`.mp4`/`.mov`/`.avi`) is not read in place.** The
-AAC/other codecs inside a video container are not decoded for analysis, so these
-extensions are deliberately absent from the audio file picker. How to get the
-audio out depends on how you load:
+**Audio embedded in a video (`.mp4`/`.mov`/`.avi`) is decoded to a WAV first,
+never read in place.** libsndfile reads no video container, and a container's
+AAC track has no sample-exact random access — which is exactly what the
+waveform, spectrogram and playback clock ask for, one window at a time. So the
+first time a video is used as an audio source, EthoGraph decodes its track once
+(through PyAV, bundled with the `gui` extra — no separate ffmpeg install) into a
+cached WAV under `~/.ethograph/audio_tracks/`, and every audio reader opens that
+file instead. This happens wherever the audio path points at a video:
 
-- **Drag & drop (no ffmpeg needed):** when you drop a video that has an embedded
-  audio track, tick **"extract audio"** on the cover page — EthoGraph extracts it
-  to a throwaway `.wav` that then feeds the normal `audio_mic-N` pipeline. This
-  runs entirely through PyAV (bundled with the `gui` extra), so no separate
-  ffmpeg install is required. It is a convenience for one-off, single-session
-  loads.
-- **Custom set-up (bulk):** there is no per-video extraction step here. Convert
-  your videos to audio **in bulk yourself** before loading (one WAV/FLAC/OGG per
-  clip), then point the loader at those files. This route uses the `ffmpeg` CLI —
-  handy for many files at once, but not something EthoGraph itself needs. For
-  example:
+- **Drag & drop:** dropping a video that has an audio track offers **"extract
+  audio"** — ticking it registers that track as an `audio_mic-N` stream, so the
+  clip loads with a waveform and spectrogram. Untick it and the video loads with
+  no audio at all.
+- **Your own alignment / `.nwb`:** an audio stream may point straight at the
+  `.mp4`. It is decoded on first use, with one log line naming the file, and
+  reused from the cache on every later session.
+
+The cache is keyed by source identity (path, size, mtime), so a re-recorded or
+moved video is never served a stale extract. It is plain WAV — delete the folder
+any time to reclaim the space; the next load simply decodes again.
+
+Two reasons to still supply separate audio files when you can:
+
+- **Sync.** AAC carries encoder priming/padding, so an extracted track can start
+  or end a few milliseconds off the container's own timeline. For millisecond-
+  accurate work, record or export the audio separately.
+- **Disk and first-load time.** The extract is uncompressed and decoding a long
+  video's track takes as long as decoding the audio. Converting in bulk up front
+  is faster for a whole project:
 
   ```bash
   for f in *.mp4; do ffmpeg -i "$f" -vn -acodec pcm_s16le "${f%.mp4}.wav"; done
   ```
 
-  Extracting once, up front, is faster and more reliable than re-decoding the
-  container on every load.
-
 If a file cannot be decoded you get a single log line naming the file and the
-reason (e.g. *"Cannot load audio from video container … enable 'extract audio'"*)
-rather than a stream of errors; convert the file to one of the formats above.
+reason (e.g. *"Cannot use the audio track of … the container has no readable
+audio track"*) rather than a stream of errors.
 
 ### Opening `.tsv` label files in Excel
 

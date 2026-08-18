@@ -1345,7 +1345,7 @@ class DataWidget(QWidget):
 
     def _on_show_predictions_overlay_changed(self, qt_state):
         """User toggled the Predictions overlay checkbox — persist + redraw."""
-        self.app_state._show_predictions_overlay = qt_state == Qt.Checked
+        self.app_state._show_predictions_overlay = Qt.CheckState(qt_state) == Qt.Checked
         if self.app_state.ready:
             ds_kwargs = self.app_state.get_ds_kwargs()
             self.update_label_plot(ds_kwargs)
@@ -1509,7 +1509,9 @@ class DataWidget(QWidget):
         try:
             from audioio import AudioLoader
 
-            with AudioLoader(audio_path) as loader:
+            from ..io.audio_extract import resolve_audio_path
+
+            with AudioLoader(resolve_audio_path(audio_path)) as loader:
                 if loader.shape is None:
                     return 1
                 return (
@@ -1525,12 +1527,16 @@ class DataWidget(QWidget):
         self.app_state.audio_mic_channels.clear()
         expanded_items = []
         audio_folder = self.app_state.audio_folder
-        dt = getattr(self.app_state, "dt", None)
         trial_id = getattr(self.app_state, "trials_sel", None)
         if trial_id is None and self.app_state.trials:
             trial_id = self.app_state.trials[0]
 
-        if not audio_folder or dt is None:
+        # No dt/backend gate here: file resolution below goes through the
+        # alignment (get_media / resolve_media_path), which answers for
+        # pynapple- and NWB-backed sessions too — a pure-media drag & drop
+        # loads its tmp alignment via pynapple, and gating on dt left its
+        # multichannel audio as a single un-expanded mic.
+        if not audio_folder:
             for mic in mic_labels:
                 display_name = str(mic)
                 self.app_state.audio_source_map[display_name] = (str(mic), 0)

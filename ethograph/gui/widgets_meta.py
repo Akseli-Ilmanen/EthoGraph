@@ -719,6 +719,10 @@ class MetaWidget(GridSectionContainer):
             if getattr(self.app_state, "video", None) is None and not vm.primary_view.has_video:
                 notify(f"No video file found for camera '{name}'.", "warning")
             else:
+                # Loading a video and overlaying its pose always go together
+                # (same pairing as on_trial_changed / _on_primary_camera_changed)
+                # — a closed-then-re-added primary starts from a cleared view.
+                dw.update_pose()
                 notify(f"Opened video: {name}")
             return
 

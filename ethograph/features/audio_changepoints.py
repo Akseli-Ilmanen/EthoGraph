@@ -38,7 +38,9 @@ def _prepare_audio(
     Uses audioio for file loading instead of vocalpy.
     """
     if audio_path is not None:
-        data, file_sr = aio.load_audio(audio_path)
+        from ethograph.io.audio_extract import resolve_audio_path
+
+        data, file_sr = aio.load_audio(resolve_audio_path(audio_path))
         sr = float(file_sr)
         if data.ndim > 1:
             ch = min(channel_idx, data.shape[1] - 1)

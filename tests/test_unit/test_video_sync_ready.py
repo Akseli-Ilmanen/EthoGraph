@@ -48,7 +48,6 @@ class _FakeView:
 class _FakeAppState:
     video_fps = FPS
     playback_speed_pct = 100.0
-    segment_end_continuous_time = False
     current_frame = 0
     audio_path = None
 

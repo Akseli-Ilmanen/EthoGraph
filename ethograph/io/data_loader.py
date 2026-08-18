@@ -76,7 +76,9 @@ def _detect_audio_rate(audio_path: str) -> float:
     """Detect sample rate from an audio file via audioio."""
     from audioio import AudioLoader
 
-    with AudioLoader(audio_path) as loader:
+    from ethograph.io.audio_extract import resolve_audio_path
+
+    with AudioLoader(resolve_audio_path(audio_path)) as loader:
         return float(loader.rate)
 
 

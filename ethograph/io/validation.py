@@ -22,10 +22,12 @@ VIDEO_EXTENSIONS = {".mp4", ".avi", ".mov", ".mkv", ".wmv"}
 
 #: Standalone audio files the waveform/spectrogram/playback loader
 #: (``audioio.AudioLoader`` → libsndfile) can decode directly.  Video
-#: containers (``.mp4``/``.mov``/``.avi``) are deliberately excluded: their
-#: embedded AAC/etc. streams are NOT loaded in place — the cover page extracts
-#: them to a throwaway ``.wav`` via the "extract audio" option instead.  See
-#: docs/source/advanced/troubleshooting.md ("Audio formats").
+#: containers (``.mp4``/``.mov``/``.avi``) are deliberately excluded here
+#: because libsndfile reads no container format: an embedded AAC/etc. track is
+#: decoded once to a cached ``.wav`` by
+#: :func:`ethograph.io.audio_extract.resolve_audio_path`, which every audio
+#: reader goes through.  See docs/source/advanced/troubleshooting.md
+#: ("Audio formats").
 AUDIO_EXTENSIONS = {
     ".wav",
     ".flac",

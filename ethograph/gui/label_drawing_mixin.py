@@ -1,5 +1,6 @@
 """Mixin providing label and changepoint drawing methods for plot containers."""
 
+from functools import partial
 from typing import Any, Dict
 
 import numpy as np
@@ -38,6 +39,12 @@ from .app_constants import (
 _POINT_EVENT_LINE_WIDTH = 4.0
 _POINT_EVENT_Z_INDEX = Z_INDEX_CHANGEPOINTS - 1
 
+# A state label being drawn: dashed anchor on the placed onset plus a faint
+# region tracking the cursor. Drawn at the point-event depth so it sits above
+# the committed rectangles it is about to join.
+_PENDING_LABEL_LINE_WIDTH = 2.0
+_PENDING_LABEL_ALPHA = 70
+
 
 class LabelDrawingMixin:
     """Mixin that provides label and changepoint drawing on plot widgets.
@@ -48,6 +55,8 @@ class LabelDrawingMixin:
       - audio_cp_items: list
       - osc_event_items: list
       - dataset_cp_items: list
+      - _pending_label_items, _pending_label_regions, _pending_hover_conns:
+        lists, and _pending_label_anchor: float | None
       - spectrogram_plots, audio_trace_plots, heatmap_plots, neo_trace_plots
         (instance lists), ephys_trace_plot
       - current_plot (property or attribute)
@@ -298,6 +307,100 @@ class LabelDrawingMixin:
         rect.setZValue(z_value)
         plot.plot_item.addItem(rect)
         plot.label_items.append(rect)
+
+    # --- State label in progress (between its two clicks) ---
+
+    def show_pending_label(self, t_display: float, color_rgb) -> None:
+        """Mark where a state label started, until its second click lands.
+
+        Without this the first click has no visible effect anywhere: the user
+        picks the end time blind, with nothing on screen saying where the
+        interval began or even that one is being drawn. The anchor is dashed
+        (so it never reads as a committed label) and a faint region follows the
+        cursor to preview the interval on every panel at once.
+        """
+        self.clear_pending_label()
+        color_rgb = tuple(int(c) for c in color_rgb)
+        self._pending_label_anchor = float(t_display)
+
+        for plot in self._get_all_plots():
+            line = pg.InfiniteLine(
+                pos=t_display,
+                angle=90,
+                pen=pg.mkPen(
+                    color=(*color_rgb, 255),
+                    width=_PENDING_LABEL_LINE_WIDTH,
+                    style=pg.QtCore.Qt.DashLine,
+                ),
+                movable=False,
+            )
+            line.setZValue(_POINT_EVENT_Z_INDEX)
+            region = pg.LinearRegionItem(
+                values=(t_display, t_display),
+                orientation="vertical",
+                brush=(*color_rgb, _PENDING_LABEL_ALPHA),
+                pen=pg.mkPen(None),
+                movable=False,
+            )
+            region.setZValue(_POINT_EVENT_Z_INDEX - 1)
+            try:
+                # ignoreBounds: a preview stretching past the data must never
+                # rescale the axis the user is aiming on.
+                plot.plot_item.addItem(region, ignoreBounds=True)
+                plot.plot_item.addItem(line, ignoreBounds=True)
+            except (RuntimeError, AttributeError):
+                continue
+            self._pending_label_items.append((plot, line))
+            self._pending_label_items.append((plot, region))
+            self._pending_label_regions.append(region)
+            self._connect_pending_hover(plot)
+
+    def _connect_pending_hover(self, plot) -> None:
+        """Track the cursor on *plot* while a state label is half-placed.
+
+        Connected only for the life of the pending label, so hover traffic
+        costs nothing during normal review.
+        """
+        try:
+            scene = plot.plot_item.scene()
+        except (RuntimeError, AttributeError):
+            return
+        if scene is None:
+            return
+        slot = partial(self._on_pending_hover, plot)
+        scene.sigMouseMoved.connect(slot)
+        self._pending_hover_conns.append((scene, slot))
+
+    def _on_pending_hover(self, plot, scene_pos) -> None:
+        if self._pending_label_anchor is None:
+            return
+        try:
+            view_pos = plot.plot_item.vb.mapSceneToView(scene_pos)
+        except (RuntimeError, AttributeError):
+            return
+        bounds = (self._pending_label_anchor, float(view_pos.x()))
+        for region in self._pending_label_regions:
+            try:
+                region.setRegion(bounds)
+            except RuntimeError:
+                continue
+
+    def clear_pending_label(self) -> None:
+        """Drop the anchor + preview (label committed, cancelled or disarmed)."""
+        for scene, slot in self._pending_hover_conns:
+            try:
+                scene.sigMouseMoved.disconnect(slot)
+            except (RuntimeError, TypeError):
+                pass
+        self._pending_hover_conns.clear()
+        for plot, item in self._pending_label_items:
+            try:
+                plot.plot_item.removeItem(item)
+            except (RuntimeError, AttributeError, ValueError):
+                pass
+        self._pending_label_items.clear()
+        self._pending_label_regions.clear()
+        self._pending_label_anchor = None
 
     # --- Audio changepoints ---
 
