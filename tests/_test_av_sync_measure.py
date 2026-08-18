@@ -35,7 +35,7 @@ MEDIA_FS = 24414.0  # the tester's TDT rate — the awkward real-world case
 N_CLICKS = 8
 CLICK_PERIOD_S = 1.0
 FIRST_CLICK_S = 0.5
-CLICK_LEN_S = 0.005
+CLICK_LEN_S = 0.02  # long enough to carry acoustic energy to a room mic
 CLICK_FREQ_HZ = 2000.0
 TAIL_S = 1.0
 
@@ -44,7 +44,7 @@ def build_click_train() -> tuple[np.ndarray, list[float]]:
     dur = FIRST_CLICK_S + (N_CLICKS - 1) * CLICK_PERIOD_S + TAIL_S
     data = np.zeros(int(dur * MEDIA_FS), dtype="float32")
     t = np.arange(int(CLICK_LEN_S * MEDIA_FS)) / MEDIA_FS
-    burst = (0.7 * np.sin(2 * np.pi * CLICK_FREQ_HZ * t) * np.hanning(len(t))).astype("float32")
+    burst = (0.9 * np.sin(2 * np.pi * CLICK_FREQ_HZ * t) * np.hanning(len(t))).astype("float32")
     times = [FIRST_CLICK_S + k * CLICK_PERIOD_S for k in range(N_CLICKS)]
     for ct in times:
         i = int(ct * MEDIA_FS)
@@ -63,14 +63,14 @@ def find_stereomix() -> int | None:
 class Recorder:
     """Loopback capture with a perf_counter wall-time stamp per block."""
 
-    def __init__(self, device: int):
+    def __init__(self, device: int, latency: str = "high"):
         info = sd.query_devices(device)
         self.fs = float(info["default_samplerate"])
         self.blocks: list[tuple[float, int, np.ndarray]] = []  # (t_cb, frames_before, mono)
         self._frames = 0
         self.stream = sd.InputStream(
             device=device, channels=min(2, info["max_input_channels"]),
-            samplerate=self.fs, dtype="float32", callback=self._cb,
+            samplerate=self.fs, dtype="float32", callback=self._cb, latency=latency,
         )
 
     def _cb(self, indata, frames, time_info, status):
@@ -96,32 +96,41 @@ class Recorder:
 
 
 def detect_clicks(rec: np.ndarray, fs: float, n_expected: int) -> list[int]:
-    """Onset sample of each click: envelope threshold with a refractory gap."""
-    env = np.abs(rec)
-    k = max(1, int(0.002 * fs))
-    env = np.convolve(env, np.ones(k) / k, mode="same")
-    floor = np.median(env)
-    thresh = max(floor * 8, env.max() * 0.25)
-    above = env > thresh
-    onsets: list[int] = []
-    i, refractory = 0, int(0.5 * CLICK_PERIOD_S * fs)
-    while i < len(above):
-        if above[i]:
-            onsets.append(i)
-            i += refractory
-        else:
-            i += 1
-    if len(onsets) != n_expected:
-        print(f"  ! detected {len(onsets)} clicks, expected {n_expected} "
-              f"(floor={floor:.4f}, peak={env.max():.4f}) — check Stereo Mix / volume")
-    return onsets
+    """Onset sample of each click via a matched (narrowband 2 kHz) filter.
+
+    Robust to faint acoustic pickup: room noise carries little energy in a
+    narrow band around CLICK_FREQ_HZ, so the n_expected strongest narrowband
+    peaks are the clicks. Peak centre → onset by subtracting half the click
+    length; spacing is validated against the known 1 s period.
+    """
+    t = np.arange(len(rec)) / fs
+    analytic = rec * np.exp(-2j * np.pi * CLICK_FREQ_HZ * t)
+    k = max(1, int(CLICK_LEN_S * fs))
+    env = np.abs(np.convolve(analytic, np.ones(k) / k, mode="same"))
+    work = env.copy()
+    refractory = int(0.5 * CLICK_PERIOD_S * fs)
+    peaks: list[int] = []
+    for _ in range(n_expected):
+        i = int(np.argmax(work))
+        if work[i] <= 0:
+            break
+        peaks.append(i)
+        work[max(0, i - refractory) : i + refractory] = 0
+    peaks.sort()
+    gaps = np.diff(peaks) / fs
+    good = np.abs(gaps - CLICK_PERIOD_S) < 0.05
+    if not good.all():
+        print(f"  ! click spacing off (gaps: {np.round(gaps, 3)}) — noise contaminated the detection")
+    print(f"  narrowband SNR: peak {env.max():.4f} vs floor {np.median(env):.5f}")
+    return [p - int(CLICK_LEN_S / 2 * fs) for p in peaks]
 
 
-def run_measurement(use_wasapi: bool) -> None:
+def run_measurement(use_wasapi: bool, input_latency: str = "high", input_device: int | None = None) -> None:
     data, click_times = build_click_train()
-    mix = find_stereomix()
+    mix = input_device if input_device is not None else find_stereomix()
     if mix is None:
         sys.exit("No Stereo Mix / loopback input device found — enable it in the Windows sound settings.")
+    print(f"Recorder device: {sd.query_devices(mix)['name']!r}")
 
     if use_wasapi:
         wasapi = next(i for i, ha in enumerate(sd.query_hostapis()) if "WASAPI" in ha["name"])
@@ -130,8 +139,9 @@ def run_measurement(use_wasapi: bool) -> None:
     host = sd.query_hostapis(out_dev["hostapi"])["name"]
     print(f"Output: {out_dev['name']!r} via {host}")
 
-    rec = Recorder(mix)
+    rec = Recorder(mix, latency=input_latency)
     rec.stream.start()
+    print(f"Recorder: input latency requested {input_latency!r}, reported {float(rec.stream.latency or 0.0):.3f}s")
     time.sleep(0.3)  # recorder warm before Play
 
     clock = AudioClock(data, MEDIA_FS)
@@ -180,4 +190,10 @@ def run_measurement(use_wasapi: bool) -> None:
 if __name__ == "__main__":
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--wasapi", action="store_true", help="route output via WASAPI instead of the default (MME)")
-    run_measurement(p.parse_args().wasapi)
+    p.add_argument("--input-latency", choices=["low", "high"], default="high",
+                   help="recorder-side buffering; if the measured lead moves with this, the bias is in the recorder")
+    p.add_argument("--input-device", type=int, default=None,
+                   help="capture device index (default: auto-detect Stereo Mix); use a real microphone "
+                        "to cross-check the loopback path — acoustic delay is ~0")
+    args = p.parse_args()
+    run_measurement(args.wasapi, args.input_latency, args.input_device)
