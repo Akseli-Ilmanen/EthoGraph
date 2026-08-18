@@ -548,32 +548,42 @@ suitable for precise annotation.</p>
 </tbody>
 </table>
 </div>
-<p><strong>Audio embedded in a video (<code class="docutils literal notranslate"><span class="pre">.mp4</span></code>/<code class="docutils literal notranslate"><span class="pre">.mov</span></code>/<code class="docutils literal notranslate"><span class="pre">.avi</span></code>) is not read in place.</strong> The
-AAC/other codecs inside a video container are not decoded for analysis, so these
-extensions are deliberately absent from the audio file picker. How to get the
-audio out depends on how you load:</p>
+<p><strong>Audio embedded in a video (<code class="docutils literal notranslate"><span class="pre">.mp4</span></code>/<code class="docutils literal notranslate"><span class="pre">.mov</span></code>/<code class="docutils literal notranslate"><span class="pre">.avi</span></code>) is decoded to a WAV first,
+never read in place.</strong> libsndfile reads no video container, and a container’s
+AAC track has no sample-exact random access — which is exactly what the
+waveform, spectrogram and playback clock ask for, one window at a time. So the
+first time a video is used as an audio source, EthoGraph decodes its track once
+(through PyAV, bundled with the <code class="docutils literal notranslate"><span class="pre">gui</span></code> extra — no separate ffmpeg install) into a
+cached WAV under <code class="docutils literal notranslate"><span class="pre">~/.ethograph/audio_tracks/</span></code>, and every audio reader opens that
+file instead. This happens wherever the audio path points at a video:</p>
+<ul class="simple">
+<li><p><strong>Drag &amp; drop:</strong> dropping a video that has an audio track offers <strong>“extract
+audio”</strong> — ticking it registers that track as an <code class="docutils literal notranslate"><span class="pre">audio_mic-N</span></code> stream, so the
+clip loads with a waveform and spectrogram. Untick it and the video loads with
+no audio at all.</p></li>
+<li><p><strong>Your own alignment / <code class="docutils literal notranslate"><span class="pre">.nwb</span></code>:</strong> an audio stream may point straight at the
+<code class="docutils literal notranslate"><span class="pre">.mp4</span></code>. It is decoded on first use, with one log line naming the file, and
+reused from the cache on every later session.</p></li>
+</ul>
+<p>The cache is keyed by source identity (path, size, mtime), so a re-recorded or
+moved video is never served a stale extract. It is plain WAV — delete the folder
+any time to reclaim the space; the next load simply decodes again.</p>
+<p>Two reasons to still supply separate audio files when you can:</p>
 <ul>
-<li><p><strong>Drag &amp; drop (no ffmpeg needed):</strong> when you drop a video that has an embedded
-audio track, tick <strong>“extract audio”</strong> on the cover page — EthoGraph extracts it
-to a throwaway <code class="docutils literal notranslate"><span class="pre">.wav</span></code> that then feeds the normal <code class="docutils literal notranslate"><span class="pre">audio_mic-N</span></code> pipeline. This
-runs entirely through PyAV (bundled with the <code class="docutils literal notranslate"><span class="pre">gui</span></code> extra), so no separate
-ffmpeg install is required. It is a convenience for one-off, single-session
-loads.</p></li>
-<li><p><strong>Custom set-up (bulk):</strong> there is no per-video extraction step here. Convert
-your videos to audio <strong>in bulk yourself</strong> before loading (one WAV/FLAC/OGG per
-clip), then point the loader at those files. This route uses the <code class="docutils literal notranslate"><span class="pre">ffmpeg</span></code> CLI —
-handy for many files at once, but not something EthoGraph itself needs. For
-example:</p>
+<li><p><strong>Sync.</strong> AAC carries encoder priming/padding, so an extracted track can start
+or end a few milliseconds off the container’s own timeline. For millisecond-
+accurate work, record or export the audio separately.</p></li>
+<li><p><strong>Disk and first-load time.</strong> The extract is uncompressed and decoding a long
+video’s track takes as long as decoding the audio. Converting in bulk up front
+is faster for a whole project:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="k">for</span><span class="w"> </span>f<span class="w"> </span><span class="k">in</span><span class="w"> </span>*.mp4<span class="p">;</span><span class="w"> </span><span class="k">do</span><span class="w"> </span>ffmpeg<span class="w"> </span>-i<span class="w"> </span><span class="s2">"</span><span class="nv">$f</span><span class="s2">"</span><span class="w"> </span>-vn<span class="w"> </span>-acodec<span class="w"> </span>pcm_s16le<span class="w"> </span><span class="s2">"</span><span class="si">${</span><span class="nv">f</span><span class="p">%.mp4</span><span class="si">}</span><span class="s2">.wav"</span><span class="p">;</span><span class="w"> </span><span class="k">done</span>
 </pre></div>
 </div>
-<p>Extracting once, up front, is faster and more reliable than re-decoding the
-container on every load.</p>
 </li>
 </ul>
 <p>If a file cannot be decoded you get a single log line naming the file and the
-reason (e.g. <em>“Cannot load audio from video container … enable ‘extract audio’”</em>)
-rather than a stream of errors; convert the file to one of the formats above.</p>
+reason (e.g. <em>“Cannot use the audio track of … the container has no readable
+audio track”</em>) rather than a stream of errors.</p>
 </section>
 <section id="opening-tsv-label-files-in-excel">
 <h3>Opening <code class="docutils literal notranslate"><span class="pre">.tsv</span></code> label files in Excel<a class="headerlink" href="#opening-tsv-label-files-in-excel" title="Link to this heading">#</a></h3>

@@ -524,8 +524,14 @@
 <a class="viewcode-back" href="../../../api/nwb_alignment.html#ethograph.make_nwb_alignment">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">make_nwb_alignment</span><span class="p">(</span><span class="n">nwb_path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Create a EmpytAlignment from an NWB path, falling back to base EmpytAlignment."""</span>
-    <span class="k">if</span> <span class="n">nwb_path</span> <span class="ow">and</span> <span class="n">Path</span><span class="p">(</span><span class="n">nwb_path</span><span class="p">)</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+    <span class="k">if</span> <span class="n">nwb_path</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">EmpytAlignment</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">Path</span><span class="p">(</span><span class="n">nwb_path</span><span class="p">)</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
         <span class="k">return</span> <span class="n">NWBAlignment</span><span class="p">(</span><span class="n">nwb_path</span><span class="p">)</span>
+    <span class="c1"># A path that was asked for but isn't there is bad user input, not an</span>
+    <span class="c1"># absent alignment: without this the GUI silently behaves as if no</span>
+    <span class="c1"># alignment file had been named at all.</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">"Alignment file not found: </span><span class="si">%s</span><span class="s2"> — continuing without alignment"</span><span class="p">,</span> <span class="n">nwb_path</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">EmpytAlignment</span><span class="p">()</span></div>
 
 
