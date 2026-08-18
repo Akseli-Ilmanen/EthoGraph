@@ -69,8 +69,12 @@ class Recorder:
         self.blocks: list[tuple[float, int, np.ndarray]] = []  # (t_cb, frames_before, mono)
         self._frames = 0
         self.stream = sd.InputStream(
-            device=device, channels=min(2, info["max_input_channels"]),
-            samplerate=self.fs, dtype="float32", callback=self._cb, latency=latency,
+            device=device,
+            channels=min(2, info["max_input_channels"]),
+            samplerate=self.fs,
+            dtype="float32",
+            callback=self._cb,
+            latency=latency,
         )
 
     def _cb(self, indata, frames, time_info, status):
@@ -135,7 +139,9 @@ def run_measurement(use_wasapi: bool, input_latency: str = "high", input_device:
     if use_wasapi:
         wasapi = next(i for i, ha in enumerate(sd.query_hostapis()) if "WASAPI" in ha["name"])
         sd.default.device = (None, sd.query_hostapis(wasapi)["default_output_device"])
-    out_dev = sd.query_devices(sd.default.device[1]) if sd.default.device[1] is not None else sd.query_devices(kind="output")
+    out_dev = (
+        sd.query_devices(sd.default.device[1]) if sd.default.device[1] is not None else sd.query_devices(kind="output")
+    )
     host = sd.query_hostapis(out_dev["hostapi"])["name"]
     print(f"Output: {out_dev['name']!r} via {host}")
 
@@ -190,10 +196,18 @@ def run_measurement(use_wasapi: bool, input_latency: str = "high", input_device:
 if __name__ == "__main__":
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--wasapi", action="store_true", help="route output via WASAPI instead of the default (MME)")
-    p.add_argument("--input-latency", choices=["low", "high"], default="high",
-                   help="recorder-side buffering; if the measured lead moves with this, the bias is in the recorder")
-    p.add_argument("--input-device", type=int, default=None,
-                   help="capture device index (default: auto-detect Stereo Mix); use a real microphone "
-                        "to cross-check the loopback path — acoustic delay is ~0")
+    p.add_argument(
+        "--input-latency",
+        choices=["low", "high"],
+        default="high",
+        help="recorder-side buffering; if the measured lead moves with this, the bias is in the recorder",
+    )
+    p.add_argument(
+        "--input-device",
+        type=int,
+        default=None,
+        help="capture device index (default: auto-detect Stereo Mix); use a real microphone "
+        "to cross-check the loopback path — acoustic delay is ~0",
+    )
     args = p.parse_args()
     run_measurement(args.wasapi, args.input_latency, args.input_device)
