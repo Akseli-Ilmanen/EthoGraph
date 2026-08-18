@@ -427,6 +427,7 @@
 <span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
 
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.labels.intervals</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
@@ -495,27 +496,6 @@
 
 <span class="n">REQUIRED_COLUMNS</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"onset_s"</span><span class="p">,</span> <span class="s2">"offset_s"</span><span class="p">,</span> <span class="s2">"labels"</span><span class="p">,</span> <span class="s2">"individual"</span><span class="p">,</span> <span class="s2">"trial"</span><span class="p">}</span>
 
-<span class="c1">#: Canonical storage is trial-relative; a header comment records the basis so</span>
-<span class="c1">#: a round-tripped file is never ambiguous again. Files from other tools may</span>
-<span class="c1">#: carry session-absolute times — ``normalize_labels_basis`` rebases them once</span>
-<span class="c1">#: at load.</span>
-<span class="n">TIME_BASIS_HEADER</span> <span class="o">=</span> <span class="s2">"# time_basis:"</span>
-<span class="n">TIME_BASIS_ATTR</span> <span class="o">=</span> <span class="s2">"time_basis"</span>
-
-
-<span class="k">def</span><span class="w"> </span><span class="nf">_read_time_basis_header</span><span class="p">(</span><span class="n">path</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">"""The ``# time_basis:`` header value ("trial"/"session"), or None."""</span>
-    <span class="k">try</span><span class="p">:</span>
-        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s2">"utf-8-sig"</span><span class="p">)</span> <span class="k">as</span> <span class="n">fh</span><span class="p">:</span>
-            <span class="n">first</span> <span class="o">=</span> <span class="n">fh</span><span class="o">.</span><span class="n">readline</span><span class="p">()</span>
-    <span class="k">except</span> <span class="ne">OSError</span><span class="p">:</span>
-        <span class="k">return</span> <span class="kc">None</span>
-    <span class="k">if</span> <span class="n">first</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="n">TIME_BASIS_HEADER</span><span class="p">):</span>
-        <span class="n">value</span> <span class="o">=</span> <span class="n">first</span><span class="p">[</span><span class="nb">len</span><span class="p">(</span><span class="n">TIME_BASIS_HEADER</span><span class="p">)</span> <span class="p">:]</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
-        <span class="k">if</span> <span class="n">value</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">"trial"</span><span class="p">,</span> <span class="s2">"session"</span><span class="p">):</span>
-            <span class="k">return</span> <span class="n">value</span>
-    <span class="k">return</span> <span class="kc">None</span>
-
 
 <div class="viewcode-block" id="validate_labels_tsv">
 <a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.tsv_store.validate_labels_tsv">[docs]</a>
@@ -567,9 +547,9 @@
 
     <span class="k">if</span> <span class="n">path</span><span class="o">.</span><span class="n">suffix</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">".xlsx"</span><span class="p">,</span> <span class="s2">".xls"</span><span class="p">):</span>
         <span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_excel</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
-        <span class="n">basis</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="k">else</span><span class="p">:</span>
-        <span class="n">basis</span> <span class="o">=</span> <span class="n">_read_time_basis_header</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+        <span class="c1"># comment="#": files saved while EthoGraph briefly wrote a leading</span>
+        <span class="c1"># "# time_basis:" line still read back as a normal table.</span>
         <span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_csv</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="n">sep</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">engine</span><span class="o">=</span><span class="s2">"python"</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s2">"utf-8-sig"</span><span class="p">,</span> <span class="n">comment</span><span class="o">=</span><span class="s2">"#"</span><span class="p">)</span>
     <span class="n">validate_labels_tsv</span><span class="p">(</span><span class="n">df</span><span class="p">,</span> <span class="n">path</span><span class="p">)</span>
 
@@ -583,10 +563,6 @@
             <span class="n">df</span><span class="p">[</span><span class="n">col</span><span class="p">]</span> <span class="o">=</span> <span class="n">default</span>
     <span class="n">df</span><span class="p">[</span><span class="s2">"prediction_source"</span><span class="p">]</span> <span class="o">=</span> <span class="n">df</span><span class="p">[</span><span class="s2">"prediction_source"</span><span class="p">]</span><span class="o">.</span><span class="n">fillna</span><span class="p">(</span><span class="s2">""</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">str</span><span class="p">)</span>
     <span class="n">df</span><span class="p">[</span><span class="s2">"n_samples"</span><span class="p">]</span> <span class="o">=</span> <span class="n">df</span><span class="p">[</span><span class="s2">"n_samples"</span><span class="p">]</span><span class="o">.</span><span class="n">fillna</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">int</span><span class="p">)</span>
-
-    <span class="c1"># Declared basis (if the file has the header) rides along for</span>
-    <span class="c1"># normalize_labels_basis; DataFrame.attrs, so plain column ops keep it.</span>
-    <span class="n">df</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="n">TIME_BASIS_ATTR</span><span class="p">]</span> <span class="o">=</span> <span class="n">basis</span>
     <span class="k">return</span> <span class="n">df</span></div>
 
 
@@ -642,87 +618,46 @@
     <span class="n">out</span> <span class="o">=</span> <span class="n">out</span><span class="p">[</span><span class="n">duration</span><span class="o">.</span><span class="n">isna</span><span class="p">()</span> <span class="o">|</span> <span class="p">(</span><span class="n">duration</span> <span class="o">&gt;=</span> <span class="mf">0.0</span><span class="p">)]</span>
 
     <span class="n">tmp</span> <span class="o">=</span> <span class="n">path</span><span class="o">.</span><span class="n">with_suffix</span><span class="p">(</span><span class="s2">".tsv.tmp"</span><span class="p">)</span>
-    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">tmp</span><span class="p">,</span> <span class="s2">"w"</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s2">"utf-8-sig"</span><span class="p">,</span> <span class="n">newline</span><span class="o">=</span><span class="s2">""</span><span class="p">)</span> <span class="k">as</span> <span class="n">fh</span><span class="p">:</span>
-        <span class="n">fh</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">TIME_BASIS_HEADER</span><span class="si">}</span><span class="s2"> trial</span><span class="se">\n</span><span class="s2">"</span><span class="p">)</span>
-        <span class="n">out</span><span class="o">.</span><span class="n">to_csv</span><span class="p">(</span><span class="n">fh</span><span class="p">,</span> <span class="n">sep</span><span class="o">=</span><span class="s2">"</span><span class="se">\t</span><span class="s2">"</span><span class="p">,</span> <span class="n">index</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+    <span class="n">out</span><span class="o">.</span><span class="n">to_csv</span><span class="p">(</span><span class="n">tmp</span><span class="p">,</span> <span class="n">sep</span><span class="o">=</span><span class="s2">"</span><span class="se">\t</span><span class="s2">"</span><span class="p">,</span> <span class="n">index</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s2">"utf-8-sig"</span><span class="p">)</span>
     <span class="n">tmp</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="n">path</span><span class="p">)</span></div>
 
 
 
-<span class="c1"># ---------------------------------------------------------------------------</span>
-<span class="c1"># Time-basis normalisation (import boundary)</span>
-<span class="c1"># ---------------------------------------------------------------------------</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">labels_equal</span><span class="p">(</span><span class="n">left</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span> <span class="n">right</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span> <span class="o">|</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Whether two label tables hold the same labels.</span>
 
-
-<span class="k">def</span><span class="w"> </span><span class="nf">infer_labels_basis</span><span class="p">(</span><span class="n">df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">source_collection</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">"""Guess whether ``onset_s`` values are trial-relative or session-absolute.</span>
-
-<span class="sd">    Votes per trial: onsets all inside ``[0, trial duration]`` → trial time;</span>
-<span class="sd">    all inside the trial's session-absolute window → session time. Returns</span>
-<span class="sd">    ``"trial"``, ``"session"``, or ``None`` when the votes are absent or</span>
-<span class="sd">    contradictory (undecidable — e.g. a session starting at 0 where the two</span>
-<span class="sd">    ranges overlap).</span>
+<span class="sd">    Compared on :data:`TSV_COLUMNS` only, sorted: a saved file carries computed</span>
+<span class="sd">    extras (duration, global timing, session) that say nothing about what was</span>
+<span class="sd">    labelled, and row order is not content either. Used to answer "are there</span>
+<span class="sd">    really unsaved labels?" honestly, instead of trusting a flag that any</span>
+<span class="sd">    label-adjacent action clears.</span>
 <span class="sd">    """</span>
-    <span class="k">if</span> <span class="n">df</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">df</span><span class="o">.</span><span class="n">empty</span> <span class="ow">or</span> <span class="n">source_collection</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="k">return</span> <span class="kc">None</span>
-    <span class="n">votes</span><span class="p">:</span> <span class="nb">set</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
-    <span class="k">for</span> <span class="n">trial_id</span><span class="p">,</span> <span class="n">group</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="s2">"trial"</span><span class="p">):</span>
-        <span class="n">idx</span> <span class="o">=</span> <span class="n">source_collection</span><span class="o">.</span><span class="n">trial_index</span><span class="p">(</span><span class="n">trial_id</span><span class="p">)</span>
-        <span class="k">if</span> <span class="n">idx</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="k">continue</span>
-        <span class="n">tr</span> <span class="o">=</span> <span class="n">source_collection</span><span class="o">.</span><span class="n">trial_range</span><span class="p">(</span><span class="n">idx</span><span class="p">)</span>
-        <span class="n">onsets</span> <span class="o">=</span> <span class="n">group</span><span class="p">[</span><span class="s2">"onset_s"</span><span class="p">]</span><span class="o">.</span><span class="n">dropna</span><span class="p">()</span>
-        <span class="k">if</span> <span class="n">onsets</span><span class="o">.</span><span class="n">empty</span><span class="p">:</span>
-            <span class="k">continue</span>
-        <span class="n">slack</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">tr</span><span class="o">.</span><span class="n">duration</span> <span class="o">*</span> <span class="mf">0.01</span><span class="p">)</span>
-        <span class="n">trial_ok</span> <span class="o">=</span> <span class="nb">bool</span><span class="p">(((</span><span class="n">onsets</span> <span class="o">&gt;=</span> <span class="o">-</span><span class="n">slack</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">onsets</span> <span class="o">&lt;=</span> <span class="n">tr</span><span class="o">.</span><span class="n">duration</span> <span class="o">+</span> <span class="n">slack</span><span class="p">))</span><span class="o">.</span><span class="n">all</span><span class="p">())</span>
-        <span class="n">session_ok</span> <span class="o">=</span> <span class="nb">bool</span><span class="p">(((</span><span class="n">onsets</span> <span class="o">&gt;=</span> <span class="n">tr</span><span class="o">.</span><span class="n">start_s</span> <span class="o">-</span> <span class="n">slack</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">onsets</span> <span class="o">&lt;=</span> <span class="n">tr</span><span class="o">.</span><span class="n">end_s</span> <span class="o">+</span> <span class="n">slack</span><span class="p">))</span><span class="o">.</span><span class="n">all</span><span class="p">())</span>
-        <span class="k">if</span> <span class="n">trial_ok</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">session_ok</span><span class="p">:</span>
-            <span class="n">votes</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="s2">"trial"</span><span class="p">)</span>
-        <span class="k">elif</span> <span class="n">session_ok</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">trial_ok</span><span class="p">:</span>
-            <span class="n">votes</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="s2">"session"</span><span class="p">)</span>
-    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">votes</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
-        <span class="k">return</span> <span class="n">votes</span><span class="o">.</span><span class="n">pop</span><span class="p">()</span>
-    <span class="k">return</span> <span class="kc">None</span>
+    <span class="n">a</span><span class="p">,</span> <span class="n">b</span> <span class="o">=</span> <span class="n">_comparable_labels</span><span class="p">(</span><span class="n">left</span><span class="p">),</span> <span class="n">_comparable_labels</span><span class="p">(</span><span class="n">right</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">a</span><span class="p">)</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="n">b</span><span class="p">):</span>
+        <span class="k">return</span> <span class="kc">False</span>
+    <span class="k">if</span> <span class="n">a</span><span class="o">.</span><span class="n">empty</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">True</span>
+    <span class="k">for</span> <span class="n">col</span> <span class="ow">in</span> <span class="n">TSV_COLUMNS</span><span class="p">:</span>
+        <span class="n">lhs</span><span class="p">,</span> <span class="n">rhs</span> <span class="o">=</span> <span class="n">a</span><span class="p">[</span><span class="n">col</span><span class="p">],</span> <span class="n">b</span><span class="p">[</span><span class="n">col</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">pd</span><span class="o">.</span><span class="n">api</span><span class="o">.</span><span class="n">types</span><span class="o">.</span><span class="n">is_numeric_dtype</span><span class="p">(</span><span class="n">lhs</span><span class="p">)</span> <span class="ow">and</span> <span class="n">pd</span><span class="o">.</span><span class="n">api</span><span class="o">.</span><span class="n">types</span><span class="o">.</span><span class="n">is_numeric_dtype</span><span class="p">(</span><span class="n">rhs</span><span class="p">):</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">allclose</span><span class="p">(</span><span class="n">lhs</span><span class="o">.</span><span class="n">to_numpy</span><span class="p">(</span><span class="nb">float</span><span class="p">),</span> <span class="n">rhs</span><span class="o">.</span><span class="n">to_numpy</span><span class="p">(</span><span class="nb">float</span><span class="p">),</span> <span class="n">equal_nan</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+                <span class="k">return</span> <span class="kc">False</span>
+        <span class="k">elif</span> <span class="ow">not</span> <span class="n">lhs</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">str</span><span class="p">)</span><span class="o">.</span><span class="n">equals</span><span class="p">(</span><span class="n">rhs</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">str</span><span class="p">)):</span>
+            <span class="k">return</span> <span class="kc">False</span>
+    <span class="k">return</span> <span class="kc">True</span>
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">normalize_labels_basis</span><span class="p">(</span>
-    <span class="n">df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span>
-    <span class="n">source_collection</span><span class="p">,</span>
-    <span class="o">*</span><span class="p">,</span>
-    <span class="n">resolver</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
-<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">"""Rebase a loaded labels DataFrame to canonical trial-relative time.</span>
-
-<span class="sd">    The declared basis (``# time_basis:`` header, carried in ``df.attrs``)</span>
-<span class="sd">    wins; otherwise :func:`infer_labels_basis` guesses; if that is</span>
-<span class="sd">    undecidable, *resolver* (a zero-arg callable returning "trial" or</span>
-<span class="sd">    "session" — the GUI's one-time dialog) is asked; without one, trial time</span>
-<span class="sd">    is assumed with a warning.</span>
-<span class="sd">    """</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_comparable_labels</span><span class="p">(</span><span class="n">df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span> <span class="o">|</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""*df* reduced to the canonical columns, in a canonical order."""</span>
     <span class="k">if</span> <span class="n">df</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">df</span><span class="o">.</span><span class="n">empty</span><span class="p">:</span>
-        <span class="k">return</span> <span class="n">df</span>
-    <span class="n">basis</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">attrs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">TIME_BASIS_ATTR</span><span class="p">)</span>
-    <span class="k">if</span> <span class="n">basis</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="n">basis</span> <span class="o">=</span> <span class="n">infer_labels_basis</span><span class="p">(</span><span class="n">df</span><span class="p">,</span> <span class="n">source_collection</span><span class="p">)</span>
-    <span class="k">if</span> <span class="n">basis</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">resolver</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="n">basis</span> <span class="o">=</span> <span class="n">resolver</span><span class="p">()</span>
-    <span class="k">if</span> <span class="n">basis</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">"Label time basis undecidable — assuming trial-relative onsets"</span><span class="p">)</span>
-        <span class="n">basis</span> <span class="o">=</span> <span class="s2">"trial"</span>
-
-    <span class="k">if</span> <span class="n">basis</span> <span class="o">==</span> <span class="s2">"session"</span> <span class="ow">and</span> <span class="n">source_collection</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="n">out</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
-        <span class="n">offsets</span> <span class="o">=</span> <span class="p">{</span><span class="n">tid</span><span class="p">:</span> <span class="n">source_collection</span><span class="o">.</span><span class="n">to_session</span><span class="p">(</span><span class="n">tid</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">)</span> <span class="k">for</span> <span class="n">tid</span> <span class="ow">in</span> <span class="n">out</span><span class="p">[</span><span class="s2">"trial"</span><span class="p">]</span><span class="o">.</span><span class="n">unique</span><span class="p">()}</span>
-        <span class="n">shift</span> <span class="o">=</span> <span class="n">out</span><span class="p">[</span><span class="s2">"trial"</span><span class="p">]</span><span class="o">.</span><span class="n">map</span><span class="p">(</span><span class="n">offsets</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">float</span><span class="p">)</span>
-        <span class="n">out</span><span class="p">[</span><span class="s2">"onset_s"</span><span class="p">]</span> <span class="o">=</span> <span class="n">out</span><span class="p">[</span><span class="s2">"onset_s"</span><span class="p">]</span> <span class="o">-</span> <span class="n">shift</span>
-        <span class="n">out</span><span class="p">[</span><span class="s2">"offset_s"</span><span class="p">]</span> <span class="o">=</span> <span class="n">out</span><span class="p">[</span><span class="s2">"offset_s"</span><span class="p">]</span> <span class="o">-</span> <span class="n">shift</span>
-        <span class="n">out</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="n">TIME_BASIS_ATTR</span><span class="p">]</span> <span class="o">=</span> <span class="s2">"trial"</span>
-        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">"Rebased session-absolute label times to trial-relative"</span><span class="p">)</span>
-        <span class="k">return</span> <span class="n">out</span>
-
-    <span class="n">df</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="n">TIME_BASIS_ATTR</span><span class="p">]</span> <span class="o">=</span> <span class="s2">"trial"</span>
-    <span class="k">return</span> <span class="n">df</span>
+        <span class="k">return</span> <span class="n">_empty_all_labels</span><span class="p">()[</span><span class="n">TSV_COLUMNS</span><span class="p">]</span>
+    <span class="n">out</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+    <span class="n">ensure_event_type</span><span class="p">(</span><span class="n">out</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">col</span> <span class="ow">in</span> <span class="n">TSV_COLUMNS</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">col</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">out</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
+            <span class="n">out</span><span class="p">[</span><span class="n">col</span><span class="p">]</span> <span class="o">=</span> <span class="n">TRIAL_META_DEFAULTS</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">col</span><span class="p">,</span> <span class="s2">""</span><span class="p">)</span>
+    <span class="n">out</span> <span class="o">=</span> <span class="n">out</span><span class="p">[</span><span class="n">TSV_COLUMNS</span><span class="p">]</span>
+    <span class="k">return</span> <span class="n">out</span><span class="o">.</span><span class="n">sort_values</span><span class="p">([</span><span class="s2">"trial"</span><span class="p">,</span> <span class="s2">"onset_s"</span><span class="p">,</span> <span class="s2">"labels"</span><span class="p">],</span> <span class="n">kind</span><span class="o">=</span><span class="s2">"stable"</span><span class="p">)</span><span class="o">.</span><span class="n">reset_index</span><span class="p">(</span><span class="n">drop</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">_empty_all_labels</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>

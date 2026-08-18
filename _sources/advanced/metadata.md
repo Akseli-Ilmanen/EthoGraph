@@ -96,6 +96,14 @@ Double-click a cell in the current trial's row (the tinted one) to change its
 value; the editor offers the values that column already uses, and accepts
 anything else you type. **Add column…** starts a new column to fill in.
 
+### Saving is automatic — Ctrl+S is only for labels
+
+Every edit is written to disk on its own: about a second after you stop typing,
+and again whenever you change trial or close the app. **There is no save button
+and no Ctrl+S for metadata** — `Ctrl+S` / *Save labels* writes the label TSV and
+nothing else. Since edits overwrite the source file with no undo, keep a backup
+copy of your metadata before you start editing.
+
 ### Where the edits go
 
 Straight back into the source the metadata was read from — the tabular file, or

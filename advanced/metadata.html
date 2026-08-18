@@ -536,6 +536,14 @@ double-click</strong>, above the trials table, and the table becomes editable.</
 <p>Double-click a cell in the current trial’s row (the tinted one) to change its
 value; the editor offers the values that column already uses, and accepts
 anything else you type. <strong>Add column…</strong> starts a new column to fill in.</p>
+<section id="saving-is-automatic-ctrl-s-is-only-for-labels">
+<h3>Saving is automatic — Ctrl+S is only for labels<a class="headerlink" href="#saving-is-automatic-ctrl-s-is-only-for-labels" title="Link to this heading">#</a></h3>
+<p>Every edit is written to disk on its own: about a second after you stop typing,
+and again whenever you change trial or close the app. <strong>There is no save button
+and no Ctrl+S for metadata</strong> — <code class="docutils literal notranslate"><span class="pre">Ctrl+S</span></code> / <em>Save labels</em> writes the label TSV and
+nothing else. Since edits overwrite the source file with no undo, keep a backup
+copy of your metadata before you start editing.</p>
+</section>
 <section id="where-the-edits-go">
 <h3>Where the edits go<a class="headerlink" href="#where-the-edits-go" title="Link to this heading">#</a></h3>
 <p>Straight back into the source the metadata was read from — the tabular file, or
@@ -617,6 +625,7 @@ every label row carries its trial’s condition columns.</p>
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#editing-metadata-as-you-watch">Editing metadata as you watch</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#saving-is-automatic-ctrl-s-is-only-for-labels">Saving is automatic — Ctrl+S is only for labels</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#where-the-edits-go">Where the edits go</a></li>
 </ul>
 </li>

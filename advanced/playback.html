@@ -553,6 +553,12 @@ actually ends.</p></li>
 <p>Toggle this with the <strong>“Play to exact time (not nearest frame)”</strong> checkbox at
 the top of the Labels panel. This is a global preference (applies across
 datasets).</p>
+<p><strong>Auto-play on navigate</strong> starts playback immediately, even while the video
+decoder is still warming up after a trial or camera switch: until it is ready,
+frames are decoded directly (slightly more work per frame, never a dropped
+one), and decoding hands back to the normal path the moment the decoder
+responds. Playback therefore begins smoothly on the first frame instead of
+freezing or jumping to the segment’s end.</p>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
 <p>During playback the marker is driven by the <strong>audio output itself</strong> (an

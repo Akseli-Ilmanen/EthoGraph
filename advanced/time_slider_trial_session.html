@@ -531,19 +531,18 @@ pynapple sources (whose absolute times are rebased onto the 0-based axis).</p>
 <section id="where-label-times-live-on-disk">
 <h2>Where label times live on disk<a class="headerlink" href="#where-label-times-live-on-disk" title="Link to this heading">#</a></h2>
 <p>Label TSVs store <strong>trial-relative</strong> onsets/offsets plus a <code class="docutils literal notranslate"><span class="pre">trial</span></code> column —
-regardless of the scope you labelled in. Saved files carry a header line:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span># time_basis: trial
+regardless of the scope you labelled in. They are written and read as-is:
+there is no basis detection and no header line, so the file opens as a plain
+table anywhere:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_csv</span><span class="p">(</span><span class="s2">"Trial_data_labels.tsv"</span><span class="p">,</span> <span class="n">sep</span><span class="o">=</span><span class="s2">"</span><span class="se">\t</span><span class="s2">"</span><span class="p">)</span>
 </pre></div>
 </div>
-<p>When you import a TSV without that header, EthoGraph infers the basis per
-trial (onsets inside <code class="docutils literal notranslate"><span class="pre">[0,</span> <span class="pre">trial</span> <span class="pre">duration]</span></code> → trial time; inside the trial’s
-session window → session time) and rebases session-absolute files
-automatically. If the file is genuinely ambiguous you are asked once —
-trial-relative or session-absolute — and the answer is written into the
-header on the next save, so the question never repeats.</p>
-<p>Exports add derived <code class="docutils literal notranslate"><span class="pre">onset_global</span></code> / <code class="docutils literal notranslate"><span class="pre">offset_global</span></code> columns (trial start +
-trial-relative onset) for analysis in session time; the internal columns stay
-trial-relative.</p>
+<p>Exports add derived <code class="docutils literal notranslate"><span class="pre">trial_onset</span></code> / <code class="docutils literal notranslate"><span class="pre">onset_global</span></code> / <code class="docutils literal notranslate"><span class="pre">offset_global</span></code> columns
+(trial start on the session clock, and the label on it) whenever the alignment
+knows the trial timing, so a saved file carries both clocks; the canonical
+<code class="docutils literal notranslate"><span class="pre">onset_s</span></code> / <code class="docutils literal notranslate"><span class="pre">offset_s</span></code> stay trial-relative.</p>
+<p>A labels file from another tool whose times are session-absolute has to be
+converted before import — subtract each trial’s start.</p>
 </section>
 <section id="backend-cheat-sheet">
 <h2>Backend cheat-sheet<a class="headerlink" href="#backend-cheat-sheet" title="Link to this heading">#</a></h2>

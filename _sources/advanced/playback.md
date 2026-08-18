@@ -105,6 +105,13 @@ Toggle this with the **"Play to exact time (not nearest frame)"** checkbox at
 the top of the Labels panel. This is a global preference (applies across
 datasets).
 
+**Auto-play on navigate** starts playback immediately, even while the video
+decoder is still warming up after a trial or camera switch: until it is ready,
+frames are decoded directly (slightly more work per frame, never a dropped
+one), and decoding hands back to the normal path the moment the decoder
+responds. Playback therefore begins smoothly on the first frame instead of
+freezing or jumping to the segment's end.
+
 ```{note}
 During playback the marker is driven by the **audio output itself** (an
 audio-master clock), so the playhead, the video frame and the sound stay locked
