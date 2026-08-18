@@ -25,7 +25,7 @@ import logging
 import webbrowser
 
 from qtpy.QtCore import Qt
-from qtpy.QtGui import QAction, QKeySequence
+from qtpy.QtGui import QAction
 from qtpy.QtWidgets import (
     QDialog,
     QScrollArea,
@@ -288,8 +288,12 @@ class TopBarBuilder:
         menu.addSeparator()
         save_labels = self._first_method(io, "_save_labels")
         if save_labels is not None:
-            act = menu.addAction("Save labels", save_labels)
-            act.setShortcut(QKeySequence("Ctrl+S"))
+            # The key itself is bound once, in gui/shortcuts.py. A QAction
+            # shortcut here would be a *second* Ctrl+S on the same window, and
+            # Qt answers an ambiguous overload by firing neither -- the menu
+            # entry kept working, the key stopped. So the key is named in the
+            # entry's own text, exactly like the I/O panel's Save button.
+            menu.addAction("Save labels (Ctrl+S)", save_labels)
         menu.addSeparator()
         menu.addAction("Exit", self.shell.close)
 

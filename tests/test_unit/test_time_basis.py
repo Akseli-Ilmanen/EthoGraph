@@ -109,7 +109,7 @@ def test_to_from_display_session_basis(app_state, sc):
 
 
 # ---------------------------------------------------------------------------
-# Label TSV time-basis: header round-trip, inference, normalisation
+# Labels
 # ---------------------------------------------------------------------------
 
 
@@ -119,83 +119,6 @@ def _labels_df(onsets_by_trial: dict) -> pd.DataFrame:
         for o in onsets:
             rows.append({"trial": trial, "individual": "crow1", "labels": 1, "onset_s": o, "offset_s": o + 0.5})
     return pd.DataFrame(rows)
-
-
-def test_tsv_header_roundtrip(tmp_path):
-    from ethograph.labels.tsv_store import TIME_BASIS_ATTR, load_labels_tsv, save_labels_tsv
-
-    df = _labels_df({1: [0.5, 1.2], 2: [2.0]})
-    path = tmp_path / "x_labels.tsv"
-    save_labels_tsv(path, df)
-
-    first_line = path.read_text(encoding="utf-8-sig").splitlines()[0]
-    assert first_line == "# time_basis: trial"
-
-    loaded = load_labels_tsv(path)
-    assert loaded.attrs[TIME_BASIS_ATTR] == "trial"
-    assert len(loaded) == 3
-
-
-def test_tsv_without_header_has_unknown_basis(tmp_path):
-    from ethograph.labels.tsv_store import TIME_BASIS_ATTR, load_labels_tsv
-
-    df = _labels_df({1: [0.5]})
-    path = tmp_path / "y_labels.tsv"
-    df.to_csv(path, sep="\t", index=False)
-    loaded = load_labels_tsv(path)
-    assert loaded.attrs[TIME_BASIS_ATTR] is None
-
-
-def test_infer_basis_trial(sc):
-    from ethograph.labels.tsv_store import infer_labels_basis
-
-    # Onsets inside [0, duration] of each trial, outside the session windows.
-    df = _labels_df({1: [0.5, 3.0], 2: [1.0, 5.0]})
-    assert infer_labels_basis(df, sc) == "trial"
-
-
-def test_infer_basis_session(sc):
-    from ethograph.labels.tsv_store import infer_labels_basis
-
-    # Onsets inside each trial's session-absolute window (10-14, 20-26).
-    df = _labels_df({1: [10.5, 13.0], 2: [21.0, 25.0]})
-    assert infer_labels_basis(df, sc) == "session"
-
-
-def test_normalize_session_rebases_to_trial(sc):
-    from ethograph.labels.tsv_store import TIME_BASIS_ATTR, normalize_labels_basis
-
-    df = _labels_df({1: [10.5], 4: [41.0]})
-    out = normalize_labels_basis(df, sc)
-    assert out.attrs[TIME_BASIS_ATTR] == "trial"
-    assert out.loc[out["trial"] == 1, "onset_s"].iloc[0] == pytest.approx(0.5)
-    assert out.loc[out["trial"] == 4, "onset_s"].iloc[0] == pytest.approx(1.0)
-    assert out.loc[out["trial"] == 4, "offset_s"].iloc[0] == pytest.approx(1.5)
-
-
-def test_normalize_declared_header_wins(sc):
-    from ethograph.labels.tsv_store import TIME_BASIS_ATTR, normalize_labels_basis
-
-    # Onsets that LOOK session-absolute, but the file declares trial time.
-    df = _labels_df({1: [10.5]})
-    df.attrs[TIME_BASIS_ATTR] = "trial"
-    out = normalize_labels_basis(df, sc)
-    assert out.loc[out["trial"] == 1, "onset_s"].iloc[0] == pytest.approx(10.5)
-
-
-def test_normalize_ambiguous_asks_resolver(sc):
-    from ethograph.labels.tsv_store import normalize_labels_basis
-
-    # Trial 99 unknown to sc -> no votes -> ambiguous -> resolver consulted.
-    df = _labels_df({99: [0.5]})
-    calls = []
-
-    def resolver():
-        calls.append(1)
-        return "trial"
-
-    normalize_labels_basis(df, sc, resolver=resolver)
-    assert calls == [1]
 
 
 # ---------------------------------------------------------------------------

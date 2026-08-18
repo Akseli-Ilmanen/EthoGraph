@@ -6,7 +6,6 @@ from pathlib import Path
 from qtpy.QtCore import QLocale, Qt, QTimer
 from qtpy.QtWidgets import (
     QComboBox,
-    QFileDialog,
     QMessageBox,
     QSizePolicy,
     QVBoxLayout,
@@ -28,6 +27,7 @@ from .app_constants import (
     SIDEBAR_MIN_WIDTH_PX,
 )
 from .app_state import ObservableAppState
+from .file_dialogs import browse_open_file
 from .grid_section_container import GridSectionContainer
 from .make_pretty import LayoutManager
 from .notify import notify
@@ -753,7 +753,13 @@ class MetaWidget(GridSectionContainer):
 
         path = name
         if path == IMAGE_BROWSE:
-            path, _ = QFileDialog.getOpenFileName(self.shell, "Choose an image", "", IMAGE_FILE_FILTER)
+            path = browse_open_file(
+                self.shell,
+                self.app_state,
+                "Choose an image",
+                IMAGE_FILE_FILTER,
+                preferred_dir=self.app_state.nc_file_path,
+            )
             if not path:
                 return
             images = list(getattr(self.app_state, "image_paths", None) or [])
@@ -957,8 +963,13 @@ class MetaWidget(GridSectionContainer):
         self.trials_widget.flush_metadata()
 
     def _check_unsaved_changes(self, event):
-        """Check for unsaved changes and prompt. Returns True if OK to close."""
-        if not self.app_state.changes_saved:
+        """Check for unsaved changes and prompt. Returns True if OK to close.
+
+        Asks the labels file, not just the ``changes_saved`` flag: the flag is
+        cleared by anything label-adjacent, which had metadata-only sessions
+        being asked to save labels the user never touched.
+        """
+        if self.app_state.labels_dirty():
             msg_box = QMessageBox()
             msg_box.setWindowTitle("Unsaved Changes")
             msg_box.setText("You have unsaved changes to your labels.")

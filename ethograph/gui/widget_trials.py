@@ -338,6 +338,7 @@ class TrialsWidget(QWidget):
         self._save_timer.timeout.connect(self.flush_metadata)
         app_state.trial_changed.connect(self.flush_metadata)
         app_state.trial_changed.connect(self._apply_edit_state)
+        app_state.trial_changed.connect(self._sync_selection_to_trial)
 
         # Restored last — _on_edit_toggled configures the table, which only
         # exists by now.
@@ -358,11 +359,16 @@ class TrialsWidget(QWidget):
 
         # Populate table
         self._refresh_table()
+        # Initial order: ascending by trial. Items store numeric trial IDs
+        # natively (DisplayRole), so this sorts 1, 2, … 10, not "1", "10", "2".
+        trial_col = list(self._metadata_df.columns).index("trial")
+        self._table.sortByColumn(trial_col, Qt.AscendingOrder)
         self._setup_filter_header()
 
         self._building = False
         self._apply_filters()
         self._apply_edit_state()
+        self._sync_selection_to_trial()
         self._update_visibility()
 
     def _update_visibility(self) -> None:
@@ -464,6 +470,15 @@ class TrialsWidget(QWidget):
         header.setStretchLastSection(True)
         header.setVisible(True)
         header.filter_requested.connect(self._on_filter_header_clicked)
+        # Carry the sort over to the replacement header: setHorizontalHeader()
+        # re-runs setSortingEnabled() internally, which re-sorts by the NEW
+        # header's indicator — and a fresh QHeaderView defaults to section 0,
+        # *descending*. Without this the table lands on trial 10, 9, 8, … and a
+        # rebuild (reload_metadata) silently discards the user's sort column.
+        old_header = self._table.horizontalHeader()
+        section = old_header.sortIndicatorSection() if old_header is not None else 0
+        order = old_header.sortIndicatorOrder() if old_header is not None else Qt.AscendingOrder
+        header.setSortIndicator(max(0, section), order)
         self._table.setHorizontalHeader(header)
         # Re-apply header labels after replacing the header view to ensure text is visible.
         self._table.setHorizontalHeaderLabels(col_names)
@@ -598,6 +613,24 @@ class TrialsWidget(QWidget):
 
     def _current_trial_row(self) -> int | None:
         return self._row_of_trial(getattr(self.app_state, "trials_sel", None))
+
+    def _sync_selection_to_trial(self) -> None:
+        """Select the current trial's row, exactly as a click would.
+
+        Navigation runs both ways: clicking a row navigates to that trial, and
+        navigating to a trial (Next/Previous, combo, label/sequence, jump)
+        selects its row here. ``selectRow`` never fires ``cellClicked``, so
+        this cannot loop back into ``_on_row_clicked``.
+        """
+        row = self._current_trial_row()
+        if row is None:
+            self._table.clearSelection()
+            return
+        if self._table.currentRow() != row:
+            self._table.selectRow(row)
+        item = self._table.item(row, 0)
+        if item is not None:
+            self._table.scrollToItem(item)
 
     def _row_of_trial(self, trial) -> int | None:
         if trial is None:
@@ -763,6 +796,7 @@ class TrialsWidget(QWidget):
         self._cat_active, self._num_active = cat_active, num_active
         self._update_header_active_filters()
         self._apply_edit_state()
+        self._sync_selection_to_trial()
         self._update_visibility()
 
     def _cell_item(self, trial, column: str) -> QTableWidgetItem | None:

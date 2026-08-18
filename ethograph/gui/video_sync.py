@@ -78,6 +78,9 @@ class VideoSync(QObject):
         self._play_timer.timeout.connect(self._advance)
         self._step: float = 1.0
         self._frame_accum: float = 0.0
+        # Cold-decoder bridge: step with synchronous in-process decode until
+        # the async worker proves live (see _seek_playback_frame).
+        self._sync_until_ready: bool = False
 
         self.total_frames = view.n_frames
         self.total_duration = self.total_frames / self.fps if self.fps else 0.0
@@ -172,6 +175,7 @@ class VideoSync(QObject):
         self._smooth_mode = False
         self._gap_run = False
         self.marker_time_override = None
+        self._sync_until_ready = not self.view.decoder_ready()
 
         from .app_constants import PLAYBACK_MODE_SMOOTH, PLAYBACK_MODE_SYNCED
 
@@ -212,6 +216,7 @@ class VideoSync(QObject):
         end time instead of snapping it back to the last frame's time.
         """
         self._gap_run = False
+        self._sync_until_ready = False
         self._play_timer.stop()
         self._segment_end_frame = None
         self._segment_end_time_s = None
@@ -308,6 +313,26 @@ class VideoSync(QObject):
         self.marker_time_override = t
         self._apply_frame(self._current_frame)
 
+    def _seek_playback_frame(self, frame: int):
+        """Seek during playback, tolerating a cold decode worker.
+
+        A freshly spawned worker (trial/camera switch) drops async seeks for
+        ~2 s while it re-imports its stack — playback started against it used
+        to render nothing and jump to the segment end. Until the worker proves
+        live, each tick decodes its frame synchronously in-process so every
+        tick renders, and still queues one async request so the waking
+        worker's first served frame is current; the tick after it answers
+        hands over to the pure async path.
+        """
+        if self._sync_until_ready:
+            if self.view.decoder_ready():
+                self._sync_until_ready = False
+            else:
+                self.view.seek_trial_frame(frame)
+                self.view.seek_trial_frame(frame, synchronous=True)
+                return
+        self.view.seek_trial_frame(frame)
+
     def _advance(self):
         if self._gap_run:
             self._advance_gap()
@@ -325,12 +350,12 @@ class VideoSync(QObject):
             max_frame = min(max_frame, self._segment_end_frame)
         if next_frame >= max_frame:
             next_frame = max_frame
-            self.view.seek_trial_frame(next_frame)
+            self._seek_playback_frame(next_frame)
             self._apply_frame(next_frame)
             if self._segment_end_frame is None:
                 self._end_of_video()
             return
-        self.view.seek_trial_frame(next_frame)
+        self._seek_playback_frame(next_frame)
         self._apply_frame(next_frame)
 
     def _advance_smooth(self):
@@ -356,7 +381,7 @@ class VideoSync(QObject):
         # The playhead sits on the exact (sub-frame) clock time; plots_container
         # reads this override so it isn't quantized to the displayed frame.
         self.marker_time_override = self._clock_start_marker + elapsed
-        self.view.seek_trial_frame(frame)
+        self._seek_playback_frame(frame)
         self._apply_frame(frame)
         if clock.finished or frame >= max_frame:
             self._end_of_video()
@@ -422,9 +447,15 @@ class VideoSync(QObject):
         self._segment_end_time_s = (
             audio_t1 if (audio_t1 is not None and self.app_state.segment_end_continuous_time) else None
         )
-        self.view.seek_trial_frame(start_frame, synchronous=True)
+        # ASYNC initial seek, exactly like regular Play (space): a synchronous
+        # decode here blocks the GUI on a far seek, which is the gap the user
+        # feels between navigating and playback starting. The first timer tick
+        # renders the frame instead (synchronously only while the worker is
+        # cold — see _seek_playback_frame).
+        self.view.seek_trial_frame(start_frame)
         self._apply_frame(start_frame)
         self._segment_end_frame = end_frame  # _apply_frame may have cleared it
+        self._sync_until_ready = not self.view.decoder_ready()
 
         if self.fps > 0:
             if audio_t0 is None or audio_t1 is None:

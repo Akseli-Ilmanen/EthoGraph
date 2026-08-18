@@ -25,12 +25,14 @@ from ethograph.io.time_model import (
 from ethograph.labels.tsv_store import (
     get_trial_from_tsv,
     get_trial_meta,
+    labels_equal,
     labels_tsv_path,
+    load_labels_tsv,
     save_labels_tsv,
     set_trial_in_tsv,
     set_trial_meta_attr,
 )
-from ethograph.utils.paths import auto_git_commit, ethograph_home
+from ethograph.utils.paths import auto_git_commit, ethograph_home, sanitize_path_state
 from ethograph.utils.qt import find_combo_index
 
 logger = logging.getLogger(__name__)
@@ -150,6 +152,10 @@ class AppStateSpec:
         "segment_end_continuous_time": (bool, False, True),
         "filter_warnings": (bool, True, True),
         "center_playback": (bool, False, True),
+        # "Auto-play on navigate": start segment playback (after the fixed
+        # delay in widgets_navigation) whenever navigation lands. Global — a
+        # reviewing habit, not a property of any one dataset.
+        "autoplay_on_navigate": (bool, False, True),
         "time_jump_s": (float, 0.1, True),
         "time": (
             xr.DataArray | None,
@@ -181,6 +187,11 @@ class AppStateSpec:
         "files_aligned_to_trials": (bool, True, True, SCOPE_LOCAL),
         # Paths
         "nc_file_path": (str | None, None, False),
+        # Folder the last browse dialog resolved to. SCOPE_GLOBAL: it follows
+        # the user, not the dataset — the point is that the *next* session's
+        # file dialogs open where the previous one left off, before any
+        # dataset (and so any local_settings.yaml) exists.
+        "last_browse_dir": (str | None, None, True),
         "_labels_file_path": (
             str | None,
             None,
@@ -371,6 +382,27 @@ class AppStateSpec:
         "function_params_cache": (dict, {}, True),
     }
 
+    #: Saveable state keys that hold a filesystem path, mapped to what must
+    #: exist for the value to be usable ("file" | "dir" | "any").  Settings
+    #: files travel between machines and drives, so :func:`sanitize_path_state`
+    #: drops the ones that name nothing here as they are read — an absent
+    #: folder must leave the field empty, not feed the media resolvers a path
+    #: that makes every trial report a missing video/pose/audio file.
+    PATH_VARS: dict[str, str] = {
+        "metadata_path": "file",
+        "labels_import_path": "file",
+        "nwb_file_path": "file",
+        "video_folder": "dir",
+        "audio_folder": "dir",
+        "pose_folder": "dir",
+        "ephys_path": "any",
+        "neurons_path": "any",
+        "image_paths": "file",
+        "last_browse_dir": "dir",
+        "remote_backup_path": "dir",
+        "labelling_cotracker_checkpoint": "file",
+    }
+
     @classmethod
     def get_meta(cls, key):
         if key not in cls.VARS:
@@ -423,6 +455,12 @@ class ObservableAppState(QObject):
         for var in AppStateSpec.VARS:
             _, default, _, _ = AppStateSpec.get_meta(var)
             self._values[var] = default
+
+        # Path settings read from YAML that name nothing on this machine
+        # (see AppStateSpec.PATH_VARS). They are kept out of the live state but
+        # written back on save, so an unplugged drive does not permanently
+        # erase the folder from the settings file.
+        object.__setattr__(self, "_unavailable_paths", {})
 
         self.audio_source_map: dict[str, tuple[str, int]] = {}
         # mic device label -> ordered audio_source_map keys (one per channel)
@@ -1059,6 +1097,12 @@ class ObservableAppState(QObject):
             elif isinstance(value, dict) and value:
                 state_dict[attr] = value
 
+        for attr, value in self._unavailable_paths.items():
+            if attr in state_dict or self._values.get(attr) is not None:
+                continue
+            if attr in AppStateSpec.saveable_attributes(scope=scope):
+                state_dict[attr] = value
+
         if scope in (None, AppStateSpec.SCOPE_LOCAL):
             for attr in dir(self):
                 if attr.endswith("_sel") or attr.endswith("_sel_previous"):
@@ -1176,6 +1220,10 @@ class ObservableAppState(QObject):
 
         state_dict.pop("window_size", None)
 
+        cleaned = sanitize_path_state(state_dict, AppStateSpec.PATH_VARS)
+        self._unavailable_paths.update({k: v for k, v in state_dict.items() if cleaned.get(k) != v})
+        state_dict = cleaned
+
         self._suspend_local_autoload = True
         try:
             for key, value in state_dict.items():
@@ -1191,6 +1239,10 @@ class ObservableAppState(QObject):
             local_path = self._local_settings_path()
             if local_path is None:
                 return False
+            # Missing per-dataset paths belong to the dataset being left, never
+            # to the one being loaded.
+            for key in AppStateSpec.saveable_attributes(scope=AppStateSpec.SCOPE_LOCAL):
+                self._unavailable_paths.pop(key, None)
             state_dict = self._yaml_read(local_path)
             if not state_dict:
                 return False
@@ -1389,6 +1441,46 @@ class ObservableAppState(QObject):
             return f"_downsampled_{self.downsample_factor_used}x"
         return ""
 
+    def labels_file_path(self) -> Path | None:
+        """The file :meth:`save_labels` would write the labels to."""
+        if self._labels_file_path and Path(self._labels_file_path).exists():
+            return Path(self._labels_file_path)
+        if not self.nc_file_path:
+            return None
+        return labels_tsv_path(Path(self.nc_file_path), self._get_downsampled_suffix())
+
+    def labels_dirty(self) -> bool:
+        """Whether the labels in memory really differ from the ones on disk.
+
+        ``changes_saved`` over-reports: it is cleared by anything that *might*
+        have touched labels, so a session that only edited trial metadata was
+        still asked to save labels it never changed. The flag stays the cheap
+        path; the file decides.
+        """
+        if self.changes_saved:
+            return False
+        if self._all_labels_df is None:
+            return False
+        path = self.labels_file_path()
+        if path is None:
+            return not self._all_labels_df.empty  # nowhere to compare against
+        try:
+            on_disk = load_labels_tsv(path)
+            if labels_equal(self._all_labels_df, on_disk):
+                return False
+            logger.info(
+                "Labels differ from %s (%d rows in memory, %d on disk)",
+                path.name,
+                len(self._all_labels_df),
+                len(on_disk),
+            )
+            return True
+        except (OSError, ValueError) as e:
+            # An unreadable/invalid labels file is exactly when the user wants
+            # to be offered the save.
+            logger.warning("Could not read %s to compare labels: %s", path.name, e)
+            return True
+
     def save_labels(self, remote_path: str | None = None, remote_mode: str | None = None) -> None:
         """Save labels to active file (canonical or predictions TSV) + local backup + optional remote backup.
 
@@ -1423,10 +1515,8 @@ class ObservableAppState(QObject):
         save_df = enriched if not enriched.empty else self._all_labels_df
 
         # 1. Primary file: use _labels_file_path if set (predictions/custom), otherwise canonical
-        if self._labels_file_path and Path(self._labels_file_path).exists():
-            primary_tsv = Path(self._labels_file_path)
-        else:
-            primary_tsv = labels_tsv_path(nc_path, suffix)
+        primary_tsv = self.labels_file_path()
+        assert primary_tsv is not None  # nc_file_path resolved above
         save_labels_tsv(primary_tsv, save_df)
 
         # 2. Local backup with timestamp

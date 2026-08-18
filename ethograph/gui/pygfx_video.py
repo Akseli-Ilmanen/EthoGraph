@@ -31,6 +31,22 @@ from .app_constants import MEDIA_VIEW_MIN_HEIGHT, MEDIA_VIEW_MIN_WIDTH
 from .pose_overlay import PoseOverlay
 
 
+def _disarm_present(canvas) -> None:
+    """Stop a canvas whose widget is about to die from finishing its present.
+
+    wgpu hands the rendered bitmap back asynchronously: ``_finish_present``
+    runs a frame or more after the draw and ends in ``QWidget.update()`` on
+    rendercanvas's inner ``QRenderWidget``. Closing the canvas deletes that
+    widget (``WA_DeleteOnClose``), so a present still in flight lands on a
+    deleted C++ object — rendercanvas swallows it, but logs a "Present finish
+    error / wrapped C/C++ object of type QRenderWidget has been deleted"
+    traceback on every video teardown. Neutralising the repaint request first
+    makes the pending present a no-op instead.
+    """
+    widget = getattr(canvas, "_subwidget", canvas)
+    widget._rc_request_paint = lambda: None
+
+
 class _StaticImagePlot:
     """Minimal pygfx scene showing a single still image (no video worker)."""
 
@@ -63,6 +79,7 @@ class _StaticImagePlot:
         self.canvas.request_draw(lambda: self.renderer.render(self.scene, self.camera))
 
     def close(self):
+        _disarm_present(self.canvas)
         try:
             self.canvas.close()
         except Exception:
@@ -99,6 +116,9 @@ class CameraView(QWidget):
         self._start_frame: int = 0
         self._end_frame: int = 0
         self._suppress_sync = False
+        #: True once the async decode worker has served a request (see
+        #: decoder_ready); reset when a new PlotVideo/worker is spawned.
+        self._decoder_live = False
         #: Wheel-zoom only acts on the active (last-clicked) view. The
         #: ActivePanelManager toggles this via widgets_meta; defaults True so a
         #: standalone view (tests, no manager) zooms without a prior click.
@@ -261,6 +281,12 @@ class CameraView(QWidget):
             self.clear()
             self._plot = PlotVideo(video=video_path, parent=self)
             self.layout().addWidget(self._plot.canvas)
+            # Fresh worker: arm the liveness sentinel. The shm buffer is
+            # zero-filled at creation, which would read as "frame 0 served";
+            # -1 is only ever overwritten by the worker's first served frame.
+            self._decoder_live = False
+            if getattr(self._plot, "shared_index", None) is not None:
+                self._plot.shared_index[0] = -1.0
         self._video_path = video_path
         self._fit_image_to_canvas(self._plot)
         self._fps = float(fps)
@@ -535,6 +561,25 @@ class CameraView(QWidget):
     def seek_trial_frame(self, trial_frame: int, synchronous: bool = False) -> None:
         self.seek_video_frame(trial_frame + self._start_frame, synchronous=synchronous)
 
+    def decoder_ready(self) -> bool:
+        """True once the async decode worker is proven to serve requests.
+
+        A freshly spawned worker re-imports ``av``/``pygfx`` before it can
+        answer (~2 s on Windows) and async seeks issued meanwhile are
+        superseded rather than served. ``set_video`` arms a ``-1`` sentinel in
+        ``shared_index`` at spawn; the worker's first served frame overwrites
+        it, which this notices and remembers. Views without an async worker
+        (no plot, sync-only plot) are trivially ready.
+        """
+        plot = self._plot
+        if plot is None or not hasattr(plot, "request_queue"):
+            return True
+        if not self._decoder_live:
+            shared = getattr(plot, "shared_index", None)
+            if shared is not None and float(shared[0]) >= 0.0:
+                self._decoder_live = True
+        return self._decoder_live
+
     def seek_to_time(self, t_trial: float) -> None:
         """Seek from a trial-relative time (used for follower cameras)."""
         if self._plot is None or self._fps <= 0:
@@ -595,6 +640,7 @@ class CameraView(QWidget):
         self._detach_load_state()
         if self._plot is not None:
             self.layout().removeWidget(self._plot.canvas)
+            _disarm_present(self._plot.canvas)
             self._plot.canvas.setParent(None)
             try:
                 self._plot.close()

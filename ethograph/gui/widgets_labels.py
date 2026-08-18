@@ -87,6 +87,7 @@ from .app_constants import (  # noqa: E402
     LABELS_TABLE_ROW_HEIGHT,
     LABELS_WIDGET_SIZE_HINT_HEIGHT,
 )
+from .file_dialogs import browse_open_dir  # noqa: E402
 
 
 class BranchTable(QTableWidget):
@@ -716,7 +717,12 @@ class LabelsWidget(QWidget):
                 notify(f"Loaded {len(labels)} temporary labels")
 
     def _import_predictions_from_folder(self):
-        folder = QFileDialog.getExistingDirectory(self, "Select predictions folder (.npy files)")
+        folder = browse_open_dir(
+            self,
+            self.app_state,
+            "Select predictions folder (.npy files)",
+            preferred_dir=self.app_state.nc_file_path,
+        )
         if not folder:
             return
         individual = self.app_state.selected_individual() or "default"

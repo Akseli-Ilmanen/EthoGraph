@@ -1,20 +1,57 @@
 """Global keyboard shortcut bindings for the ethograph GUI.
 
 Shortcuts are QShortcuts on the main window (napari keymaps are gone).
-Plain-letter shortcuts are guarded so they don't fire while the user is
-typing in a text field or spin box.
+Plain-letter and arrow-key shortcuts are guarded: while the user types in a
+text field or spin box the shell **disables** them (``_sync_guarded_shortcuts``
+on ``focusChanged``) rather than letting them fire a no-op. They are
+application-context shortcuts, so an enabled one swallows the key press before
+the focus widget receives it — a no-op guard left arrow keys dead in every
+input, including the ↑/↓ selection walk in the add-panel popup's filter box.
+
+A binding on a key the focused text editor owns (``Ctrl+V``, ``Ctrl+A``,
+word-wise cursor moves, …) is guarded *automatically*, whatever the call site
+asks for.
 """
 
 import logging
 
+from qtpy.QtGui import QKeySequence
 from qtpy.QtWidgets import QAbstractSpinBox, QApplication, QComboBox, QLineEdit, QPlainTextEdit, QTextEdit
 
 logger = logging.getLogger(__name__)
 
 _TEXT_WIDGETS = (QLineEdit, QTextEdit, QPlainTextEdit, QAbstractSpinBox)
 
+#: Keys a focused text editor owns. A global binding on one of these is always
+#: guarded: unguarded, ``Ctrl+V`` swallowed the paste into a metadata cell *and*
+#: ran the action behind it (mark the trial human-verified), which flagged the
+#: labels unsaved and asked to save them on close after a metadata-only edit.
+#: Same for ``Ctrl+A``/``Ctrl+C`` (select-all, copy) and the cursor keys.
+_TEXT_EDITING_KEYS = frozenset(
+    QKeySequence(key).toString()
+    for key in (
+        "Ctrl+A",
+        "Ctrl+C",
+        "Ctrl+V",
+        "Ctrl+X",
+        "Ctrl+Z",
+        "Ctrl+Y",
+        "Ctrl+Left",
+        "Ctrl+Right",
+        "Shift+Left",
+        "Shift+Right",
+        "Ctrl+Home",
+        "Ctrl+End",
+        "Home",
+        "End",
+        "Delete",
+        "Backspace",
+    )
+)
 
-def _typing_in_text_field() -> bool:
+
+def typing_in_text_field() -> bool:
+    """True when keystrokes belong to a text entry rather than a shortcut."""
     widget = QApplication.focusWidget()
     if widget is None:
         return False
@@ -39,17 +76,14 @@ def bind_global_shortcuts(meta_widget):
     shell.clear_shortcuts()
 
     def bind(key, callback, guarded=False):
-        """Bind *key*; guarded shortcuts are ignored while typing in a field."""
-
-        def run():
-            if guarded and _typing_in_text_field():
-                return
-            callback()
-
-        shell.bind_shortcut(key, run)
+        """Bind *key*; guarded shortcuts are disabled while typing in a field."""
+        text_key = QKeySequence(key).toString() in _TEXT_EDITING_KEYS
+        shell.bind_shortcut(key, callback, guarded=guarded or text_key)
 
     # --- Playback / navigation ---
-    bind("Ctrl+S", app_state.save_labels)
+    # Same handler as the Save labels button and menu entry: it carries the
+    # remote-backup folder from the I/O panel and reports failures in a dialog.
+    bind("Ctrl+S", io_widget._save_labels)
 
     def toggle_zen_mode():
         """Zen mode: hide the right sidebar for a distraction-free view."""

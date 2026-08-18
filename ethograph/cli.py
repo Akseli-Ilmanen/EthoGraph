@@ -60,12 +60,32 @@ def _require_gui_extra(exc: ImportError) -> None:
     )
 
 
+class _ConsoleFormatter(logging.Formatter):
+    """Compact console lines: drop the ``ethograph.`` prefix and the INFO level.
+
+    INFO is what almost every line is, so naming it says nothing; anything
+    louder still announces itself.
+    """
+
+    _QUIET = logging.Formatter("%(name)s | %(message)s")
+    _LOUD = logging.Formatter("%(levelname)s %(name)s | %(message)s")
+
+    def format(self, record: logging.LogRecord) -> str:
+        original = record.name
+        if original.startswith("ethograph."):
+            record.name = original[len("ethograph.") :]
+        try:
+            style = self._QUIET if record.levelno <= logging.INFO else self._LOUD
+            return style.format(record)
+        finally:
+            record.name = original
+
+
 def launch():
     """Launch the ethograph GUI."""
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(name)s - %(levelname)s - %(message)s",
-    )
+    logging.basicConfig(level=logging.INFO)
+    for handler in logging.getLogger().handlers:
+        handler.setFormatter(_ConsoleFormatter())
     _fix_wayland_opengl()
     _ensure_qt_plugins()
 

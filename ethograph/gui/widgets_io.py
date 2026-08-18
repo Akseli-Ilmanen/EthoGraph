@@ -11,7 +11,6 @@ from qtpy.QtWidgets import (
     QComboBox,
     QDialog,
     QDoubleSpinBox,
-    QFileDialog,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
@@ -28,7 +27,7 @@ from ethograph.io.catalog import INDIVIDUAL_DIMS
 from ethograph.io.metadata_table import metadata_tsv_path
 from ethograph.io.validation import EPHYS_FILE_FILTER
 from ethograph.labels.export import correct_offsets_trial
-from ethograph.labels.tsv_store import labels_tsv_path, load_labels_tsv, normalize_labels_basis
+from ethograph.labels.tsv_store import labels_tsv_path, load_labels_tsv
 from ethograph.utils.paths import (
     default_config_dir,
     find_mapping_file,
@@ -37,7 +36,8 @@ from ethograph.utils.qt import populate_if_exists
 
 from .app_state import AppStateSpec
 from .dialog_select_template import TemplateDialog
-from .notify import ask_label_time_basis, notify, notify_dialog
+from .file_dialogs import browse_open_dir, browse_open_file, browse_save_file
+from .notify import notify, notify_dialog
 from .top_bar import SectionPopup
 from .wizard_overview import NCWizardDialog
 
@@ -494,7 +494,12 @@ class IOWidget(QWidget):
         combo.blockSignals(False)
 
     def _browse_remote_backup(self):
-        folder = QFileDialog.getExistingDirectory(self, "Select remote backup folder")
+        folder = browse_open_dir(
+            self,
+            self.app_state,
+            "Select remote backup folder",
+            preferred_dir=self.app_state.remote_backup_path,
+        )
         if folder:
             self.remote_backup_edit.setText(folder)
             self.app_state.remote_backup_path = folder
@@ -815,25 +820,17 @@ class IOWidget(QWidget):
         self._import_crowsetta_labels(fmt)
 
     def _import_tsv_labels(self):
-        nc_parent = ""
-        if self.app_state.nc_file_path:
-            nc_parent = str(Path(self.app_state.nc_file_path).parent)
-
-        result = QFileDialog.getOpenFileName(
+        file_path = browse_open_file(
             self,
-            caption="Open labels TSV file",
-            dir=nc_parent,
-            filter="TSV files (*.tsv)",
+            self.app_state,
+            "Open labels TSV file",
+            "TSV files (*.tsv)",
+            preferred_dir=self.app_state.nc_file_path,
         )
-        file_path = result[0] if result and result[0] else ""
         if not file_path:
             return
 
-        self.app_state._all_labels_df = normalize_labels_basis(
-            load_labels_tsv(file_path),
-            getattr(self.app_state, "source_collection", None),
-            resolver=lambda: ask_label_time_basis(self),
-        )
+        self.app_state._all_labels_df = load_labels_tsv(file_path)
         self.app_state._labels_file_path = file_path  # Track which file is active
         # Remember this exact file for future loads of this dataset — an
         # explicit choice must never be re-guessed from the .nc filename.
@@ -879,17 +876,13 @@ class IOWidget(QWidget):
         }
         file_filter = filter_map.get(format_name, "All files (*)")
 
-        nc_parent = ""
-        if self.app_state.nc_file_path:
-            nc_parent = str(Path(self.app_state.nc_file_path).parent)
-
-        result = QFileDialog.getOpenFileName(
+        file_path = browse_open_file(
             self,
-            caption=f"Open {format_name} annotation file",
-            dir=nc_parent,
-            filter=file_filter,
+            self.app_state,
+            f"Open {format_name} annotation file",
+            file_filter,
+            preferred_dir=self.app_state.nc_file_path,
         )
-        file_path = result[0] if result and result[0] else ""
         if not file_path:
             return
 
@@ -965,17 +958,13 @@ class IOWidget(QWidget):
             "pynapple (.nwb)": "NWB files (*.nwb);;All files (*)",
         }.get(fmt, "All files (*)")
 
-        nc_parent = ""
-        if self.app_state.nc_file_path:
-            nc_parent = str(Path(self.app_state.nc_file_path).parent)
-
-        result = QFileDialog.getOpenFileName(
+        file_path = browse_open_file(
             self,
-            caption=f"Open {fmt} file for labels",
-            dir=nc_parent,
-            filter=ext_filter,
+            self.app_state,
+            f"Open {fmt} file for labels",
+            ext_filter,
+            preferred_dir=self.app_state.nc_file_path,
         )
-        file_path = result[0] if result and result[0] else ""
         if not file_path:
             return
 
@@ -1502,22 +1491,24 @@ class IOWidget(QWidget):
 
     def _browse_nwb_file(self):
         """Browse for an NWB session/alignment file."""
-        result = QFileDialog.getOpenFileName(
+        path = browse_open_file(
             None,
-            caption="Open NWB session file",
-            filter="NWB files (*.nwb);;All files (*)",
+            self.app_state,
+            "Open NWB session file",
+            "NWB files (*.nwb);;All files (*)",
+            preferred_dir=self.app_state.nc_file_path,
         )
-        path = result[0] if result and len(result) >= 1 else ""
         if path:
             self.nwb_file_path_edit.setText(path)
             self.app_state.nwb_file_path = path  # auto-syncs to app_state.nwb_alignment
 
     def _browse_metadata_file(self):
         """Browse for a metadata source file (TSV, CSV, Excel, NWB, or NPZ)."""
-        result = QFileDialog.getOpenFileName(
+        path = browse_open_file(
             None,
-            caption="Open metadata file",
-            filter=(
+            self.app_state,
+            "Open metadata file",
+            (
                 "Metadata files (*.tsv *.csv *.xlsx *.xls *.nwb *.npz);;"
                 "TSV/CSV files (*.tsv *.csv);;"
                 "Excel files (*.xlsx *.xls);;"
@@ -1525,8 +1516,8 @@ class IOWidget(QWidget):
                 "Pynapple files (*.npz);;"
                 "All files (*)"
             ),
+            preferred_dir=self.app_state.nc_file_path,
         )
-        path = result[0] if result and len(result) >= 1 else ""
         if path:
             self.metadata_path_edit.setText(path)
             self.app_state.metadata_path = path
@@ -1536,18 +1527,15 @@ class IOWidget(QWidget):
         import pandas as pd
 
         nc_path = self.app_state.nc_file_path
-        if nc_path:
-            default_dir = str(Path(nc_path).parent)
-            default_name = Path(nc_path).stem + "_metadata.tsv"
-        else:
-            default_dir = ""
-            default_name = "metadata.tsv"
+        default_name = Path(nc_path).stem + "_metadata.tsv" if nc_path else "metadata.tsv"
 
-        path, _ = QFileDialog.getSaveFileName(
+        path = browse_save_file(
             None,
-            caption="Save metadata template",
-            dir=str(Path(default_dir) / default_name) if default_dir else default_name,
-            filter="TSV files (*.tsv);;CSV files (*.csv);;All files (*)",
+            self.app_state,
+            "Save metadata template",
+            default_name,
+            "TSV files (*.tsv);;CSV files (*.csv);;All files (*)",
+            preferred_dir=nc_path,
         )
         if not path:
             return
@@ -1642,12 +1630,13 @@ class IOWidget(QWidget):
 
     def _browse_data_file(self):
         """Browse for a data file (.nc, .nwb, .npz)."""
-        result = QFileDialog.getOpenFileName(
+        path = browse_open_file(
             None,
-            caption="Open data file",
-            filter="Data files (*.nc *.nwb *.npz);;All files (*)",
+            self.app_state,
+            "Open data file",
+            "Data files (*.nc *.nwb *.npz);;All files (*)",
+            preferred_dir=self.nc_file_path_edit.text().strip() or None,
         )
-        path = result[0] if result and len(result) >= 1 else ""
         if path:
             self.nc_file_path_edit.setText(path)
             self.app_state.nc_file_path = path
@@ -1655,9 +1644,11 @@ class IOWidget(QWidget):
 
     def _browse_data_folder(self):
         """Browse for a pynapple data folder."""
-        path = QFileDialog.getExistingDirectory(
+        path = browse_open_dir(
             None,
-            caption="Open pynapple data folder",
+            self.app_state,
+            "Open pynapple data folder",
+            preferred_dir=self.nc_file_path_edit.text().strip() or None,
         )
         if path:
             self.nc_file_path_edit.setText(path)
@@ -1671,23 +1662,17 @@ class IOWidget(QWidget):
                 return
 
             elif media_type == "labels":
-                nc_parent = Path(self.app_state.nc_file_path).parent
-
-                result = QFileDialog.getOpenFileName(
+                labels_file_path = browse_open_file(
                     None,
-                    caption="Load labels TSV file",
-                    dir=str(nc_parent),
-                    filter="TSV files (*.tsv)",
+                    self.app_state,
+                    "Load labels TSV file",
+                    "TSV files (*.tsv)",
+                    preferred_dir=self.app_state.nc_file_path,
                 )
-                labels_file_path = result[0] if result and len(result) >= 1 else ""
                 if not labels_file_path:
                     return
 
-                self.app_state._all_labels_df = normalize_labels_basis(
-                    load_labels_tsv(labels_file_path),
-                    getattr(self.app_state, "source_collection", None),
-                    resolver=lambda: ask_label_time_basis(self),
-                )
+                self.app_state._all_labels_df = load_labels_tsv(labels_file_path)
 
                 self.app_state.label_intervals = self.app_state.get_trial_intervals(self.app_state.trials_sel)
                 self.label_file_path_edit.setText(labels_file_path)
@@ -1706,12 +1691,13 @@ class IOWidget(QWidget):
                         self.data_widget.plot_container.labels_redraw_needed.emit()
 
             elif media_type == "ephys":
-                result = QFileDialog.getOpenFileName(
+                ephys_path = browse_open_file(
                     None,
-                    caption="Open ephys recording file",
-                    filter=EPHYS_FILE_FILTER,
+                    self.app_state,
+                    "Open ephys recording file",
+                    EPHYS_FILE_FILTER,
+                    preferred_dir=self.app_state.ephys_path or self.app_state.nc_file_path,
                 )
-                ephys_path = result[0] if result and len(result) >= 1 else ""
                 if not ephys_path:
                     return
 
@@ -1722,12 +1708,24 @@ class IOWidget(QWidget):
         elif browse_type == "folder":
             if media_type == "video":
                 caption = "Open folder with video files (e.g. mp4, mov)."
+                current = self.app_state.video_folder
             elif media_type == "audio":
                 caption = "Open folder with audio files (e.g. wav, mp3, mp4)."
+                current = self.app_state.audio_folder
             elif media_type == "pose":
                 caption = "Open folder with pose files (e.g. .csv, .h5)."
+                current = self.app_state.pose_folder
 
-            folder_path = QFileDialog.getExistingDirectory(None, caption=caption)
+            folder_path = browse_open_dir(
+                None,
+                self.app_state,
+                caption,
+                preferred_dir=current or self.app_state.nc_file_path,
+            )
+            # A cancelled dialog must leave the current folder alone — writing
+            # the empty result back would silently unset it.
+            if not folder_path:
+                return
 
             if media_type == "video":
                 self.video_folder_edit.setText(folder_path)
@@ -1743,9 +1741,7 @@ class IOWidget(QWidget):
 
     def _browse_neurons(self):
         """Browse for a Kilosort folder or Pynapple file (.npz, .nwb)."""
-        start_dir = self.app_state.neurons_path or ""
-        if start_dir and Path(start_dir).is_file():
-            start_dir = str(Path(start_dir).parent)
+        preferred = self.app_state.neurons_path or self.app_state.ephys_path or self.app_state.nc_file_path
 
         dialog = QDialog(self)
         dialog.setWindowTitle("Load neuron data")
@@ -1763,21 +1759,23 @@ class IOWidget(QWidget):
         chosen_path = [None]
 
         def _on_kilosort():
-            folder = QFileDialog.getExistingDirectory(
+            folder = browse_open_dir(
                 dialog,
+                self.app_state,
                 "Select Kilosort output folder",
-                start_dir,
+                preferred_dir=preferred,
             )
             if folder:
                 chosen_path[0] = folder
                 dialog.accept()
 
         def _on_pynapple():
-            path, _ = QFileDialog.getOpenFileName(
+            path = browse_open_file(
                 dialog,
+                self.app_state,
                 "Select Pynapple file",
-                start_dir,
                 "Pynapple files (*.npz *.nwb);;All files (*)",
+                preferred_dir=preferred,
             )
             if path:
                 chosen_path[0] = path

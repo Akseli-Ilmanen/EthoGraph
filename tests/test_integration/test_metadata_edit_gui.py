@@ -167,3 +167,45 @@ def test_editing_controls_stay_available_without_metadata(gui):
     assert not trials._add_column_button.isHidden()
     assert not trials._empty_label.isHidden()
     assert trials._table.isHidden()
+
+
+# ---------------------------------------------------------------------------
+# Row order
+# ---------------------------------------------------------------------------
+
+
+def _visible_trial_order(trials_widget) -> list[int]:
+    table = trials_widget._table
+    col = list(trials_widget._metadata_df.columns).index("trial")
+    return [table.item(r, col).data(Qt.DisplayRole) for r in range(table.rowCount())]
+
+
+def test_table_opens_ascending_by_trial(gui):
+    """Installing the filter header must not flip the table to descending.
+
+    ``setHorizontalHeader`` re-runs ``setSortingEnabled`` internally, and a
+    fresh ``QHeaderView`` indicates section 0 *descending* — which used to
+    re-sort the rows 12, 11, 10, … right after ``setup`` asked for ascending.
+    """
+    shell, meta = gui
+    trials = meta.trials_widget
+    ids = list(range(1, 13))
+    trials.setup(pd.DataFrame({"trial": ids, "outcome": ["hit", "miss"] * 6}))
+
+    assert _visible_trial_order(trials) == ids
+
+
+def test_reloading_metadata_keeps_the_users_sort(gui):
+    """A new column rebuilds the header; the chosen sort must survive it."""
+    shell, meta = gui
+    trials = meta.trials_widget
+    df = pd.DataFrame({"trial": [1, 2, 3], "outcome": ["b", "a", "c"]})
+    trials.setup(df)
+
+    trials._table.sortByColumn(1, Qt.AscendingOrder)
+    assert _visible_trial_order(trials) == [2, 1, 3]
+
+    meta.app_state.metadata_df = df.assign(usable=["", "", ""])
+    trials.reload_metadata()
+
+    assert _visible_trial_order(trials) == [2, 1, 3]

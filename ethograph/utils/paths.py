@@ -4,7 +4,9 @@ import logging
 import os
 import re
 import subprocess
+from collections.abc import Mapping
 from pathlib import Path
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -144,6 +146,61 @@ def check_paths_exist(nc_paths):
         for p in missing_paths:
             print(f"  {p}")
         exit(1)
+
+
+def path_exists(value: str, kind: str = "any") -> bool:
+    """Whether *value* names something of *kind* ("file", "dir" or "any") on this machine."""
+    if not value:
+        return False
+    path = Path(value).expanduser()
+    if kind == "file":
+        return path.is_file()
+    if kind == "dir":
+        return path.is_dir()
+    return path.exists()
+
+
+def sanitize_path_state(state: dict[str, Any], path_kinds: Mapping[str, str]) -> dict[str, Any]:
+    """Drop entries of *state* whose path does not exist on this machine.
+
+    Settings files travel: a dataset folder is copied to another pc, an
+    external drive is unplugged, a shared ``gui_settings.yaml`` is reused
+    elsewhere.  A restored path that names nothing here must never reach the
+    media resolvers — they would report a missing video/pose/audio file for
+    every trial, blaming the data rather than the stale setting.
+
+    Parameters
+    ----------
+    state : dict
+        Settings mapping; left untouched, the copy is returned.
+    path_kinds : Mapping[str, str]
+        Keys of *state* holding a path, mapped to what must exist for the
+        value to be usable: ``"file"``, ``"dir"`` or ``"any"``.  List values
+        are filtered element-wise, and the key dropped when nothing survives.
+
+    Returns
+    -------
+    dict
+        Copy of *state* without the unusable path entries.
+    """
+    cleaned = dict(state)
+    for key, kind in path_kinds.items():
+        value = cleaned.get(key)
+        if value is None:
+            continue
+        if isinstance(value, (list, tuple)):
+            kept = [v for v in value if path_exists(v, kind)]
+            if len(kept) == len(value):
+                continue
+            logger.info("Setting %r: dropping %d path(s) missing on this machine", key, len(value) - len(kept))
+            if kept:
+                cleaned[key] = type(value)(kept)
+            else:
+                del cleaned[key]
+        elif not path_exists(value, kind):
+            logger.info("Ignoring setting %r: %s does not exist on this machine", key, value)
+            del cleaned[key]
+    return cleaned
 
 
 def find_config(name: str, data_dir: Path | str | None = None) -> Path | None:

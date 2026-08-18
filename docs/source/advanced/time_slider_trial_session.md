@@ -59,22 +59,21 @@ pynapple sources (whose absolute times are rebased onto the 0-based axis).
 ## Where label times live on disk
 
 Label TSVs store **trial-relative** onsets/offsets plus a `trial` column —
-regardless of the scope you labelled in. Saved files carry a header line:
+regardless of the scope you labelled in. They are written and read as-is:
+there is no basis detection and no header line, so the file opens as a plain
+table anywhere:
 
-```text
-# time_basis: trial
+```python
+df = pd.read_csv("Trial_data_labels.tsv", sep="\t")
 ```
 
-When you import a TSV without that header, EthoGraph infers the basis per
-trial (onsets inside `[0, trial duration]` → trial time; inside the trial's
-session window → session time) and rebases session-absolute files
-automatically. If the file is genuinely ambiguous you are asked once —
-trial-relative or session-absolute — and the answer is written into the
-header on the next save, so the question never repeats.
+Exports add derived `trial_onset` / `onset_global` / `offset_global` columns
+(trial start on the session clock, and the label on it) whenever the alignment
+knows the trial timing, so a saved file carries both clocks; the canonical
+`onset_s` / `offset_s` stay trial-relative.
 
-Exports add derived `onset_global` / `offset_global` columns (trial start +
-trial-relative onset) for analysis in session time; the internal columns stay
-trial-relative.
+A labels file from another tool whose times are session-absolute has to be
+converted before import — subtract each trial's start.
 
 ## Backend cheat-sheet
 

@@ -29,6 +29,7 @@ import numpy as np
 from qtpy.QtCore import QByteArray, Qt, QTimer
 from qtpy.QtGui import QAction, QKeySequence, QShortcut
 from qtpy.QtWidgets import (
+    QApplication,
     QDockWidget,
     QMainWindow,
     QScrollArea,
@@ -36,6 +37,7 @@ from qtpy.QtWidgets import (
 )
 
 from .notify import set_toast_host
+from .shortcuts import typing_in_text_field
 from .video_manager import VideoArea
 
 logger = logging.getLogger(__name__)
@@ -77,6 +79,10 @@ class EthographMainWindow(QMainWindow):
         self._sidebar_dock: QDockWidget | None = None
         self._plot_dock: QDockWidget | None = None
         self._shortcuts: list[QShortcut] = []
+        self._guarded_shortcuts: list[QShortcut] = []
+        app = QApplication.instance()
+        if app is not None:
+            app.focusChanged.connect(self._sync_guarded_shortcuts)
         self._extra_lineplot_count = 0
         self._window_state_restored = False
         self._pending_dock_state_b64: str | None = None
@@ -269,18 +275,35 @@ class EthographMainWindow(QMainWindow):
             pass  # PySide memoryview already sized
         return np.frombuffer(ptr, dtype=np.uint8).reshape(h, w, 4).copy()
 
-    def bind_shortcut(self, key_sequence: str, callback) -> QShortcut:
+    def bind_shortcut(self, key_sequence: str, callback, guarded: bool = False) -> QShortcut:
+        """Bind an application-wide shortcut.
+
+        *guarded* shortcuts (plain letters, arrow keys) are **disabled** while
+        the user types in a text field rather than firing a no-op callback: an
+        enabled QShortcut consumes the key press before the focus widget sees
+        it, which left arrow keys dead in every input — including the ↑/↓
+        selection walk in the add-panel popup's filter box.
+        """
         shortcut = QShortcut(QKeySequence(key_sequence), self)
         shortcut.setContext(Qt.ApplicationShortcut)
         shortcut.activated.connect(callback)
         self._shortcuts.append(shortcut)
+        if guarded:
+            self._guarded_shortcuts.append(shortcut)
+            shortcut.setEnabled(not typing_in_text_field())
         return shortcut
+
+    def _sync_guarded_shortcuts(self, *_args):
+        typing = typing_in_text_field()
+        for shortcut in self._guarded_shortcuts:
+            shortcut.setEnabled(not typing)
 
     def clear_shortcuts(self):
         for shortcut in self._shortcuts:
             shortcut.setParent(None)
             shortcut.deleteLater()
         self._shortcuts = []
+        self._guarded_shortcuts = []
 
     # ------------------------------------------------------------------
     # Window-state persistence (via app_state → gui_settings.yaml; no JSON)

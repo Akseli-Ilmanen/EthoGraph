@@ -28,7 +28,7 @@ from qtpy.QtWidgets import (
 )
 
 import ethograph as eto
-from ethograph.gui.notify import ask_label_time_basis, notify, notify_dialog
+from ethograph.gui.notify import notify, notify_dialog
 from ethograph.gui.pose_convert import COLOR_BY_INDIVIDUAL, COLOR_BY_KEYPOINT
 from ethograph.io.catalog import INDIVIDUAL_DIMS, ComboSpec
 from ethograph.io.data_loader import load_features_dataset
@@ -36,7 +36,6 @@ from ethograph.io.derived import DerivedLoader
 from ethograph.io.plot_sources import FileSource
 from ethograph.io.time_model import compute_trial_video_bounds
 from ethograph.labels.intervals import get_interval_bounds
-from ethograph.labels.tsv_store import normalize_labels_basis
 from ethograph.utils.qt import (
     ElidedDelegate,
     find_combo_index,
@@ -997,11 +996,7 @@ class DataWidget(QWidget):
         self.io_widget.disable_downsample_controls()
         self.app_state.downsample_factor_used = ctx.downsample_factor
 
-        self.app_state._all_labels_df = normalize_labels_basis(
-            ctx.all_labels_df,
-            ctx.result.source_collection,
-            resolver=lambda: ask_label_time_basis(self),
-        )
+        self.app_state._all_labels_df = ctx.all_labels_df
         self.app_state._labels_file_path = ctx.result.labels_file_path
         self.app_state.trials = ctx.trials if ctx.trials else [1]
         self.app_state.ds = ctx.ds

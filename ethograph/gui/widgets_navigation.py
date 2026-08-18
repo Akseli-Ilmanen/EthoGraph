@@ -250,9 +250,11 @@ class NavigationWidget(QWidget):
         fw_row.addWidget(self.fixed_window_spin, stretch=1)
         navigate_layout.addWidget(self.fixed_window_widget)
 
-        # Auto-play checkbox
+        # Auto-play checkbox (global preference, remembered across datasets)
         self.autoplay_checkbox = QCheckBox("Auto-play on navigate")
         self.autoplay_checkbox.setToolTip("Start playback from onset when navigating to next item")
+        self.autoplay_checkbox.setChecked(app_state.get_with_default("autoplay_on_navigate"))
+        self.autoplay_checkbox.toggled.connect(lambda v: setattr(app_state, "autoplay_on_navigate", v))
         navigate_layout.addWidget(self.autoplay_checkbox)
 
         # Jump to time

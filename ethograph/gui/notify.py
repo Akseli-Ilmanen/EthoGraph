@@ -29,6 +29,11 @@ _DIALOG = {
     "info": QMessageBox.information,
 }
 _DEFAULT_TITLE = {"error": "Error", "warning": "Warning", "info": "Info"}
+_LOG_LEVEL = {
+    "error": logging.ERROR,
+    "warning": logging.WARNING,
+    "info": logging.INFO,
+}
 
 _SEVERITY_COLOR = {
     "info": "#4a90d9",
@@ -98,7 +103,7 @@ def set_toast_host(host: QWidget | None) -> None:
 def notify(message: str, severity: str = "info") -> None:
     """Show a toast notification and log to console."""
     try:
-        logger.info("[%s] %s", severity.upper(), message)
+        logger.log(_LOG_LEVEL.get(severity, logging.INFO), "%s", message)
         if not SUPPRESS and _toast_manager is not None:
             _toast_manager.show(message, severity)
     except Exception:
@@ -116,31 +121,8 @@ def notify_dialog(
         if severity not in _DIALOG:
             severity = "error"
         title = title or _DEFAULT_TITLE[severity]
-        logger.info("[%s] %s", title, message)
+        logger.log(_LOG_LEVEL[severity], "%s", message)
         if not SUPPRESS:
             _DIALOG[severity](parent, title, message)
     except Exception:
         logger.exception("notify_dialog failed: %s", message)
-
-
-def ask_label_time_basis(parent: object | None = None) -> str:
-    """One-time question when a label file's time basis can't be inferred.
-
-    Returns ``"trial"`` or ``"session"``. Headless/suppressed sessions get
-    the canonical default ("trial") — the answer is persisted into the TSV's
-    ``# time_basis:`` header on the next save, so the question never repeats.
-    """
-    if SUPPRESS:
-        return "trial"
-    box = QMessageBox(parent)
-    box.setWindowTitle("Label time basis")
-    box.setText(
-        "The label file's onset/offset times could be either trial-relative\n"
-        "(each trial starts at 0 s) or session-absolute (one clock for the\n"
-        "whole recording). Which are they?"
-    )
-    trial_btn = box.addButton("Trial-relative", QMessageBox.ButtonRole.AcceptRole)
-    box.addButton("Session-absolute", QMessageBox.ButtonRole.RejectRole)
-    box.setDefaultButton(trial_btn)
-    box.exec_()
-    return "trial" if box.clickedButton() is trial_btn else "session"
