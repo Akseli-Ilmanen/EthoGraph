@@ -15,6 +15,8 @@ password = pypi-your-token-here
 
 This file lives outside the repo and is never committed.
 
+##
+
 ## Steps before every push
 
 1. Run the full check suite (same as CI) and let it auto-fix what it can:
