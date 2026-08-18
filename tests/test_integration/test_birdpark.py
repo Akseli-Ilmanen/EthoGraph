@@ -236,6 +236,39 @@ class TestLabelsWidget:
             trial_rows = df[df["trial"] == trial]
             assert (trial_rows["human_verified"] == 1).all()
 
+    def test_label_creation_via_two_clicks(self, birdpark_gui):
+        """Two-click state labelling on the xarray backend.
+
+        test_moll2025 covers the same flow on pynapple only; the click →
+        ``from_display`` → ``_apply_label`` chain is backend-sensitive, so
+        both backends need the regression pinned.
+        """
+        from qtpy.QtCore import Qt
+
+        from ethograph.labels.intervals import find_interval_at
+
+        _, meta = birdpark_gui
+        lw = meta.labels_widget
+        t_start, t_end = 0.5, 1.0
+
+        lw.activate_label(1)
+        assert lw.ready_for_label_click is True
+
+        lw._on_plot_clicked({"x": t_start, "button": Qt.LeftButton})
+        assert lw.first_click == pytest.approx(t_start)
+
+        lw._on_plot_clicked({"x": t_end, "button": Qt.LeftButton})
+        QApplication.processEvents()
+
+        df = meta.app_state.label_intervals
+        assert df is not None and not df.empty, "No intervals after label creation"
+        idx = find_interval_at(df, (t_start + t_end) / 2, lw._current_individual())
+        assert idx is not None, "Interval not found at midpoint"
+        row = df.loc[idx]
+        assert row["labels"] == 1
+        assert row["onset_s"] == pytest.approx(t_start, abs=0.01)
+        assert row["offset_s"] == pytest.approx(t_end, abs=0.01)
+
 
 # ===================================================================
 # Downsampled data
