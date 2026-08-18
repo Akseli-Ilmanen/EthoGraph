@@ -16,7 +16,9 @@ Seeking model:
 
 from __future__ import annotations
 
+import logging
 import queue
+import time
 from types import MethodType
 from typing import Optional
 
@@ -29,6 +31,71 @@ from qtpy.QtWidgets import QLabel, QVBoxLayout, QWidget
 
 from .app_constants import MEDIA_VIEW_MIN_HEIGHT, MEDIA_VIEW_MIN_WIDTH
 from .pose_overlay import PoseOverlay
+
+logger = logging.getLogger(__name__)
+
+
+# Heartbeat age past which the render chain is considered dead (see
+# install_animate_guard / nudge_stalled_render). animate() normally re-arms
+# itself every frame, so one full second without a beat is a stall.
+ANIMATE_STALL_S = 1.0
+
+
+def _present_disarmed(canvas) -> bool:
+    """True when :func:`_disarm_present` has neutralised this canvas.
+
+    Disarming installs the no-op as an *instance* attribute; a healthy canvas
+    only has the class-level method, so the instance dict is the tell. A
+    disarmed canvas must never be re-armed — its widget is dying, and driving
+    draws at it would recreate exactly the freeze signature being guarded
+    against.
+    """
+    widget = getattr(canvas, "_subwidget", canvas)
+    return "_rc_request_paint" in getattr(widget, "__dict__", {})
+
+
+def install_animate_guard(plot, clock=time.perf_counter) -> None:
+    """Keep *plot*'s render chain alive across exceptions, and stamp a heartbeat.
+
+    pynaviz's ``PlotVideo.animate`` continues only because its own last line
+    re-arms it (``self.canvas.request_draw(self.animate)``), and its ``try``
+    catches nothing but ``queue.Empty`` — any other raise (texture update,
+    time-text, a present dropped by the Qt scheduler) ends the chain
+    permanently: audio and the playhead keep moving while the image freezes.
+
+    The wrapper is set as an *instance* attribute, so the original's own
+    re-arm (``self.animate``) resolves back to the wrapper and the chain stays
+    wrapped. Every call stamps ``plot._eto_last_animate`` for the watchdog.
+    """
+    original = plot.animate  # the bound class method, captured pre-override
+
+    def _guarded_animate():
+        plot._eto_last_animate = clock()
+        try:
+            original()
+        except Exception:
+            logger.warning("PlotVideo.animate raised; re-arming the render loop.", exc_info=True)
+            if not _present_disarmed(plot.canvas):
+                plot.canvas.request_draw(plot.animate)
+
+    plot.animate = _guarded_animate
+    plot._eto_last_animate = clock()
+
+
+def nudge_stalled_render(plot, max_age_s: float = ANIMATE_STALL_S, clock=time.perf_counter) -> bool:
+    """Re-arm a render chain whose heartbeat went stale; ``True`` if nudged.
+
+    Covers the stalls the guard cannot: a paint silently dropped by the
+    rendercanvas Qt scheduler never re-enters ``animate`` at all, so only an
+    external re-arm can restart the chain.
+    """
+    last = getattr(plot, "_eto_last_animate", None)
+    if last is None or clock() - last <= max_age_s:
+        return False
+    if _present_disarmed(plot.canvas):
+        return False
+    plot.canvas.request_draw(plot.animate)
+    return True
 
 
 def _disarm_present(canvas) -> None:
@@ -45,6 +112,24 @@ def _disarm_present(canvas) -> None:
     """
     widget = getattr(canvas, "_subwidget", canvas)
     widget._rc_request_paint = lambda: None
+
+
+def _detach_canvas(layout, canvas) -> None:
+    """Unparent *canvas* from *layout*, tolerating an already-deleted C++ object.
+
+    A canvas whose Qt side died with the dock that held it (video panel closed
+    and re-added) leaves a live Python wrapper behind, and every call on it
+    raises ``RuntimeError: wrapped C/C++ object ... has been deleted``. That
+    used to propagate out of ``VideoManager._cleanup_primary_video`` and abort
+    the whole trial change; a canvas Qt already destroyed simply has nothing
+    left to detach.
+    """
+    try:
+        layout.removeWidget(canvas)
+        _disarm_present(canvas)
+        canvas.setParent(None)
+    except RuntimeError:
+        logger.debug("Canvas was already deleted; nothing to detach.", exc_info=True)
 
 
 class _StaticImagePlot:
@@ -280,6 +365,7 @@ class CameraView(QWidget):
         else:
             self.clear()
             self._plot = PlotVideo(video=video_path, parent=self)
+            install_animate_guard(self._plot)
             self.layout().addWidget(self._plot.canvas)
             # Fresh worker: arm the liveness sentinel. The shm buffer is
             # zero-filled at creation, which would read as "frame 0 served";
@@ -607,6 +693,15 @@ class CameraView(QWidget):
         elif self._static is not None:
             self._static.request_draw()
 
+    def nudge_render_if_stalled(self) -> bool:
+        """Re-arm a stalled video render chain; ``True`` if a nudge was needed.
+
+        Called by VideoSync's playback watchdog — see
+        :func:`nudge_stalled_render`."""
+        if self._plot is None:
+            return False
+        return nudge_stalled_render(self._plot)
+
     # ------------------------------------------------------------------
     # Events
     # ------------------------------------------------------------------
@@ -639,18 +734,18 @@ class CameraView(QWidget):
     def clear(self) -> None:
         self._detach_load_state()
         if self._plot is not None:
-            self.layout().removeWidget(self._plot.canvas)
-            _disarm_present(self._plot.canvas)
-            self._plot.canvas.setParent(None)
+            _detach_canvas(self.layout(), self._plot.canvas)
             try:
                 self._plot.close()
             except Exception:
                 pass
             self._plot = None
         if self._static is not None:
-            self.layout().removeWidget(self._static.canvas)
-            self._static.canvas.setParent(None)
-            self._static.close()
+            _detach_canvas(self.layout(), self._static.canvas)
+            try:
+                self._static.close()
+            except RuntimeError:
+                logger.debug("Static image canvas was already deleted.", exc_info=True)
             self._static = None
         self.static_image_path = None
         self.static_pose_fps = 0.0

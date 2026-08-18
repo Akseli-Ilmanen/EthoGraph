@@ -153,6 +153,11 @@ class TopBarBuilder:
         menu.addAction("Print tag sheet…", self._open_tag_sheet)
 
         menu.addSeparator()
+        # Escape hatch for a frozen video image (dead pynaviz render chain):
+        # rebuilds the primary PlotVideo without closing/re-adding the panel.
+        menu.addAction("Reset video view", self._reset_video_view)
+
+        menu.addSeparator()
         ephys = getattr(self.meta, "ephys_widget", None)
         # Phy TraceView controls live in the right sidebar's "Phy viewer"
         # context (shown when the Phy trace panel is clicked). Tools keeps
@@ -173,6 +178,12 @@ class TopBarBuilder:
         open_dialog = self._first_method(getattr(self.meta, "data_widget", None), "open_keypoint_labelling")
         if open_dialog is not None:
             open_dialog()
+
+    def _reset_video_view(self):
+        """Rebuild the primary video panel — recovery for a frozen image."""
+        vm = getattr(getattr(self.meta, "data_widget", None), "video_mgr", None)
+        if vm is not None:
+            vm.reset_primary_video()
 
     def _open_tag_sheet(self):
         """Open the fiducial tag sheet, sized against the loaded video."""

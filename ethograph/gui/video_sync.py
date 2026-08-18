@@ -76,6 +76,14 @@ class VideoSync(QObject):
 
         self._play_timer = QTimer()
         self._play_timer.timeout.connect(self._advance)
+        # Playback watchdog: pynaviz's render chain can die silently (see
+        # install_animate_guard in pygfx_video.py) — audio and the playhead
+        # keep moving while the image freezes. While playing, check the
+        # view's animate heartbeat and re-arm a stalled chain.
+        self._render_watchdog = QTimer()
+        self._render_watchdog.setInterval(1000)
+        self._render_watchdog.timeout.connect(self._check_render_stall)
+        self._stall_logged = False
         self._step: float = 1.0
         self._frame_accum: float = 0.0
         # Cold-decoder bridge: step with synchronous in-process decode until
@@ -181,6 +189,7 @@ class VideoSync(QObject):
         self._gap_run = False
         self.marker_time_override = None
         self._sync_until_ready = not self.view.decoder_ready()
+        self._render_watchdog.start()
 
         from .app_constants import PLAYBACK_MODE_SMOOTH, PLAYBACK_MODE_SYNCED
 
@@ -223,6 +232,7 @@ class VideoSync(QObject):
         self._gap_run = False
         self._sync_until_ready = False
         self._play_timer.stop()
+        self._render_watchdog.stop()
         self._segment_end_frame = None
         self._segment_end_time_s = None
         clock, self._audio_clock = self._audio_clock, None
@@ -356,6 +366,22 @@ class VideoSync(QObject):
         # last frame (plots_container reads the override for the marker).
         self.marker_time_override = t
         self._apply_frame(self._current_frame)
+
+    def _check_render_stall(self):
+        """Watchdog tick: re-arm the view's render chain if its heartbeat is
+        stale, logging once per stall (not once per second of one stall)."""
+        if not self.is_playing:
+            self._render_watchdog.stop()
+            return
+        nudge = getattr(self.view, "nudge_render_if_stalled", None)
+        if nudge is None:
+            return
+        if nudge():
+            if not self._stall_logged:
+                logger.warning("Video render loop stalled during playback; re-armed the draw chain.")
+                self._stall_logged = True
+        else:
+            self._stall_logged = False
 
     def _seek_playback_frame(self, frame: int):
         """Seek during playback, tolerating a cold decode worker.
@@ -500,6 +526,7 @@ class VideoSync(QObject):
         self._apply_frame(start_frame)
         self._segment_end_frame = end_frame  # _apply_frame may have cleared it
         self._sync_until_ready = not self.view.decoder_ready()
+        self._render_watchdog.start()
 
         if self.fps > 0:
             if audio_t0 is None or audio_t1 is None:
@@ -565,6 +592,7 @@ class VideoSync(QObject):
                 pass
             self._mic_signal = None
         self._play_timer.stop()
+        self._render_watchdog.stop()
         if self._audio_clock is not None:
             # Teardown mid-playback (trial/camera change) must close the
             # output stream too, or the old span keeps sounding over the new.
