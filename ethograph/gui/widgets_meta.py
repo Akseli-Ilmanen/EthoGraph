@@ -697,7 +697,12 @@ class MetaWidget(GridSectionContainer):
         name = str(name)
         # Base this on whether a video is actually loaded in the primary view —
         # app_state.video (the sync object) can linger from a previous session.
-        primary_open = vm.primary_view.has_video
+        # A loaded-but-hidden primary (its dock closed without the teardown
+        # path, e.g. a restored layout) counts as NOT open: re-adding must
+        # re-show the primary, never fork an extra over an invisible one.
+        dock = getattr(self.shell, "_video_dock", None)
+        primary_hidden = dock is not None and not dock.isVisible()
+        primary_open = vm.primary_view.has_video and not primary_hidden
 
         if not primary_open:
             # Nothing playing yet → open this camera as the primary video.

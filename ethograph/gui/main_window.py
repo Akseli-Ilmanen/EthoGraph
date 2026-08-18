@@ -112,6 +112,11 @@ class EthographMainWindow(QMainWindow):
         # VideoManager.refresh_view_title) — never a generic "Video".
         self._video_dock = self.add_dock_widget(self.video_area, area="top", name="Camera")
         self._video_dock.setObjectName("VideoDock")
+        # The dock's ✕ must tear the video down like an extra's close does
+        # (VideoArea.eventFilter): hiding alone left a live plot, decode
+        # worker and canvas behind an invisible dock.
+        self._video_dock._is_primary_video_dock = True
+        self._video_dock.installEventFilter(self.video_area)
         QTimer.singleShot(0, lambda: self.resizeDocks([self._video_dock], [300], Qt.Vertical))
 
         # Bottom playback bar — no dock title bar (an empty widget removes the

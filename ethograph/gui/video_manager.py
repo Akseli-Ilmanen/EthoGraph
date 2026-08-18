@@ -101,6 +101,8 @@ class VideoArea(QWidget):
     camera_added = Signal(object)
     #: Emitted with a CameraView after its view was removed (dock ✕ or programmatic).
     camera_view_removed = Signal(object)
+    #: The primary video dock's ✕ was clicked → VideoManager tears the video down.
+    primary_close_requested = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -162,6 +164,10 @@ class VideoArea(QWidget):
             # The dock's ✕ was clicked. Defer the teardown — removing the
             # dock while it handles its own close event is unsafe.
             QTimer.singleShot(0, lambda: self.remove_extra(key))
+        elif getattr(obj, "_is_primary_video_dock", False) and event.type() == QEvent.Close:
+            # Same deal for the primary video dock: closing it must unload
+            # the video (plot, worker, sync), not merely hide the dock.
+            QTimer.singleShot(0, self.primary_close_requested.emit)
         return False
 
     def remove_extra(self, name: str) -> None:
@@ -204,6 +210,7 @@ class VideoManager:
         self.proxy_mgr.proxy_ready.connect(self._on_proxy_ready)
         self.proxy_mgr.proxy_started.connect(lambda s: self._set_proxy_badge(s, "generating"))
         self.proxy_mgr.proxy_failed.connect(lambda s: self._set_proxy_badge(s, "failed"))
+        video_area.primary_close_requested.connect(self.close_primary_video)
 
     @property
     def primary_view(self) -> CameraView:
@@ -318,6 +325,21 @@ class VideoManager:
         self.primary_view.source_video_path = None
         self.primary_view.decode_video_path = None
         self.refresh_view_title(self.primary_view)
+
+    def close_primary_video(self):
+        """The primary video dock's ✕: tear the video down like an extra's close.
+
+        Without this the dock merely hid while the view kept a live plot,
+        decode worker and canvas. ``has_video`` goes False here, so re-adding
+        the camera from the popup takes the primary path again instead of
+        forking an extra view over an invisible primary. A later trial change
+        re-resolves the camera and brings the panel back — the close removes
+        the loaded video, not the camera selection.
+        """
+        self._cleanup_primary_video()
+        shell = getattr(self.video_area, "shell", None)
+        if shell is not None and hasattr(shell, "set_video_dock_visible"):
+            shell.set_video_dock_visible(False)
 
     def _trial_clip(self, fps: float, time_offset: float, nframes: int) -> tuple[int, int, float]:
         """Compute (start_frame, end_frame, effective_offset) for the trial."""
