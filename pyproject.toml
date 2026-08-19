@@ -228,6 +228,19 @@ fix = true
 [tool.ruff.format]
 docstring-code-format = true
 
+[tool.mypy]
+# Gentle, informational type checking. Run in CI as non-blocking (see
+# .github/workflows/test_and_deploy.yml) — it surfaces real type mismatches
+# (chiefly "this could be None and you didn't handle it") without demanding
+# that every function be annotated. Tighten later if the signal proves useful.
+files = ["ethograph"]
+exclude = ['ethograph/_vendor/', '/_test_']
+ignore_missing_imports = true
+follow_imports = "silent"
+disallow_untyped_defs = false
+check_untyped_defs = false
+warn_unused_ignores = false
+
 [tool.tox]
 legacy_tox_ini = """
 [tox]

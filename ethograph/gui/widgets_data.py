@@ -1817,10 +1817,6 @@ class DataWidget(QWidget):
         if self.ephys_widget:
             self.ephys_widget.configure_ephys_trace_plot()
 
-    def _hide_ephys_channel_controls(self):
-        if self.ephys_widget:
-            self.ephys_widget.hide_ephys_channel_controls()
-
     def _on_envelope_overlay_changed(self):
         if not self.plot_container:
             return
@@ -2461,14 +2457,6 @@ class DataWidget(QWidget):
 
         # None ⇒ "show all values for this dimension" (routed to the active plot).
         self.apply_panel_control(key, None if is_checked else get_combo_value(combo))
-
-    def _on_channel_all_changed(self, state: int):
-        if not self.app_state.ready:
-            return
-        is_checked = Qt.CheckState(state) == Qt.Checked
-        for key, checkbox in self.all_checkboxes.items():
-            if checkbox.isChecked() != is_checked:
-                checkbox.setChecked(is_checked)
 
     def _update_all_checkbox_state(self, key: str, is_checked: bool):
         states = self.app_state.all_checkbox_states.copy()

@@ -559,11 +559,3 @@ def restrict_xarray(
 ) -> xr.Dataset:
     """Slice an xarray Dataset to a time range."""
     return ds.sel({time_coord_name: slice(time_range.start_s, time_range.end_s)})
-
-
-def restrict_pynapple(obj, time_range: TimeRange):
-    """Restrict a pynapple object to a time range."""
-    import pynapple as nap
-
-    ep = nap.IntervalSet(start=time_range.start_s, end=time_range.end_s)
-    return obj.restrict(ep)

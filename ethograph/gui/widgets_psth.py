@@ -568,16 +568,6 @@ class PSTHDialog(QDialog):
         else:
             return None
 
-    def _get_label_local_t(self, trial_id: str, label_id: int, use_offset: bool) -> float | None:
-        df = self.app_state.get_trial_intervals(trial_id)
-        if df is None or len(df) == 0:
-            return None
-        matching = df[df["labels"] == label_id]
-        if len(matching) == 0:
-            return None
-        col = "offset_s" if use_offset else "onset_s"
-        return float(matching[col].iloc[0])
-
     # ------------------------------------------------------------------
     # Computation
     # ------------------------------------------------------------------

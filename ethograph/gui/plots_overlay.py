@@ -105,27 +105,6 @@ class OverlayManager:
         self._rescale_entry(entry, main_range)
         self._update_right_axis(host_plot)
 
-    def update_overlay_data(
-        self,
-        name: str,
-        raw_time: np.ndarray,
-        raw_data: np.ndarray,
-        *,
-        data_min: float | None = None,
-        data_max: float | None = None,
-    ):
-        entry = self._entries.get(name)
-        if entry is None:
-            return
-        entry.raw_time = raw_time
-        entry.raw_data = raw_data
-        entry.data_min = data_min if data_min is not None else float(np.nanmin(raw_data))
-        entry.data_max = data_max if data_max is not None else float(np.nanmax(raw_data))
-
-        main_range = entry.host_plot.plot_item.viewRange()[1]
-        self._rescale_entry(entry, main_range)
-        self._update_right_axis(entry.host_plot)
-
     def rescale_for_plot(self, host_plot):
         if self._rescaling:
             return
@@ -258,16 +237,6 @@ class OverlayManager:
 
     def has_overlay(self, name: str) -> bool:
         return name in self._entries or name in self._vb_entries
-
-    def clear_plot(self, host_plot):
-        to_remove = [n for n, e in self._entries.items() if e.host_plot is host_plot]
-        to_remove += [n for n, e in self._vb_entries.items() if e.host_plot is host_plot]
-        for name in to_remove:
-            self.remove_overlay(name)
-
-    def clear_all(self):
-        for name in list(self._entries) + list(self._vb_entries):
-            self.remove_overlay(name)
 
     # ------------------------------------------------------------------
     # Internal helpers

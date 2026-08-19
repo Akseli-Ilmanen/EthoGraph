@@ -1284,17 +1284,6 @@ class EphysWidget(QWidget):
             return ephys_offset
         return self._trial_start_session() + ephys_offset
 
-    def _restrict_to_trial(self, cluster_id: int, sr: float) -> tuple[np.ndarray, np.ndarray]:
-        """Return (times_local_s, samples_abs) for cluster_id restricted to current trial."""
-        trial_ep = self._trial_ep()
-        if trial_ep is None or self._tsgroup is None or cluster_id not in self._tsgroup:
-            return np.array([], dtype=np.float64), np.array([], dtype=np.int64)
-        offset = self._ephys_offset()
-        times_global = self._tsgroup[cluster_id].restrict(trial_ep).times()
-        times_local = times_global - offset
-        samples_abs = np.round(times_global * sr).astype(np.int64)
-        return times_local, samples_abs
-
     def _populate_raster_all_spikes(self):
         if not self.plot_container or self._tsgroup is None:
             return
@@ -1505,12 +1494,6 @@ class EphysWidget(QWidget):
             return f"{fval:.3f}", fval
         except (ValueError, TypeError):
             return str(value), None
-
-    def get_spike_times(self, cluster_id: int) -> np.ndarray:
-        """All spike times in seconds for *cluster_id* (global, not trial-restricted)."""
-        if self._tsgroup is None or cluster_id not in self._tsgroup:
-            return np.array([], dtype=np.float64)
-        return self._tsgroup[cluster_id].times()
 
     def _compute_isi_per_cluster(self) -> dict[int, float]:
         """Mean ISI in ms for each cluster."""
@@ -2417,11 +2400,6 @@ class EphysWidget(QWidget):
         spin = self.ephys_gain_spin
         new_val = round(spin.value() + delta * 0.1, 1)
         spin.setValue(max(spin.minimum(), min(new_val, spin.maximum())))
-
-    def get_stream_names(self) -> list[str]:
-        """Return available ephys stream display names from the source map."""
-        source_map = getattr(self.app_state, "ephys_source_map", {})
-        return list(source_map.keys())
 
     def on_trial_changed(self):
         self._fr_cache_key = None

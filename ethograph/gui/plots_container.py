@@ -29,7 +29,6 @@ from qtpy.QtWidgets import (
     QMainWindow,
     QMenu,
     QPushButton,
-    QSlider,
     QVBoxLayout,
     QWidget,
 )
@@ -56,67 +55,6 @@ from .plots_overlay import OverlayManager
 from .plots_raster import RasterPlot
 from .plots_spectrogram import SharedAudioCache, SpectrogramPlot
 from .widgets_transform import compute_energy_envelope
-
-
-class TimeSlider(QWidget):
-    """Horizontal slider mapped to a time range, emitting time in seconds."""
-
-    time_changed = Signal(float)
-
-    _SLIDER_STEPS = 10000
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        layout = QHBoxLayout()
-        layout.setContentsMargins(0, 0, 0, 0)
-        self.setLayout(layout)
-
-        self._slider = QSlider(Qt.Horizontal)
-        self._slider.setRange(0, self._SLIDER_STEPS)
-        self._slider.valueChanged.connect(self._on_slider_moved)
-
-        self._label = QLabel("0.00 s")
-        self._label.setFixedWidth(80)
-
-        layout.addWidget(self._slider)
-        layout.addWidget(self._label)
-
-        self._t_min = 0.0
-        self._t_max = 1.0
-
-    def set_time_range(self, t_min: float, t_max: float):
-        self._t_min = t_min
-        self._t_max = max(t_min + 1e-6, t_max)
-
-    def set_slider_time(self, t: float):
-        if self._t_max <= self._t_min:
-            return
-        frac = (t - self._t_min) / (self._t_max - self._t_min)
-        frac = max(0.0, min(1.0, frac))
-        self._slider.blockSignals(True)
-        self._slider.setValue(int(frac * self._SLIDER_STEPS))
-        self._slider.blockSignals(False)
-        self._update_label(t)
-
-    def _on_slider_moved(self, value: int):
-        frac = value / self._SLIDER_STEPS
-        t = self._t_min + frac * (self._t_max - self._t_min)
-        self._update_label(t)
-        self.time_changed.emit(t)
-
-    @property
-    def current_time(self) -> float:
-        frac = self._slider.value() / self._SLIDER_STEPS
-        return self._t_min + frac * (self._t_max - self._t_min)
-
-    def _update_label(self, t: float):
-        minutes = int(abs(t) // 60)
-        seconds = abs(t) % 60
-        sign = "-" if t < 0 else ""
-        if minutes:
-            self._label.setText(f"{sign}{minutes}:{seconds:05.2f}")
-        else:
-            self._label.setText(f"{sign}{seconds:.2f} s")
 
 
 # Panel size ratios keyed by (has_audio, has_neurons_or_neo)
@@ -800,16 +738,10 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
     def add_lineplot(self, feature: str | None = None):
         return self.add_panel("lineplot", feature=feature)
 
-    def add_heatmap(self, feature: str | None = None):
-        return self.add_panel("heatmap", feature=feature)
-
     def add_audio_panel(self, panel_type: str, mic_name: str | None = None):
         return self.add_panel(panel_type, mic_name=mic_name)
 
     def remove_lineplot(self, plot) -> None:
-        self.remove_panel(plot)
-
-    def remove_heatmap(self, plot) -> None:
         self.remove_panel(plot)
 
     def remove_audio_panel(self, plot) -> None:
@@ -1358,10 +1290,6 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
     def current_plot(self):
         return self.get_current_plot()
 
-    @property
-    def current_plot_type(self) -> str:
-        return self._feature_type
-
     def get_current_xlim(self):
         master = self._xlink_master or self.get_current_plot()
         return master.get_current_xlim()
@@ -1467,9 +1395,6 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
 
     def is_spectrogram(self):
         return False  # spectrogram is always its own panel when audio loaded
-
-    def is_audiotrace(self):
-        return False  # audio trace is always its own panel
 
     def is_ephystrace(self):
         return self._panel_visible["ephys"] or self._panel_visible["raster"]
@@ -1794,12 +1719,3 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
             ch = min(channel_idx, audio_data.shape[1] - 1)
             audio_data = audio_data[:, ch]
         return audio_data, fs, t0
-
-    # --- Cache management ---
-
-    def clear_audio_cache(self):
-        SharedAudioCache.clear_cache()
-        for plot in self.spectrogram_plots:
-            plot.buffer._clear_buffer()
-        for plot in self.audio_trace_plots:
-            plot.set_source(None)

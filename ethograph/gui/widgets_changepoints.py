@@ -589,9 +589,6 @@ class ChangepointsWidget(QWidget):
 
         return cp_by_method, time_array
 
-    def _is_audio_waveform_selected(self) -> bool:
-        return getattr(self.app_state, "features_sel", None) == "Audio Waveform"
-
     def _clear_spectral_changepoints(self):
         ds = getattr(self.app_state, "ds", None)
         if ds is not None:

@@ -1655,15 +1655,6 @@ class LabelsWidget(QWidget):
             "}"
         )
 
-    def _remove_labels_shapes_layer(self):
-        """Remove the Qt label overlay."""
-        overlay = getattr(self, "_label_overlay", None)
-        if overlay is not None:
-            overlay.setParent(None)
-            overlay.deleteLater()
-            self._label_overlay = None
-            self._label_overlay_last_text = ""
-
     def refresh_labels_shapes_layer(self):
         """Refresh: ensure overlay exists, then force an update."""
         if getattr(self, "_label_overlay", None) is None:

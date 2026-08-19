@@ -1003,9 +1003,6 @@ class MetaWidget(GridSectionContainer):
                 return False
         return True
 
-    def reapply_shortcuts(self):
-        bind_global_shortcuts(self)
-
     def _bind_global_shortcuts(self, labels_widget, data_widget):
         bind_global_shortcuts(self)
 
@@ -1113,10 +1110,3 @@ class MetaWidget(GridSectionContainer):
         if dw.catalog and dw.catalog.features and not pc.line_plots:
             pc.add_lineplot()
         pc.schedule_labels_redraw()
-
-    def _on_reset_layout(self):
-        space_type = getattr(self.app_state, "space_plot_type", "Layers")
-        self.layout_mgr.reset_layout(
-            show_layers=space_type == "Layers",
-            show_space=space_type == "Space Plot",
-        )

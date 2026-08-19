@@ -3650,10 +3650,6 @@ class PoseLabellingDialog(QDialog):
         # actually showing. Refreshes the status chip on the way through.
         self._apply_lock()
 
-    def _toggle_interaction_mode(self, mode: str) -> None:
-        """Arm *mode*, or disarm when it is already the one running."""
-        self.set_interaction_mode(None if mode == self.interaction_mode else mode)
-
     def _can_label(self, quiet: bool = False) -> bool:
         """Whether the canvas can be armed, warning about whatever is missing.
 

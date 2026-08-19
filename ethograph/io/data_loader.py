@@ -82,24 +82,6 @@ def _detect_audio_rate(audio_path: str) -> float:
         return float(loader.rate)
 
 
-def synthesize_single_trial(data: dict):
-    """Create a single-trial IntervalSet spanning all loaded time-series.
-
-    Raises ValueError if no time-series data is found.
-    """
-    import pynapple as nap
-
-    starts: list[float] = []
-    ends: list[float] = []
-    for obj in data.values():
-        if isinstance(obj, (nap.Tsd, nap.TsdFrame, nap.TsdTensor)) and len(obj) > 0:
-            starts.append(float(obj.t[0]))
-            ends.append(float(obj.t[-1]))
-    if not starts:
-        raise ValueError("No time-series data found — cannot determine session extent")
-    return nap.IntervalSet(start=min(starts), end=max(ends))
-
-
 def _is_pynapple_path_folder(file_path: str) -> bool:
     """Check if path is a pynapple folder or .npz file."""
     p = Path(file_path)
@@ -575,17 +557,6 @@ def wizard_single_from_pose(
     return ds
 
 
-def wizard_single_from_ds(
-    video_path,
-    ds: xr.Dataset,
-    video_offset: float | None = None,
-    output_nc_path: str | Path | None = None,
-):
-    nwb_dir = Path(output_nc_path).parent if output_nc_path else None
-    _wizard_single_media_helper(ds, video_path=video_path, video_offset=video_offset, nwb_dir=nwb_dir)
-    return ds
-
-
 def wizard_single_from_npy_file(
     video_path,
     fps,
@@ -702,41 +673,6 @@ def wizard_single_from_ephys(
         nwb_dir=nwb_dir,
         duration=duration,
     )
-    return ds
-
-
-def wizard_single_from_video(
-    video_path: str,
-    fps: int | None = None,
-    individuals: list[str] | None = None,
-    scale_width: int = 160,
-):
-    """Create a TrialTree from a video file with motion-energy feature."""
-    from ethograph.features.movement import extract_video_motion
-    from ethograph.gui.wizard_single import get_video_fps
-
-    if fps is None:
-        fps = get_video_fps(video_path)
-        if fps is None:
-            raise ValueError(f"Cannot determine FPS from {video_path}")
-
-    if individuals is None:
-        individuals = [
-            "individual 1",
-            "individual 2",
-            "individual 3",
-            "individual 4",
-        ]
-
-    motion = extract_video_motion(video_path, fps=fps, verbose=False, scale_width=scale_width)
-
-    ds = xr.Dataset(
-        {"video_motion": motion},
-        coords={"individuals": individuals},
-    )
-    ds.attrs["fps"] = fps
-
-    _wizard_single_media_helper(ds, video_path=video_path)
     return ds
 
 
