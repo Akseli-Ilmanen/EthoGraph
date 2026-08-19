@@ -411,6 +411,12 @@ To open the GUI, run:
 
    ethograph launch
 
+.. note::
+
+   If the terminal answers ``'ethograph' is not recognized`` (Windows) or
+   ``command not found``, uv has not added its bin directory to your ``PATH``
+   yet. Run ``uv tool update-shell``, then open a **new** terminal.
+
 For installing into a dedicated virtual environment, optional extras, and troubleshooting, see the
 :doc:`installation guide <getting_started/installation>`.
 

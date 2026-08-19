@@ -26,6 +26,7 @@ from ethograph.datasets import is_template_path
 from ethograph.utils.ffmpeg import ffmpeg_available
 
 from .app_constants import BOTTOM_BAR_MIN_WIDTH_PX, PLAYBACK_MODE_CHOICES
+from .audio_clock import set_master_volume, volume_pct_to_gain
 
 if TYPE_CHECKING:
     from ethograph.gui.app_state import ObservableAppState
@@ -229,6 +230,27 @@ class BottomPlaybackBar(QWidget):
         self.speed_info_label.setToolTip("Effective frame rate / audio sample rate at the current speed setting.")
         bot.addWidget(self.speed_info_label)
 
+        # Playback volume: gain inside EthoGraph's own output stream, so it is
+        # independent of the system/device volume. Applied live mid-playback.
+        volume_tooltip = (
+            "Playback volume within EthoGraph (independent of the system volume).\n"
+            "Logarithmic scale, like a mixing-desk fader: equal slider steps sound\n"
+            "like equal loudness steps (50% ≈ −18 dB, 100% = the recording's own level)."
+        )
+        self._volume_icon = QLabel()
+        self._volume_icon.setPixmap(_speaker_icon().scaled(16, 16, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        self._volume_icon.setToolTip(volume_tooltip)
+        bot.addWidget(self._volume_icon)
+        self.volume_slider = QSlider(Qt.Horizontal)
+        self.volume_slider.setRange(0, 100)
+        self.volume_slider.setFixedWidth(70)
+        self.volume_slider.setToolTip(volume_tooltip)
+        volume_pct = float(app_state.get_with_default("playback_volume_pct"))
+        self.volume_slider.setValue(int(round(volume_pct)))
+        set_master_volume(volume_pct_to_gain(volume_pct))
+        self.volume_slider.valueChanged.connect(self._on_volume_changed)
+        bot.addWidget(self.volume_slider)
+
         # Center playback + Hide label text
         self.center_playback_cb = QCheckBox("Center")
         self.center_playback_cb.setToolTip("Keep the playhead centered in the view during playback")
@@ -375,6 +397,11 @@ class BottomPlaybackBar(QWidget):
             dw.set_video_quality(checked)
         else:
             self.app_state.video_quality_mode = "proxy" if checked else "full"
+
+    def _on_volume_changed(self, value: int):
+        """Apply the output gain live and persist it (gui_settings.yaml)."""
+        set_master_volume(volume_pct_to_gain(value))
+        self.app_state.playback_volume_pct = float(value)
 
     def _on_rotate_clicked(self):
         dw = getattr(self, "_data_widget", None)

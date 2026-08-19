@@ -47,8 +47,8 @@ def _capture_playback(meta, monkeypatch) -> dict:
     if video is not None:
         monkeypatch.setattr(
             type(video),
-            "_start_audio",
-            lambda _self, t0, t1: captured.update(audio=(t0, t1)),
+            "_build_audio_clock",
+            lambda _self, t0, t1: captured.update(audio=(t0, t1)) or None,
         )
         real_play = type(video).play_segment
 

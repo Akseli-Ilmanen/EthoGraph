@@ -74,7 +74,7 @@ def test_display_intervals_show_all_trials_at_session_positions(session_gui):
     assert by_trial[t_b] == pytest.approx(sc.to_session(t_b, 0.2))
 
     # Drawing the session view must not raise.
-    meta.data_widget.update_label_plot(state.get_ds_kwargs())
+    meta.data_widget.update_label_plot()
 
 
 def test_session_click_labels_the_trial_under_it(session_gui, qtbot):

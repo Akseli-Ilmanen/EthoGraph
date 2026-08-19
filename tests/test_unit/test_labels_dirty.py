@@ -102,3 +102,28 @@ def test_the_saved_flag_short_circuits(state_with_saved_labels):
     state_with_saved_labels._all_labels_df = _labels(offset=1.5)
     state_with_saved_labels.changes_saved = True
     assert not state_with_saved_labels.labels_dirty()
+
+
+# ---------------------------------------------------------------------------
+# individual_rec (recipient) round-trip
+# ---------------------------------------------------------------------------
+
+
+def test_recipient_survives_a_save_load_round_trip(tmp_path):
+    df = _labels()
+    df["individual_rec"] = ["crow2", "", "crow2"]
+    path = tmp_path / "pairs_labels.tsv"
+    save_labels_tsv(path, df)
+
+    loaded = load_labels_tsv(path)
+    assert sorted(loaded["individual_rec"]) == ["", "crow2", "crow2"]
+    assert labels_equal(df, loaded)
+
+
+def test_a_file_without_the_column_reads_back_as_solo_labels(tmp_path):
+    """Every label written before recipients existed is a solo behaviour."""
+    path = tmp_path / "legacy_labels.tsv"
+    _labels().drop(columns=["event_type"]).to_csv(path, sep="\t", index=False)
+
+    loaded = load_labels_tsv(path)
+    assert (loaded["individual_rec"] == "").all()

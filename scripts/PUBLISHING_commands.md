@@ -15,7 +15,12 @@ password = pypi-your-token-here
 
 This file lives outside the repo and is never committed.
 
-##
+## Quick version (combining steps)
+
+```powershell
+Unblock-File -Path scripts/release.ps1 # first time new pc
+scripts/release.ps1
+```
 
 ## Steps before every push
 

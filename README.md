@@ -43,6 +43,9 @@ To open the GUI, run:
 ethograph launch
 ```
 
+> **`ethograph` not recognized?** uv has not added its bin directory to your
+> `PATH` yet. Run `uv tool update-shell`, then open a **new** terminal.
+
 For installing into a dedicated virtual environment, optional extras, and
 troubleshooting, see the
 [installation guide](https://akseli-ilmanen.github.io/ethograph/getting_started/installation.html).

@@ -32,8 +32,14 @@ If Top 1/Top 2 are shown, Full automatically stops short of them instead of
 covering them.
 
 Exactly one branch is **active** (editable) at a time. Only the active
-branch's labels can be created, selected, deleted (Ctrl+D), or played back
-(V) --- labels on other branches are protected even while shown.
+branch's labels can be created, deleted (Ctrl+D) or edited (Ctrl+E) ---
+labels on other branches are protected while shown.
+
+Any label you can **see** can be clicked to select it, whatever branch is
+active, so playback (V) works on every shown branch. Selecting a label from
+another branch leaves the active branch alone: it does not change which label
+class a new label would be drawn with, and Ctrl+D / Ctrl+E on it are refused
+with a message telling you to activate its branch first.
 
 - Click a branch's name in the Labels panel to make it active (highlighted).
 - Each branch has its own **checkbox** (left of its **x** delete button) to

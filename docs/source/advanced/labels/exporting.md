@@ -46,8 +46,16 @@ the GUI; computed columns are derived on each save from the data file.
 | `onset_s` | float | Segment start in **trial-relative** seconds (time starts at 0 for each trial) |
 | `offset_s` | float | Segment end in **trial-relative** seconds |
 | `labels` | int | Label class ID from `mapping.txt` (0 = background, excluded from display) |
-| `individual` | str | Subject/individual identifier (e.g. `"mouse1"`) |
+| `individual` | str | The individual performing the behaviour, i.e. the actor (e.g. `"mouse1"`) |
+| `individual_rec` | str | The recipient of a dyadic behaviour (e.g. the bird being mounted); empty for a solo behaviour |
 | `trial` | int/str | Trial identifier, matches the TrialTree |
+
+`individual` and `individual_rec` together are the **subject** of a label. Each
+(actor, recipient) pair is an independent track: labels are shown, selected and
+created for exactly the pair chosen in the sidebar's Individual section, so the
+same animal's solo behaviours and its interactions with each partner never
+overwrite one another. Files written before recipients existed have no
+`individual_rec` column and read back as solo behaviours.
 
 ### Per-trial metadata columns
 

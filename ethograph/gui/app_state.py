@@ -110,6 +110,11 @@ class AppStateSpec:
         "xlim_mode": (str, "interval", True),
         "fixed_window_s": (float, 10.0, True, SCOPE_LOCAL),
         "labels_visible": (bool, True, True, SCOPE_LOCAL),
+        # Recipient of the labelled behaviour (dyadic interactions): the actor
+        # is whichever individual is selected, and (actor, recipient) together
+        # are the label subject — each pair its own track. "" = solo behaviour,
+        # the default. SCOPE_LOCAL: individual names belong to one dataset.
+        "individual_recipient": (str, "", True, SCOPE_LOCAL),
         # Per-plot-type label rendering: "full" | "bottom" | "none"
         "label_overlay_modes": (dict[str, str], dict(DEFAULT_LABEL_OVERLAY_MODES), True),
         "feature_view_mode": (str, "LinePlot", True, SCOPE_LOCAL),
@@ -143,6 +148,10 @@ class AppStateSpec:
         # speed). Drives both the video frame rate and the audio pitch/rate
         # together — there is no separate FPS or audio-speed control.
         "playback_speed_pct": (float, 100.0, True),
+        # Output volume as a % (0–100) applied inside EthoGraph's own audio
+        # stream, independent of the system volume. Global — a listening
+        # preference, not a dataset property.
+        "playback_volume_pct": (float, 100.0, True),
         # "auto" | "synced" | "smooth" | "skip" — global playback preference.
         "playback_mode": (str, "auto", True),
         "hide_label_text": (bool, False, True),
@@ -954,6 +963,50 @@ class ObservableAppState(QObject):
             if val is not None and val not in ("", "None"):
                 return str(val)
         return None
+
+    def selected_recipient(self) -> str:
+        """The recipient of the behaviour being labelled, ``""`` for none.
+
+        The counterpart of :meth:`selected_individual`: the two together are
+        the label subject, and only labels of that exact pair are drawn,
+        hit-tested and created.
+        """
+        return str(getattr(self, "individual_recipient", "") or "")
+
+    def label_individuals(self) -> list[str]:
+        """Every individual that can act or receive, backend-agnostic.
+
+        The dataset's individual dim when it has one (whatever its spelling),
+        otherwise the names the labels themselves use — a session with no
+        individual dimension still labels *somebody*. Falls back to a single
+        ``"default"`` so the selector is never empty.
+        """
+        loader = getattr(self, "data_loader", None)
+        catalog = getattr(loader, "catalog", None)
+        if catalog is not None and catalog.individual_combo:
+            values = [str(v) for v in catalog.combo_values(catalog.individual_combo)]
+            if values:
+                return values
+        names: list[str] = []
+        df = self._all_labels_df
+        if df is not None and not df.empty and "individual" in df.columns:
+            names = [str(v) for v in pd.unique(df["individual"].dropna())]
+        return names or ["default"]
+
+    def labels_name_our_individuals(self, df: pd.DataFrame | None) -> bool:
+        """Whether *df* names individuals the way this dataset names its own.
+
+        A pynapple session synthesises ``individual_0`` while its labels file
+        says ``Crow1``: the two namings are disjoint, so filtering the overlay
+        by the dataset's name would blank every trial's labels. Where they
+        overlap at all the filter is honest — an individual with no labels yet
+        is an empty canvas, which is exactly what labelling a second animal
+        starts from.
+        """
+        if df is None or df.empty or "individual" not in df.columns:
+            return True
+        named = {str(v) for v in pd.unique(df["individual"].dropna())}
+        return not named.isdisjoint(self.label_individuals())
 
     def key_sel_exists(self, type_key: str) -> bool:
         """Check if a key selection exists for a given type."""

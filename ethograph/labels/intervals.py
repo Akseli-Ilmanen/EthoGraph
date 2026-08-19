@@ -1,11 +1,18 @@
 """Interval-based label representation and core primitives for EthoGraph.
 
 Labels are stored as a pandas DataFrame with columns:
-    onset_s    (float64) - start time in seconds
-    offset_s   (float64) - end time in seconds (NaN for point events)
-    labels     (int32)   - label class ID (nonzero)
-    individual (str)     - individual identifier
-    event_type (str)     - "state" (interval) or "point" (instantaneous)
+    onset_s        (float64) - start time in seconds
+    offset_s       (float64) - end time in seconds (NaN for point events)
+    labels         (int32)   - label class ID (nonzero)
+    individual     (str)     - the individual performing the behaviour (actor)
+    individual_rec (str)     - the recipient of a dyadic behaviour, "" if none
+    event_type     (str)     - "state" (interval) or "point" (instantaneous)
+
+``individual`` and ``individual_rec`` together are the **subject** of a label:
+each (actor, recipient) pair is its own independent track, exactly as each
+individual was on its own before recipients existed.  ``NO_RECIPIENT`` ("")
+means a solo behaviour — the default, and what every pre-recipient file reads
+back as.
 
 Use ``split_by_kind(df)`` at the top of every interval operation so points
 pass through untouched. ``states_only(df)`` / ``points_only(df)`` are for
@@ -26,15 +33,22 @@ EVENT_TYPE_STATE = "state"
 EVENT_TYPE_POINT = "point"
 EVENT_TYPES = (EVENT_TYPE_STATE, EVENT_TYPE_POINT)
 
-INTERVAL_COLUMNS = ["onset_s", "offset_s", "labels", "individual", "event_type"]
+#: Value of ``individual_rec`` for a behaviour with no recipient.
+NO_RECIPIENT = ""
+
+INTERVAL_COLUMNS = ["onset_s", "offset_s", "labels", "individual", "individual_rec", "event_type"]
 
 INTERVAL_DTYPES = {
     "onset_s": np.float64,
     "offset_s": np.float64,
     "labels": np.int32,
     "individual": object,
+    "individual_rec": object,
     "event_type": object,
 }
+
+#: The columns identifying whose label a row is — the actor and the recipient.
+SUBJECT_COLUMNS = ["individual", "individual_rec"]
 
 
 # ── Empty DataFrame ──────────────────────────────────────────────────────
@@ -47,14 +61,14 @@ def empty_intervals() -> pd.DataFrame:
     -------
     pd.DataFrame
         Empty DataFrame with columns ``onset_s``, ``offset_s``, ``labels``,
-        ``individual``, ``event_type``.
+        ``individual``, ``individual_rec``, ``event_type``.
 
     Examples
     --------
     >>> from ethograph.labels.intervals import empty_intervals
     >>> df = empty_intervals()
     >>> df.columns.tolist()
-    ['onset_s', 'offset_s', 'labels', 'individual', 'event_type']
+    ['onset_s', 'offset_s', 'labels', 'individual', 'individual_rec', 'event_type']
     >>> len(df)
     0
     """
@@ -75,6 +89,51 @@ def ensure_event_type(df: pd.DataFrame) -> pd.DataFrame:
     else:
         df["event_type"] = df["event_type"].fillna(EVENT_TYPE_STATE).astype(object)
     return df
+
+
+def ensure_individual_rec(df: pd.DataFrame) -> pd.DataFrame:
+    """Add an ``individual_rec`` column defaulting to :data:`NO_RECIPIENT`.
+
+    Mutates and returns *df*.  Every label file written before recipients
+    existed reads back as a table of solo behaviours, which is what it is.
+    """
+    if "individual_rec" not in df.columns:
+        df["individual_rec"] = NO_RECIPIENT
+    else:
+        df["individual_rec"] = df["individual_rec"].fillna(NO_RECIPIENT).astype(object)
+    return df
+
+
+def subject_mask(
+    df: pd.DataFrame,
+    individual: str | None,
+    individual_rec: str | None = None,
+) -> pd.Series:
+    """Boolean mask selecting the rows belonging to one (actor, recipient) pair.
+
+    ``None`` on either side means "any" — used as the selection fallback when
+    the names in a loaded file don't match the current selection.  Passing
+    :data:`NO_RECIPIENT` for *individual_rec* selects solo behaviours only,
+    which is what makes each pair an independent track.
+    """
+    mask = pd.Series(True, index=df.index)
+    if individual is not None:
+        mask &= df["individual"].astype(str) == str(individual)
+    if individual_rec is not None and "individual_rec" in df.columns:
+        rec = df["individual_rec"].fillna(NO_RECIPIENT).astype(str)
+        mask &= rec == str(individual_rec)
+    return mask
+
+
+def select_subject(
+    df: pd.DataFrame,
+    individual: str | None,
+    individual_rec: str | None = None,
+) -> pd.DataFrame:
+    """The rows of *df* belonging to one (actor, recipient) pair."""
+    if df is None or df.empty:
+        return df
+    return df[subject_mask(df, individual, individual_rec)]
 
 
 def states_only(df: pd.DataFrame) -> pd.DataFrame:
@@ -331,6 +390,7 @@ def add_point(
     time_s: float,
     labels: int,
     individual: str,
+    individual_rec: str = NO_RECIPIENT,
 ) -> pd.DataFrame:
     """Add a point event (instantaneous label) at *time_s*.
 
@@ -349,9 +409,11 @@ def add_point(
         "offset_s": float("nan"),
         "labels": int(labels),
         "individual": individual,
+        "individual_rec": individual_rec,
         "event_type": EVENT_TYPE_POINT,
     }
     new_df = pd.DataFrame([new_row])
+    df = ensure_individual_rec(df.copy())
     for col, dtype in INTERVAL_DTYPES.items():
         new_df[col] = new_df[col].astype(dtype)
     result = pd.concat([df, new_df], ignore_index=True)
@@ -367,12 +429,15 @@ def add_interval(
     labels: int,
     individual: str,
     protected_label_ids: set[int] | None = None,
+    individual_rec: str = NO_RECIPIENT,
 ) -> pd.DataFrame:
-    """Add an interval, resolving overlaps for the same individual.
+    """Add an interval, resolving overlaps for the same subject.
 
-    If the new interval overlaps existing intervals for the same individual,
-    the existing intervals are trimmed or split — unless their label ID is in
-    *protected_label_ids*, in which case they are kept untouched.
+    If the new interval overlaps existing intervals for the same
+    (actor, recipient) pair, the existing intervals are trimmed or split —
+    unless their label ID is in *protected_label_ids*, in which case they are
+    kept untouched.  Another pair's intervals are never touched: the same
+    animal mounting bird A and preening bird B are two independent tracks.
 
     Parameters
     ----------
@@ -383,10 +448,12 @@ def add_interval(
     labels : int
         Label class ID.
     individual : str
-        Individual identifier.
+        Individual performing the behaviour (actor).
     protected_label_ids : set[int] | None
         Label IDs that must not be trimmed or split (e.g. labels belonging
         to inactive branches).  ``None`` means no protection.
+    individual_rec : str
+        Recipient of the behaviour; :data:`NO_RECIPIENT` for a solo one.
 
     Returns
     -------
@@ -406,8 +473,8 @@ def add_interval(
     if onset_s > offset_s:
         onset_s, offset_s = offset_s, onset_s
 
-    states_df, points_df = split_by_kind(df)
-    mask_same_ind = states_df["individual"] == individual
+    states_df, points_df = split_by_kind(ensure_individual_rec(df.copy()))
+    mask_same_ind = subject_mask(states_df, individual, individual_rec)
     other = states_df[~mask_same_ind]
     same = states_df[mask_same_ind].copy()
 
@@ -433,6 +500,7 @@ def add_interval(
                     "offset_s": onset_s - eps,
                     "labels": rid,
                     "individual": individual,
+                    "individual_rec": individual_rec,
                 }
             )
         if rf > offset_s:
@@ -442,6 +510,7 @@ def add_interval(
                     "offset_s": rf,
                     "labels": rid,
                     "individual": individual,
+                    "individual_rec": individual_rec,
                 }
             )
 
@@ -451,6 +520,7 @@ def add_interval(
             "offset_s": offset_s,
             "labels": labels,
             "individual": individual,
+            "individual_rec": individual_rec,
         }
     )
 
@@ -469,8 +539,9 @@ def find_interval_at(
     time_s: float,
     individual: str | None,
     label_ids: set[int] | None = None,
+    individual_rec: str | None = None,
 ) -> int | None:
-    """Return DataFrame index of state interval containing *time_s* for *individual*.
+    """Return DataFrame index of state interval containing *time_s* for one subject.
 
     Point events are never returned here — use :func:`find_point_at` for those.
 
@@ -482,12 +553,13 @@ def find_interval_at(
     label_ids : set[int] | None
         When given, only match intervals whose ``labels`` value is in this set.
         Useful for restricting to the active branch.
+    individual_rec : str | None
+        Recipient to match; ``None`` matches any (same fallback role).
 
     Returns ``None`` if no non-background interval contains the time.
     """
     mask = (df["onset_s"] <= time_s) & (df["offset_s"] >= time_s) & (df["labels"] != 0)
-    if individual is not None:
-        mask = mask & (df["individual"] == individual)
+    mask = mask & subject_mask(df, individual, individual_rec)
     if "event_type" in df.columns:
         mask = mask & (df["event_type"] == EVENT_TYPE_STATE)
     if label_ids is not None:
@@ -504,20 +576,20 @@ def find_point_at(
     individual: str | None,
     tolerance_s: float,
     label_ids: set[int] | None = None,
+    individual_rec: str | None = None,
 ) -> int | None:
-    """Return DataFrame index of point event near *time_s* for *individual*.
+    """Return DataFrame index of point event near *time_s* for one subject.
 
     A point matches if ``|onset_s - time_s| <= tolerance_s``.  Caller chooses
     the tolerance — typically a few pixels' worth of plot time.
-    ``individual=None`` matches any individual (selection fallback).
+    ``individual=None`` / ``individual_rec=None`` match any (selection fallback).
     """
     if "event_type" not in df.columns or df.empty:
         return None
     mask = (
         (df["event_type"] == EVENT_TYPE_POINT) & ((df["onset_s"] - time_s).abs() <= tolerance_s) & (df["labels"] != 0)
     )
-    if individual is not None:
-        mask = mask & (df["individual"] == individual)
+    mask = mask & subject_mask(df, individual, individual_rec)
     if label_ids is not None:
         mask = mask & df["labels"].isin(label_ids)
     matches = df.index[mask]
@@ -605,7 +677,7 @@ def stitch_intervals(
     if df.empty:
         return df.copy()
 
-    states_df, points_df = split_by_kind(df)
+    states_df, points_df = split_by_kind(ensure_individual_rec(df.copy()))
 
     if individual is not None:
         mask = states_df["individual"] == individual
@@ -615,7 +687,7 @@ def stitch_intervals(
         other = empty_intervals()
         target = states_df.copy()
 
-    target.sort_values(["individual", "onset_s"], inplace=True)
+    target.sort_values([*SUBJECT_COLUMNS, "onset_s"], inplace=True)
     target.reset_index(drop=True, inplace=True)
 
     merged: list[dict] = []
@@ -627,7 +699,7 @@ def stitch_intervals(
         while j < len(target):
             nxt = target.iloc[j]
             if (
-                nxt["individual"] == current["individual"]
+                all(nxt[col] == current[col] for col in SUBJECT_COLUMNS)
                 and nxt["labels"] == current["labels"]
                 and (nxt["onset_s"] - current["offset_s"]) < max_gap_s
             ):
@@ -669,7 +741,7 @@ def snap_boundaries(
     if df.empty or len(cp_times) == 0:
         return df.copy()
 
-    states_df, points_df = split_by_kind(df)
+    states_df, points_df = split_by_kind(ensure_individual_rec(df.copy()))
     cp_times = np.sort(cp_times)
     rows = []
 
@@ -690,11 +762,12 @@ def snap_boundaries(
                 "offset_s": snap_offset,
                 "labels": row["labels"],
                 "individual": row["individual"],
+                "individual_rec": row["individual_rec"],
             }
         )
 
     transformed = _rows_to_df(rows)
-    transformed.sort_values(["individual", "onset_s"], inplace=True)
+    transformed.sort_values([*SUBJECT_COLUMNS, "onset_s"], inplace=True)
     transformed.reset_index(drop=True, inplace=True)
     transformed = _resolve_overlaps(transformed)
     return _recombine(transformed, points_df)
@@ -728,9 +801,10 @@ def _snap_offset(boundary, cp_times, max_expansion_s, max_shrink_s):
 def _resolve_overlaps(df: pd.DataFrame, eps: float = 1e-3) -> pd.DataFrame:
     if df.empty:
         return df
+    df = ensure_individual_rec(df.copy())
 
     groups = []
-    for ind, group in df.groupby("individual", sort=False):
+    for _subject, group in df.groupby(SUBJECT_COLUMNS, sort=False):
         group = group.sort_values("onset_s").reset_index(drop=True)
         for i in range(len(group) - 1):
             if group.at[i, "offset_s"] > group.at[i + 1, "onset_s"] - eps:
@@ -753,6 +827,7 @@ def _rows_to_df(rows: list[dict]) -> pd.DataFrame:
     else:
         df["event_type"] = df["event_type"].fillna(EVENT_TYPE_STATE).astype(object)
     df = df.reindex(columns=INTERVAL_COLUMNS)
+    ensure_individual_rec(df)
     for col, dtype in INTERVAL_DTYPES.items():
         df[col] = df[col].astype(dtype)
     return df

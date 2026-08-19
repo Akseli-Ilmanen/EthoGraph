@@ -50,7 +50,6 @@ class VideoSync(QObject):
         self.audio_source = audio_source
         self._time_offset = view.time_offset
 
-        self._audio_player: Any = None
         self._segment_end_frame: Optional[int] = None
         # True (sub-frame) end time of the segment being played, when the
         # caller knows it (see play_segment()).
@@ -242,7 +241,6 @@ class VideoSync(QObject):
         self._smooth_mode = False
         if clear_marker_override:
             self.marker_time_override = None
-        self._stop_audio()
         self.playback_stopped.emit()
 
     def _commit_clock_position(self, clock) -> None:
@@ -447,12 +445,24 @@ class VideoSync(QObject):
         clock = self._audio_clock
         elapsed = clock.elapsed_s()
         max_frame = self.total_frames - 1
+        segment_end = self._segment_end_frame
+        if segment_end is not None:
+            max_frame = min(max_frame, segment_end)
         frame = min(int(round((self._clock_start_t + elapsed) * self.fps)), max_frame)
+        if segment_end is not None and clock.finished:
+            # The clock's span ends at the segment bounds; make sure the
+            # finishing logic in _apply_frame runs even if frame rounding
+            # left us one frame short of the segment's end frame.
+            frame = segment_end
         # The playhead sits on the exact (sub-frame) clock time; plots_container
         # reads this override so it isn't quantized to the displayed frame.
         self.marker_time_override = self._clock_start_marker + elapsed
         self._seek_playback_frame(frame)
         self._apply_frame(frame)
+        if segment_end is not None:
+            # _apply_frame finishes the segment itself (exact-end marker +
+            # stop); _end_of_video here would wipe that marker override.
+            return
         if clock.finished or frame >= max_frame:
             self._end_of_video()
 
@@ -528,12 +538,26 @@ class VideoSync(QObject):
         self._render_watchdog.start()
 
         if self.fps > 0:
-            # _start_audio indexes the audio file on the trial clock.
+            # _build_audio_clock indexes the audio file on the trial clock.
             audio_t0 = None if exact_t0 is None else self._trial_time(exact_t0)
             audio_t1 = None if exact_t1 is None else self._trial_time(exact_t1)
             if audio_t0 is None or audio_t1 is None:
                 audio_t0, audio_t1 = start_frame / self.fps, end_frame / self.fps
-            self._start_audio(audio_t0, audio_t1)
+            # Same DAC-anchored AudioClock as regular Play (space): segment
+            # playback gets the identical loudness, volume control, speed
+            # resampling and drift-free marker. (The old audioio PlayAudio
+            # path peak-normalized the segment, so V-playback sounded louder
+            # than regular playback of the same audio.)
+            clock = self._build_audio_clock(audio_t0, audio_t1)
+            if clock is not None and clock.start():
+                self._audio_clock = clock
+                self._clock_start_t = audio_t0
+                self._clock_start_marker = exact_t0 if exact_t0 is not None else self.frame_to_time(start_frame)
+                render_fps = min(self.fps_playback, self._render_cap())
+                if render_fps > 0:
+                    self._play_timer.start(int(1000 / render_fps))
+                return
+            # No usable audio device/span → silent frame-timer playback.
 
         self._start_timer()
 
@@ -541,53 +565,6 @@ class VideoSync(QObject):
         """Display-clock second → trial-relative second (``None`` if unresolved)."""
         resolved = self.app_state.from_display(t_display)
         return None if resolved is None else float(resolved[1])
-
-    def _start_audio(self, t0_s: float, t1_s: float):
-        """Play the selected audio channel over the trial-relative span ``[t0_s, t1_s]``.
-
-        Best-effort: a missing audio path, absent backend, or a failing output
-        device leaves playback video-only rather than aborting it.
-        """
-        # Follow the last-clicked audio panel (playback_mic_key); resolve both
-        # the file and channel from it, falling back to the global audio path.
-        resolved_path, channel_idx = self.app_state.get_audio_source(self.app_state.playback_mic_selection())
-        audio_path = resolved_path or self.app_state.audio_path or self.audio_source
-        if not audio_path:
-            return
-        try:
-            from audioio import AudioLoader, PlayAudio
-        except ImportError:
-            return
-
-        try:
-            from ..io.audio_extract import resolve_audio_path
-
-            file_off = self._audio_file_offset()
-            with AudioLoader(resolve_audio_path(audio_path)) as data:
-                audio_sr = data.rate
-                start_sample = max(0, int((t0_s - file_off) * audio_sr))
-                end_sample = int((t1_s - file_off) * audio_sr)
-                if end_sample <= start_sample:
-                    return
-                segment = data[start_sample:end_sample]
-
-            if segment.ndim > 1:
-                channel_idx = min(channel_idx, segment.shape[1] - 1)
-                segment = segment[:, channel_idx]
-
-            rate = self._playback_speed() * audio_sr
-
-            self._audio_player = PlayAudio()
-            self._audio_player.play(data=segment, rate=float(rate), blocking=False)
-        except Exception:
-            logger.warning("Audio playback failed; continuing video-only.", exc_info=True)
-            self._audio_player = None
-
-    def _stop_audio(self):
-        if self._audio_player:
-            self._audio_player.stop()
-            self._audio_player.__exit__(None, None, None)
-            self._audio_player = None
 
     def cleanup(self):
         try:
@@ -607,6 +584,5 @@ class VideoSync(QObject):
             # output stream too, or the old span keeps sounding over the new.
             self._audio_clock.stop()
             self._audio_clock = None
-        self._stop_audio()
         self._segment_end_frame = None
         self.playback_stopped.emit()

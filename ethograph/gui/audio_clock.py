@@ -52,6 +52,35 @@ OUTPUT_RATE = 48000.0
 # microseconds per minute — far below a video frame.
 MAX_RESAMPLE_DENOM = 1000
 
+# Master output gain (0.0–1.0), applied in the stream callback so a volume
+# change is audible immediately on every live clock. Module-level because a
+# fresh AudioClock is built per Play press, in two places (VideoSync and
+# AudioPlayer) — a per-instance setting would need re-wiring at both sites.
+# Display-only: elapsed_s() and the DAC anchor are untouched by gain.
+_master_volume = 1.0
+
+
+def set_master_volume(volume: float) -> None:
+    """Set the playback output gain (clamped to 0.0–1.0)."""
+    global _master_volume
+    _master_volume = min(1.0, max(0.0, float(volume)))
+
+
+def master_volume() -> float:
+    return _master_volume
+
+
+def volume_pct_to_gain(pct: float) -> float:
+    """Volume slider % (0–100) → linear gain, with a perceptual (cubic) taper.
+
+    Loudness perception is logarithmic: a linear amplitude fader packs nearly
+    all audible change into its bottom fifth. The cubic curve (VLC / Web Audio
+    convention) approximates a dB fader — 50% ≈ −18 dB, equal slider steps ≈
+    equal loudness steps — while keeping true unity at 100 and mute at 0.
+    """
+    return (min(100.0, max(0.0, float(pct))) / 100.0) ** 3
+
+
 # Real-playback seconds of media resampled per producer step.
 CHUNK_REAL_S = 2.0
 
@@ -246,6 +275,9 @@ class AudioClock:
             if self._chunk_off >= len(chunk):
                 self._chunk_i += 1
                 self._chunk_off = 0
+        gain = _master_volume
+        if gain != 1.0:
+            out[:filled] *= gain
         # Only real audio advances the position: a producer underrun pads
         # silence without counting, so the marker waits with the sound.
         self._idx = idx0 + filled

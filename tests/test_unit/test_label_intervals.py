@@ -6,12 +6,15 @@ import pytest
 
 from ethograph.features.changepoints import correct_changepoints
 from ethograph.labels.intervals import (
+    NO_RECIPIENT,
     add_interval,
     delete_interval,
     empty_intervals,
+    ensure_individual_rec,
     find_interval_at,
     get_interval_bounds,
     purge_short_intervals,
+    select_subject,
     snap_boundaries,
     stitch_intervals,
 )
@@ -52,7 +55,14 @@ def sample_intervals():
 class TestEmptyIntervals:
     def test_columns(self):
         df = empty_intervals()
-        assert list(df.columns) == ["onset_s", "offset_s", "labels", "individual", "event_type"]
+        assert list(df.columns) == [
+            "onset_s",
+            "offset_s",
+            "labels",
+            "individual",
+            "individual_rec",
+            "event_type",
+        ]
 
     def test_empty(self):
         df = empty_intervals()
@@ -379,3 +389,62 @@ class TestCorrectChangepoints:
         )
         assert len(result) == 1
         assert result.iloc[0]["labels"] == 1
+
+
+# ---------------------------------------------------------------------------
+# Recipients: (actor, recipient) pairs are independent tracks
+# ---------------------------------------------------------------------------
+
+
+class TestRecipient:
+    def test_default_is_no_recipient(self):
+        df = add_interval(empty_intervals(), 1.0, 2.0, 1, "bird1")
+        assert df.iloc[0]["individual_rec"] == NO_RECIPIENT
+
+    def test_pairs_do_not_overwrite_each_other(self):
+        """The same actor labelled towards two recipients keeps both."""
+        df = add_interval(empty_intervals(), 1.0, 3.0, 1, "bird1", individual_rec="bird2")
+        df = add_interval(df, 1.0, 3.0, 2, "bird1", individual_rec="bird3")
+        assert len(df) == 2
+        assert sorted(df["individual_rec"]) == ["bird2", "bird3"]
+
+    def test_same_pair_still_resolves_overlap(self):
+        df = add_interval(empty_intervals(), 1.0, 3.0, 1, "bird1", individual_rec="bird2")
+        df = add_interval(df, 0.5, 3.5, 2, "bird1", individual_rec="bird2")
+        assert len(df) == 1
+        assert df.iloc[0]["labels"] == 2
+
+    def test_solo_and_dyadic_are_separate(self):
+        df = add_interval(empty_intervals(), 1.0, 3.0, 1, "bird1")
+        df = add_interval(df, 1.0, 3.0, 2, "bird1", individual_rec="bird2")
+        assert len(df) == 2
+
+    def test_find_matches_the_pair_only(self):
+        df = add_interval(empty_intervals(), 1.0, 3.0, 1, "bird1", individual_rec="bird2")
+        assert find_interval_at(df, 2.0, "bird1", individual_rec="bird2") is not None
+        assert find_interval_at(df, 2.0, "bird1", individual_rec=NO_RECIPIENT) is None
+        # None on either side is the "any" fallback used for click selection.
+        assert find_interval_at(df, 2.0, "bird1") is not None
+
+    def test_select_subject(self):
+        df = add_interval(empty_intervals(), 1.0, 2.0, 1, "bird1")
+        df = add_interval(df, 3.0, 4.0, 1, "bird1", individual_rec="bird2")
+        assert len(select_subject(df, "bird1", NO_RECIPIENT)) == 1
+        assert len(select_subject(df, "bird1", "bird2")) == 1
+        assert len(select_subject(df, "bird1")) == 2
+
+    def test_stitch_never_merges_across_pairs(self):
+        df = add_interval(empty_intervals(), 0.0, 1.0, 1, "bird1", individual_rec="bird2")
+        df = add_interval(df, 1.05, 2.0, 1, "bird1", individual_rec="bird3")
+        assert len(stitch_intervals(df, max_gap_s=0.5)) == 2
+
+    def test_legacy_frame_without_the_column_reads_as_solo(self):
+        legacy = pd.DataFrame(
+            {
+                "onset_s": [1.0],
+                "offset_s": [2.0],
+                "labels": [1],
+                "individual": ["bird1"],
+            }
+        )
+        assert len(select_subject(ensure_individual_rec(legacy), "bird1", NO_RECIPIENT)) == 1

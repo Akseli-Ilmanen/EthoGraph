@@ -39,6 +39,52 @@ uv pip install "ethograph[all]"
 
 See {doc}`../getting_started/installation` for full instructions.
 
+(command-not-found)=
+### `ethograph` is not recognized as a command
+
+The terminal reports something like:
+
+```text
+The term 'ethograph' is not recognized as the name of a cmdlet, function,
+script file, or operable program.
+```
+
+The install worked — the `ethograph` command just isn't on your `PATH` yet.
+`uv tool install` puts it in uv's own bin directory, which uv has to register
+with your shell:
+
+```bash
+uv tool update-shell
+```
+
+Then **close the terminal and open a new one**. `PATH` is only read when a shell
+starts, so the current window will keep reporting the same error. After that,
+`ethograph launch` works from any directory.
+
+Two alternatives if you would rather not touch `PATH`:
+
+- **A shortcut instead of a command.** `ethograph shortcut` creates a
+  desktop/Start Menu entry that launches the GUI on double-click. It writes the
+  full interpreter path into the shortcut, so nothing needs to be activated or
+  on `PATH`.
+- **A one-off launch.** `uvx --from "ethograph[gui,audio]" ethograph launch`
+  runs the GUI without installing a command at all.
+
+```{warning}
+`uv tool list` reports only **tool** installs. If you have *also* installed
+ethograph into a virtual environment or a conda environment, that is a second,
+independent copy — often at a different version — and launching through that
+environment's `python -m ethograph launch` runs it instead of the one
+`uv tool list` shows.
+
+When reporting a bug, take the version from the interpreter you actually
+launched with, not from `uv tool list`:
+
+    python -c "import ethograph, sys; print(ethograph.__version__, sys.prefix)"
+
+Keeping a single install avoids the confusion entirely.
+```
+
 (no-audio-device)=
 ### Silent audio on Linux
 

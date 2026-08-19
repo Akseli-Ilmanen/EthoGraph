@@ -50,6 +50,7 @@ from ethograph.labels.intervals import (
     get_interval_bounds,
     load_label_mapping,
     save_label_mapping,
+    subject_mask,
 )
 from ethograph.labels.plots import plot_confidence_pdf
 from ethograph.labels.predictions import PredictionsStore
@@ -989,6 +990,14 @@ class LabelsWidget(QWidget):
             return str(_ds.coords[_ind_dim].values[0])
         return "default"
 
+    def _current_recipient(self) -> str:
+        """The recipient the labels being drawn are about, "" for a solo one.
+
+        Together with :meth:`_current_individual` this is the label subject:
+        every label is created, found and drawn for exactly one pair.
+        """
+        return self.app_state.selected_recipient()
+
     def _on_plot_clicked(self, click_info):
         """Handle mouse clicks on the lineplot widget.
 
@@ -1100,9 +1109,14 @@ class LabelsWidget(QWidget):
     def _check_labels_click(self, t_clicked: float, individual: str) -> bool:
         """Check if the click is on an existing interval or point, and select it.
 
-        Only labels belonging to the currently active branch can be selected
-        this way — selection gates delete (Ctrl+D) and playback (V), so a
-        label on a shown-but-inactive branch must not be pickable.
+        **Any label the user can see is selectable** — the gate is the shown
+        branches (``active_label_ids``), not the active one.  Selection is a
+        read affordance: it drives playback (V), the space-plot highlight and
+        the heatmap sort, and gating it on the active branch made all three
+        silently do nothing on a label that was plainly visible.  Mutation
+        stays branch-scoped instead: :meth:`_delete_label` and
+        :meth:`_edit_label` refuse a selection outside the active branch, and
+        the clicked class is only adopted for drawing when it is editable.
 
         Args:
             t_clicked: Time in seconds of the click
@@ -1112,7 +1126,7 @@ class LabelsWidget(QWidget):
         if df is None or df.empty:
             return False
 
-        active_ids = self.app_state.editable_label_ids
+        active_ids = self.app_state.active_label_ids
 
         # Points take precedence over overlapping state intervals: they're
         # smaller targets, so a near-hit is almost certainly intentional.
@@ -1122,7 +1136,8 @@ class LabelsWidget(QWidget):
         # from another session), and a label the user can see and click must
         # be selectable — otherwise playback (V) silently fails on it.
         tolerance_s = self._point_click_tolerance_s()
-        idx = find_point_at(df, t_clicked, individual, tolerance_s, label_ids=active_ids)
+        recipient = self._current_recipient()
+        idx = find_point_at(df, t_clicked, individual, tolerance_s, label_ids=active_ids, individual_rec=recipient)
         if idx is None:
             idx = find_point_at(df, t_clicked, None, tolerance_s, label_ids=active_ids)
         if idx is not None:
@@ -1133,11 +1148,11 @@ class LabelsWidget(QWidget):
             self.current_labels_pos = idx
             self.current_labels_is_prediction = False
             self.highlight_spaceplot.emit(self._to_display(t), self._to_display(t))
-            self.selected_labels = labels
+            self._adopt_clicked_class(labels)
             return True
 
         # No point near the click — fall through to state intervals.
-        idx = find_interval_at(df, t_clicked, individual, label_ids=active_ids)
+        idx = find_interval_at(df, t_clicked, individual, label_ids=active_ids, individual_rec=recipient)
         if idx is None:
             idx = find_interval_at(df, t_clicked, None, label_ids=active_ids)
         if idx is not None:
@@ -1146,9 +1161,36 @@ class LabelsWidget(QWidget):
             self.current_labels_pos = idx
             self.current_labels_is_prediction = False
             self.highlight_spaceplot.emit(self._to_display(onset_s), self._to_display(offset_s))
-            self.selected_labels = labels
+            self._adopt_clicked_class(labels)
             return True
         return False
+
+    def _is_editable_label(self, label_id: int | None) -> bool:
+        """True iff *label_id*'s class belongs to the currently active branch."""
+        if label_id is None:
+            return False
+        editable = self.app_state.editable_label_ids
+        return editable is None or int(label_id) in editable
+
+    def _adopt_clicked_class(self, label_id: int) -> None:
+        """Make the clicked label's class the one new labels are drawn with.
+
+        Only for the active branch: clicking a label of another branch selects
+        it (for playback) but must not change what the next drawn label is.
+        """
+        if self._is_editable_label(label_id):
+            self.selected_labels = label_id
+
+    def _refuse_foreign_branch(self, label_id: int | None) -> bool:
+        """Warn and return True when *label_id* is outside the active branch."""
+        if self._is_editable_label(label_id):
+            return False
+        name = self._mappings.get(label_id, {}).get("name", label_id)
+        notify(
+            f"'{name}' belongs to another branch — activate that branch to edit it.",
+            severity="warning",
+        )
+        return True
 
     def _point_click_tolerance_s(self) -> float:
         """Click tolerance for picking a point event, in seconds.
@@ -1199,7 +1241,7 @@ class LabelsWidget(QWidget):
 
         return snapped
 
-    def _post_label_cleanup(self, placed_onset: float, placed_offset: float, individual: str):
+    def _post_label_cleanup(self, placed_onset: float, placed_offset: float, individual: str, recipient: str):
         """Purge only the slivers ``add_interval`` just created.
 
         Scoped cleanup: when the new interval cuts through an existing one,
@@ -1225,7 +1267,7 @@ class LabelsWidget(QWidget):
 
         eps = 1e-3
         durations = df["offset_s"] - df["onset_s"]
-        same_ind = df["individual"] == individual
+        same_ind = subject_mask(df, individual, recipient)
         touches_left = np.isclose(df["offset_s"], placed_onset - eps, atol=eps / 10)
         touches_right = np.isclose(df["onset_s"], placed_offset + eps, atol=eps / 10)
         sliver = same_ind & (touches_left | touches_right) & (durations < min_duration_s)
@@ -1246,6 +1288,7 @@ class LabelsWidget(QWidget):
         onset_s = min(self.first_click, self.second_click)
         offset_s = max(self.first_click, self.second_click)
         individual = self._current_individual()
+        recipient = self._current_recipient()
 
         self.highlight_spaceplot.emit(self._to_display(onset_s), self._to_display(offset_s))
 
@@ -1277,16 +1320,17 @@ class LabelsWidget(QWidget):
             self.selected_labels,
             individual,
             protected_label_ids=protected,
+            individual_rec=recipient,
         )
         self.app_state.label_intervals = df
         self.app_state.set_trial_intervals(self.app_state.trials_sel, df)
-        self._post_label_cleanup(onset_s, offset_s, individual)
+        self._post_label_cleanup(onset_s, offset_s, individual, recipient)
         if self.changepoints_widget:
             self.changepoints_widget.cp_correction_from_labelling()
         df = self.app_state.label_intervals
 
         # Auto-select the newly created interval for immediate playback
-        new_idx = find_interval_at(df, (onset_s + offset_s) / 2, individual)
+        new_idx = find_interval_at(df, (onset_s + offset_s) / 2, individual, individual_rec=recipient)
         self.current_labels_pos = new_idx
         self.current_labels = self.selected_labels
         self.current_labels_is_prediction = False
@@ -1314,6 +1358,7 @@ class LabelsWidget(QWidget):
         point effectively moves to the new time.
         """
         individual = self._current_individual()
+        recipient = self._current_recipient()
 
         df = self.app_state.label_intervals
         if df is None:
@@ -1325,7 +1370,7 @@ class LabelsWidget(QWidget):
             self.old_labels_pos = None
             self.old_labels = None
 
-        df = add_point(df, t_clicked, self.selected_labels, individual)
+        df = add_point(df, t_clicked, self.selected_labels, individual, individual_rec=recipient)
         self.app_state.label_intervals = df
         self.app_state.set_trial_intervals(self.app_state.trials_sel, df)
         # Point events don't cut through other intervals → no slivers to purge.
@@ -1398,7 +1443,10 @@ class LabelsWidget(QWidget):
             self.current_labels_pos = None
             return
 
-        onset_s, _, _ = get_interval_bounds(df, self.current_labels_pos)
+        _, _, labels = get_interval_bounds(df, self.current_labels_pos)
+        if self._refuse_foreign_branch(int(labels)):
+            return
+
         df = delete_interval(df, self.current_labels_pos)
         self.app_state.label_intervals = df
         self.app_state.set_trial_intervals(self.app_state.trials_sel, df)
@@ -1416,6 +1464,9 @@ class LabelsWidget(QWidget):
         """Enter edit mode for adjusting interval boundaries."""
         if self.current_labels_pos is None:
             logger.warning("No label selected. Click on a label first to select it.")
+            return
+
+        if self._refuse_foreign_branch(self.current_labels):
             return
 
         self.old_labels_pos = self.current_labels_pos
@@ -1548,7 +1599,7 @@ class LabelsWidget(QWidget):
             css_color = "white"
             active_ids = self.app_state.active_label_ids
             if df is not None and not df.empty:
-                idx = find_interval_at(df, time_s, ind, label_ids=active_ids)
+                idx = find_interval_at(df, time_s, ind, label_ids=active_ids, individual_rec=self._current_recipient())
                 if idx is not None:
                     _, _, labels = get_interval_bounds(df, idx)
                     if labels in mappings and labels != 0:

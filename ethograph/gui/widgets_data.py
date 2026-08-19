@@ -35,7 +35,7 @@ from ethograph.io.data_loader import load_features_dataset
 from ethograph.io.derived import DerivedLoader
 from ethograph.io.plot_sources import FileSource
 from ethograph.io.time_model import compute_trial_video_bounds
-from ethograph.labels.intervals import get_interval_bounds
+from ethograph.labels.intervals import get_interval_bounds, select_subject
 from ethograph.utils.qt import (
     ElidedDelegate,
     find_combo_index,
@@ -218,6 +218,8 @@ class DataPanel(QWidget):
                 toggle.setChecked(False)
 
     def _create_main_section(self, parent_layout):
+        self._create_individual_section(parent_layout)
+
         self.coords_groupbox = QGroupBox("Xarray coords")
         self.coords_groupbox_layout = QFormLayout()
         self.coords_groupbox_layout.setSpacing(DEFAULT_LAYOUT_SPACING)
@@ -274,6 +276,40 @@ class DataPanel(QWidget):
         parent_layout.addWidget(self.overlays_groupbox)
 
         parent_layout.addStretch()
+
+    def _create_individual_section(self, parent_layout):
+        """Who the panels and the labels are about — shown above every plot's
+        own settings, whatever backend the data came from.
+
+        The actor combo is the dataset's individual dimension when it has one
+        (created by ``DataWidget._create_combo_widget`` into this layout, so it
+        keeps its dim name), and a plain list of the individuals the labels use
+        when it does not.  The recipient combo turns a solo behaviour into a
+        dyadic one: (actor, recipient) is the label subject.
+        """
+        self.individual_groupbox = QGroupBox("Individual")
+        self.individual_layout = QFormLayout()
+        self.individual_layout.setSpacing(DEFAULT_LAYOUT_SPACING)
+        self.individual_layout.setContentsMargins(
+            DEFAULT_LAYOUT_MARGIN,
+            DEFAULT_LAYOUT_MARGIN,
+            DEFAULT_LAYOUT_MARGIN,
+            DEFAULT_LAYOUT_MARGIN,
+        )
+        self.individual_groupbox.setLayout(self.individual_layout)
+
+        self.individual_rec_combo = QComboBox()
+        self.individual_rec_combo.setObjectName("individual_rec_combo")
+        self.individual_rec_combo.setToolTip(
+            "Individual recipient: who the behaviour is directed at, for dyadic "
+            "interactions (e.g. one bird mounting another).\nWith a recipient "
+            "chosen, only the labels of this individual→recipient pair are shown "
+            "and labelled; None means a solo behaviour."
+        )
+        self.individual_rec_combo.addItem("None", "")
+        self.individual_layout.addRow("Recipient:", self.individual_rec_combo)
+
+        parent_layout.addWidget(self.individual_groupbox)
 
     def _create_pose_section(self, parent_layout):
         self.pose_groupbox = QGroupBox("Pose overlay")
@@ -560,6 +596,9 @@ class DataWidget(QWidget):
         #: row can be hidden when a new catalog lacks that dimension — removing
         #: it would delete widgets the right sidebar and MetaWidget hold too.
         self._combo_row_fields: dict[str, QWidget] = {}
+        #: The form each combo's row lives in — coords for most dims, the
+        #: individual group for the individual one.
+        self._combo_row_layouts: dict[str, QFormLayout] = {}
         self.all_checkboxes = {}
         self.controls = []
         self._keypoint_names: list[str] = []
@@ -590,6 +629,10 @@ class DataWidget(QWidget):
         self.data_panel = panel
         self.coords_groupbox = panel.coords_groupbox
         self.coords_groupbox_layout = panel.coords_groupbox_layout
+        self.individual_groupbox = panel.individual_groupbox
+        self.individual_layout = panel.individual_layout
+        self.individual_rec_combo = panel.individual_rec_combo
+        panel.individual_rec_combo.currentIndexChanged.connect(self._on_recipient_changed)
         self.slot_groupbox = panel.slot_groupbox
         self.slot_layout = panel.slot_layout
         self.slot_row2_layout = panel.slot_row2_layout
@@ -1030,6 +1073,8 @@ class DataWidget(QWidget):
         self.app_state.ready = True
 
         self._restore_or_set_defaults()
+        # The restored individual decides who is available as a recipient.
+        self._populate_recipient_combo()
 
         self.io_widget.on_load_complete()
         self.labels_widget.refresh_mapping_for_data_dir(Path(ctx.nc_file_path).parent)
@@ -1139,6 +1184,7 @@ class DataWidget(QWidget):
 
         self._create_colors_combo()
         self._create_show_predictions_row()
+        self.refresh_individual_choices()
 
         # Restore camera combos
         cameras = self.app_state.nwb_alignment.cameras
@@ -1347,8 +1393,7 @@ class DataWidget(QWidget):
         """User toggled the Predictions overlay checkbox — persist + redraw."""
         self.app_state._show_predictions_overlay = Qt.CheckState(qt_state) == Qt.Checked
         if self.app_state.ready:
-            ds_kwargs = self.app_state.get_ds_kwargs()
-            self.update_label_plot(ds_kwargs)
+            self.update_label_plot()
         if self.labels_widget is not None:
             self.labels_widget.refresh_labels_shapes_layer()
 
@@ -1921,6 +1966,7 @@ class DataWidget(QWidget):
             list(self.catalog.features),
             rgb_filter=self._colors_rgb_checkbox.isChecked(),
         )
+        self.refresh_individual_choices()
 
     @staticmethod
     def _refill_combo(combo, values: list[str]) -> None:
@@ -1943,7 +1989,8 @@ class DataWidget(QWidget):
         field = self._combo_row_fields.get(key)
         if field is None:
             return
-        label = self.coords_groupbox_layout.labelForField(field)
+        layout = self._combo_row_layouts.get(key, self.coords_groupbox_layout)
+        label = layout.labelForField(field)
         field.setVisible(visible)
         if label is not None:
             label.setVisible(visible)
@@ -2082,7 +2129,19 @@ class DataWidget(QWidget):
 
         make_searchable(combo)
 
-        target_layout = self.coords_groupbox_layout
+        # The individual lives above every plot's own settings, not among the
+        # coords: which animal is shown is a question every panel type answers,
+        # not one only feature plots have.
+        is_individual = key in INDIVIDUAL_DIMS
+        target_layout = self.individual_layout if is_individual else self.coords_groupbox_layout
+
+        if is_individual:
+            target_layout.insertRow(0, "Individual:", combo)
+            self.combos[key] = combo
+            self._combo_row_fields[key] = combo
+            self._combo_row_layouts[key] = target_layout
+            self.controls.append(combo)
+            return combo
 
         if show_all_checkbox:
             row_widget = QWidget()
@@ -2112,9 +2171,84 @@ class DataWidget(QWidget):
         # The widget occupying the row, so the row can later be hidden without
         # being removed — see `_rebuild_coord_controls`.
         self._combo_row_fields[key] = field
+        self._combo_row_layouts[key] = target_layout
         self.controls.append(combo)
 
         return combo
+
+    # ------------------------------------------------------------------
+    # Individual (actor) + recipient
+    # ------------------------------------------------------------------
+
+    def _individual_actor_key(self) -> str:
+        """The selection key the actor combo writes to.
+
+        The dataset's own individual dim when it has one (movement is
+        singular, older wizard data plural — never renamed), and the singular
+        spelling otherwise, where it is an inert key: labels use it, loaders
+        ignore it, exactly like any selection naming a dim a feature lacks.
+        """
+        catalog = self.catalog or getattr(self.app_state.data_loader, "catalog", None)
+        return (catalog.individual_combo if catalog is not None else None) or INDIVIDUAL_DIMS[0]
+
+    def refresh_individual_choices(self) -> None:
+        """Point the Individual / Recipient combos at this session's individuals.
+
+        Run on load, on a catalog swap, and after a label import: with no
+        individual dimension the names come from the labels themselves, and
+        those arrive from a file the user can pick at any time.
+        """
+        if getattr(self, "individual_rec_combo", None) is None:
+            return
+        key = self._individual_actor_key()
+        catalog = self.catalog or getattr(self.app_state.data_loader, "catalog", None)
+        is_dim = catalog is not None and key in catalog.combos
+        combo = self.combos.get(key)
+        if combo is None:
+            combo = self._create_combo_widget(key, self.app_state.label_individuals())
+        elif not is_dim:
+            # Not a dim: the values are the individuals the labels name, which
+            # a dim combo must never be refilled with.
+            self._refill_combo(combo, self.app_state.label_individuals())
+        self._set_combo_row_visible(key, True)
+        self.app_state.set_key_sel(key, get_combo_value(combo))
+        # Exactly one spelling carries a value: a stale `individuals_sel` from
+        # a previous dataset would answer `selected_individual()` first.
+        for other in INDIVIDUAL_DIMS:
+            if other != key:
+                self.app_state.set_key_sel(other, None)
+        self._populate_recipient_combo()
+
+    def _populate_recipient_combo(self) -> None:
+        """Offer every individual except the actor — nothing is its own recipient."""
+        combo = getattr(self, "individual_rec_combo", None)
+        if combo is None:
+            return
+        actor = self.app_state.selected_individual()
+        names = [n for n in self.app_state.label_individuals() if n != actor]
+        wanted = self.app_state.selected_recipient()
+        combo.blockSignals(True)
+        combo.clear()
+        combo.addItem("None", "")
+        for name in names:
+            combo.addItem(str(name), str(name))
+        idx = find_combo_index(combo, wanted) if wanted else 0
+        combo.setCurrentIndex(idx if idx >= 0 else 0)
+        combo.blockSignals(False)
+        combo.setEnabled(bool(names))
+        # A recipient this actor cannot have is dropped, not kept as a filter
+        # that silently matches nothing.
+        self.app_state.individual_recipient = get_combo_value(combo) or ""
+
+    def _on_recipient_changed(self, _index: int) -> None:
+        if not self.app_state.ready:
+            return
+        self.app_state.individual_recipient = get_combo_value(self.individual_rec_combo) or ""
+        if self.labels_widget:
+            # A half-placed label was anchored for the previous subject.
+            self.labels_widget._reset_label_clicks()
+            self.labels_widget.refresh_labels_shapes_layer()
+        self.update_label_plot()
 
     def sync_sidebar_from_active_plot(self):
         """Repopulate EVERY data-panel selection control (feature, dim combos,
@@ -2207,8 +2341,13 @@ class DataWidget(QWidget):
             except (ValueError, TypeError):
                 pass
         if key in INDIVIDUAL_DIMS:
+            # The actor changed: it can no longer be its own recipient, and a
+            # recipient carried over from the previous actor may not exist.
+            self._populate_recipient_combo()
+            # A half-placed label was anchored for the previous subject.
+            self.labels_widget._reset_label_clicks()
             self.labels_widget.refresh_labels_shapes_layer()
-        self.update_label_plot(self.app_state.get_ds_kwargs())
+        self.update_label_plot()
 
     def _on_combo_changed(self):
         if not self.app_state.ready:
@@ -2667,8 +2806,6 @@ class DataWidget(QWidget):
         if not self.app_state.ready:
             return
 
-        ds_kwargs = self.app_state.get_ds_kwargs()
-
         self.plot_container.clear_amplitude_envelope()
 
         self.plot_container.update_feature_plots(**kwargs)
@@ -2676,9 +2813,23 @@ class DataWidget(QWidget):
         if self.show_envelope_checkbox.isChecked():
             self.plot_container.show_envelope_overlay()
 
-        self.update_label_plot(ds_kwargs)
+        self.update_label_plot()
 
-    def update_label_plot(self, ds_kwargs):
+    def _subject_intervals(self, df):
+        """*df* reduced to the labels of the selected actor and recipient.
+
+        Read from ``app_state``, never from the xarray kwargs: a pynapple
+        session has no ``ds_kwargs`` at all, and whose label a row is was never
+        an xarray question.
+        """
+        if df is None or df.empty:
+            return df
+        actor = self.app_state.selected_individual()
+        if not self.app_state.labels_name_our_individuals(df):
+            actor = None
+        return select_subject(df, actor, self.app_state.selected_recipient())
+
+    def update_label_plot(self):
         # Labels are hidden when no branch is shown and predictions aren't toggled on.
         state = self.app_state
         any_slot = bool(state._branch_shown and any(state._branch_shown.values())) or state._show_predictions_overlay
@@ -2720,10 +2871,7 @@ class DataWidget(QWidget):
                 )
                 intervals_df = intervals_df.iloc[0:0]
 
-        _ind_key = next((n for n in INDIVIDUAL_DIMS if n in ds_kwargs), None)
-        if intervals_df is not None and not intervals_df.empty and _ind_key is not None:
-            selected_ind = str(ds_kwargs[_ind_key])
-            intervals_df = intervals_df[intervals_df["individual"] == selected_ind]
+        intervals_df = self._subject_intervals(intervals_df)
 
         predictions_df = None
         if self.app_state.pred_labels_df is not None:
@@ -2898,7 +3046,7 @@ class DataWidget(QWidget):
 
         Only redraws when entering a different label interval.
         """
-        label_intervals = self.app_state.get_display_intervals()
+        label_intervals = self._subject_intervals(self.app_state.get_display_intervals())
         if label_intervals is None or label_intervals.empty:
             self._clear_space_highlight()
             return
@@ -3397,7 +3545,7 @@ class DataWidget(QWidget):
             return
 
         color = (255, 102, 0)
-        label_intervals = self.app_state.get_display_intervals()
+        label_intervals = self._subject_intervals(self.app_state.get_display_intervals())
         active_ids = self.app_state.active_label_ids
         if label_intervals is not None and not label_intervals.empty:
             mid = (start_time + end_time) / 2.0

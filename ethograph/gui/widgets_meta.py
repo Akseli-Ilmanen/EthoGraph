@@ -283,6 +283,7 @@ class MetaWidget(GridSectionContainer):
         dp = self.data_panel
         ps = self.plot_settings_widget
         sections = {
+            "individual": getattr(dp, "individual_groupbox", None),
             "coords": getattr(dp, "coords_groupbox", None),
             "slot": getattr(dp, "slot_groupbox", None),
             "pose": getattr(dp, "pose_groupbox", None),
@@ -936,8 +937,7 @@ class MetaWidget(GridSectionContainer):
     def _on_labels_redraw_needed(self):
         if not self.app_state.ready:
             return
-        ds_kwargs = self.app_state.get_ds_kwargs()
-        self.data_widget.update_label_plot(ds_kwargs)
+        self.data_widget.update_label_plot()
         self.data_widget.update_trials_combo()
 
     def update_labels_widget_title(self):

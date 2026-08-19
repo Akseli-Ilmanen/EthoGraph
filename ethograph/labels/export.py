@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import pandas as pd
 
+from ethograph.labels.intervals import SUBJECT_COLUMNS
+
 
 def correct_offsets_trial(df: pd.DataFrame) -> tuple[pd.DataFrame, int, int]:
     """Apply gap correction to a single trial's interval DataFrame.
 
-    For each individual, pulls back ``offset_s`` when the gap to the next onset
-    is smaller than ``eps`` so pynapple can resolve all intervals.
+    For each subject (actor + recipient), pulls back ``offset_s`` when the gap
+    to the next onset is smaller than ``eps`` so pynapple can resolve all
+    intervals.
 
     Works on the per-trial format (columns: trial, onset_s, offset_s, labels,
     individual) returned by ``app_state.get_trial_intervals()``.
@@ -20,11 +23,12 @@ def correct_offsets_trial(df: pd.DataFrame) -> tuple[pd.DataFrame, int, int]:
     if df.empty:
         return df, 0, 0
     eps = 1e-4
-    df = df.copy().sort_values(["individual", "onset_s"]).reset_index(drop=True)
+    subject = [c for c in SUBJECT_COLUMNS if c in df.columns]
+    df = df.copy().sort_values([*subject, "onset_s"]).reset_index(drop=True)
 
     corrected = 0
     negative_gaps = 0
-    for _, group in df.groupby("individual"):
+    for _, group in df.groupby(subject):
         idx = group.index.tolist()
         for i in range(len(idx) - 1):
             gap = df.loc[idx[i + 1], "onset_s"] - df.loc[idx[i], "offset_s"]
@@ -42,7 +46,7 @@ def correct_offsets_trial(df: pd.DataFrame) -> tuple[pd.DataFrame, int, int]:
                     df.loc[idx[i], "duration"] = df.loc[idx[i], "offset_s"] - df.loc[idx[i], "onset_s"]
 
     if "onset_global" in df.columns:
-        df.sort_values(["individual", "onset_global"], inplace=True)
+        df.sort_values([*subject, "onset_global"], inplace=True)
 
     return df, corrected, negative_gaps
 

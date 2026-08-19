@@ -2,7 +2,8 @@
 
 File format:
     trial                   - trial identifier
-    individual              - individual identifier
+    individual              - individual performing the behaviour (actor)
+    individual_rec          - recipient of a dyadic behaviour ("" if none)
     labels                  - integer label class ID
     onset_s                 - start time in seconds (trial-relative)
     offset_s                - end time in seconds (trial-relative)
@@ -28,6 +29,7 @@ from ethograph.labels.intervals import (
     INTERVAL_DTYPES,
     empty_intervals,
     ensure_event_type,
+    ensure_individual_rec,
 )
 
 logger = logging.getLogger(__name__)
@@ -35,6 +37,7 @@ logger = logging.getLogger(__name__)
 TSV_COLUMNS = [
     "trial",
     "individual",
+    "individual_rec",
     "labels",
     "onset_s",
     "offset_s",
@@ -139,6 +142,7 @@ def load_labels_tsv(path: str | Path) -> pd.DataFrame:
     validate_labels_tsv(df, path)
 
     ensure_event_type(df)
+    ensure_individual_rec(df)
     for col in INTERVAL_COLUMNS:
         if col in df.columns and col in INTERVAL_DTYPES:
             df[col] = df[col].astype(INTERVAL_DTYPES[col])
@@ -175,6 +179,7 @@ def save_labels_tsv(path: str | Path, df: pd.DataFrame) -> None:
         "trial",
         "session_trial",
         "individual",
+        "individual_rec",
         "labels",
         "onset_s",
         "offset_s",
@@ -234,6 +239,7 @@ def _comparable_labels(df: pd.DataFrame | None) -> pd.DataFrame:
         return _empty_all_labels()[TSV_COLUMNS]
     out = df.copy()
     ensure_event_type(out)
+    ensure_individual_rec(out)
     for col in TSV_COLUMNS:
         if col not in out.columns:
             out[col] = TRIAL_META_DEFAULTS.get(col, "")
@@ -288,7 +294,7 @@ def set_trial_in_tsv(
     old_meta = get_trial_meta(all_df, trial)
     other = all_df[all_df["trial"] != trial]
 
-    trial_df = ensure_event_type(trial_df.copy())
+    trial_df = ensure_individual_rec(ensure_event_type(trial_df.copy()))
     new_rows = trial_df[INTERVAL_COLUMNS].copy()
     new_rows.insert(0, "trial", trial)
     for col, default in TRIAL_META_DEFAULTS.items():
