@@ -443,11 +443,13 @@ workflow and the storage-format reference.</p>
 <h2>Interval operations<a class="headerlink" href="#interval-operations" title="Link to this heading">#</a></h2>
 <dl class="py function">
 <dt class="sig sig-object py" id="ethograph.labels.intervals.add_interval">
-<span class="sig-prename descclassname"><span class="pre">ethograph.labels.intervals.</span></span><span class="sig-name descname"><span class="pre">add_interval</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">onset_s</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">offset_s</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">labels</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">individual</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">protected_label_ids</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/labels/intervals.html#add_interval"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.labels.intervals.add_interval" title="Link to this definition">#</a></dt>
-<dd><p>Add an interval, resolving overlaps for the same individual.</p>
-<p>If the new interval overlaps existing intervals for the same individual,
-the existing intervals are trimmed or split — unless their label ID is in
-<em>protected_label_ids</em>, in which case they are kept untouched.</p>
+<span class="sig-prename descclassname"><span class="pre">ethograph.labels.intervals.</span></span><span class="sig-name descname"><span class="pre">add_interval</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">onset_s</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">offset_s</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">labels</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">individual</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">protected_label_ids</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">individual_rec</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/labels/intervals.html#add_interval"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.labels.intervals.add_interval" title="Link to this definition">#</a></dt>
+<dd><p>Add an interval, resolving overlaps for the same subject.</p>
+<p>If the new interval overlaps existing intervals for the same
+(actor, recipient) pair, the existing intervals are trimmed or split —
+unless their label ID is in <em>protected_label_ids</em>, in which case they are
+kept untouched.  Another pair’s intervals are never touched: the same
+animal mounting bird A and preening bird B are two independent tracks.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
@@ -455,9 +457,10 @@ the existing intervals are trimmed or split — unless their label ID is in
 <li><p><strong>onset_s</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><em>float</em></a>) – Start and end times in seconds.</p></li>
 <li><p><strong>offset_s</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><em>float</em></a>) – Start and end times in seconds.</p></li>
 <li><p><strong>labels</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><em>int</em></a>) – Label class ID.</p></li>
-<li><p><strong>individual</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Individual identifier.</p></li>
+<li><p><strong>individual</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Individual performing the behaviour (actor).</p></li>
 <li><p><strong>protected_label_ids</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#set" title="(in Python v3.14)"><em>set</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em>] </em><em>| </em><em>None</em>) – Label IDs that must not be trimmed or split (e.g. labels belonging
 to inactive branches).  <code class="docutils literal notranslate"><span class="pre">None</span></code> means no protection.</p></li>
+<li><p><strong>individual_rec</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Recipient of the behaviour; <code class="xref py py-data docutils literal notranslate"><span class="pre">NO_RECIPIENT</span></code> for a solo one.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
@@ -492,8 +495,8 @@ to inactive branches).  <code class="docutils literal notranslate"><span class="
 
 <dl class="py function">
 <dt class="sig sig-object py" id="ethograph.labels.intervals.find_interval_at">
-<span class="sig-prename descclassname"><span class="pre">ethograph.labels.intervals.</span></span><span class="sig-name descname"><span class="pre">find_interval_at</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">time_s</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">individual</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">label_ids</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/labels/intervals.html#find_interval_at"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.labels.intervals.find_interval_at" title="Link to this definition">#</a></dt>
-<dd><p>Return DataFrame index of state interval containing <em>time_s</em> for <em>individual</em>.</p>
+<span class="sig-prename descclassname"><span class="pre">ethograph.labels.intervals.</span></span><span class="sig-name descname"><span class="pre">find_interval_at</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">time_s</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">individual</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">label_ids</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">individual_rec</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/labels/intervals.html#find_interval_at"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.labels.intervals.find_interval_at" title="Link to this definition">#</a></dt>
+<dd><p>Return DataFrame index of state interval containing <em>time_s</em> for one subject.</p>
 <p>Point events are never returned here — use <code class="xref py py-func docutils literal notranslate"><span class="pre">find_point_at()</span></code> for those.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -502,6 +505,7 @@ to inactive branches).  <code class="docutils literal notranslate"><span class="
 the current individual name doesn’t match what a loaded file stores.</p></li>
 <li><p><strong>label_ids</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#set" title="(in Python v3.14)"><em>set</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em>] </em><em>| </em><em>None</em>) – When given, only match intervals whose <code class="docutils literal notranslate"><span class="pre">labels</span></code> value is in this set.
 Useful for restricting to the active branch.</p></li>
+<li><p><strong>individual_rec</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em>) – Recipient to match; <code class="docutils literal notranslate"><span class="pre">None</span></code> matches any (same fallback role).</p></li>
 <li><p><strong>time.</strong> (<em>Returns None if no non-background interval contains the</em>)</p></li>
 </ul>
 </dd>
@@ -529,7 +533,7 @@ Useful for restricting to the active branch.</p></li>
 <dl class="field-list simple">
 <dt class="field-odd">Returns<span class="colon">:</span></dt>
 <dd class="field-odd"><p>Empty DataFrame with columns <code class="docutils literal notranslate"><span class="pre">onset_s</span></code>, <code class="docutils literal notranslate"><span class="pre">offset_s</span></code>, <code class="docutils literal notranslate"><span class="pre">labels</span></code>,
-<code class="docutils literal notranslate"><span class="pre">individual</span></code>, <code class="docutils literal notranslate"><span class="pre">event_type</span></code>.</p>
+<code class="docutils literal notranslate"><span class="pre">individual</span></code>, <code class="docutils literal notranslate"><span class="pre">individual_rec</span></code>, <code class="docutils literal notranslate"><span class="pre">event_type</span></code>.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p>pd.DataFrame</p>
@@ -539,7 +543,7 @@ Useful for restricting to the active branch.</p></li>
 <div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.labels.intervals</span><span class="w"> </span><span class="kn">import</span> <span class="n">empty_intervals</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">df</span> <span class="o">=</span> <span class="n">empty_intervals</span><span class="p">()</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="o">.</span><span class="n">tolist</span><span class="p">()</span>
-<span class="go">['onset_s', 'offset_s', 'labels', 'individual', 'event_type']</span>
+<span class="go">['onset_s', 'offset_s', 'labels', 'individual', 'individual_rec', 'event_type']</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="nb">len</span><span class="p">(</span><span class="n">df</span><span class="p">)</span>
 <span class="go">0</span>
 </pre></div>
@@ -1421,8 +1425,9 @@ of falling back to ds.attrs.</p></li>
 <dt class="sig sig-object py" id="ethograph.labels.export.correct_offsets_trial">
 <span class="sig-prename descclassname"><span class="pre">ethograph.labels.export.</span></span><span class="sig-name descname"><span class="pre">correct_offsets_trial</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/labels/export.html#correct_offsets_trial"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.labels.export.correct_offsets_trial" title="Link to this definition">#</a></dt>
 <dd><p>Apply gap correction to a single trial’s interval DataFrame.</p>
-<p>For each individual, pulls back <code class="docutils literal notranslate"><span class="pre">offset_s</span></code> when the gap to the next onset
-is smaller than <code class="docutils literal notranslate"><span class="pre">eps</span></code> so pynapple can resolve all intervals.</p>
+<p>For each subject (actor + recipient), pulls back <code class="docutils literal notranslate"><span class="pre">offset_s</span></code> when the gap
+to the next onset is smaller than <code class="docutils literal notranslate"><span class="pre">eps</span></code> so pynapple can resolve all
+intervals.</p>
 <p>Works on the per-trial format (columns: trial, onset_s, offset_s, labels,
 individual) returned by <code class="docutils literal notranslate"><span class="pre">app_state.get_trial_intervals()</span></code>.</p>
 <dl class="field-list simple">

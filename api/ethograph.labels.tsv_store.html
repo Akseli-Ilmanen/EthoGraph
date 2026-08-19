@@ -408,7 +408,8 @@
 <p>TSV-based label storage for EthoGraph.</p>
 <dl class="simple">
 <dt>File format:</dt><dd><p>trial                   - trial identifier
-individual              - individual identifier
+individual              - individual performing the behaviour (actor)
+individual_rec          - recipient of a dyadic behaviour (”” if none)
 labels                  - integer label class ID
 onset_s                 - start time in seconds (trial-relative)
 offset_s                - end time in seconds (trial-relative)
@@ -463,7 +464,7 @@ set(iterable) -&gt; new set object</p>
 
 <dl class="py data">
 <dt class="sig sig-object py" id="ethograph.labels.tsv_store.TSV_COLUMNS">
-<span class="sig-prename descclassname"><span class="pre">ethograph.labels.tsv_store.</span></span><span class="sig-name descname"><span class="pre">TSV_COLUMNS</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">['trial',</span> <span class="pre">'individual',</span> <span class="pre">'labels',</span> <span class="pre">'onset_s',</span> <span class="pre">'offset_s',</span> <span class="pre">'event_type',</span> <span class="pre">'human_verified',</span> <span class="pre">'changepoint_corrected',</span> <span class="pre">'prediction_source',</span> <span class="pre">'n_samples']</span></em><a class="headerlink" href="#ethograph.labels.tsv_store.TSV_COLUMNS" title="Link to this definition">#</a></dt>
+<span class="sig-prename descclassname"><span class="pre">ethograph.labels.tsv_store.</span></span><span class="sig-name descname"><span class="pre">TSV_COLUMNS</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">['trial',</span> <span class="pre">'individual',</span> <span class="pre">'individual_rec',</span> <span class="pre">'labels',</span> <span class="pre">'onset_s',</span> <span class="pre">'offset_s',</span> <span class="pre">'event_type',</span> <span class="pre">'human_verified',</span> <span class="pre">'changepoint_corrected',</span> <span class="pre">'prediction_source',</span> <span class="pre">'n_samples']</span></em><a class="headerlink" href="#ethograph.labels.tsv_store.TSV_COLUMNS" title="Link to this definition">#</a></dt>
 <dd><p>Built-in mutable sequence.</p>
 <p>If no argument is given, the constructor creates a new empty list.
 The argument must be an iterable if specified.</p>

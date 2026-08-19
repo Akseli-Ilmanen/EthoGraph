@@ -44,6 +44,19 @@ ethograph launch
 `ethograph` command to your PATH, so it never clashes with your other Python
 projects and is always available without activating anything.
 
+```{important}
+On a fresh machine the first `ethograph launch` may fail with *"'ethograph' is
+not recognized as the name of a cmdlet..."* (Windows) or *"command not found"*
+(macOS/Linux). uv has not yet added its bin directory to your `PATH`. Fix it
+once with:
+
+    uv tool update-shell
+
+then **close the terminal and open a new one** — `PATH` is only read when a
+shell starts, so the window you ran it in will keep failing. See
+{ref}`command-not-found` for shortcut-based alternatives.
+```
+
 ```{tip}
 To update later, run `uv tool upgrade ethograph`; to remove it,
 `uv tool uninstall ethograph`.

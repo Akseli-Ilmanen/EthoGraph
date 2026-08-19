@@ -422,11 +422,13 @@
 <h1>add_interval<a class="headerlink" href="#add-interval" title="Link to this heading">#</a></h1>
 <dl class="py function">
 <dt class="sig sig-object py" id="ethograph.labels.intervals.add_interval">
-<span class="sig-prename descclassname"><span class="pre">ethograph.labels.intervals.</span></span><span class="sig-name descname"><span class="pre">add_interval</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">onset_s</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">offset_s</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">labels</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">individual</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">protected_label_ids</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/labels/intervals.html#add_interval"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.labels.intervals.add_interval" title="Link to this definition">#</a></dt>
-<dd><p>Add an interval, resolving overlaps for the same individual.</p>
-<p>If the new interval overlaps existing intervals for the same individual,
-the existing intervals are trimmed or split — unless their label ID is in
-<em>protected_label_ids</em>, in which case they are kept untouched.</p>
+<span class="sig-prename descclassname"><span class="pre">ethograph.labels.intervals.</span></span><span class="sig-name descname"><span class="pre">add_interval</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">onset_s</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">offset_s</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">labels</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">individual</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">protected_label_ids</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">individual_rec</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/labels/intervals.html#add_interval"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.labels.intervals.add_interval" title="Link to this definition">#</a></dt>
+<dd><p>Add an interval, resolving overlaps for the same subject.</p>
+<p>If the new interval overlaps existing intervals for the same
+(actor, recipient) pair, the existing intervals are trimmed or split —
+unless their label ID is in <em>protected_label_ids</em>, in which case they are
+kept untouched.  Another pair’s intervals are never touched: the same
+animal mounting bird A and preening bird B are two independent tracks.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
@@ -434,9 +436,10 @@ the existing intervals are trimmed or split — unless their label ID is in
 <li><p><strong>onset_s</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><em>float</em></a>) – Start and end times in seconds.</p></li>
 <li><p><strong>offset_s</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><em>float</em></a>) – Start and end times in seconds.</p></li>
 <li><p><strong>labels</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><em>int</em></a>) – Label class ID.</p></li>
-<li><p><strong>individual</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Individual identifier.</p></li>
+<li><p><strong>individual</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Individual performing the behaviour (actor).</p></li>
 <li><p><strong>protected_label_ids</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#set" title="(in Python v3.14)"><em>set</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em>] </em><em>| </em><em>None</em>) – Label IDs that must not be trimmed or split (e.g. labels belonging
 to inactive branches).  <code class="docutils literal notranslate"><span class="pre">None</span></code> means no protection.</p></li>
+<li><p><strong>individual_rec</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Recipient of the behaviour; <code class="xref py py-data docutils literal notranslate"><span class="pre">NO_RECIPIENT</span></code> for a solo one.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>

@@ -470,6 +470,26 @@
 <p><img alt="keyboard" src="../../_images/keyboard.png" /></p>
 </section>
 <hr class="docutils" />
+<section id="who-the-labels-are-about">
+<h2>Who the labels are about<a class="headerlink" href="#who-the-labels-are-about" title="Link to this heading">#</a></h2>
+<p>The <strong>Individual</strong> section at the top of the right sidebar is shown for every
+panel except the video, whatever backend the data came from. It holds two
+dropdowns:</p>
+<ul class="simple">
+<li><p><strong>Individual</strong> — the animal performing the behaviour. Switching it switches
+the labels you see and create, exactly as before.</p></li>
+<li><p><strong>Recipient</strong> — for dyadic interactions (one bird mounting another, one
+animal grooming another). It is <code class="docutils literal notranslate"><span class="pre">None</span></code> by default, meaning a solo behaviour.</p></li>
+</ul>
+<p>Together they are the <em>subject</em> of a label, and each (individual, recipient)
+pair is an independent track: with a recipient chosen, only that pair’s labels
+are drawn and clickable, and a new label is stored against that pair. Switching
+the recipient therefore gives you a fresh canvas for the next interaction
+without touching what you already labelled.</p>
+<p>The pair is stored per label in the TSV’s <code class="docutils literal notranslate"><span class="pre">individual</span></code> and <code class="docutils literal notranslate"><span class="pre">individual_rec</span></code>
+columns — see <a class="reference internal" href="exporting.html#target-exporting-labels"><span class="std std-ref">the column reference</span></a>.</p>
+</section>
+<hr class="docutils" />
 <section id="playing-back-labels">
 <h2>Playing back labels<a class="headerlink" href="#playing-back-labels" title="Link to this heading">#</a></h2>
 <p>Once you’ve created a label, click on it and press <code class="docutils literal notranslate"><span class="pre">v</span></code> to play the segment.</p>
@@ -549,6 +569,7 @@ own panel. See <a class="reference internal" href="importing.html"><span class="
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#creating-labels">Creating labels</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#who-the-labels-are-about">Who the labels are about</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#playing-back-labels">Playing back labels</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#editing-and-deleting-labels">Editing and deleting labels</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#changepoint-correction">Changepoint correction</a></li>

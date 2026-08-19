@@ -499,6 +499,46 @@ complex for pip’s resolver.</p>
 </div>
 <p>See <a class="reference internal" href="../getting_started/installation.html"><span class="doc">Installation</span></a> for full instructions.</p>
 </section>
+<section id="ethograph-is-not-recognized-as-a-command">
+<span id="command-not-found"></span><h3><code class="docutils literal notranslate"><span class="pre">ethograph</span></code> is not recognized as a command<a class="headerlink" href="#ethograph-is-not-recognized-as-a-command" title="Link to this heading">#</a></h3>
+<p>The terminal reports something like:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>The term 'ethograph' is not recognized as the name of a cmdlet, function,
+script file, or operable program.
+</pre></div>
+</div>
+<p>The install worked — the <code class="docutils literal notranslate"><span class="pre">ethograph</span></code> command just isn’t on your <code class="docutils literal notranslate"><span class="pre">PATH</span></code> yet.
+<code class="docutils literal notranslate"><span class="pre">uv</span> <span class="pre">tool</span> <span class="pre">install</span></code> puts it in uv’s own bin directory, which uv has to register
+with your shell:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>tool<span class="w"> </span>update-shell
+</pre></div>
+</div>
+<p>Then <strong>close the terminal and open a new one</strong>. <code class="docutils literal notranslate"><span class="pre">PATH</span></code> is only read when a shell
+starts, so the current window will keep reporting the same error. After that,
+<code class="docutils literal notranslate"><span class="pre">ethograph</span> <span class="pre">launch</span></code> works from any directory.</p>
+<p>Two alternatives if you would rather not touch <code class="docutils literal notranslate"><span class="pre">PATH</span></code>:</p>
+<ul class="simple">
+<li><p><strong>A shortcut instead of a command.</strong> <code class="docutils literal notranslate"><span class="pre">ethograph</span> <span class="pre">shortcut</span></code> creates a
+desktop/Start Menu entry that launches the GUI on double-click. It writes the
+full interpreter path into the shortcut, so nothing needs to be activated or
+on <code class="docutils literal notranslate"><span class="pre">PATH</span></code>.</p></li>
+<li><p><strong>A one-off launch.</strong> <code class="docutils literal notranslate"><span class="pre">uvx</span> <span class="pre">--from</span> <span class="pre">&quot;ethograph[gui,audio]&quot;</span> <span class="pre">ethograph</span> <span class="pre">launch</span></code>
+runs the GUI without installing a command at all.</p></li>
+</ul>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p><code class="docutils literal notranslate"><span class="pre">uv</span> <span class="pre">tool</span> <span class="pre">list</span></code> reports only <strong>tool</strong> installs. If you have <em>also</em> installed
+ethograph into a virtual environment or a conda environment, that is a second,
+independent copy — often at a different version — and launching through that
+environment’s <code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">-m</span> <span class="pre">ethograph</span> <span class="pre">launch</span></code> runs it instead of the one
+<code class="docutils literal notranslate"><span class="pre">uv</span> <span class="pre">tool</span> <span class="pre">list</span></code> shows.</p>
+<p>When reporting a bug, take the version from the interpreter you actually
+launched with, not from <code class="docutils literal notranslate"><span class="pre">uv</span> <span class="pre">tool</span> <span class="pre">list</span></code>:</p>
+<div class="highlight-none notranslate"><div class="highlight"><pre><span></span>python -c "import ethograph, sys; print(ethograph.__version__, sys.prefix)"
+</pre></div>
+</div>
+<p>Keeping a single install avoids the confusion entirely.</p>
+</div>
+</section>
 <section id="silent-audio-on-linux">
 <span id="no-audio-device"></span><h3>Silent audio on Linux<a class="headerlink" href="#silent-audio-on-linux" title="Link to this heading">#</a></h3>
 <p>If playback is silent, check what PortAudio sees:</p>
@@ -657,6 +697,7 @@ audio track”</em>) rather than a stream of errors.</p>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#my-dataset-format-is-not-supported">My dataset format is not supported</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#what-does-this-button-do">What does this button do?</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#installation-fails-with-resolution-too-deep">Installation fails with “resolution-too-deep”</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph-is-not-recognized-as-a-command"><code class="docutils literal notranslate"><span class="pre">ethograph</span></code> is not recognized as a command</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#silent-audio-on-linux">Silent audio on Linux</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#supported-audio-formats">Supported audio formats</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#opening-tsv-label-files-in-excel">Opening <code class="docutils literal notranslate"><span class="pre">.tsv</span></code> label files in Excel</a></li>
