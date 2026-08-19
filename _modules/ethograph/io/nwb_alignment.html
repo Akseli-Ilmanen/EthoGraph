@@ -2007,32 +2007,6 @@
 <span class="sd">    """</span>
     <span class="n">by_device</span> <span class="o">=</span> <span class="p">{</span><span class="n">_video_name_to_device</span><span class="p">(</span><span class="n">video_name</span><span class="p">):</span> <span class="n">pose</span> <span class="k">for</span> <span class="n">pose</span><span class="p">,</span> <span class="n">video_name</span> <span class="ow">in</span> <span class="n">links</span><span class="o">.</span><span class="n">items</span><span class="p">()}</span>
     <span class="k">return</span> <span class="p">[</span><span class="n">by_device</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">c</span><span class="p">))</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">cameras</span><span class="p">]</span>
-
-
-<div class="viewcode-block" id="update_trials_columns">
-<a class="viewcode-back" href="../../../api/nwb_alignment.html#ethograph.update_trials_columns">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">update_trials_columns</span><span class="p">(</span>
-    <span class="n">nwb_path</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span>
-    <span class="n">trial_column</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-    <span class="n">updates</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">float</span><span class="p">]],</span>
-    <span class="n">stream_rates</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">float</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-<span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-    <span class="k">with</span> <span class="n">edit_nwb</span><span class="p">(</span><span class="n">nwb_path</span><span class="p">)</span> <span class="k">as</span> <span class="n">nwbfile</span><span class="p">:</span>
-        <span class="n">table</span> <span class="o">=</span> <span class="n">nwbfile</span><span class="o">.</span><span class="n">trials</span>
-        <span class="k">if</span> <span class="n">table</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="ne">KeyError</span><span class="p">(</span><span class="s2">"No trials table found"</span><span class="p">)</span>
-
-        <span class="n">trial_ids</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">table</span><span class="p">[</span><span class="n">trial_column</span><span class="p">][:])</span>
-        <span class="k">for</span> <span class="n">trial_id</span><span class="p">,</span> <span class="n">column_updates</span> <span class="ow">in</span> <span class="n">updates</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
-            <span class="n">row_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">trial_ids</span> <span class="o">==</span> <span class="n">trial_id</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
-            <span class="k">if</span> <span class="n">row_idx</span><span class="o">.</span><span class="n">size</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
-                <span class="k">raise</span> <span class="ne">KeyError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Trial </span><span class="si">{</span><span class="n">trial_id</span><span class="si">}</span><span class="s2"> not found in </span><span class="si">{</span><span class="n">trial_column</span><span class="si">!r}</span><span class="s2">"</span><span class="p">)</span>
-            <span class="k">for</span> <span class="n">col_name</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">column_updates</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
-                <span class="n">table</span><span class="p">[</span><span class="n">col_name</span><span class="p">]</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="n">row_idx</span><span class="p">[</span><span class="mi">0</span><span class="p">]]</span> <span class="o">=</span> <span class="n">value</span>
-
-        <span class="k">if</span> <span class="n">stream_rates</span><span class="p">:</span>
-            <span class="n">sync_acquisition_for_streams</span><span class="p">(</span><span class="n">nwbfile</span><span class="p">,</span> <span class="n">stream_rates</span><span class="p">)</span></div>
-
 </pre></div>
 
                 </article>
