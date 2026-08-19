@@ -80,6 +80,7 @@ The dialog is one tab per stage, and these pages follow the same order.
 
 labelling
 detect
+calibration
 fill
 correction
 export

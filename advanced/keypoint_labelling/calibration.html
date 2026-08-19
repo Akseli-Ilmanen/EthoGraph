@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>3. Detect — optional, if your animals wear tags &#8212; ethograph</title>
+    <title>4. Calibrate — optional, for trajectories in cm &#8212; ethograph</title>
   
   
   
@@ -45,13 +45,13 @@
     <script src="../../_static/doctools.js?v=9bcbadda"></script>
     <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../../_static/design-tabs.js?v=f930bc37"></script>
-    <script>DOCUMENTATION_OPTIONS.pagename = 'advanced/keypoint_labelling/detect';</script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'advanced/keypoint_labelling/calibration';</script>
     <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
-    <link rel="canonical" href="https://Akseli-Ilmanen.github.io/ethograph/advanced/keypoint_labelling/detect.html" />
+    <link rel="canonical" href="https://Akseli-Ilmanen.github.io/ethograph/advanced/keypoint_labelling/calibration.html" />
     <link rel="index" title="Index" href="../../genindex.html" />
     <link rel="search" title="Search" href="../../search.html" />
-    <link rel="next" title="4. Calibrate — optional, for trajectories in cm" href="calibration.html" />
-    <link rel="prev" title="1-2. Define keypoints and label frames" href="labelling.html" />
+    <link rel="next" title="5. Fill" href="fill.html" />
+    <link rel="prev" title="3. Detect — optional, if your animals wear tags" href="detect.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="" />
@@ -385,8 +385,8 @@
 </details></li>
 <li class="toctree-l1 current active has-children"><a class="reference internal" href="index.html">Keypoint labelling</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
 <li class="toctree-l2"><a class="reference internal" href="labelling.html">1-2. Define keypoints and label frames</a></li>
-<li class="toctree-l2 current active"><a class="current reference internal" href="#">3. Detect — optional, if your animals wear tags</a></li>
-<li class="toctree-l2"><a class="reference internal" href="calibration.html">4. Calibrate — optional, for trajectories in cm</a></li>
+<li class="toctree-l2"><a class="reference internal" href="detect.html">3. Detect — optional, if your animals wear tags</a></li>
+<li class="toctree-l2 current active"><a class="current reference internal" href="#">4. Calibrate — optional, for trajectories in cm</a></li>
 <li class="toctree-l2"><a class="reference internal" href="fill.html">5. Fill</a></li>
 <li class="toctree-l2"><a class="reference internal" href="correction.html">6. The correction loop</a></li>
 <li class="toctree-l2"><a class="reference internal" href="export.html">7. Visualizing &amp; exporting</a></li>
@@ -441,7 +441,7 @@
     
     <li class="breadcrumb-item"><a href="index.html" class="nav-link">Keypoint labelling</a></li>
     
-    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">3. Detect — optional, if your animals wear tags</span></li>
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">4. Calibrate — optional, for trajectories in cm</span></li>
   </ul>
 </nav>
 </div>
@@ -458,167 +458,86 @@
 <div id="searchbox"></div>
                 <article class="bd-article">
                   
-  <section class="tex2jax_ignore mathjax_ignore" id="detect-optional-if-your-animals-wear-tags">
-<span id="target-detect"></span><h1>3. Detect — optional, if your animals wear tags<a class="headerlink" href="#detect-optional-if-your-animals-wear-tags" title="Link to this heading">#</a></h1>
-<p>A click and a tag detector produce the same kind of thing: a position read off
-the pixels of one specific frame. EthoGraph calls both <strong>observations</strong>, and the
-fill interpolates between them — so <strong>any detector composes with any fill
-backend</strong>. Five clicked frames becoming several hundred detected ones is what
-stops optical flow drifting and gives PosePAL far more to fit to.</p>
-<p>Through trial and error I settled on <strong>AprilTag <code class="docutils literal notranslate"><span class="pre">tag36h11</span></code></strong>, which works very
-well on moving 5mm and 10mm wide tags.<a class="footnote-reference brackets" href="#apriltag" id="id1" role="doc-noteref"><span class="fn-bracket">[</span>1<span class="fn-bracket">]</span></a> Two smaller families are
-offered alongside it, and EthoGraph <strong>prints exactly what it can read</strong> — a
-sheet of tags the detector cannot decode would be a trap.</p>
-<figure class="align-default" id="id2">
-<a class="reference internal image-reference" href="../../_images/apriltags.png"><img alt="Two example tags each from the tag16h5, tag25h9 and tag36h11 AprilTag families" src="../../_images/apriltags.png" style="width: 100%;" />
-</a>
-<figcaption>
-<p><span class="caption-text">Three AprilTag families. The first number is how many data bits a tag carries
-(a 4×4, 5×5 or 6×6 grid of modules); the number after the <code class="docutils literal notranslate"><span class="pre">h</span></code> is the smallest
-Hamming distance between any two valid codes — how many bits have to be misread
-before one ID turns into another <em>valid</em> ID.</span><a class="headerlink" href="#id2" title="Link to this image">#</a></p>
-</figcaption>
-</figure>
-<div class="pst-scrollable-table-container"><table class="table">
-<thead>
-<tr class="row-odd"><th class="head"><p>Family</p></th>
-<th class="head"><p>Hamming</p></th>
-<th class="head"><p>Grid</p></th>
-<th class="head"><p>Data bits</p></th>
-<th class="head"><p>Unique tags</p></th>
-<th class="head"><p>Modules of paper</p></th>
-</tr>
-</thead>
-<tbody>
-<tr class="row-even"><td><p><strong><code class="docutils literal notranslate"><span class="pre">tag36h11</span></code></strong> (default)</p></td>
-<td><p>11</p></td>
-<td><p>6×6</p></td>
-<td><p>36</p></td>
-<td><p>587</p></td>
-<td><p>8</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">tag25h9</span></code></p></td>
-<td><p>9</p></td>
-<td><p>5×5</p></td>
-<td><p>25</p></td>
-<td><p>35</p></td>
-<td><p>7</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">tag16h5</span></code></p></td>
-<td><p>5</p></td>
-<td><p>4×4</p></td>
-<td><p>16</p></td>
-<td><p>30</p></td>
-<td><p>6</p></td>
-</tr>
-</tbody>
-</table>
+  <section class="tex2jax_ignore mathjax_ignore" id="calibrate-optional-for-trajectories-in-cm">
+<span id="target-calibration"></span><h1>4. Calibrate — optional, for trajectories in cm<a class="headerlink" href="#calibrate-optional-for-trajectories-in-cm" title="Link to this heading">#</a></h1>
+<p>Labelled and filled keypoints live in pixel coordinates of the source video.
+If a few fixed physical landmarks in the scene — arena corners, a doorway, a
+perch — have known real-world positions, the <strong>Calibrate</strong> tab turns them into
+a pixel→cm map, and the export can then produce trajectories in your own cm
+frame instead of pixels.</p>
+<section id="landmarks-are-not-keypoints">
+<h2>Landmarks are not keypoints<a class="headerlink" href="#landmarks-are-not-keypoints" title="Link to this heading">#</a></h2>
+<p>A landmark belongs to the scene, not to an animal: it has no individual, it
+never moves, and it must never join the fill span or the exported <code class="docutils literal notranslate"><span class="pre">keypoint</span></code>
+dimension. So landmarks live in their own table, drawn as <strong>diamonds</strong> on the
+video where every keypoint is a circle — and they cannot collide with the
+detector’s <code class="docutils literal notranslate"><span class="pre">corner_N</span></code> tag keypoints, which are body-marker corners, not scene
+corners.</p>
+</section>
+<section id="the-workflow">
+<h2>The workflow<a class="headerlink" href="#the-workflow" title="Link to this heading">#</a></h2>
+<ol class="arabic simple">
+<li><p><strong>Name the landmarks and give them cm coordinates</strong> — type them into the
+table, or <strong>Load coordinates…</strong> from a file (see below).</p></li>
+<li><p><strong>Click each landmark on the video</strong>, on a few different frames. Opening the
+tab hands the pointer to calibration clicking: a click places the selected
+landmark and moves on to the next one this frame still lacks; clicking an
+existing diamond drags it; <code class="docutils literal notranslate"><span class="pre">Backspace</span></code> removes the selected landmark’s click
+on this frame; <code class="docutils literal notranslate"><span class="pre">Shift</span></code>+left-drag still pans. The clicks of one landmark are
+<strong>averaged</strong> — the camera is assumed static for the session, so a few clicks
+on different frames simply cancel out click jitter. The smaller hollow
+diamond is that running mean: what the fit will actually use.</p></li>
+<li><p><strong>Pick “cm (calibrated)”</strong> in the export’s <em>Coordinate space</em> box, which
+enables itself as soon as three landmarks are <em>ready</em> (cm coordinates plus
+at least one click).</p></li>
+</ol>
+<p>The <strong>Clicked frames</strong> table below the landmarks mirrors the points table: one
+row per frame carrying a click, one column per landmark, the playhead’s row
+highlighted. Clicking a row seeks the video there, clicking a landmark’s cell
+also makes it the one the next canvas click places, and right-click removes a
+single click or a whole frame’s worth.</p>
+<p>Three landmarks fit an <strong>affine</strong> map — right for a top-down camera. Four or
+more fit a <strong>homography</strong>, the exact model for any camera viewing a flat
+plane, which also corrects the foreshortening of an angled view; extra
+landmarks are averaged into the fit, so more is better. Either way the fitted
+matrix is derived data, recomputed from the table whenever it is needed.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>A single camera calibrates a <strong>plane</strong>. Use landmarks roughly level with the
+plane the animal moves on: the cm output means “where this point sits on the
+calibration plane”, and a point well above it (a head high off the ground,
+say) is displaced along the camera ray, more so the more the camera is tilted.
+For that reason a <code class="docutils literal notranslate"><span class="pre">z</span></code> column in a coordinates file is ignored.</p>
 </div>
-<p>If your animal is very small and your pixel resolution limited, it may be helpful to take a family with a smaller grid <code class="docutils literal notranslate"><span class="pre">tag16h5</span></code>.
-On the other hand, if those are not limiting factor, then <code class="docutils literal notranslate"><span class="pre">tag36h11</span></code> will give you an orders of magnitude lower false-positive rate and
-a few more distinguishable IDs.</p>
-<section id="print-the-tags-first">
-<h2>Print the tags first<a class="headerlink" href="#print-the-tags-first" title="Link to this heading">#</a></h2>
-<p>The sheet is made on the <strong>start page</strong>, under <strong>🛠 Pre-recording tools ▸ Print
-tag sheet…</strong> — by the time you are tuning a detector the tags are already on
-the animals. It produces a print-ready vector PDF at a size given in millimetres.</p>
-<p>A sheet is a table of <strong>rows</strong>, so one page can mix sizes and families — a
-handful of big tags and many small ones is the usual rig.</p>
-<div class="pst-scrollable-table-container"><table class="table">
-<thead>
-<tr class="row-odd"><th class="head"><p>Family</p></th>
-<th class="head"><p>First ID</p></th>
-<th class="head"><p>Count</p></th>
-<th class="head"><p>Tag mm</p></th>
-<th class="head"><p>Min mm</p></th>
-</tr>
-</thead>
-<tbody>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">tag36h11</span></code></p></td>
-<td><p>0</p></td>
-<td><p>24</p></td>
-<td><p>4.0</p></td>
-<td><p>4.2</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">tag16h5</span></code></p></td>
-<td><p>0</p></td>
-<td><p>6</p></td>
-<td><p>4.0</p></td>
-<td><p>3.1</p></td>
-</tr>
-</tbody>
-</table>
-</div>
+</section>
+<section id="loading-coordinates-from-a-file">
+<h2>Loading coordinates from a file<a class="headerlink" href="#loading-coordinates-from-a-file" title="Link to this heading">#</a></h2>
+<p>The world layout is the stable part — the same arena serves many sessions —
+while the clicked pixels drift as the camera is nudged between sessions.
+<strong>Load coordinates…</strong> reads the cm side from a table so only the clicking is
+per-session; existing landmarks keep their clicks, and re-clicking is what
+absorbs the drift. Two layouts are understood:</p>
 <ul class="simple">
-<li><p><strong>Tag mm</strong> is the printed tag itself, black border included — <em>not</em> the white
-margin around it, which is set for you.</p></li>
-<li><p><strong>Min mm</strong> is a readout, not something you fill in. Give it your <strong>Camera</strong>
-resolution (seeded from the loaded video, and editable — the sheet is often for
-a rig that has not recorded yet) and the <strong>Scene width in view</strong>: how wide the
-frame is in millimetres at the animal’s distance. A tag under its minimum is flagged in red.</p></li>
+<li><p><strong>One row per landmark</strong>: columns <code class="docutils literal notranslate"><span class="pre">name</span></code> (or <code class="docutils literal notranslate"><span class="pre">landmark</span></code>), <code class="docutils literal notranslate"><span class="pre">x</span></code>, <code class="docutils literal notranslate"><span class="pre">y</span></code> — and
+optionally <code class="docutils literal notranslate"><span class="pre">z</span></code>, which is ignored.</p></li>
+<li><p><strong>One row per session</strong>: a <code class="docutils literal notranslate"><span class="pre">session</span></code> column plus <code class="docutils literal notranslate"><span class="pre">{landmark}_x</span></code> /
+<code class="docutils literal notranslate"><span class="pre">{landmark}_y</span></code> (and ignored <code class="docutils literal notranslate"><span class="pre">_z</span></code>) columns. You are asked which session row
+to use.</p></li>
 </ul>
-<div class="important admonition">
-<p class="admonition-title">Printing — all four of these decide whether it works</p>
-<ul class="simple">
-<li><p><strong>IMPORTANT: Do not crop the white border.</strong> It is not decoration. The detector finds a
-tag by its black border against a <em>lighter surround</em>, so the printed white
-margin is what lets the same tag work on dark fur or paint as well as on pale
-skin. <strong>Cut in the white, never on the black edge.</strong></p></li>
-<li><p><strong>Print at Actual size / 100%</strong> — never “fit to printable area” or “shrink
-oversized pages”. Every sheet carries a 50 mm rule: measure it with calipers,
-and if it does not read 50 mm, reprint rather than adjusting the size to
-compensate.</p></li>
-<li><p><strong>Matte paper, laser, black cartridge only</strong>, toner-save and edge smoothing
-off. Gloss reflects the light source across the border, inkjet wicks, and
-composite black fringes every module edge.</p></li>
-<li><p><strong>Glue to card</strong> so the tag stays flat. A curled tag is not a quad, and the
-detector has nothing to unwarp.</p></li>
-</ul>
-</div>
-<p>If a small size is important for your rig, measure it rather than trusting the readout:
-print one ID at 2.0, 2.5, 3.0, 4.0 and 5.0 mm, photograph the sheet under the
-rig’s own lighting, and adopt the smallest size that detects on every frame plus
-one step of margin.</p>
 </section>
-<section id="tuning">
-<h2>Tuning<a class="headerlink" href="#tuning" title="Link to this heading">#</a></h2>
-<p><strong>Family</strong> must match what you printed — e.g. a <code class="docutils literal notranslate"><span class="pre">tag16h5</span></code> tag will never decode as
-<code class="docutils literal notranslate"><span class="pre">tag36h11</span></code>.</p>
-<p><strong>Downscale</strong> (<code class="docutils literal notranslate"><span class="pre">quad_decimate</span></code>) is how far the frame is shrunk before tags are
-looked for — the real speed-against-size trade. <code class="docutils literal notranslate"><span class="pre">2.0</span></code> runs several times faster
-and needs tags <strong>twice as big</strong>, which is why EthoGraph defaults it to <code class="docutils literal notranslate"><span class="pre">1.0</span></code>
-while the underlying library ships <code class="docutils literal notranslate"><span class="pre">2.0</span></code>.</p>
-<p><strong>Sharpening</strong> (<code class="docutils literal notranslate"><span class="pre">decode_sharpening</span></code>, default <code class="docutils literal notranslate"><span class="pre">0.25</span></code>) is applied to the sampled
-bit pattern before it is read. Raise it for motion-blurred or slightly
-out-of-focus tags.</p>
-<p><strong>Detect the four corners too</strong> emits each corner as its own keypoint, on top of
-the tag’s centre. It is for when you want the corner <em>positions</em> themselves —
-you do <strong>not</strong> need it for head direction. Orientation comes free with every
-decode, because a tag is a square: see
-<a class="reference internal" href="export.html"><span class="doc">head direction</span></a>.</p>
-<p><strong>Quality threshold</strong>, on the Run panel, is the decode margin as a fraction of a
-good read. A real tag scores about <code class="docutils literal notranslate"><span class="pre">1.0</span></code> and spurious reads on noise score under
-<code class="docutils literal notranslate"><span class="pre">0.15</span></code>, so the default of <code class="docutils literal notranslate"><span class="pre">0.3</span></code> sits in the gap between them. It is applied as
-results are stored, so retuning it costs nothing within a session.</p>
-</section>
-<section id="running-it">
-<h2>Running it<a class="headerlink" href="#running-it" title="Link to this heading">#</a></h2>
-<p>Choose a range and press <strong>Run detector</strong>. The result joins your labels as
-observations; a detection never overwrites a label, and correcting one is just
-clicking it. Runs are cached next to the video as <code class="docutils literal notranslate"><span class="pre">&lt;video&gt;.detections.npz</span></code>, which
-is safe to delete.</p>
-</section>
-<section id="references">
-<h2>References<a class="headerlink" href="#references" title="Link to this heading">#</a></h2>
+<section id="where-it-is-stored-and-what-the-export-writes">
+<h2>Where it is stored, and what the export writes<a class="headerlink" href="#where-it-is-stored-and-what-the-export-writes" title="Link to this heading">#</a></h2>
+<p>The landmark table — cm coordinates and clicks — is user intent, so it is
+saved in <code class="docutils literal notranslate"><span class="pre">&lt;video&gt;.keypoints.json</span></code> beside your labels, exactly like the
+detector’s assignment table. A cm export maps <code class="docutils literal notranslate"><span class="pre">position</span></code> (and everything
+derived from it: velocity and acceleration come out in cm/s and cm/s², the
+heading is rotated into the same frame) through the fit, records
+<code class="docutils literal notranslate"><span class="pre">attrs[&quot;space_unit&quot;]</span> <span class="pre">=</span> <span class="pre">&quot;cm&quot;</span></code> and the matrix itself as <code class="docutils literal notranslate"><span class="pre">attrs[&quot;pixels_to_cm&quot;]</span></code>,
+and retires the y-flip: which way is up is defined by the coordinates you
+entered, not by the image. The video overlay always stays in pixels — it is
+drawn on the pixels.</p>
 </section>
 </section>
-<hr class="footnotes docutils" />
-<aside class="footnote-list brackets">
-<aside class="footnote brackets" id="apriltag" role="doc-footnote">
-<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id1">1</a><span class="fn-bracket">]</span></span>
-<p>Detection runs through <a class="reference external" href="https://github.com/pupil-labs/apriltags">pupil-apriltags</a>, a maintained binding to the reference AprilTag 3 C library (Krogius, Haggenmiller &amp; Olson, IROS 2019). OpenCV renders the printed tags, since <code class="docutils literal notranslate"><span class="pre">pupil-apriltags</span></code> has no generator.</p>
-</aside>
-</aside>
 
 
                 </article>
@@ -631,20 +550,20 @@ is safe to delete.</p>
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="labelling.html"
+       href="detect.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">1-2. Define keypoints and label frames</p>
+        <p class="prev-next-title">3. Detect — optional, if your animals wear tags</p>
       </div>
     </a>
     <a class="right-next"
-       href="calibration.html"
+       href="fill.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">4. Calibrate — optional, for trajectories in cm</p>
+        <p class="prev-next-title">5. Fill</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -667,10 +586,10 @@ is safe to delete.</p>
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#print-the-tags-first">Print the tags first</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#tuning">Tuning</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#running-it">Running it</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#references">References</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#landmarks-are-not-keypoints">Landmarks are not keypoints</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#the-workflow">The workflow</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#loading-coordinates-from-a-file">Loading coordinates from a file</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#where-it-is-stored-and-what-the-export-writes">Where it is stored, and what the export writes</a></li>
 </ul>
   </nav></div>
 
@@ -678,7 +597,7 @@ is safe to delete.</p>
 
   
   <div class="tocsection sourcelink">
-    <a href="../../_sources/advanced/keypoint_labelling/detect.md">
+    <a href="../../_sources/advanced/keypoint_labelling/calibration.md">
       
         <i class="fa-solid fa-file-lines"></i> Show Source
       
