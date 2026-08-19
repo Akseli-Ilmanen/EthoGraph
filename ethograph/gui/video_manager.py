@@ -211,6 +211,34 @@ class VideoManager:
         self.proxy_mgr.proxy_started.connect(lambda s: self._set_proxy_badge(s, "generating"))
         self.proxy_mgr.proxy_failed.connect(lambda s: self._set_proxy_badge(s, "failed"))
         video_area.primary_close_requested.connect(self.close_primary_video)
+        #: Display crop per camera name (see CameraView.set_crop). Session
+        #: state, not saved: re-applied to every view of the camera on each
+        #: trial load, so a crop follows the camera across trial navigation.
+        self._camera_crops: dict[str, tuple[int, int, int, int]] = {}
+
+    # ------------------------------------------------------------------
+    # Display crop (per camera)
+    # ------------------------------------------------------------------
+
+    def camera_crop(self, camera_name: str | None) -> tuple[int, int, int, int] | None:
+        return self._camera_crops.get(str(camera_name)) if camera_name else None
+
+    def set_camera_crop(self, camera_name: str, rect: tuple[int, int, int, int]) -> None:
+        """Crop every view of *camera_name* (now and on later trial loads)."""
+        self._camera_crops[str(camera_name)] = tuple(int(v) for v in rect)
+        self._apply_camera_crop(camera_name)
+
+    def clear_camera_crop(self, camera_name: str) -> None:
+        self._camera_crops.pop(str(camera_name), None)
+        self._apply_camera_crop(camera_name)
+
+    def _apply_camera_crop(self, camera_name: str) -> None:
+        rect = self._camera_crops.get(str(camera_name))
+        views = self.views_for_camera(camera_name)
+        if getattr(self.primary_view, "camera_name", None) == camera_name:
+            views.insert(0, self.primary_view)
+        for view in views:
+            view.set_crop(rect)
 
     @property
     def primary_view(self) -> CameraView:
@@ -531,6 +559,7 @@ class VideoManager:
             return
         view.source_video_path = self.app_state.video_path
         view.decode_video_path = decode
+        view.set_crop(self._camera_crops.get(camera))
         self.refresh_view_title(view)
 
         sync = VideoSync(
@@ -731,6 +760,7 @@ class VideoManager:
         view.camera_name = camera_name
         view.source_video_path = video_path
         view.decode_video_path = decode
+        view.set_crop(self._camera_crops.get(camera_name))
         self.refresh_view_title(view)
 
     def _sync_widget_to_current_time(self, view: CameraView):

@@ -102,6 +102,18 @@ class AppStateSpec:
         "after_s_label": (float, 1.0, True),
         "before_s_sequence": (float, 1.0, True),
         "after_s_sequence": (float, 1.0, True),
+        # Refine-labels dialog (dialog_refine): total seconds of time series
+        # shown around the boundary seed being nudged, seed centred. Decoupled
+        # from the navigation Before/After padding — a reviewing preference,
+        # so global like autoplay_on_navigate.
+        "refine_window_s": (float, 0.5, True),
+        # Refinement bookkeeping (dialog_refine), both SCOPE_LOCAL — they
+        # describe THIS dataset's labels. refine_log: one record per refined
+        # boundary chain (original → latest values, see _record_refinement);
+        # refine_resume: where the last session stood, so the user can jump
+        # back mid-queue after a Stop or restart.
+        "refine_log": (list | None, None, True, SCOPE_LOCAL),
+        "refine_resume": (dict | None, None, True, SCOPE_LOCAL),
         # How the plot x-limits are derived: "interval" (follows slider scope:
         # trial/label/sequence extent + before/after padding) or "fixed"
         # (fixed-size window from t=0). User preference, not tied to how the
@@ -260,6 +272,10 @@ class AppStateSpec:
         # to load is a user choice rather than a constant in pose_fill. Global:
         # it is a property of the machine's models, not of one dataset.
         "labelling_cotracker_checkpoint": (str, "", True),
+        # Where landmark world (cm) coordinates were last imported from (the
+        # Calibrate tab's "Load coordinates…"). Global: one layout file serves
+        # many sessions, and re-importing per session is the workflow.
+        "calibration_coords_path": (str, "", True),
         # Point detection (Detect tab): which detector and how it is tuned. The
         # detections themselves are derived data cached next to the video, and
         # what each detector label *means* is project data in the anchor
@@ -406,6 +422,7 @@ class AppStateSpec:
         "last_browse_dir": "dir",
         "remote_backup_path": "dir",
         "labelling_cotracker_checkpoint": "file",
+        "calibration_coords_path": "file",
     }
 
     @classmethod

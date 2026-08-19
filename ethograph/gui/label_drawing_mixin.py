@@ -5,6 +5,7 @@ from typing import Any, Dict
 
 import numpy as np
 import pyqtgraph as pg
+from qtpy.QtCore import Qt
 
 from ethograph.labels.intervals import EVENT_TYPE_POINT
 
@@ -186,7 +187,7 @@ class LabelDrawingMixin:
             pen=pg.mkPen(
                 color=(*color_rgb, 230),
                 width=_POINT_EVENT_LINE_WIDTH,
-                style=pg.QtCore.Qt.SolidLine,
+                style=Qt.PenStyle.SolidLine,
             ),
             movable=False,
         )
@@ -330,7 +331,7 @@ class LabelDrawingMixin:
                 pen=pg.mkPen(
                     color=(*color_rgb, 255),
                     width=_PENDING_LABEL_LINE_WIDTH,
-                    style=pg.QtCore.Qt.DashLine,
+                    style=Qt.PenStyle.DashLine,
                 ),
                 movable=False,
             )
@@ -445,13 +446,13 @@ class LabelDrawingMixin:
             xmin, xmax = self.current_plot.get_current_xlim()
             visible_range = xmax - xmin
             if visible_range > CP_ZOOM_VERY_OUT_THRESHOLD:
-                return {"style": pg.QtCore.Qt.DotLine, "width": CP_LINE_WIDTH_THIN}
+                return {"style": Qt.PenStyle.DotLine, "width": CP_LINE_WIDTH_THIN}
             elif visible_range > CP_ZOOM_MEDIUM_THRESHOLD:
-                return {"style": pg.QtCore.Qt.DashLine, "width": CP_LINE_WIDTH_MEDIUM}
+                return {"style": Qt.PenStyle.DashLine, "width": CP_LINE_WIDTH_MEDIUM}
             else:
-                return {"style": pg.QtCore.Qt.SolidLine, "width": CP_LINE_WIDTH_THICK}
+                return {"style": Qt.PenStyle.SolidLine, "width": CP_LINE_WIDTH_THICK}
         except (AttributeError, TypeError, ValueError):
-            return {"style": pg.QtCore.Qt.DashLine, "width": CP_LINE_WIDTH_MEDIUM}
+            return {"style": Qt.PenStyle.DashLine, "width": CP_LINE_WIDTH_MEDIUM}
 
     def update_audio_changepoint_styles(self):
         if not self.audio_cp_items:

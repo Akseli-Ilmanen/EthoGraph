@@ -166,6 +166,7 @@ class DataPanel(QWidget):
         pose_layout.setSpacing(DEFAULT_LAYOUT_SPACING)
         pose_layout.setContentsMargins(2, 2, 2, 2)
         self.pose_panel.setLayout(pose_layout)
+        self._create_video_crop_section(pose_layout)
         self._create_pose_section(pose_layout)
         layout.addWidget(self.pose_panel)
 
@@ -310,6 +311,30 @@ class DataPanel(QWidget):
         self.individual_layout.addRow("Recipient:", self.individual_rec_combo)
 
         parent_layout.addWidget(self.individual_groupbox)
+
+    def _create_video_crop_section(self, parent_layout):
+        """Display crop for the clicked camera view (borrowed into the video
+        context of the right sidebar, like the pose group)."""
+        self.videocrop_groupbox = QGroupBox("Crop")
+        row = QHBoxLayout()
+        row.setSpacing(5)
+        row.setContentsMargins(4, 4, 4, 4)
+        self.videocrop_groupbox.setLayout(row)
+
+        self.crop_video_btn = QPushButton("Crop video")
+        self.crop_video_btn.setToolTip(
+            "Show only a rectangular region of this camera's video:\n"
+            "click a corner on the video, drag, then click (or release) again.\n"
+            "The crop is display-only and follows the camera across trials."
+        )
+        row.addWidget(self.crop_video_btn)
+
+        self.uncrop_video_btn = QPushButton("Uncrop video")
+        self.uncrop_video_btn.setToolTip("Show this camera's full video frame again.")
+        row.addWidget(self.uncrop_video_btn)
+        row.addStretch()
+
+        parent_layout.addWidget(self.videocrop_groupbox)
 
     def _create_pose_section(self, parent_layout):
         self.pose_groupbox = QGroupBox("Pose overlay")
@@ -683,7 +708,56 @@ class DataWidget(QWidget):
         panel.label_keypoints_btn.clicked.connect(self.open_keypoint_labelling)
         panel._update_pose_callback = self.update_pose
 
+        self.videocrop_groupbox = panel.videocrop_groupbox
+        panel.crop_video_btn.clicked.connect(self._on_crop_video_clicked)
+        panel.uncrop_video_btn.clicked.connect(self._on_uncrop_video_clicked)
+
         panel.energy_configure_btn.clicked.connect(self._open_energy_params)
+
+    # ------------------------------------------------------------------
+    # Video display crop
+    # ------------------------------------------------------------------
+
+    def _crop_target_view(self):
+        """The camera view the crop buttons act on: the active video panel,
+        falling back to the primary view."""
+        manager = getattr(self.meta_widget, "active_panels", None)
+        reg = getattr(manager, "active", None)
+        if reg is not None and reg.kind == "video" and getattr(reg.widget, "has_video", False):
+            return reg.widget
+        primary = self.video_mgr.primary_view
+        return primary if primary.has_video else None
+
+    def _on_crop_video_clicked(self):
+        view = self._crop_target_view()
+        if view is None:
+            notify("No video is loaded.", "warning")
+            return
+        if view.crop_selection_active:
+            view.cancel_crop_selection()
+            notify("Crop selection cancelled.")
+            return
+        if view.start_crop_selection(lambda rect, v=view: self._on_crop_selected(v, rect)):
+            notify("Click a corner of the region on the video, drag, then click again to crop.")
+
+    def _on_crop_selected(self, view, rect):
+        camera = getattr(view, "camera_name", None)
+        if rect is None or not camera:
+            notify("Crop selection cancelled.", "warning")
+            return
+        self.video_mgr.set_camera_crop(camera, rect)
+        notify(f"Cropped {camera} to {rect[2] - rect[0]}×{rect[3] - rect[1]} px.")
+
+    def _on_uncrop_video_clicked(self):
+        view = self._crop_target_view()
+        if view is not None and view.crop_selection_active:
+            view.cancel_crop_selection()
+        camera = getattr(view, "camera_name", None) if view is not None else None
+        if not camera or self.video_mgr.camera_crop(camera) is None:
+            notify("No crop is set for this camera.", "warning")
+            return
+        self.video_mgr.clear_camera_crop(camera)
+        notify(f"Removed crop from {camera}.")
 
     def populate_keypoints(self, keypoint_names: list[str]) -> None:
         self._keypoint_names = [str(n) for n in keypoint_names]

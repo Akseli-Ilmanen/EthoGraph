@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pyqtgraph as pg
 from numpy.typing import NDArray
-from qtpy.QtCore import Signal
+from qtpy.QtCore import Qt, Signal
 from qtpy.QtGui import QColor
 
 from .app_constants import (
@@ -51,7 +51,7 @@ class RasterPlot(BasePlot):
             axis = self.plot_item.getAxis(axis_name)
             axis.setPen(pg.mkPen(_PHY_AXIS))
             axis.setTextPen(pg.mkPen(_PHY_AXIS))
-        self.time_marker.setPen(pg.mkPen("#FF4444", width=2, style=pg.QtCore.Qt.DotLine))
+        self.time_marker.setPen(pg.mkPen("#FF4444", width=2, style=Qt.PenStyle.DotLine))
 
         self.plot_item.getAxis("left").hide()
 

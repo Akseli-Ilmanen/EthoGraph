@@ -40,6 +40,56 @@ logger = logging.getLogger(__name__)
 # itself every frame, so one full second without a beat is a stall.
 ANIMATE_STALL_S = 1.0
 
+#: Minimum crop side length in image pixels — a thinner rectangle is a
+#: misclick, not a crop.
+MIN_CROP_SIZE_PX = 2
+
+#: z of the crop-selection preview rectangle (above the pose overlay's text).
+_Z_CROP_PREVIEW = 4.0
+
+
+def snap_crop_rect(
+    x0: float, y0: float, x1: float, y1: float, width: float, height: float
+) -> tuple[int, int, int, int] | None:
+    """Normalize a dragged rectangle to whole-pixel edges inside the image.
+
+    Returns ``(x0, y0, x1, y1)`` ints with ``x0 < x1`` and ``y0 < y1`` in image
+    coordinates (y down), each snapped to the closest pixel edge and clamped to
+    the image, or ``None`` when the snapped rectangle is degenerate.
+    """
+    xa, xb = sorted((float(x0), float(x1)))
+    ya, yb = sorted((float(y0), float(y1)))
+    xa = int(np.clip(round(xa), 0, int(width)))
+    xb = int(np.clip(round(xb), 0, int(width)))
+    ya = int(np.clip(round(ya), 0, int(height)))
+    yb = int(np.clip(round(yb), 0, int(height)))
+    if xb - xa < MIN_CROP_SIZE_PX or yb - ya < MIN_CROP_SIZE_PX:
+        return None
+    return (xa, ya, xb, yb)
+
+
+def crop_clip_planes(rect: tuple[int, int, int, int], img_height: float) -> list[tuple[float, float, float, float]]:
+    """pygfx world-space clipping planes hiding everything outside *rect*.
+
+    The video texture is rendered y-flipped (world y up), so the image-space
+    rows ``[y0, y1]`` become world y ``[img_height - y1, img_height - y0]``.
+
+    Sign convention per pygfx's ``clipping_planes.wgsl`` (mode "ANY"): a
+    fragment is DISCARDED where ``dot(world_pos, plane.xyz) < plane.w`` —
+    i.e. kept where ``ax + by + cz >= d``. Note ``d`` is a threshold on the
+    dot product, NOT the ``+d`` of the plane-equation convention the material
+    docstring suggests; with that sign flipped the right/top planes exclude
+    the entire image and the video disappears.
+    """
+    x0, y0, x1, y1 = (float(v) for v in rect)
+    bottom, top = img_height - y1, img_height - y0
+    return [
+        (1.0, 0.0, 0.0, x0),  # keep x >= x0
+        (-1.0, 0.0, 0.0, -x1),  # keep x <= x1
+        (0.0, 1.0, 0.0, bottom),  # keep world y >= bottom
+        (0.0, -1.0, 0.0, -top),  # keep world y <= top
+    ]
+
 
 def _present_disarmed(canvas) -> bool:
     """True when :func:`_disarm_present` has neutralised this canvas.
@@ -191,6 +241,12 @@ class CameraView(QWidget):
         #: Active keypoint labelling mode (ethograph.gui.pose_edit_mixin), if any.
         self._label_mode = None
         self._pan_control = None  # saved controls["mouse1"] while labelling
+        #: Display crop ``(x0, y0, x1, y1)`` in image pixels (y down), or None.
+        self._crop: tuple[int, int, int, int] | None = None
+        #: Callback receiving the selected crop rect (rectangle tool armed).
+        self._crop_select_cb = None
+        self._crop_anchor: tuple[float, float] | None = None
+        self._crop_preview: Optional[gfx.Line] = None
         #: Set for static-image views: source file + fps of the pose shown on top.
         self.static_image_path: Optional[str] = None
         self.static_pose_fps: float = 0.0
@@ -453,12 +509,24 @@ class CameraView(QWidget):
 
     def _on_pointer_down(self, event=None) -> None:
         self.clicked.emit()
+        if self._crop_select_cb is not None:
+            self._handle_crop_press(event)
+            return
         self._dispatch_label(event, "handle_click")
 
     def _on_pointer_move(self, event=None) -> None:
+        if self._crop_select_cb is not None:
+            if self._crop_anchor is not None and event is not None:
+                xy = self.screen_to_image(event.x, event.y)
+                if xy is not None:
+                    self._update_crop_preview(xy)
+            return
         self._dispatch_label(event, "handle_move")
 
     def _on_pointer_up(self, event=None) -> None:
+        if self._crop_select_cb is not None:
+            self._handle_crop_release(event)
+            return
         self._dispatch_label(event, "handle_release")
 
     def _dispatch_label(self, event, method: str) -> None:
@@ -611,6 +679,143 @@ class CameraView(QWidget):
         self.request_draw()
 
     # ------------------------------------------------------------------
+    # Display crop
+    # ------------------------------------------------------------------
+
+    @property
+    def crop(self) -> tuple[int, int, int, int] | None:
+        return self._crop
+
+    @property
+    def crop_selection_active(self) -> bool:
+        return self._crop_select_cb is not None
+
+    def set_crop(self, rect: tuple[int, int, int, int] | None) -> None:
+        """Show only *rect* — ``(x0, y0, x1, y1)`` image pixels, y down — of the
+        video; ``None`` reverts to the full frame.
+
+        Display-only: the pixels outside are hidden with world-space clipping
+        planes on the image material and the camera is framed on the rect, so
+        the decoder, frame math and pose overlay are untouched.
+        """
+        self._crop = tuple(int(v) for v in rect) if rect is not None else None
+        plot = self._plot
+        if plot is None:
+            return
+        material = plot.image.material
+        if self._crop is None:
+            if material.clipping_plane_count:
+                material.clipping_planes = []
+                self._fit_image_to_canvas(plot)
+            return
+        h = float(plot.texture.size[1])
+        material.clipping_planes = crop_clip_planes(self._crop, h)
+        x0, y0, x1, y1 = self._crop
+        try:
+            plot.camera.show_rect(x0, x1, h - y1, h - y0)
+            plot.controller.renderer_request_draw()
+        except Exception:  # noqa: BLE001 - framing is best-effort
+            pass
+
+    def start_crop_selection(self, on_done) -> bool:
+        """Arm the rectangle tool: click a corner, drag, click (or release)
+        again to select. *on_done* receives the snapped rect, or ``None`` for a
+        degenerate selection. Panning moves to ``Shift`` + left-drag meanwhile.
+        Returns False when no video is loaded."""
+        if self._plot is None:
+            return False
+        self.cancel_crop_selection()
+        self._crop_select_cb = on_done
+        self._bind_pan_to_shift(True)
+        return True
+
+    def cancel_crop_selection(self) -> None:
+        if self._crop_select_cb is None:
+            return
+        self._crop_select_cb = None
+        self._crop_anchor = None
+        self._remove_crop_preview()
+        # Left-drag goes back to whoever held it before the tool was armed.
+        self._bind_pan_to_shift(self._label_mode is not None and not self._label_mode.locked)
+
+    def _handle_crop_press(self, event) -> None:
+        # Modified presses belong to the camera (Shift+drag pans, see
+        # _dispatch_label for the same rule while labelling).
+        if event is None or getattr(event, "button", 1) != 1 or getattr(event, "modifiers", ()):
+            return
+        xy = self.screen_to_image(event.x, event.y)
+        if xy is None:
+            return
+        if self._crop_anchor is None:
+            self._crop_anchor = xy
+            self._update_crop_preview(xy)
+        else:
+            self._finish_crop_selection(xy)
+
+    def _handle_crop_release(self, event) -> None:
+        """Finish on release only after a real two-dimensional drag.
+
+        A release still near the anchor is the first half of the two-click
+        gesture — the selection stays armed and the next click finishes it.
+        """
+        if self._crop_anchor is None or event is None or getattr(event, "button", 1) != 1:
+            return
+        xy = self.screen_to_image(event.x, event.y)
+        if xy is None:
+            return
+        min_drag = 5.0 * self.image_units_per_pixel()
+        ax, ay = self._crop_anchor
+        if abs(xy[0] - ax) >= min_drag and abs(xy[1] - ay) >= min_drag:
+            self._finish_crop_selection(xy)
+
+    def _finish_crop_selection(self, xy: tuple[float, float]) -> None:
+        cb = self._crop_select_cb
+        ax, ay = self._crop_anchor
+        w = float(self._plot.texture.size[0])
+        h = float(self._plot.texture.size[1])
+        rect = snap_crop_rect(ax, ay, xy[0], xy[1], w, h)
+        self.cancel_crop_selection()
+        cb(rect)
+
+    def _update_crop_preview(self, xy: tuple[float, float]) -> None:
+        scene = self.scene()
+        if scene is None or self._crop_anchor is None:
+            return
+        ax, ay = self._crop_anchor
+        x0, x1 = sorted((ax, xy[0]))
+        y0, y1 = sorted((ay, xy[1]))
+        h = self.image_height()
+        pts = np.array(
+            [
+                [x0, h - y0, _Z_CROP_PREVIEW],
+                [x1, h - y0, _Z_CROP_PREVIEW],
+                [x1, h - y1, _Z_CROP_PREVIEW],
+                [x0, h - y1, _Z_CROP_PREVIEW],
+                [x0, h - y0, _Z_CROP_PREVIEW],
+            ],
+            dtype=np.float32,
+        )
+        if self._crop_preview is None:
+            self._crop_preview = gfx.Line(
+                gfx.Geometry(positions=pts),
+                gfx.LineMaterial(thickness=2.0, color="#2ecc71"),
+            )
+            scene.add(self._crop_preview)
+        else:
+            self._crop_preview.geometry.positions.data[:] = pts
+            self._crop_preview.geometry.positions.update_full()
+        self.request_draw()
+
+    def _remove_crop_preview(self) -> None:
+        if self._crop_preview is None:
+            return
+        scene = self.scene()
+        if scene is not None:
+            scene.remove(self._crop_preview)
+        self._crop_preview = None
+        self.request_draw()
+
+    # ------------------------------------------------------------------
     # Seeking
     # ------------------------------------------------------------------
 
@@ -726,6 +931,7 @@ class CameraView(QWidget):
         while keeping the plot itself. The half of :meth:`clear` that a reusing
         :meth:`set_video` still needs; the overlay is rebuilt lazily by
         :meth:`ensure_overlay` on the same scene."""
+        self.cancel_crop_selection()
         self.set_label_mode(None)
         if self._overlay is not None:
             self._overlay.clear()
@@ -733,6 +939,7 @@ class CameraView(QWidget):
 
     def clear(self) -> None:
         self._detach_load_state()
+        self._crop = None
         if self._plot is not None:
             _detach_canvas(self.layout(), self._plot.canvas)
             try:

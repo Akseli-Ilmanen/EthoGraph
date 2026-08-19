@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 from qtpy.QtCore import Qt
@@ -26,7 +27,6 @@ from ethograph.io.time_model import (
     TimeRange,
     build_label_window,
     build_sequence_window,
-    find_closest_trial,
     trial_start_range,
 )
 from ethograph.utils.sequences import get_label_instances, match_sequences
@@ -187,69 +187,6 @@ class NavigationWidget(QWidget):
 
         navigate_layout.addWidget(self._stack)
 
-        # Slider scope
-        scope_row = QHBoxLayout()
-        scope_row.addWidget(QLabel("Slider scope:"))
-        self.scope_combo = QComboBox()
-        self.scope_combo.setObjectName("slider_scope_combo")
-        self.scope_combo.addItems(SLIDER_SCOPES)
-        self.scope_combo.currentTextChanged.connect(self._on_scope_changed)
-        scope_row.addWidget(self.scope_combo, stretch=1)
-        navigate_layout.addLayout(scope_row)
-
-        # X-limits mode: slider-scope-based or fixed window
-        xlim_row = QHBoxLayout()
-        xlim_row.addWidget(QLabel("X-limits:"))
-        self.xlim_combo = QComboBox()
-        self.xlim_combo.setObjectName("xlim_mode_combo")
-        self.xlim_combo.addItems(XLIM_MODES)
-        self.xlim_combo.setToolTip(
-            "Slider scope: x-limits follow the slider scope's interval\n"
-            "(trial period / label / sequence) plus Before/After padding.\n"
-            "Fixed window: x-limits span a fixed-size window from t=0."
-        )
-        self.xlim_combo.currentTextChanged.connect(self._on_xlim_mode_changed)
-        xlim_row.addWidget(self.xlim_combo, stretch=1)
-        navigate_layout.addLayout(xlim_row)
-
-        # Before / After padding (interval mode only)
-        self.interval_pad_widget = QWidget()
-        ba_row = QHBoxLayout(self.interval_pad_widget)
-        ba_row.setContentsMargins(0, 0, 0, 0)
-        ba_row.addWidget(QLabel("Before:"))
-        self.before_spin = QDoubleSpinBox()
-        self.before_spin.setRange(0.0, 600.0)
-        self.before_spin.setSingleStep(0.5)
-        self.before_spin.setSuffix(" s")
-        self.before_spin.setValue(app_state.get_with_default("before_s_trial"))
-        self.before_spin.valueChanged.connect(self._on_before_after_changed)
-        ba_row.addWidget(self.before_spin)
-        ba_row.addWidget(QLabel("After:"))
-        self.after_spin = QDoubleSpinBox()
-        self.after_spin.setRange(0.0, 600.0)
-        self.after_spin.setSingleStep(0.5)
-        self.after_spin.setSuffix(" s")
-        self.after_spin.setValue(app_state.get_with_default("after_s_trial"))
-        self.after_spin.valueChanged.connect(self._on_before_after_changed)
-        ba_row.addWidget(self.after_spin)
-        navigate_layout.addWidget(self.interval_pad_widget)
-
-        # Window size (fixed mode only)
-        self.fixed_window_widget = QWidget()
-        fw_row = QHBoxLayout(self.fixed_window_widget)
-        fw_row.setContentsMargins(0, 0, 0, 0)
-        fw_row.addWidget(QLabel("Window size:"))
-        self.fixed_window_spin = QDoubleSpinBox()
-        self.fixed_window_spin.setObjectName("fixed_window_spin")
-        self.fixed_window_spin.setRange(0.1, 36000.0)
-        self.fixed_window_spin.setSingleStep(1.0)
-        self.fixed_window_spin.setDecimals(1)
-        self.fixed_window_spin.setSuffix(" s")
-        self.fixed_window_spin.setValue(app_state.get_with_default("fixed_window_s"))
-        self.fixed_window_spin.valueChanged.connect(self._on_fixed_window_changed)
-        fw_row.addWidget(self.fixed_window_spin, stretch=1)
-        navigate_layout.addWidget(self.fixed_window_widget)
-
         # Auto-play checkbox (global preference, remembered across datasets)
         self.autoplay_checkbox = QCheckBox("Auto-play on navigate")
         self.autoplay_checkbox.setToolTip("Start playback from onset when navigating to next item")
@@ -264,6 +201,10 @@ class NavigationWidget(QWidget):
         self.jump_time_spin.setRange(0.0, 1e8)
         self.jump_time_spin.setDecimals(3)
         self.jump_time_spin.setSuffix(" s")
+        self.jump_time_spin.setToolTip(
+            "Time on the plot's x-axis (trial-relative, or session-absolute\n"
+            "under session scope) — the same clock the time marker reads."
+        )
         jump_row.addWidget(self.jump_time_spin, stretch=1)
         jump_btn = QPushButton("Go")
         jump_btn.setFixedWidth(40)
@@ -289,8 +230,79 @@ class NavigationWidget(QWidget):
         # Playback controls (mode / FPS / center / hide-label / rotate) now
         # live in the bottom playback bar; screen recording is in Tools menu.
 
+        # ── Time window (slider scope + x-limits) ───────────────────
+        time_window_group = QGroupBox("Time window")
+        time_window_layout = QVBoxLayout()
+        time_window_layout.setSpacing(2)
+        time_window_layout.setContentsMargins(2, 2, 2, 2)
+        time_window_group.setLayout(time_window_layout)
+
+        # Slider scope
+        scope_row = QHBoxLayout()
+        scope_row.addWidget(QLabel("Slider scope:"))
+        self.scope_combo = QComboBox()
+        self.scope_combo.setObjectName("slider_scope_combo")
+        self.scope_combo.addItems(SLIDER_SCOPES)
+        self.scope_combo.currentTextChanged.connect(self._on_scope_changed)
+        scope_row.addWidget(self.scope_combo, stretch=1)
+        time_window_layout.addLayout(scope_row)
+
+        # X-limits mode: slider-scope-based or fixed window
+        xlim_row = QHBoxLayout()
+        xlim_row.addWidget(QLabel("X-limits:"))
+        self.xlim_combo = QComboBox()
+        self.xlim_combo.setObjectName("xlim_mode_combo")
+        self.xlim_combo.addItems(XLIM_MODES)
+        self.xlim_combo.setToolTip(
+            "Slider scope: x-limits follow the slider scope's interval\n"
+            "(trial period / label / sequence) plus Before/After padding.\n"
+            "Fixed window: x-limits span a fixed-size window from t=0."
+        )
+        self.xlim_combo.currentTextChanged.connect(self._on_xlim_mode_changed)
+        xlim_row.addWidget(self.xlim_combo, stretch=1)
+        time_window_layout.addLayout(xlim_row)
+
+        # Before / After padding (interval mode only)
+        self.interval_pad_widget = QWidget()
+        ba_row = QHBoxLayout(self.interval_pad_widget)
+        ba_row.setContentsMargins(0, 0, 0, 0)
+        ba_row.addWidget(QLabel("Before:"))
+        self.before_spin = QDoubleSpinBox()
+        self.before_spin.setRange(0.0, 600.0)
+        self.before_spin.setSingleStep(0.5)
+        self.before_spin.setSuffix(" s")
+        self.before_spin.setValue(app_state.get_with_default("before_s_trial"))
+        self.before_spin.valueChanged.connect(self._on_before_after_changed)
+        ba_row.addWidget(self.before_spin)
+        ba_row.addWidget(QLabel("After:"))
+        self.after_spin = QDoubleSpinBox()
+        self.after_spin.setRange(0.0, 600.0)
+        self.after_spin.setSingleStep(0.5)
+        self.after_spin.setSuffix(" s")
+        self.after_spin.setValue(app_state.get_with_default("after_s_trial"))
+        self.after_spin.valueChanged.connect(self._on_before_after_changed)
+        ba_row.addWidget(self.after_spin)
+        time_window_layout.addWidget(self.interval_pad_widget)
+
+        # Window size (fixed mode only)
+        self.fixed_window_widget = QWidget()
+        fw_row = QHBoxLayout(self.fixed_window_widget)
+        fw_row.setContentsMargins(0, 0, 0, 0)
+        fw_row.addWidget(QLabel("Window size:"))
+        self.fixed_window_spin = QDoubleSpinBox()
+        self.fixed_window_spin.setObjectName("fixed_window_spin")
+        self.fixed_window_spin.setRange(0.1, 36000.0)
+        self.fixed_window_spin.setSingleStep(1.0)
+        self.fixed_window_spin.setDecimals(1)
+        self.fixed_window_spin.setSuffix(" s")
+        self.fixed_window_spin.setValue(app_state.get_with_default("fixed_window_s"))
+        self.fixed_window_spin.valueChanged.connect(self._on_fixed_window_changed)
+        fw_row.addWidget(self.fixed_window_spin, stretch=1)
+        time_window_layout.addWidget(self.fixed_window_widget)
+
         # ── Assemble ─────────────────────────────────────────────────
         main_layout.addWidget(navigate_group)
+        main_layout.addWidget(time_window_group)
         self.setLayout(main_layout)
 
         # Restore saved modes
@@ -816,7 +828,28 @@ class NavigationWidget(QWidget):
         if not self._label_instances:
             return
         idx = self.app_state.label_instance_idx
-        inst = self._label_instances[idx]
+        self.jump_to_label_instance(self._label_instances[idx])
+
+    def jump_to_label_instance(
+        self,
+        inst: dict,
+        *,
+        seek_rel: float | None = None,
+        play: bool | None = None,
+        view_rel: TimeRange | None = None,
+    ):
+        """Jump to one label instance — the label-mode navigation path, callable
+        with an instance dict from anywhere (label mode itself, refine dialog).
+
+        *inst* needs ``trial``/``onset_s``/``offset_s``, plus an optional
+        ``row_idx`` (positional row in ``_all_labels_df``) for the restriction
+        window. *seek_rel* seeks the marker/video to that trial-relative time
+        instead of the onset; *play* overrides the auto-play checkbox.
+        *view_rel* is an explicit trial-relative view window that replaces the
+        before/after padding AND the fixed-window mode for both the restriction
+        window and the viewport (refine dialog: a small seed-centred window,
+        deliberately decoupled from the navigation spinners).
+        """
         trial_id = inst["trial"]
 
         if getattr(self.app_state, "trials_sel", None) != trial_id:
@@ -829,13 +862,27 @@ class NavigationWidget(QWidget):
         self._update_counter()
         onset_s = float(inst["onset_s"])
         offset_s = float(inst["offset_s"])
+        offset_finite = math.isfinite(offset_s)
+        if not offset_finite:
+            # Point events carry no offset — center on the instant itself.
+            offset_s = onset_s
         # Publish the window BEFORE moving the view, so window_bounds (zoom
         # limits, loader queries, ephys restriction) describes what's shown.
         # In fixed x-limits mode _center_and_maybe_play overwrites this with
         # the fixed window — also correct.
         df = getattr(self.app_state, "_all_labels_df", None)
         tb = self.app_state.trial_bounds
-        if df is not None and tb is not None and "row_idx" in inst:
+        if view_rel is not None:
+            # The restriction spans the view and the whole label, so zoom
+            # limits and loader queries cover both.
+            core = TimeRange(min(view_rel.start_s, onset_s), max(view_rel.end_s, offset_s))
+            self.app_state.restrict_window = RestrictionWindow(
+                mode="label",
+                time_range=core,
+                core_range=core,
+                trial_id=trial_id,
+            )
+        elif df is not None and tb is not None and inst.get("row_idx") is not None and offset_finite:
             self.app_state.restrict_window = build_label_window(
                 df,
                 int(inst["row_idx"]),
@@ -843,7 +890,22 @@ class NavigationWidget(QWidget):
                 extra_t0=self.before_spin.value(),
                 extra_t1=self.after_spin.value(),
             )
-        self._center_and_maybe_play(onset_s, offset_s, trial_id)
+        self._center_and_maybe_play(onset_s, offset_s, trial_id, play=play, seek_rel=seek_rel, view_rel=view_rel)
+
+    def set_view_range(self, trial_id, view_rel: TimeRange):
+        """Set the plot x-range to a trial-relative window in *trial_id*."""
+        if self.plot_container is None:
+            return
+        self.plot_container._apply_all_zoom_constraints()
+        master = getattr(self.plot_container, "_xlink_master", None) or getattr(
+            self.plot_container, "_feature_plot", None
+        )
+        if master is not None:
+            master.vb.setXRange(
+                self.app_state.to_display(trial_id, view_rel.start_s),
+                self.app_state.to_display(trial_id, view_rel.end_s),
+                padding=0,
+            )
 
     # ==================================================================
     # Sequence mode
@@ -937,12 +999,24 @@ class NavigationWidget(QWidget):
     # Center view + auto-play
     # ==================================================================
 
-    def _center_and_maybe_play(self, onset_rel: float, offset_rel: float, trial_id=None):
+    def _center_and_maybe_play(
+        self,
+        onset_rel: float,
+        offset_rel: float,
+        trial_id=None,
+        *,
+        play: bool | None = None,
+        seek_rel: float | None = None,
+        view_rel: TimeRange | None = None,
+    ):
         """Center view on a trial-relative interval + context, seek to onset, optionally play.
 
         *onset_rel*/*offset_rel* are trial-relative times in *trial_id*
         (default: the current trial); conversion to the plot axis's clock
-        happens here, once, via the display-basis authority.
+        happens here, once, via the display-basis authority. *play* overrides
+        the auto-play checkbox; *seek_rel* seeks to that trial-relative time
+        (nearest frame) instead of the onset; *view_rel* is an explicit view
+        window overriding both the before/after padding and fixed-window mode.
         """
         if self.plot_container is None:
             return
@@ -950,12 +1024,15 @@ class NavigationWidget(QWidget):
             trial_id = getattr(self.app_state, "trials_sel", None)
         onset_s = self.app_state.to_display(trial_id, onset_rel)
         offset_s = self.app_state.to_display(trial_id, offset_rel)
+        seek_s = self.app_state.to_display(trial_id, seek_rel) if seek_rel is not None else onset_s
 
         master = getattr(self.plot_container, "_xlink_master", None) or getattr(
             self.plot_container, "_feature_plot", None
         )
 
-        if self.app_state.get_with_default("xlim_mode") == "fixed":
+        if view_rel is not None:
+            self.set_view_range(trial_id, view_rel)
+        elif self.app_state.get_with_default("xlim_mode") == "fixed":
             # Fixed window: anchor at the navigated interval's onset for
             # label/sequence navigation and whenever the axis is
             # session-absolute (else a trial change would fling the window
@@ -974,13 +1051,20 @@ class NavigationWidget(QWidget):
             if master is not None:
                 master.vb.setXRange(onset_s - extra_t0, offset_s + extra_t1, padding=0)
 
-        self.plot_container.update_time_marker_by_time(onset_s)
+        self.plot_container.update_time_marker_by_time(seek_s)
 
+        do_play = self.autoplay_checkbox.isChecked() if play is None else play
         video = getattr(self.app_state, "video", None)
-        if video is not None and not self.autoplay_checkbox.isChecked():
-            video.seek_to_frame(video.time_to_frame(onset_s))
+        if video is not None and not do_play:
+            # An explicit seek target lands on the *nearest* frame (refine mode
+            # steps off it frame-by-frame); the default onset seek keeps its
+            # original truncating conversion.
+            if seek_rel is not None:
+                video.seek_to_frame(video.time_to_frame(seek_s, round_nearest=True))
+            else:
+                video.seek_to_frame(video.time_to_frame(onset_s))
 
-        if self.autoplay_checkbox.isChecked():
+        if do_play:
             self._play_interval(onset_s, offset_s)
 
     def _play_interval(self, onset_s: float, offset_s: float):
@@ -1008,23 +1092,21 @@ class NavigationWidget(QWidget):
     # ==================================================================
 
     def _on_jump_to_time(self):
-        trials = getattr(self.app_state, "trials", None)
-        sc = getattr(self.app_state, "source_collection", None)
-        global_t = self.jump_time_spin.value()
+        """Jump to a time on the plot's x-axis — the same clock the marker reads.
 
-        hit = sc.to_trial(global_t) if sc is not None and sc.n_trials > 0 else None
-        if hit is None:
-            # No trial bookmarks — fall back to the alignment table lookup.
-            sio = getattr(self.app_state, "nwb_alignment", None)
-            if sio is None or not trials:
-                notify("Cannot jump: no trial timing info", severity="warning")
-                return
-            try:
-                hit = find_closest_trial(sio, trials, global_t)
-            except ValueError:
-                notify("Cannot jump: no trial timing info", severity="warning")
-                return
-        trial_id, rel_t = hit
+        Goes through ``app_state.from_display`` (the display-basis authority,
+        see the "one clock rule" in CLAUDE.md) rather than hand-rolling a
+        session-absolute lookup: under trial scope the axis is trial-relative,
+        so a raw ``SourceCollection.to_trial`` call — which only understands
+        session-absolute time — jumped to the wrong place (or the wrong
+        trial entirely) for the common, non-session case.
+        """
+        t_display = self.jump_time_spin.value()
+        hit = self.app_state.from_display(t_display)
+        if hit is None or hit[0] is None:
+            notify("Cannot jump: no trial timing info", severity="warning")
+            return
+        trial_id, _rel_t = hit
 
         if trial_id != getattr(self.app_state, "trials_sel", None):
             self.app_state.trials_sel = trial_id
@@ -1034,7 +1116,7 @@ class NavigationWidget(QWidget):
             self.app_state.trial_changed.emit()
             self._update_counter()
 
-        self._seek_to_time(self.app_state.to_display(trial_id, max(0.0, rel_t)))
+        self._seek_to_time(t_display)
 
     def _seek_to_time(self, time_s: float):
         """Move the time marker (and video) to *time_s*, scrolling it into view."""
@@ -1085,16 +1167,19 @@ class NavigationWidget(QWidget):
         return (t0 + t1) / 2.0
 
     def _step_window(self, direction: int):
-        """Jump one view span, clamped to the navigable extent (Shift+←/→).
+        """Jump by the "Jump step" size, clamped to the navigable extent (Shift+←/→).
 
         Goes through :meth:`_seek_to_time`, which moves the marker, scrolls the
         window and seeks the video — the previous implementation called a
         ``_step_time_no_video`` helper and a ``plot_container.time_slider`` that
-        both went away with the bottom bar, so this raised AttributeError.
+        both went away with the bottom bar, so this raised AttributeError. A
+        later refactor stepped by ``view_span`` (the whole visible window)
+        instead, which silently orphaned the "Jump step" spinbox — it kept
+        writing ``app_state.time_jump_s`` but nothing read it back.
         """
         if not self.app_state.ready:
             return
-        span = self.app_state.view_span
+        span = self.app_state.get_with_default("time_jump_s")
         current = self._current_time()
         if span <= 0 or current is None:
             return

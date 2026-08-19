@@ -552,33 +552,6 @@ def trial_start_range(nwb_alignment, trial_id) -> TimeRange | None:
     return TimeRange(0.0, float(min(next_starts)) - start)
 
 
-def find_closest_trial(nwb_alignment, trials: list, global_time: float) -> tuple[int | str, float]:
-    """Given a session-absolute time, find the enclosing trial.
-
-    Returns ``(trial_id, trial_relative_time)``.
-    """
-    ep = nwb_alignment.trials_ep
-    if ep is None:
-        raise ValueError("No trial timing information available")
-
-    starts = np.asarray(ep.start)
-    ends = np.asarray(ep.end)
-    mask = (starts <= global_time) & (global_time <= ends)
-
-    if mask.any():
-        idx = int(np.argmax(mask))
-    else:
-        dists = np.minimum(
-            np.abs(starts - global_time),
-            np.abs(ends - global_time),
-        )
-        idx = int(np.argmin(dists))
-
-    trial_id = trials[idx]
-    trial_start = float(starts[idx])
-    return trial_id, global_time - trial_start
-
-
 def restrict_xarray(
     ds: xr.Dataset,
     time_range: TimeRange,

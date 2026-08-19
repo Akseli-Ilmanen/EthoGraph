@@ -1553,7 +1553,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         if time_coord is None:
             time_coord = self.app_state.time_coord.values
 
-        item = pg.PlotCurveItem(pen=pg.mkPen(color="k", width=2, style=pg.QtCore.Qt.DashLine))
+        item = pg.PlotCurveItem(pen=pg.mkPen(color="k", width=2, style=Qt.PenStyle.DashLine))
         self.overlay_manager.add_scaled_overlay(
             "confidence",
             self.current_plot,

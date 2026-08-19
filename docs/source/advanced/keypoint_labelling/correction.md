@@ -1,5 +1,5 @@
 (target-correction-loop)=
-# 5. The correction loop
+# 6. The correction loop
 
 The fill is a first draft. The loop that makes it accurate:
 

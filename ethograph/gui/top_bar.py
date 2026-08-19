@@ -114,10 +114,9 @@ class TopBarBuilder:
         self.meta = shell.meta_widget
         self.app_state = getattr(self.meta, "app_state", None)
         self._open_popups: dict[str, SectionPopup] = {}
-        #: The tag sheet, kept only while it is open — a closed one is rebuilt
-        #: so it always reopens on the current video's resolution and the tag
-        #: family the Detect tab is set to.
-        self._tag_sheet = None
+        #: Refine-labels dialog, rebuilt when reopened so its label list and
+        #: individuals always reflect the currently loaded labels.
+        self._refine_dialog = None
 
     # ------------------------------------------------------------------
     # Public entry point
@@ -147,10 +146,12 @@ class TopBarBuilder:
         self._record_controller.state_changed.connect(self._on_record_state)
 
         menu.addSeparator()
+        # Boundary refinement: existing labels become seeds the user nudges
+        # frame-by-frame — the exception to ethograph's plot-first labelling.
+        menu.addAction("Refine labels frame-by-frame…", self._open_refine_labels)
+
+        menu.addSeparator()
         menu.addAction("Keypoint labelling…", self._open_keypoint_labelling)
-        # Printing tags is its own errand — it happens once, before any video
-        # exists — so it is reachable without opening the labelling dialog.
-        menu.addAction("Print tag sheet…", self._open_tag_sheet)
 
         menu.addSeparator()
         # Escape hatch for a frozen video image (dead pynaviz render chain):
@@ -179,30 +180,21 @@ class TopBarBuilder:
         if open_dialog is not None:
             open_dialog()
 
+    def _open_refine_labels(self):
+        """Open the frame-by-frame label refinement dialog."""
+        from .dialog_refine import RefineLabelsDialog
+
+        if self._refine_dialog is None or not self._refine_dialog.isVisible():
+            self._refine_dialog = RefineLabelsDialog(self.meta, parent=self.shell)
+        self._refine_dialog.show()
+        self._refine_dialog.raise_()
+        self._refine_dialog.activateWindow()
+
     def _reset_video_view(self):
         """Rebuild the primary video panel — recovery for a frozen image."""
         vm = getattr(getattr(self.meta, "data_widget", None), "video_mgr", None)
         if vm is not None:
             vm.reset_primary_video()
-
-    def _open_tag_sheet(self):
-        """Open the fiducial tag sheet, sized against the loaded video."""
-        from .dialog_tag_sheet import TagSheetDialog
-
-        if self.app_state is None:
-            return
-        if self._tag_sheet is None or not self._tag_sheet.isVisible():
-            from .pose_fill import video_size
-
-            # Seeded from the video FILE when one is loaded — never from what is
-            # on screen, which may be a low-resolution proxy.
-            path = getattr(self.app_state, "video_path", None)
-            size = video_size(path) if path else None
-            self._tag_sheet = TagSheetDialog(
-                self.app_state, image_width_px=size[0] if size else None, parent=self.shell
-            )
-        self._tag_sheet.show()
-        self._tag_sheet.raise_()
 
     def _on_record_state(self, state: str):
         """Relabel the single Tools entry as the recorder changes state."""

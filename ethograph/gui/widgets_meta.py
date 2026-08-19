@@ -286,6 +286,7 @@ class MetaWidget(GridSectionContainer):
             "individual": getattr(dp, "individual_groupbox", None),
             "coords": getattr(dp, "coords_groupbox", None),
             "slot": getattr(dp, "slot_groupbox", None),
+            "videocrop": getattr(dp, "videocrop_groupbox", None),
             "pose": getattr(dp, "pose_groupbox", None),
             "energy": getattr(dp, "energy_group", None),
             "audiochannel": getattr(ps, "audio_channel_group", None),

@@ -414,7 +414,7 @@ class EphysTracePlot(BasePlot):
             axis = self.plot_item.getAxis(axis_name)
             axis.setPen(pg.mkPen(_PHY_AXIS))
             axis.setTextPen(pg.mkPen(_PHY_AXIS))
-        self.time_marker.setPen(pg.mkPen("#FF4444", width=2, style=pg.QtCore.Qt.DotLine))
+        self.time_marker.setPen(pg.mkPen("#FF4444", width=2, style=Qt.PenStyle.DotLine))
 
         self.setLabel("left", "Amplitude")
 

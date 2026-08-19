@@ -35,9 +35,8 @@ a few more distinguishable IDs.
 ## Print the tags first
 
 The sheet is made on the **start page**, under **🛠 Pre-recording tools ▸ Print
-tag sheet…** (also **Tools ▸ Print tag sheet…** once a dataset is open) — by the
-time you are tuning a detector the tags are already on the animals. It produces
-a print-ready vector PDF at a size given in millimetres.
+tag sheet…** — by the time you are tuning a detector the tags are already on
+the animals. It produces a print-ready vector PDF at a size given in millimetres.
 
 A sheet is a table of **rows**, so one page can mix sizes and families — a
 handful of big tags and many small ones is the usual rig.
