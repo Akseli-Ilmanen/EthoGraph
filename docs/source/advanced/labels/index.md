@@ -7,6 +7,7 @@ tools, and exporting to TSV / Crowsetta formats.
 :maxdepth: 1
 
 labelling_gui
+refining
 mapping
 branches
 importing

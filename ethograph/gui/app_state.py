@@ -1447,6 +1447,27 @@ class ObservableAppState(QObject):
             logger.error("Error deleting YAML file: %s", e)
             return False
 
+    def reset_local_settings(self) -> bool:
+        """Reset this dataset's SCOPE_LOCAL settings to defaults.
+
+        Deletes ``.ethograph/local_settings.yaml`` AND resets the in-memory
+        local vars — deleting the file alone would be undone by the next
+        auto-save, which writes local settings from live state.
+        """
+        path = self._local_settings_path()
+        if path is None:
+            return False
+        deleted = self.delete_yaml(str(path))
+        for var in AppStateSpec.saveable_attributes(scope=AppStateSpec.SCOPE_LOCAL):
+            setattr(self, var, AppStateSpec.get_default(var))
+        for attr in list(dir(self)):
+            if attr.endswith("_sel") or attr.endswith("_sel_previous"):
+                try:
+                    delattr(self, attr)
+                except AttributeError:
+                    pass
+        return deleted
+
     def stop_auto_save(self):
         if self._auto_save_timer.isActive():
             self._auto_save_timer.stop()

@@ -1188,7 +1188,9 @@ class IOWidget(QWidget):
     def _on_reset_gui_clicked(self):
         self.downsample_checkbox.setChecked(False)
         self.import_labels_checkbox.setChecked(False)
-        self.app_state.delete_yaml()
+        # Global scope only — Help ▸ "Reset local settings" owns the dataset's
+        # local_settings.yaml.
+        self.app_state.delete_yaml(str(self.app_state._global_settings_path()))
 
         for var in AppStateSpec.VARS:
             default = AppStateSpec.get_default(var)

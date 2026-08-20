@@ -3,7 +3,10 @@
 Reorganises actions that previously lived on the right sidebar into a
 conventional application menu bar:
 
-    File | Changepoints | Tools | Help
+    File | Changepoints | Tools | Docs | Help
+
+**Docs** holds only external links (browser); **Help** holds only in-app
+diagnostic/recovery actions — no nested submenus in either.
 
 Menu items come in three flavours:
 
@@ -34,14 +37,18 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
+from ethograph.gui.notify import notify
+
 logger = logging.getLogger(__name__)
 
 # Tools → the one screen-recording entry, relabelled per recorder state.
 # Plain text, no glyphs: ⏺/⏹ render as tofu boxes in Windows menu fonts.
+# Entries carry a "Category:" prefix (Demo/Labels/Neural) so the flat Tools
+# menu reads as groups.
 _RECORD_ACTION_LABELS = {
-    "idle": "Screen-record the GUI…",
-    "recording": "Stop screen recording  (Ctrl+Space)",
-    "rendering": "Rendering recording…",
+    "idle": "Demo: Screen-record the GUI…",
+    "recording": "Demo: Stop screen recording  (Ctrl+Space)",
+    "rendering": "Demo: Rendering recording…",
 }
 
 DOCS_URL = "https://Akseli-Ilmanen.github.io/ethograph"
@@ -128,6 +135,7 @@ class TopBarBuilder:
         self._build_file_menu(menu_bar)
         self._build_changepoints_menu(menu_bar)
         self._build_tools_menu(menu_bar)
+        self._build_docs_menu(menu_bar)
         self._build_help_menu(menu_bar)
         self._add_sidebar_toggle_button(menu_bar)
 
@@ -148,18 +156,13 @@ class TopBarBuilder:
         menu.addSeparator()
         # Boundary refinement: existing labels become seeds the user nudges
         # frame-by-frame — the exception to ethograph's plot-first labelling.
-        menu.addAction("Refine labels frame-by-frame…", self._open_refine_labels)
+        menu.addAction("Labels: Refine via frame-by-frame labelling…", self._open_refine_labels)
 
         menu.addSeparator()
-        menu.addAction("Keypoint labelling…", self._open_keypoint_labelling)
+        menu.addAction("Pose tracking (from scratch)…", self._open_keypoint_labelling)
         # Correcting an imported pose file (DLC/SLEAP/…) rather than labelling
         # from scratch — writes {stem}_refined copies beside the sources.
-        menu.addAction("Refine imported poses…", self._open_pose_refinement)
-
-        menu.addSeparator()
-        # Escape hatch for a frozen video image (dead pynaviz render chain):
-        # rebuilds the primary PlotVideo without closing/re-adding the panel.
-        menu.addAction("Reset video view", self._reset_video_view)
+        menu.addAction("Pose correction (DLC, SLEAP, …)…", self._open_pose_refinement)
 
         menu.addSeparator()
         ephys = getattr(self.meta, "ephys_widget", None)
@@ -168,13 +171,13 @@ class TopBarBuilder:
         # only the interactive PSTH launcher and the firing-rate popup.
         psth_open = self._first_method(ephys, "_open_psth")
         act = (
-            menu.addAction("Open interactive PSTH…", psth_open)
+            menu.addAction("Neural: Interactive PSTH…", psth_open)
             if psth_open
-            else menu.addAction("Open interactive PSTH…")
+            else menu.addAction("Neural: Interactive PSTH…")
         )
         if psth_open is None:
             act.setEnabled(False)
-        menu.addAction("Firing rates…", lambda: self._popup_section("firing", "Firing rates", ephys))
+        menu.addAction("Neural: Compute firing rates…", lambda: self._popup_section("firing", "Firing rates", ephys))
 
     def _open_keypoint_labelling(self):
         """Open the keypoint labelling dialog (owned by the DataWidget, so the
@@ -330,30 +333,47 @@ class TopBarBuilder:
         )
 
     # ------------------------------------------------------------------
-    # Help menu
+    # Docs + Help menus
     # ------------------------------------------------------------------
 
+    def _build_docs_menu(self, menu_bar):
+        """External links only — everything here opens the browser."""
+        menu = menu_bar.addMenu("&Docs")
+        menu.addAction("Documentation", lambda: webbrowser.open(DOCS_URL))
+        menu.addAction("Shortcuts", lambda: webbrowser.open(SHORTCUTS_URL))
+        menu.addAction("Git Issues", lambda: webbrowser.open(ISSUES_URL))
+        menu.addAction("Tutorials", lambda: webbrowser.open(TUTORIALS_URL))
+
     def _build_help_menu(self, menu_bar):
+        """In-app diagnostic and recovery actions — flat, no submenus."""
         menu = menu_bar.addMenu("&Help")
         help_w = getattr(self.meta, "help_widget", None)
 
-        links = menu.addMenu("Links")
-        links.addAction("Documentation", lambda: webbrowser.open(DOCS_URL))
-        links.addAction("Shortcuts", lambda: webbrowser.open(SHORTCUTS_URL))
-        links.addAction("Git Issues", lambda: webbrowser.open(ISSUES_URL))
-        links.addAction("Tutorials", lambda: webbrowser.open(TUTORIALS_URL))
-
-        menu.addSeparator()
-        debug = menu.addMenu("Debug")
         print_state = self._first_method(help_w, "_on_print_debug")
         if print_state is not None:
-            debug.addAction("Print current state", print_state)
+            menu.addAction("Print current state", print_state)
         show_align = self._first_method(help_w, "_on_show_alignment")
         if show_align is not None:
-            debug.addAction("Visualize data alignment", show_align)
+            menu.addAction("Visualize data alignment", show_align)
+
+        menu.addSeparator()
+        # Escape hatch for a frozen video image (dead pynaviz render chain):
+        # rebuilds the primary PlotVideo without closing/re-adding the panel.
+        menu.addAction("Reset video view", self._reset_video_view)
         reset_gui = self._first_method(getattr(self.meta, "io_widget", None), "_on_reset_gui_clicked")
         if reset_gui is not None:
-            debug.addAction("Reset gui_settings.yaml", reset_gui)
+            menu.addAction("Reset global settings (gui_settings.yaml)", reset_gui)
+        menu.addAction("Reset local settings (this dataset)", self._reset_local_settings)
+
+    def _reset_local_settings(self):
+        """Clear the loaded dataset's local_settings.yaml + in-memory local vars."""
+        if self.app_state is None:
+            return
+        if self.app_state._local_settings_path() is None:
+            notify("No dataset loaded — there are no local settings to reset.", severity="warning")
+            return
+        self.app_state.reset_local_settings()
+        notify("Local settings reset for this dataset — reload it for a clean layout.")
 
     # ------------------------------------------------------------------
     # Small utilities

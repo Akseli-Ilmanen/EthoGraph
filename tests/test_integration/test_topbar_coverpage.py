@@ -88,7 +88,7 @@ def test_every_panel_has_close_and_move_buttons(gui):
 def test_top_bar_has_expected_menus(gui):
     shell, meta = gui
     titles = [a.text().replace("&", "") for a in shell.menuBar().actions()]
-    assert titles == ["File", "Changepoints", "Tools", "Help"]
+    assert titles == ["File", "Changepoints", "Tools", "Docs", "Help"]
 
 
 def test_tools_menu_screen_record_is_a_plain_action(gui, monkeypatch):
@@ -100,7 +100,7 @@ def test_tools_menu_screen_record_is_a_plain_action(gui, monkeypatch):
     shell, meta = gui
     tools = _menu(shell, "Tools")
     assert not any(isinstance(a, QWidgetAction) for a in tools.actions())
-    action = _find_action(tools, "Screen-record")
+    action = _find_action(tools, "Demo: Screen-record")
     builder = shell._top_bar
 
     # Triggering the entry goes straight to the recorder's settings dialog.
