@@ -72,8 +72,10 @@ The landmark table — cm coordinates and clicks — is user intent, so it is
 saved in `<video>.keypoints.json` beside your labels, exactly like the
 detector's assignment table. A cm export maps `position` (and everything
 derived from it: velocity and acceleration come out in cm/s and cm/s², the
-heading is rotated into the same frame) through the fit, records
-`attrs["space_unit"] = "cm"` and the matrix itself as `attrs["pixels_to_cm"]`,
-and retires the y-flip: which way is up is defined by the coordinates you
-entered, not by the image. The video overlay always stays in pixels — it is
-drawn on the pixels.
+heading is rotated into the same frame) through the fit, and records
+`attrs["space_unit"] = "cm"` and the matrix itself as `attrs["pixels_to_cm"]`.
+The y-flip changes meaning in cm: it mirrors your **world frame's** y axis
+(y → −y), composed after the calibration — never the image's pixels, which the
+fit was not made from. Untick it if your landmark coordinates already have y
+pointing the way you want plots to read. The video overlay always stays in
+pixels — it is drawn on the pixels.

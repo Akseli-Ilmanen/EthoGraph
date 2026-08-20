@@ -483,8 +483,9 @@ if ticked, is written alongside <code class="docutils literal notranslate"><span
 default) or <code class="docutils literal notranslate"><span class="pre">cm</span> <span class="pre">(calibrated)</span></code>, offered once the <a class="reference internal" href="calibration.html#target-calibration"><span class="std std-ref">Calibrate</span></a> tab holds three ready landmarks. A cm export maps
 positions — and everything derived from them — through the landmark fit,
 records the unit as <code class="docutils literal notranslate"><span class="pre">attrs[&quot;space_unit&quot;]</span></code> and the matrix as
-<code class="docutils literal notranslate"><span class="pre">attrs[&quot;pixels_to_cm&quot;]</span></code>, and disables the y-flip: in your own cm frame,
-which way is up is defined by the coordinates you entered. The <code class="docutils literal notranslate"><span class="pre">space</span></code>
+<code class="docutils literal notranslate"><span class="pre">attrs[&quot;pixels_to_cm&quot;]</span></code>. The y-flip then mirrors the world frame’s y axis
+(y → −y) after the transform, rather than the image’s pixels — untick it if
+your landmark coordinates already read the way you want. The <code class="docutils literal notranslate"><span class="pre">space</span></code>
 dimension stays <code class="docutils literal notranslate"><span class="pre">x</span></code>/<code class="docutils literal notranslate"><span class="pre">y</span></code> either way.</p></li>
 </ul>
 <div class="admonition note">

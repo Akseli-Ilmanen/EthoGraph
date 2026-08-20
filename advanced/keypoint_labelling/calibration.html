@@ -531,11 +531,13 @@ to use.</p></li>
 saved in <code class="docutils literal notranslate"><span class="pre">&lt;video&gt;.keypoints.json</span></code> beside your labels, exactly like the
 detector’s assignment table. A cm export maps <code class="docutils literal notranslate"><span class="pre">position</span></code> (and everything
 derived from it: velocity and acceleration come out in cm/s and cm/s², the
-heading is rotated into the same frame) through the fit, records
-<code class="docutils literal notranslate"><span class="pre">attrs[&quot;space_unit&quot;]</span> <span class="pre">=</span> <span class="pre">&quot;cm&quot;</span></code> and the matrix itself as <code class="docutils literal notranslate"><span class="pre">attrs[&quot;pixels_to_cm&quot;]</span></code>,
-and retires the y-flip: which way is up is defined by the coordinates you
-entered, not by the image. The video overlay always stays in pixels — it is
-drawn on the pixels.</p>
+heading is rotated into the same frame) through the fit, and records
+<code class="docutils literal notranslate"><span class="pre">attrs[&quot;space_unit&quot;]</span> <span class="pre">=</span> <span class="pre">&quot;cm&quot;</span></code> and the matrix itself as <code class="docutils literal notranslate"><span class="pre">attrs[&quot;pixels_to_cm&quot;]</span></code>.
+The y-flip changes meaning in cm: it mirrors your <strong>world frame’s</strong> y axis
+(y → −y), composed after the calibration — never the image’s pixels, which the
+fit was not made from. Untick it if your landmark coordinates already have y
+pointing the way you want plots to read. The video overlay always stays in
+pixels — it is drawn on the pixels.</p>
 </section>
 </section>
 
