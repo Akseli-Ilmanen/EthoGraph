@@ -1887,10 +1887,12 @@ def store_to_movement_ds(
     ``world_transform`` maps every position through a 3×3 pixel→world matrix
     (see :meth:`CalibrationTable.fit`), putting the output in the user's own cm
     frame; ``attrs["space_unit"]`` records which frame the file speaks. It is
-    **mutually exclusive** with ``image_height``: the cm frame's orientation is
-    whatever the user's coordinates say — up is where their ruler pointed — and
-    stacking a pixel-space flip on top would silently mirror the frame they
-    defined. The ``space`` coord stays ``["x", "y"]`` either way.
+    **mutually exclusive** with ``image_height``: the fit was made from
+    unflipped pixel clicks, so a pixel-space flip underneath it would corrupt
+    the output rather than mirror it. A caller that wants the *world* frame
+    mirrored composes ``diag(1, -1, 1)`` into the matrix instead (as the
+    dialog's flip checkbox does in cm). The ``space`` coord stays
+    ``["x", "y"]`` either way.
     """
     if fps <= 0:
         raise KeypointStoreError("fps must be positive — read it from the video, do not default it.")

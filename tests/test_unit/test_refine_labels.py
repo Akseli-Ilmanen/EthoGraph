@@ -329,6 +329,34 @@ def test_normal_trial_navigation_pulls_the_session_along(dialog):
     dialog._stop()
 
 
+def test_unlocking_frees_navigation_and_relocking_snaps_back(dialog, monkeypatch):
+    """ "Locked around initial label" off → jumps widen the restriction to the
+    normal navigation scope (free pan/zoom); the spinner stops yanking the
+    view; ticking it again snaps back to the seed window."""
+    calls = {"scope": 0}
+    monkeypatch.setattr(dialog.nav, "_apply_slider_scope", lambda: calls.__setitem__("scope", calls["scope"] + 1))
+
+    _check_all_labels(dialog)
+    dialog._start()
+    assert dialog.lock_checkbox.isChecked()  # locked is the default
+    assert calls["scope"] == 0  # locked jumps never touch the nav scope
+
+    dialog.lock_checkbox.setChecked(False)
+    assert calls["scope"] == 1  # unlocking frees the restriction immediately
+    dialog._advance(+1)
+    assert calls["scope"] == 2  # every unlocked jump re-frees it
+
+    seen = []
+    monkeypatch.setattr(dialog.nav, "set_view_range", lambda *a: seen.append(a))
+    dialog.window_spin.setValue(1.0)  # spinner must not yank a free view
+    assert seen == []
+
+    dialog.lock_checkbox.setChecked(True)  # relock snaps back to the seed
+    assert len(seen) == 0  # (relock jumps via jump_to_label_instance, not set_view_range)
+    assert str(dialog._targets[dialog._idx].inst["trial"]) == "0"
+    dialog._stop()
+
+
 def test_history_filters_scope_the_visible_and_exported_rows(dialog):
     """Funnel filters on Trial/Label/… reduce the table AND what exports."""
     from ethograph.gui.dialog_refine import RefineHistoryDialog

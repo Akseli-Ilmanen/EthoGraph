@@ -2328,20 +2328,21 @@ class PoseLabellingDialog(QDialog):
         self._sync_flip_for_space()
 
     def _sync_flip_for_space(self) -> None:
-        """In cm the y orientation is the user's own frame, so the flip retires.
+        """The flip means something different per space; the tooltip says which.
 
-        Disabled rather than unticked: the tick is the user's standing choice
-        for pixel exports, and must come back untouched when they switch back.
+        In pixels it undoes the image's y-down convention (via ``image_height``);
+        in cm it mirrors the user's world frame after the calibration (composed
+        into the matrix in :meth:`_build_dataset`) — never the pixels, which the
+        fit was not made from.
         """
         check = getattr(self, "invert_y_check", None)
         if check is None:
             return
-        cm = self.space_combo.currentData() == "cm"
-        check.setEnabled(not cm)
-        if cm:
+        if self.space_combo.currentData() == "cm":
             check.setToolTip(
-                "Not applicable in cm: which way is up is defined by the landmark\n"
-                "coordinates you entered, not by the image."
+                "In cm this mirrors your world frame's y axis (y → −y), applied\n"
+                "after the calibration. Untick it if your landmark coordinates\n"
+                "already have y pointing the way you want plots to read."
             )
         else:
             check.setToolTip(
@@ -2452,6 +2453,11 @@ class PoseLabellingDialog(QDialog):
             except KeypointStoreError as e:
                 notify(f"Calibration is not usable: {e}", "error")
                 return None
+            if self.invert_y_check.isChecked():
+                # In cm the flip mirrors the WORLD frame's y, composed after
+                # the fit — never a pixel flip, which the fit was not made
+                # from. Positions and head direction both ride the one matrix.
+                world_transform = np.diag([1.0, -1.0, 1.0]) @ world_transform
         try:
             return store_to_dataset(
                 self.store,

@@ -27,6 +27,7 @@ from qtpy.QtCore import Qt, QTimer
 from qtpy.QtGui import QKeySequence, QShortcut, QStandardItem, QStandardItemModel
 from qtpy.QtWidgets import (
     QApplication,
+    QCheckBox,
     QComboBox,
     QDialog,
     QDoubleSpinBox,
@@ -366,7 +367,7 @@ class RefineLabelsDialog(QDialog):
         self.window_spin = QDoubleSpinBox()
         self.window_spin.setRange(0.02, 600.0)
         self.window_spin.setDecimals(2)
-        self.window_spin.setSingleStep(0.05)
+        self.window_spin.setSingleStep(0.2)
         self.window_spin.setSuffix(" s")
         self.window_spin.setToolTip(
             "Seconds of time series shown around the boundary being refined\n"
@@ -378,6 +379,16 @@ class RefineLabelsDialog(QDialog):
         # NEXT Enter is a boundary confirm again — one keypress, one meaning.
         self.window_spin.editingFinished.connect(self.window_spin.clearFocus)
         win_row.addWidget(self.window_spin, stretch=1)
+        self.lock_checkbox = QCheckBox("Locked around initial label")
+        self.lock_checkbox.setChecked(True)
+        self.lock_checkbox.setToolTip(
+            "Ticked: the view stays a small window around the seed.\n"
+            "Unticked: pan/zoom the whole trial freely — for corrections that\n"
+            "belong far from where the label currently sits. Enter still\n"
+            "confirms the frame on screen, wherever you navigated."
+        )
+        self.lock_checkbox.toggled.connect(self._on_lock_toggled)
+        win_row.addWidget(self.lock_checkbox)
         refine_lay.addLayout(win_row)
 
         step_row = QHBoxLayout()
@@ -661,9 +672,30 @@ class RefineLabelsDialog(QDialog):
 
     def _on_window_changed(self, value: float):
         self.app_state.refine_window_s = value
-        if self._targets and self._session_active:
+        if self._targets and self._session_active and self.lock_checkbox.isChecked():
             target = self._targets[self._idx]
             self.nav.set_view_range(target.inst["trial"], self._view_rel(self._seed_rel(target)))
+
+    def _on_lock_toggled(self, checked: bool):
+        """Locked: snap back to the seed-centred window. Unlocked: free roam."""
+        if not (self._targets and self._session_active):
+            return
+        if checked:
+            self._jump_current()
+        else:
+            self._free_navigation()
+
+    def _free_navigation(self):
+        """Widen the restriction to the normal navigation scope.
+
+        The seed view stays as the starting point, but the user can pan/zoom
+        the whole trial and seek anywhere — for corrections that belong far
+        from where the label currently sits. Video and marker are untouched.
+        """
+        self.nav._apply_slider_scope()
+        pc = self.nav.plot_container
+        if pc is not None:
+            pc._apply_all_zoom_constraints()
 
     def _on_trial_changed(self):
         """Follow the user's normal trial navigation to that trial's first seed.
@@ -701,6 +733,10 @@ class RefineLabelsDialog(QDialog):
                 play=False,
                 view_rel=self._view_rel(seed_rel),
             )
+            if not self.lock_checkbox.isChecked():
+                # Unlocked: the seed view is only the starting point — widen
+                # the restriction so the user can immediately roam the trial.
+                self._free_navigation()
         finally:
             self._jumping = False
         video = getattr(self.app_state, "video", None)

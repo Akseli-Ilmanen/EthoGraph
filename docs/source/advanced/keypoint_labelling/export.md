@@ -31,8 +31,9 @@
   <target-calibration>` tab holds three ready landmarks. A cm export maps
   positions — and everything derived from them — through the landmark fit,
   records the unit as `attrs["space_unit"]` and the matrix as
-  `attrs["pixels_to_cm"]`, and disables the y-flip: in your own cm frame,
-  which way is up is defined by the coordinates you entered. The `space`
+  `attrs["pixels_to_cm"]`. The y-flip then mirrors the world frame's y axis
+  (y → −y) after the transform, rather than the image's pixels — untick it if
+  your landmark coordinates already read the way you want. The `space`
   dimension stays `x`/`y` either way.
 
 ```{note}

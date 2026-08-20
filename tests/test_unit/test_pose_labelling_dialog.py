@@ -1741,15 +1741,23 @@ def test_picking_pixels_on_purpose_is_not_overridden(dialog):
     assert dialog.space_combo.currentData() == "pixels"
 
 
-def test_cm_retires_the_y_flip(dialog):
+def test_the_flip_in_cm_mirrors_the_world_y(dialog):
+    """In cm the flip is a world-frame mirror composed after the fit — never a
+    pixel flip, which the fit was not made from."""
     _calibrate(dialog)
-    dialog.invert_y_check.setChecked(True)
+    dialog.store.set_point(0, "beak", (0.0, 50.0))  # world (0, 100)
     dialog.space_combo.setCurrentIndex(1)
-    assert not dialog.invert_y_check.isEnabled()
-    assert dialog.invert_y_check.isChecked()  # the standing choice survives
-
-    dialog.space_combo.setCurrentIndex(0)
     assert dialog.invert_y_check.isEnabled()
+
+    dialog.invert_y_check.setChecked(False)
+    plain = dialog._build_dataset()["position"].isel(time=0, individual=0).sel(keypoint="beak").values
+    dialog.invert_y_check.setChecked(True)
+    flipped_ds = dialog._build_dataset()
+    flipped = flipped_ds["position"].isel(time=0, individual=0).sel(keypoint="beak").values
+
+    np.testing.assert_allclose(plain, [0.0, 100.0], atol=1e-9)
+    np.testing.assert_allclose(flipped, [plain[0], -plain[1]], atol=1e-9)
+    assert flipped_ds.attrs["space_unit"] == "cm"
 
 
 def test_cm_export_carries_the_unit_and_the_transform(dialog):
