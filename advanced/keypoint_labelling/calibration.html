@@ -390,6 +390,7 @@
 <li class="toctree-l2"><a class="reference internal" href="fill.html">5. Fill</a></li>
 <li class="toctree-l2"><a class="reference internal" href="correction.html">6. The correction loop</a></li>
 <li class="toctree-l2"><a class="reference internal" href="export.html">7. Visualizing &amp; exporting</a></li>
+<li class="toctree-l2"><a class="reference internal" href="refine_imported.html">Refining imported poses</a></li>
 </ul>
 </details></li>
 <li class="toctree-l1"><a class="reference internal" href="../playback.html">Video &amp; Audio playback</a></li>
@@ -465,6 +466,11 @@ If a few fixed physical landmarks in the scene — arena corners, a doorway, a
 perch — have known real-world positions, the <strong>Calibrate</strong> tab turns them into
 a pixel→cm map, and the export can then produce trajectories in your own cm
 frame instead of pixels.</p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>The affine (3-landmark) fit has not been successfully validated on real
+footage, and the homography path (4+ landmarks) is untested.</p>
+</div>
 <section id="landmarks-are-not-keypoints">
 <h2>Landmarks are not keypoints<a class="headerlink" href="#landmarks-are-not-keypoints" title="Link to this heading">#</a></h2>
 <p>A landmark belongs to the scene, not to an animal: it has no individual, it

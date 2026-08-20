@@ -7,6 +7,11 @@ perch — have known real-world positions, the **Calibrate** tab turns them into
 a pixel→cm map, and the export can then produce trajectories in your own cm
 frame instead of pixels.
 
+```{warning}
+The affine (3-landmark) fit has not been successfully validated on real
+footage, and the homography path (4+ landmarks) is untested.
+```
+
 ## Landmarks are not keypoints
 
 A landmark belongs to the scene, not to an animal: it has no individual, it

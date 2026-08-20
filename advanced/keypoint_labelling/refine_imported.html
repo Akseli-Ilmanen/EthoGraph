@@ -2,13 +2,13 @@
 <!DOCTYPE html>
 
 
-<html lang="en" data-content_root="../" >
+<html lang="en" data-content_root="../../" >
 
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>Advanced &#8212; ethograph</title>
+    <title>Refining imported poses &#8212; ethograph</title>
   
   
   
@@ -27,39 +27,39 @@
   </noscript>
   
   <!-- Loaded before other Sphinx assets -->
-  <link href="../_static/styles/theme.css?digest=90905a2f556bf617f1a9" rel="stylesheet" />
-<link href="../_static/styles/pydata-sphinx-theme.css?digest=90905a2f556bf617f1a9" rel="stylesheet" />
+  <link href="../../_static/styles/theme.css?digest=90905a2f556bf617f1a9" rel="stylesheet" />
+<link href="../../_static/styles/pydata-sphinx-theme.css?digest=90905a2f556bf617f1a9" rel="stylesheet" />
 
-    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=8f2a1f02" />
-    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
-    <link rel="stylesheet" type="text/css" href="../_static/sphinx-design.min.css?v=95c83b7e" />
-    <link rel="stylesheet" type="text/css" href="../_static/css/custom.css?v=17f663f2" />
+    <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
+    <link rel="stylesheet" type="text/css" href="../../_static/sphinx-design.min.css?v=95c83b7e" />
+    <link rel="stylesheet" type="text/css" href="../../_static/css/custom.css?v=17f663f2" />
   
   <!-- So that users can add custom icons -->
-  <script defer src="../_static/scripts/fontawesome.js?digest=90905a2f556bf617f1a9"></script>
+  <script defer src="../../_static/scripts/fontawesome.js?digest=90905a2f556bf617f1a9"></script>
   <!-- Pre-loaded scripts that we'll load fully later -->
-  <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=90905a2f556bf617f1a9" />
-<link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=90905a2f556bf617f1a9" />
+  <link rel="preload" as="script" href="../../_static/scripts/bootstrap.js?digest=90905a2f556bf617f1a9" />
+<link rel="preload" as="script" href="../../_static/scripts/pydata-sphinx-theme.js?digest=90905a2f556bf617f1a9" />
 
-    <script src="../_static/documentation_options.js?v=9eb32ce0"></script>
-    <script src="../_static/doctools.js?v=9bcbadda"></script>
-    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
-    <script src="../_static/design-tabs.js?v=f930bc37"></script>
-    <script>DOCUMENTATION_OPTIONS.pagename = 'advanced/index';</script>
+    <script src="../../_static/documentation_options.js?v=9eb32ce0"></script>
+    <script src="../../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../_static/design-tabs.js?v=f930bc37"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'advanced/keypoint_labelling/refine_imported';</script>
     <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
-    <link rel="canonical" href="https://Akseli-Ilmanen.github.io/ethograph/advanced/index.html" />
-    <link rel="index" title="Index" href="../genindex.html" />
-    <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="Trial metadata" href="metadata.html" />
-    <link rel="prev" title="Preparing your own data" href="../getting_started/preparing_data.html" />
+    <link rel="canonical" href="https://Akseli-Ilmanen.github.io/ethograph/advanced/keypoint_labelling/refine_imported.html" />
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" />
+    <link rel="next" title="Video &amp; Audio playback" href="../playback.html" />
+    <link rel="prev" title="7. Visualizing &amp; exporting" href="export.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="" />
   
     
-    <script src="../_static/searchtools.js"></script>
-    <script src="../_static/language_data.js"></script>
-    <script src="../searchindex.js"></script>
+    <script src="../../_static/searchtools.js"></script>
+    <script src="../../_static/language_data.js"></script>
+    <script src="../../searchindex.js"></script>
   
   </head>
   <body data-default-mode="">
@@ -79,7 +79,7 @@
   <dialog id="pst-search-dialog">
     
 <form class="bd-search d-flex align-items-center"
-      action="../search.html"
+      action="../../search.html"
       method="get">
   <i class="fa-solid fa-magnifying-glass"></i>
   <input type="search"
@@ -115,7 +115,7 @@
     
   
 
-<a class="navbar-brand logo" href="../index.html">
+<a class="navbar-brand logo" href="../../index.html">
   
   
   
@@ -126,8 +126,8 @@
       
     
     
-    <img src="../_static/icon.png" class="logo__image only-light" alt=""/>
-    <img src="../_static/icon.png" class="logo__image only-dark pst-js-only" alt=""/>
+    <img src="../../_static/icon.png" class="logo__image only-light" alt=""/>
+    <img src="../../_static/icon.png" class="logo__image only-dark pst-js-only" alt=""/>
   
   
     <p class="title logo__title">ethograph</p>
@@ -145,35 +145,35 @@
   <ul class="bd-navbar-elements navbar-nav">
     
 <li class="nav-item ">
-  <a class="nav-link nav-internal" href="../getting_started/index.html">
+  <a class="nav-link nav-internal" href="../../getting_started/index.html">
     Getting started
   </a>
 </li>
 
 
 <li class="nav-item current active">
-  <a class="nav-link nav-internal" href="#">
+  <a class="nav-link nav-internal" href="../index.html">
     Advanced
   </a>
 </li>
 
 
 <li class="nav-item ">
-  <a class="nav-link nav-internal" href="../examples/index.html">
+  <a class="nav-link nav-internal" href="../../examples/index.html">
     Examples
   </a>
 </li>
 
 
 <li class="nav-item ">
-  <a class="nav-link nav-internal" href="../api_index.html">
+  <a class="nav-link nav-internal" href="../../api_index.html">
     API reference
   </a>
 </li>
 
 
 <li class="nav-item ">
-  <a class="nav-link nav-internal" href="../community/index.html">
+  <a class="nav-link nav-internal" href="../../community/index.html">
     Community
   </a>
 </li>
@@ -274,35 +274,35 @@
   <ul class="bd-navbar-elements navbar-nav">
     
 <li class="nav-item ">
-  <a class="nav-link nav-internal" href="../getting_started/index.html">
+  <a class="nav-link nav-internal" href="../../getting_started/index.html">
     Getting started
   </a>
 </li>
 
 
 <li class="nav-item current active">
-  <a class="nav-link nav-internal" href="#">
+  <a class="nav-link nav-internal" href="../index.html">
     Advanced
   </a>
 </li>
 
 
 <li class="nav-item ">
-  <a class="nav-link nav-internal" href="../examples/index.html">
+  <a class="nav-link nav-internal" href="../../examples/index.html">
     Examples
   </a>
 </li>
 
 
 <li class="nav-item ">
-  <a class="nav-link nav-internal" href="../api_index.html">
+  <a class="nav-link nav-internal" href="../../api_index.html">
     API reference
   </a>
 </li>
 
 
 <li class="nav-item ">
-  <a class="nav-link nav-internal" href="../community/index.html">
+  <a class="nav-link nav-internal" href="../../community/index.html">
     Community
   </a>
 </li>
@@ -364,38 +364,38 @@
 <nav class="bd-docs-nav bd-links"
      aria-label="Section Navigation">
   <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
-  <div class="bd-toc-item navbar-nav"><ul class="nav bd-sidenav">
-<li class="toctree-l1"><a class="reference internal" href="metadata.html">Trial metadata</a></li>
-<li class="toctree-l1"><a class="reference internal" href="time_slider_trial_session.html">Time slider &amp; trial/session</a></li>
-<li class="toctree-l1 has-children"><a class="reference internal" href="labels/index.html">Labels</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
-<li class="toctree-l2"><a class="reference internal" href="labels/labelling_gui.html">Labelling in the GUI</a></li>
-<li class="toctree-l2"><a class="reference internal" href="labels/mapping.html">Label mapping (<code class="docutils literal notranslate"><span class="pre">mapping.txt</span></code>)</a></li>
-<li class="toctree-l2"><a class="reference internal" href="labels/branches.html">Label branches</a></li>
-<li class="toctree-l2"><a class="reference internal" href="labels/importing.html">Importing labels</a></li>
-<li class="toctree-l2"><a class="reference internal" href="labels/exporting.html">Exporting labels</a></li>
+  <div class="bd-toc-item navbar-nav"><ul class="current nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="../metadata.html">Trial metadata</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../time_slider_trial_session.html">Time slider &amp; trial/session</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../labels/index.html">Labels</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="../labels/labelling_gui.html">Labelling in the GUI</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../labels/mapping.html">Label mapping (<code class="docutils literal notranslate"><span class="pre">mapping.txt</span></code>)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../labels/branches.html">Label branches</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../labels/importing.html">Importing labels</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../labels/exporting.html">Exporting labels</a></li>
 </ul>
 </details></li>
-<li class="toctree-l1 has-children"><a class="reference internal" href="changepoints/index.html">Changepoints</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
-<li class="toctree-l2"><a class="reference internal" href="changepoints/overview.html">Overview</a></li>
-<li class="toctree-l2"><a class="reference internal" href="changepoints/kinematic.html">Kinematic changepoints</a></li>
-<li class="toctree-l2"><a class="reference internal" href="changepoints/audio.html">Audio changepoints</a></li>
-<li class="toctree-l2"><a class="reference internal" href="changepoints/ruptures.html">Ruptures</a></li>
-<li class="toctree-l2"><a class="reference internal" href="changepoints/correction.html">Changepoint correction</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../changepoints/index.html">Changepoints</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="../changepoints/overview.html">Overview</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../changepoints/kinematic.html">Kinematic changepoints</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../changepoints/audio.html">Audio changepoints</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../changepoints/ruptures.html">Ruptures</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../changepoints/correction.html">Changepoint correction</a></li>
 </ul>
 </details></li>
-<li class="toctree-l1 has-children"><a class="reference internal" href="keypoint_labelling/index.html">Keypoint labelling</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
-<li class="toctree-l2"><a class="reference internal" href="keypoint_labelling/labelling.html">1-2. Define keypoints and label frames</a></li>
-<li class="toctree-l2"><a class="reference internal" href="keypoint_labelling/detect.html">3. Detect — optional, if your animals wear tags</a></li>
-<li class="toctree-l2"><a class="reference internal" href="keypoint_labelling/calibration.html">4. Calibrate — optional, for trajectories in cm</a></li>
-<li class="toctree-l2"><a class="reference internal" href="keypoint_labelling/fill.html">5. Fill</a></li>
-<li class="toctree-l2"><a class="reference internal" href="keypoint_labelling/correction.html">6. The correction loop</a></li>
-<li class="toctree-l2"><a class="reference internal" href="keypoint_labelling/export.html">7. Visualizing &amp; exporting</a></li>
-<li class="toctree-l2"><a class="reference internal" href="keypoint_labelling/refine_imported.html">Refining imported poses</a></li>
+<li class="toctree-l1 current active has-children"><a class="reference internal" href="index.html">Keypoint labelling</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="labelling.html">1-2. Define keypoints and label frames</a></li>
+<li class="toctree-l2"><a class="reference internal" href="detect.html">3. Detect — optional, if your animals wear tags</a></li>
+<li class="toctree-l2"><a class="reference internal" href="calibration.html">4. Calibrate — optional, for trajectories in cm</a></li>
+<li class="toctree-l2"><a class="reference internal" href="fill.html">5. Fill</a></li>
+<li class="toctree-l2"><a class="reference internal" href="correction.html">6. The correction loop</a></li>
+<li class="toctree-l2"><a class="reference internal" href="export.html">7. Visualizing &amp; exporting</a></li>
+<li class="toctree-l2 current active"><a class="current reference internal" href="#">Refining imported poses</a></li>
 </ul>
 </details></li>
-<li class="toctree-l1"><a class="reference internal" href="playback.html">Video &amp; Audio playback</a></li>
-<li class="toctree-l1"><a class="reference internal" href="shortcuts.html">Keyboard Shortcuts</a></li>
-<li class="toctree-l1"><a class="reference internal" href="troubleshooting.html">Troubleshooting</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../playback.html">Video &amp; Audio playback</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../shortcuts.html">Keyboard Shortcuts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../troubleshooting.html">Troubleshooting</a></li>
 </ul>
 </div>
 </nav></div>
@@ -432,11 +432,17 @@
   <ul class="bd-breadcrumbs">
     
     <li class="breadcrumb-item breadcrumb-home">
-      <a href="../index.html" class="nav-link" aria-label="Home">
+      <a href="../../index.html" class="nav-link" aria-label="Home">
         <i class="fa-solid fa-home"></i>
       </a>
     </li>
-    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Advanced</span></li>
+    
+    <li class="breadcrumb-item"><a href="../index.html" class="nav-link">Advanced</a></li>
+    
+    
+    <li class="breadcrumb-item"><a href="index.html" class="nav-link">Keypoint labelling</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Refining imported poses</span></li>
   </ul>
 </nav>
 </div>
@@ -453,80 +459,65 @@
 <div id="searchbox"></div>
                 <article class="bd-article">
                   
-  <section class="tex2jax_ignore mathjax_ignore" id="advanced">
-<h1>Advanced<a class="headerlink" href="#advanced" title="Link to this heading">#</a></h1>
-<p>Topic pages for the individual features. For the end-to-end walkthrough, see
-the <a class="reference internal" href="../getting_started/user_manual.html"><span class="doc">user manual</span></a>.</p>
-<div class="sd-container-fluid sd-sphinx-override sd-mb-4 docutils">
-<div class="sd-row sd-row-cols-1 sd-row-cols-xs-1 sd-row-cols-sm-2 sd-row-cols-md-2 sd-row-cols-lg-2 sd-g-3 sd-g-xs-3 sd-g-sm-3 sd-g-md-3 sd-g-lg-3 docutils">
-<div class="sd-col sd-d-flex-row docutils">
-<div class="sd-card sd-sphinx-override sd-w-100 sd-shadow-sm sd-card-hover docutils">
-<div class="sd-card-body docutils">
-<div class="sd-card-title sd-font-weight-bold docutils">
-<span class="fas fa-table"></span> Trial metadata</div>
-<p class="sd-card-text">Per-trial conditions (metadata.tsv) and the trials table filter UI.</p>
-</div>
-<a class="sd-stretched-link sd-hide-link-text reference internal" href="metadata.html"><span class="doc">Trial metadata</span></a></div>
-</div>
-<div class="sd-col sd-d-flex-row docutils">
-<div class="sd-card sd-sphinx-override sd-w-100 sd-shadow-sm sd-card-hover docutils">
-<div class="sd-card-body docutils">
-<div class="sd-card-title sd-font-weight-bold docutils">
-<span class="fas fa-tags"></span> Labels</div>
-<p class="sd-card-text">Labelling in the GUI, importing/exporting labels.</p>
-</div>
-<a class="sd-stretched-link sd-hide-link-text reference internal" href="labels/index.html"><span class="doc">Labels</span></a></div>
-</div>
-<div class="sd-col sd-d-flex-row docutils">
-<div class="sd-card sd-sphinx-override sd-w-100 sd-shadow-sm sd-card-hover docutils">
-<div class="sd-card-body docutils">
-<div class="sd-card-title sd-font-weight-bold docutils">
-<span class="fas fa-wave-square"></span> Changepoints</div>
-<p class="sd-card-text">Detection methods (kinematic, audio, ruptures) and label-boundary correction.</p>
-</div>
-<a class="sd-stretched-link sd-hide-link-text reference internal" href="changepoints/index.html"><span class="doc">Changepoints</span></a></div>
-</div>
-<div class="sd-col sd-d-flex-row docutils">
-<div class="sd-card sd-sphinx-override sd-w-100 sd-shadow-sm sd-card-hover docutils">
-<div class="sd-card-body docutils">
-<div class="sd-card-title sd-font-weight-bold docutils">
-<span class="fas fa-crosshairs"></span> Keypoint labelling</div>
-<p class="sd-card-text">Labelling keypoints by clicking the video, the fill backends (spline, optical
-flow, PosePAL), and when to train a detector instead.</p>
-</div>
-<a class="sd-stretched-link sd-hide-link-text reference internal" href="keypoint_labelling/index.html"><span class="doc">Keypoint labelling</span></a></div>
-</div>
-<div class="sd-col sd-d-flex-row docutils">
-<div class="sd-card sd-sphinx-override sd-w-100 sd-shadow-sm sd-card-hover docutils">
-<div class="sd-card-body docutils">
-<div class="sd-card-title sd-font-weight-bold docutils">
-<span class="fas fa-play"></span> Video &amp; Audio playback</div>
-<p class="sd-card-text">Precise (sub-frame) clicking, the timeline marker, and which channel Play sounds.</p>
-</div>
-<a class="sd-stretched-link sd-hide-link-text reference internal" href="playback.html"><span class="doc">Video &amp; Audio playback</span></a></div>
-</div>
-<div class="sd-col sd-d-flex-row docutils">
-<div class="sd-card sd-sphinx-override sd-w-100 sd-shadow-sm sd-card-hover docutils">
-<div class="sd-card-body docutils">
-<div class="sd-card-title sd-font-weight-bold docutils">
-<span class="fas fa-keyboard"></span> Shortcuts</div>
-<p class="sd-card-text">Keyboard shortcuts reference.</p>
-</div>
-<a class="sd-stretched-link sd-hide-link-text reference internal" href="shortcuts.html"><span class="doc">Keyboard Shortcuts</span></a></div>
-</div>
-<div class="sd-col sd-d-flex-row docutils">
-<div class="sd-card sd-sphinx-override sd-w-100 sd-shadow-sm sd-card-hover docutils">
-<div class="sd-card-body docutils">
-<div class="sd-card-title sd-font-weight-bold docutils">
-<span class="fas fa-wrench"></span> Troubleshooting</div>
-<p class="sd-card-text">Common issues and fixes.</p>
-</div>
-<a class="sd-stretched-link sd-hide-link-text reference internal" href="troubleshooting.html"><span class="doc">Troubleshooting</span></a></div>
-</div>
-</div>
-</div>
-<div class="toctree-wrapper compound">
-</div>
+  <section class="tex2jax_ignore mathjax_ignore" id="refining-imported-poses">
+<span id="target-refine-imported"></span><h1>Refining imported poses<a class="headerlink" href="#refining-imported-poses" title="Link to this heading">#</a></h1>
+<p><strong>Tools ▸ Refine imported poses…</strong> corrects a pose file another tool produced —
+DeepLabCut, SLEAP, LightningPose — on the video, and writes the result back
+<strong>in the source format</strong> as <code class="docutils literal notranslate"><span class="pre">{stem}_refined{ext}</span></code> beside the original
+(overwritten on every save — a refined file only gets more refined). Where the
+keypoint labelling dialog starts from nothing on a single video, this one
+starts from your files and follows the loaded session: <strong>multi-trial</strong>, with
+each trial resolving its pose file through the alignment exactly as the pose
+overlay does.</p>
+<p>The dialog <strong>is</strong> the labelling dialog with the Define keypoints, Detect and
+Calibrate tabs removed: the whole <a class="reference internal" href="labelling.html"><span class="doc">Label &amp; Edit tab</span></a> — modes,
+the points table with its funnel filters, frame suggestions, <code class="docutils literal notranslate"><span class="pre">Shift+H</span></code>
+approval, <code class="docutils literal notranslate"><span class="pre">Tab</span></code>/<code class="docutils literal notranslate"><span class="pre">1</span></code>–<code class="docutils literal notranslate"><span class="pre">9</span></code>/<code class="docutils literal notranslate"><span class="pre">Backspace</span></code>/<code class="docutils literal notranslate"><span class="pre">Ctrl+Z</span></code> — works unchanged. The file’s
+keypoints and individuals <em>are</em> the schema; its points appear as machine
+observations (hollow with a pip, <code class="docutils literal notranslate"><span class="pre">Detected</span></code> in the table’s Source column),
+your clicks are labels (solid), and clicking a file point pins your correction
+over it exactly as in the correction loop.</p>
+<section id="cameras">
+<h2>Cameras<a class="headerlink" href="#cameras" title="Link to this heading">#</a></h2>
+<p>Every <strong>open camera view</strong> (primary or extra) is a live editing context with
+its own file, its own labels and its own <code class="docutils literal notranslate"><span class="pre">_refined</span></code> copy — all held in memory
+for the whole trial. The <strong>Camera</strong> combo at the top only picks which one the
+canvas edits: switching discards nothing, so labels can never be lost to a
+camera switch, and the context line names the camera being edited plus any
+others carrying unsaved edits. The points table shows the selected camera’s
+file; clicks land on that camera’s view. (While an <em>extra</em> view is being
+edited, its file points are drawn by both its pose overlay and the editing
+overlay — a known cosmetic double.)</p>
+</section>
+<section id="fill">
+<h2>Fill<a class="headerlink" href="#fill" title="Link to this heading">#</a></h2>
+<p><strong>Fill runs for every open camera</strong>, each from its own labels and its own
+file — the same stretch is usually wrong on both views. The scope choice:</p>
+<ul class="simple">
+<li><p><strong>my labels only</strong> — interpolate between <em>your</em> clicks alone; inside the
+filled span the file’s points are replaced by the fill (for stretches where
+the file is plain wrong), outside they are kept. A camera without clicks of
+yours is skipped — there is nothing to interpolate between.</p></li>
+<li><p><strong>my labels + the file’s points</strong> — the file’s points are trusted
+observations too; the fill only bridges the gaps between them and your
+clicks, and never replaces a file point.</p></li>
+</ul>
+</section>
+<section id="saving">
+<h2>Saving<a class="headerlink" href="#saving" title="Link to this heading">#</a></h2>
+<p>There is no export page, and <strong>Save always means every edited camera</strong>. A
+camera’s <code class="docutils literal notranslate"><span class="pre">_refined</span></code> copy is created the moment it is first edited, and
+rewritten on every trial switch, on <strong>Save refined now</strong>, and on close — an
+untouched camera writes nothing, so the output folder records exactly what
+was reviewed. A <code class="docutils literal notranslate"><span class="pre">.slp</span></code> source refines to an analysis <code class="docutils literal notranslate"><span class="pre">.h5</span></code> (movement has no
+SLEAP project writer). Editing one trial of a session-wide pose file rewrites
+only that trial’s window; the rest of the file round-trips verbatim.</p>
+<p>Your own clicks are additionally kept in <code class="docutils literal notranslate"><span class="pre">{pose</span> <span class="pre">file}.refine.json</span></code> beside the
+source — written <strong>before</strong> every refined-file write, so a failed write can
+never take the labels with it. Reopening loads the <code class="docutils literal notranslate"><span class="pre">_refined</span></code> copy when one
+exists plus the sidecar, so the work resumes with your points still marked as
+yours.</p>
+</section>
 </section>
 
 
@@ -540,20 +531,20 @@ flow, PosePAL), and when to train a detector instead.</p>
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="../getting_started/preparing_data.html"
+       href="export.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">Preparing your own data</p>
+        <p class="prev-next-title">7. Visualizing &amp; exporting</p>
       </div>
     </a>
     <a class="right-next"
-       href="metadata.html"
+       href="../playback.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">Trial metadata</p>
+        <p class="prev-next-title">Video &amp; Audio playback</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -569,10 +560,24 @@ flow, PosePAL), and when to train a detector instead.</p>
 
 
   <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="pst-show_toc_level nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#cameras">Cameras</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#fill">Fill</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#saving">Saving</a></li>
+</ul>
+  </nav></div>
+
+  <div class="sidebar-secondary-item">
 
   
   <div class="tocsection sourcelink">
-    <a href="../_sources/advanced/index.md">
+    <a href="../../_sources/advanced/keypoint_labelling/refine_imported.md">
       
         <i class="fa-solid fa-file-lines"></i> Show Source
       
@@ -593,8 +598,8 @@ flow, PosePAL), and when to train a detector instead.</p>
   </div>
   
   <!-- Scripts loaded after <body> so the DOM is not blocked -->
-  <script defer src="../_static/scripts/bootstrap.js?digest=90905a2f556bf617f1a9"></script>
-<script defer src="../_static/scripts/pydata-sphinx-theme.js?digest=90905a2f556bf617f1a9"></script>
+  <script defer src="../../_static/scripts/bootstrap.js?digest=90905a2f556bf617f1a9"></script>
+<script defer src="../../_static/scripts/pydata-sphinx-theme.js?digest=90905a2f556bf617f1a9"></script>
 
   <footer class="bd-footer">
 <div class="bd-footer__inner bd-page-width">
