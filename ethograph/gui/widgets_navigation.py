@@ -763,9 +763,6 @@ class NavigationWidget(QWidget):
             if tb:
                 self._center_and_maybe_play(tb.start_s, tb.end_s)
 
-    def _apply_trial_restriction(self):
-        self._apply_slider_scope()
-
     # ==================================================================
     # Label mode
     # ==================================================================

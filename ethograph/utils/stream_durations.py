@@ -2,44 +2,60 @@
 
 No Qt, no TrialTree, no GUI dependencies — just path → float.
 Used by the wizard timeline and any future TrialTree-level alignment helpers.
+
+A probe returns ``None`` for the two legitimate runtime conditions — the
+optional backend is not installed, or the file is missing/unreadable/has no
+matching stream. Anything else (an API break in ``av``/``h5py``/``soundfile``,
+a bug here) propagates, so it is not silently reported as "unknown duration".
 """
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
+
+log = logging.getLogger(__name__)
 
 
 def get_video_duration(path: str) -> float | None:
     try:
         import av
-
+    except ImportError:
+        return None
+    try:
         with av.open(path) as container:
             stream = container.streams.video[0]
             if stream.duration and stream.time_base:
                 return float(stream.duration * stream.time_base)
             if stream.frames and stream.average_rate:
                 return stream.frames / float(stream.average_rate)
-    except Exception:
-        pass
+    except (av.FFmpegError, IndexError) as e:
+        log.debug("No video duration for %s: %s", path, e)
     return None
 
 
 def get_audio_duration(path: str) -> float | None:
     try:
         import soundfile as sf
+    except ImportError:
+        sf = None
+    if sf is not None:
+        try:
+            return sf.info(path).duration
+        except sf.SoundFileError as e:
+            log.debug("soundfile could not read %s: %s", path, e)
 
-        return sf.info(path).duration
-    except Exception:
-        pass
     try:
         import av
-
+    except ImportError:
+        return None
+    try:
         with av.open(path) as container:
             stream = container.streams.audio[0]
             if stream.duration and stream.time_base:
                 return float(stream.duration * stream.time_base)
-    except Exception:
-        pass
+    except (av.FFmpegError, IndexError) as e:
+        log.debug("No audio duration for %s: %s", path, e)
     return None
 
 
@@ -64,10 +80,10 @@ def _count_csv_headers(path: str) -> int:
 
 def get_pose_duration(path: str, fps: float) -> float | None:
     """Estimate pose file duration from frame count and fps."""
-    try:
-        suffix = Path(path).suffix.lower()
-        n_frames = None
+    suffix = Path(path).suffix.lower()
+    n_frames = None
 
+    try:
         if suffix == ".csv":
             n_headers = _count_csv_headers(path)
             with open(path, "r") as fh:
@@ -85,23 +101,24 @@ def get_pose_duration(path: str, fps: float) -> float | None:
                         if hasattr(data, "shape") and len(data.shape) >= 2:
                             n_frames = data.shape[0]
                             break
+    except (OSError, KeyError) as e:
+        log.debug("Could not read pose file %s: %s", path, e)
+        return None
 
-        if n_frames is not None and n_frames > 0:
-            return n_frames / fps
-    except Exception as e:
-        print(f"Could not estimate duration for pose file {path}: {e}")
+    if n_frames is not None and n_frames > 0:
+        return n_frames / fps
     return None
 
 
 def get_ephys_duration(path: str) -> float | None:
-    try:
-        from ethograph.io.ephys_loader import load_ephys
+    from ethograph.io.ephys_loader import load_ephys
 
+    try:
         loader = load_ephys(path)
-        return len(loader) / loader.rate
-    except Exception:
-        pass
-    return None
+    except (OSError, ValueError) as e:
+        log.debug("Could not open ephys %s: %s", path, e)
+        return None
+    return len(loader) / loader.rate
 
 
 def get_kilosort_duration(folder: str) -> float | None:
@@ -119,13 +136,14 @@ def get_kilosort_duration(folder: str) -> float | None:
     if not spike_times_file.exists() or not params_file.exists():
         return None
 
+    namespace: dict = {}
     try:
-        namespace: dict = {}
         exec(params_file.read_text(), namespace)
-        sample_rate = float(namespace.get("sample_rate", 0))
-        if sample_rate <= 0:
-            return None
-    except Exception:
+    except (OSError, SyntaxError, NameError) as e:
+        log.debug("Could not read kilosort params %s: %s", params_file, e)
+        return None
+    sample_rate = float(namespace.get("sample_rate", 0))
+    if sample_rate <= 0:
         return None
 
     # Try raw dat file first (most accurate)
@@ -139,14 +157,11 @@ def get_kilosort_duration(folder: str) -> float | None:
             return dur
 
     # Fall back to max spike time
-    try:
-        spike_times = np.load(str(spike_times_file)).ravel()
-        if len(spike_times) == 0:
-            return None
-        max_sample = float(spike_times.max())
-        return max_sample / sample_rate
-    except Exception:
+    spike_times = np.load(str(spike_times_file)).ravel()
+    if len(spike_times) == 0:
         return None
+    max_sample = float(spike_times.max())
+    return max_sample / sample_rate
 
 
 def probe_duration(path: str, stream: str, fps: float | None = None) -> float | None:

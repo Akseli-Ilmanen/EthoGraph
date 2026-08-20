@@ -1543,26 +1543,3 @@ def pose_keys_for_cameras(links: dict[str, str], cameras: list[str]) -> list[str
     """
     by_device = {_video_name_to_device(video_name): pose for pose, video_name in links.items()}
     return [by_device.get(str(c)) for c in cameras]
-
-
-def update_trials_columns(
-    nwb_path: Path,
-    trial_column: str,
-    updates: dict[int, dict[str, float]],
-    stream_rates: dict[str, float] | None = None,
-) -> None:
-    with edit_nwb(nwb_path) as nwbfile:
-        table = nwbfile.trials
-        if table is None:
-            raise KeyError("No trials table found")
-
-        trial_ids = np.asarray(table[trial_column][:])
-        for trial_id, column_updates in updates.items():
-            row_idx = np.where(trial_ids == trial_id)[0]
-            if row_idx.size == 0:
-                raise KeyError(f"Trial {trial_id} not found in {trial_column!r}")
-            for col_name, value in column_updates.items():
-                table[col_name].data[row_idx[0]] = value
-
-        if stream_rates:
-            sync_acquisition_for_streams(nwbfile, stream_rates)

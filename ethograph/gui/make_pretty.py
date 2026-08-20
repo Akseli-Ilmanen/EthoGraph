@@ -67,51 +67,6 @@ class LayoutManager:
                 elif "space" in title:
                     self._space_dock = dock
 
-    @property
-    def plot_dock(self) -> QDockWidget | None:
-        return self._plot_dock
-
-    @property
-    def layer_docks(self) -> list[QDockWidget]:
-        return self._layer_docks
-
-    def set_vertical_ratio(self, ratio: float = VERTICAL_SPLIT_RATIO) -> None:
-        if self._plot_dock is None:
-            return
-
-        def _resize():
-            total_h = self._qt_window.height()
-            if total_h <= 0:
-                return
-            ratio_clamped = max(0.15, min(0.85, float(ratio)))
-            min_h = max(0, self._plot_dock.minimumSizeHint().height())
-            plot_h = max(min_h, int(total_h * ratio_clamped))
-            self._qt_window.resizeDocks([self._plot_dock], [plot_h], Qt.Vertical)
-
-        QTimer.singleShot(100, _resize)
-
-    def toggle_layer_docks_with_anchor(self, show: bool) -> None:
-        """Show/hide layer docks while anchoring the sidebar width."""
-        saved_plot_h = self._plot_dock.height() if self._plot_dock else None
-        saved_sidebar_w = self._sidebar_dock.width() if self._sidebar_dock and self._sidebar_dock.isVisible() else None
-
-        if show:
-            self.show_layer_docks()
-        else:
-            self.hide_layer_docks()
-
-        def _reanchor():
-            docks, sizes = [], []
-            if self._sidebar_dock and self._sidebar_dock.isVisible() and saved_sidebar_w:
-                docks.append(self._sidebar_dock)
-                sizes.append(saved_sidebar_w)
-            if docks:
-                self._qt_window.resizeDocks(docks, sizes, Qt.Horizontal)
-            if self._plot_dock and saved_plot_h:
-                self._qt_window.resizeDocks([self._plot_dock], [saved_plot_h], Qt.Vertical)
-
-        QTimer.singleShot(0, _reanchor)
-
     def show_layer_docks(self) -> None:
         for dock in self._layer_docks:
             dock.setVisible(True)
@@ -140,21 +95,6 @@ class LayoutManager:
                 d.setMaximumWidth(MAX_WIDGET_SIZE)
 
         QTimer.singleShot(LAYOUT_RELEASE_DELAY_MS, _release)
-
-    def save_dock_widths(self) -> dict[QDockWidget, int]:
-        saved: dict[QDockWidget, int] = {}
-        for dock in self._layer_docks:
-            if dock.isVisible():
-                saved[dock] = dock.width()
-        if self._sidebar_dock is not None and self._sidebar_dock.isVisible():
-            saved[self._sidebar_dock] = self._sidebar_dock.width()
-        return saved
-
-    def restore_dock_widths(self, saved: dict[QDockWidget, int]) -> None:
-        docks = [d for d in saved if d.isVisible()]
-        sizes = [saved[dock] for dock in docks]
-        if docks:
-            self._qt_window.resizeDocks(docks, sizes, Qt.Horizontal)
 
     def set_video_viewer_visible(self, visible: bool) -> None:
         central = self._qt_window.centralWidget()

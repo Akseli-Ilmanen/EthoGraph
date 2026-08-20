@@ -30,8 +30,6 @@ Creating alignment files
 
 .. autofunction:: edit_nwb
 
-.. autofunction:: update_trials_columns
-
 ----
 
 Reading alignment metadata

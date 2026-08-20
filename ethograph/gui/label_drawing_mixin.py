@@ -512,40 +512,6 @@ class LabelDrawingMixin:
 
     # --- Oscillatory events ---
 
-    def draw_oscillatory_events(self, onsets: np.ndarray, offsets: np.ndarray):
-        self.clear_oscillatory_events()
-        all_plots = self._get_all_plots()
-        line_style = self._get_changepoint_line_style()
-        for plot in all_plots:
-            for onset_t in onsets:
-                line = pg.InfiniteLine(
-                    pos=onset_t,
-                    angle=90,
-                    pen=pg.mkPen(
-                        color=CP_COLOR_OSC_EVENT,
-                        width=line_style["width"],
-                        style=line_style["style"],
-                    ),
-                    movable=False,
-                )
-                line.setZValue(Z_INDEX_CHANGEPOINTS)
-                plot.plot_item.addItem(line)
-                self.osc_event_items.append((plot, line, "onset"))
-            for offset_t in offsets:
-                line = pg.InfiniteLine(
-                    pos=offset_t,
-                    angle=90,
-                    pen=pg.mkPen(
-                        color=CP_COLOR_OSC_EVENT,
-                        width=line_style["width"],
-                        style=line_style["style"],
-                    ),
-                    movable=False,
-                )
-                line.setZValue(Z_INDEX_CHANGEPOINTS)
-                plot.plot_item.addItem(line)
-                self.osc_event_items.append((plot, line, "offset"))
-
     def update_oscillatory_event_styles(self):
         if not self.osc_event_items:
             return

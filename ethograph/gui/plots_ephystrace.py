@@ -82,39 +82,6 @@ _UNIT_TO_VOLTS: dict[str, float] = {
 }
 
 
-def _format_voltage_bar(raw_value: float, loader_units: str) -> tuple[float, str]:
-    factor = _UNIT_TO_VOLTS.get(loader_units)
-    if factor is None:
-        bar = _nice_round(raw_value)
-        return bar, f"{bar:.4g} {loader_units}"
-
-    value_in_v = raw_value * factor
-    abs_v = abs(value_in_v)
-    if abs_v < 1e-4:
-        display_val = value_in_v * 1e6
-        display_unit = "µV"
-    elif abs_v < 0.1:
-        display_val = value_in_v * 1e3
-        display_unit = "mV"
-    else:
-        display_val = value_in_v
-        display_unit = "V"
-
-    nice_display = _nice_round(abs(display_val))
-    if display_val < 0:
-        nice_display = -nice_display
-
-    if display_unit == "µV":
-        bar_in_v = nice_display * 1e-6
-    elif display_unit == "mV":
-        bar_in_v = nice_display * 1e-3
-    else:
-        bar_in_v = nice_display
-
-    bar_in_loader = bar_in_v / factor
-    return bar_in_loader, f"{nice_display:g} {display_unit}"
-
-
 # ---------------------------------------------------------------------------
 # EphysTraceBuffer – min/max envelope downsampling
 # ---------------------------------------------------------------------------
@@ -149,10 +116,6 @@ class EphysTraceBuffer:
     @property
     def source(self) -> FileSource | None:
         return self._source
-
-    def set_preprocessing(self, flags: dict):
-        self._preproc_flags = flags
-        self._invalidate_cache()
 
     def _invalidate_cache(self):
         self._cache = None
@@ -526,11 +489,6 @@ class EphysTracePlot(BasePlot):
         scalar = float(getattr(self.app_state, "ephys_offset", 0.0) or 0.0)
         return ephys_display_offset(self.app_state, scalar=scalar)
 
-    @property
-    def _trial_duration(self) -> float | None:
-        bounds = self.app_state.window_bounds
-        return bounds.duration if bounds is not None else None
-
     def set_loader(self, loader: Any, channel: int = 0):
         type(self)._initializing = True
         self.buffer.set_loader(loader, channel)
@@ -545,16 +503,6 @@ class EphysTracePlot(BasePlot):
         self._update_amplitude_label()
         if self.current_range and not type(self)._initializing:
             self.update_plot_content(*self.current_range)
-
-    def set_channel_range(self, ch_start: int, ch_end: int):
-        self._channel_range = (ch_start, ch_end)
-        if len(self._total_ordered_channels) == 0:
-            return
-        spacing = self.buffer.channel_spacing
-        total = len(self._total_ordered_channels)
-        y_lo = (total - 1 - ch_end) * spacing - spacing * 1.0
-        y_hi = (total - 1 - ch_start) * spacing + spacing * 1.0
-        self.plot_item.setYRange(y_lo, y_hi, padding=0)
 
     def set_custom_channel_set(self, hw_indices: NDArray | None):
         was_custom = self._custom_channel_set is not None
@@ -656,21 +604,6 @@ class EphysTracePlot(BasePlot):
                         self._drag_x_accum -= direction * step
         else:
             self._orig_mouseDragEvent(ev)
-
-    def set_multichannel(self, enabled: bool):
-
-        self.trace_item.setData([], [])
-        self.trace_item2.setData([], [])
-        if enabled:
-            self._setup_global_y_space()
-            self.vb.setMouseEnabled(x=True, y=True)
-        else:
-            self._reset_y_axis_ticks()
-            self.vb.setLimits(yMin=None, yMax=None)
-            self.vb.setMouseEnabled(x=True, y=False)
-            self._last_visible_hw = set()
-        if self.current_range and not type(self)._initializing:
-            self.update_plot_content(*self.current_range)
 
     def update_plot_content(self, t0: Optional[float] = None, t1: Optional[float] = None):
         if self.buffer.loader is None:

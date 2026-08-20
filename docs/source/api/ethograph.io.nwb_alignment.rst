@@ -41,5 +41,3 @@
     make_nwb_alignment
 
     sync_acquisition_for_streams
-
-    update_trials_columns
