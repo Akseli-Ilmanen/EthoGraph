@@ -230,9 +230,7 @@ def test_fill_scope_my_labels_replaces_the_file_inside_the_span():
     store.set_detections(outside_span(file_pos, span), outside_span(file_conf, span))
     store.set_fill_from_flat(filled, conf)
 
-    exported = store_to_movement_ds(store, FPS)["position"].transpose(
-        "time", "individual", "keypoint", "space"
-    ).values
+    exported = store_to_movement_ds(store, FPS)["position"].transpose("time", "individual", "keypoint", "space").values
     np.testing.assert_allclose(exported[2, 0, 0], [200.0, 0.0])  # fill, not the file
     np.testing.assert_allclose(exported[0, 0, 0], [0.0, 5.0])  # file kept outside
     np.testing.assert_allclose(exported[5, 0, 0], [50.0, 5.0])
@@ -250,9 +248,7 @@ def test_fill_scope_with_file_bridges_the_files_own_gap():
     filled, conf = SplineBackend().fill(store.flat_observations(), store.n_frames, None, lambda _f: True)
     store.set_fill_from_flat(filled, conf)
 
-    exported = store_to_movement_ds(store, FPS)["position"].transpose(
-        "time", "individual", "keypoint", "space"
-    ).values
+    exported = store_to_movement_ds(store, FPS)["position"].transpose("time", "individual", "keypoint", "space").values
     # tail's file gap on frames 2-3 is now bridged...
     np.testing.assert_allclose(exported[2, 0, 1], [20.0, 50.0])
     # ...and the file's own points stand exactly where the file put them.

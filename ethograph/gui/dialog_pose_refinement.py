@@ -137,9 +137,7 @@ def detections_from_file(
     return pos, conf
 
 
-def outside_span(
-    detections: dict[int, np.ndarray], span: tuple[int, int] | None
-) -> dict[int, np.ndarray]:
+def outside_span(detections: dict[int, np.ndarray], span: tuple[int, int] | None) -> dict[int, np.ndarray]:
     """The entries of *detections* whose frame lies outside *span* (inclusive)."""
     if span is None:
         return dict(detections)
@@ -183,9 +181,7 @@ def full_refined_ds(
             "position": xr.DataArray(
                 merged_pos.transpose(0, 3, 2, 1), dims=["time", "space", "keypoint", "individual"]
             ),
-            "confidence": xr.DataArray(
-                merged_conf.transpose(0, 2, 1), dims=["time", "keypoint", "individual"]
-            ),
+            "confidence": xr.DataArray(merged_conf.transpose(0, 2, 1), dims=["time", "keypoint", "individual"]),
         },
         coords={
             "time": np.arange(n_frames) / fps,
@@ -645,9 +641,7 @@ class PoseRefinementDialog(PoseLabellingDialog):
                     start_frame=context.window_start,
                 )
             try:
-                filled, confidence = backend.fill(
-                    store.flat_observations(), store.n_frames, frames, progress
-                )
+                filled, confidence = backend.fill(store.flat_observations(), store.n_frames, frames, progress)
             finally:
                 if frames is not None:
                     frames.close()
