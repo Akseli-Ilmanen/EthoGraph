@@ -1232,9 +1232,7 @@ class PoseLabellingDialog(QDialog):
                 parts.append(f"{missing_world} without cm coordinates")
             if missing_clicks:
                 parts.append(f"{missing_clicks} without a click")
-            status.setText(
-                f"{ready}/{MIN_CALIBRATION_LANDMARKS} landmarks ready ({', '.join(parts)})."
-            )
+            status.setText(f"{ready}/{MIN_CALIBRATION_LANDMARKS} landmarks ready ({', '.join(parts)}).")
 
     def _sync_calib_selection(self) -> None:
         """Point the table's selected row at the mode's active landmark."""

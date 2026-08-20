@@ -880,6 +880,27 @@ class DataWidget(QWidget):
         dialog.show()
         return dialog
 
+    def open_pose_refinement(self):
+        """Open (or raise) the pose refinement dialog.
+
+        Non-modal single instance, like the labelling dialog: the user corrects
+        an imported pose file while navigating trials, and each trial's
+        ``_refined`` copy is flushed as they move on.
+        """
+        from .dialog_pose_refinement import PoseRefinementDialog
+
+        existing = getattr(self, "_pose_refinement_dialog", None)
+        if existing is not None and existing.isVisible():
+            existing.raise_()
+            existing.activateWindow()
+            return existing
+
+        dialog = PoseRefinementDialog(self, parent=self.shell)
+        dialog.finished.connect(lambda _=0: setattr(self, "_pose_refinement_dialog", None))
+        self._pose_refinement_dialog = dialog
+        dialog.show()
+        return dialog
+
     def set_references(
         self,
         plot_container,

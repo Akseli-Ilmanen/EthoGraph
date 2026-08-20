@@ -403,9 +403,7 @@ def fit_calibration(pixel_pts: np.ndarray, world_pts: np.ndarray) -> np.ndarray:
             f"Calibration points must be matching (n, 2) arrays; got {pixel.shape} and {world.shape}."
         )
     if len(pixel) < MIN_CALIBRATION_LANDMARKS:
-        raise KeypointStoreError(
-            f"Calibration needs at least {MIN_CALIBRATION_LANDMARKS} landmarks; got {len(pixel)}."
-        )
+        raise KeypointStoreError(f"Calibration needs at least {MIN_CALIBRATION_LANDMARKS} landmarks; got {len(pixel)}.")
     if not (np.isfinite(pixel).all() and np.isfinite(world).all()):
         raise KeypointStoreError("Calibration points must be finite.")
     if _degenerate(pixel) or _degenerate(world):
@@ -617,9 +615,7 @@ class CalibrationTable:
         return cls([CalibrationLandmark.from_dict(item) for item in (payload or ())])
 
 
-def load_world_coordinates(
-    path: str | Path, session: str | None = None
-) -> dict[str, tuple[float, float]] | list[str]:
+def load_world_coordinates(path: str | Path, session: str | None = None) -> dict[str, tuple[float, float]] | list[str]:
     """Read landmark world (cm) coordinates from a tabular file.
 
     Two layouts are understood:
@@ -657,14 +653,10 @@ def load_world_coordinates(
     session_col = columns.get("session")
     if session_col is not None:
         stems = {
-            lower[: -len("_x")]
-            for lower in columns
-            if lower.endswith("_x") and lower[: -len("_x")] + "_y" in columns
+            lower[: -len("_x")] for lower in columns if lower.endswith("_x") and lower[: -len("_x")] + "_y" in columns
         }
         if not stems:
-            raise KeypointStoreError(
-                f"{path.name} has a 'session' column but no '<landmark>_x'/'<landmark>_y' pairs."
-            )
+            raise KeypointStoreError(f"{path.name} has a 'session' column but no '<landmark>_x'/'<landmark>_y' pairs.")
         sessions = [str(s) for s in dict.fromkeys(table[session_col].astype(str))]
         if session is None:
             return sessions
@@ -672,10 +664,7 @@ def load_world_coordinates(
         if rows.empty:
             raise KeypointStoreError(f"Session {session!r} is not in {path.name} (has: {', '.join(sessions)}).")
         row = rows.iloc[0]
-        return {
-            stem: (float(row[columns[stem + "_x"]]), float(row[columns[stem + "_y"]]))
-            for stem in sorted(stems)
-        }
+        return {stem: (float(row[columns[stem + "_x"]]), float(row[columns[stem + "_y"]])) for stem in sorted(stems)}
 
     raise KeypointStoreError(
         f"{path.name} is neither a long landmark table (name/landmark, x, y) nor a "
@@ -2165,9 +2154,7 @@ def store_to_dataset(
     derived = dict(store_to_kinematics(ds, kinematics))
     if head_direction:
         derived.update(
-            store_to_head_direction(
-                store, fps, y_flipped=image_height is not None, world_transform=world_transform
-            )
+            store_to_head_direction(store, fps, y_flipped=image_height is not None, world_transform=world_transform)
         )
     return ds.assign(derived) if derived else ds
 

@@ -1841,6 +1841,35 @@ def test_editing_a_table_cell_writes_the_world_coordinate(dialog):
     assert world == (123.5, _CALIB_CM[1][1])
 
 
+# ----------------------------------------------------------------------
+# The refinement subclass: the labelling dialog minus schema/Detect/Calibrate
+# ----------------------------------------------------------------------
+
+
+def test_refinement_dialog_keeps_label_and_fill_only(qapp, tmp_path):
+    from ethograph.gui.dialog_pose_refinement import SCOPE_MY_LABELS, PoseRefinementDialog
+
+    state = ObservableAppState()
+    state._yaml_path = str(tmp_path / "gui_settings.yaml")
+    dlg = PoseRefinementDialog(_FakeDataWidget(state))
+    try:
+        assert [dlg.tabs.tabText(i) for i in range(dlg.tabs.count())] == [
+            "Label && Edit",
+            "Fill and save",
+        ]
+        # No resolvable pose file in the fake session: an empty store, and the
+        # context label says why — the dialog must still construct and close.
+        assert dlg.store.keypoint_names == []
+        assert "No pose file resolves" in dlg.context_label.text()
+        # The export group retires whole; the fill gains the scope choice.
+        assert dlg.invert_y_check.parentWidget().isHidden()
+        assert dlg.fill_scope_combo.currentData() == SCOPE_MY_LABELS
+        # The Keypoints tree survives tab removal — key handling reads it.
+        assert dlg.tree is not None
+    finally:
+        dlg.close()
+
+
 def test_the_clicked_frames_table_lists_frames_per_landmark(dialog):
     _calibrate(dialog)  # every landmark clicked on frame 0
     dialog.store.calibration.add_click("mark_1", 5, (7.0, 8.0))

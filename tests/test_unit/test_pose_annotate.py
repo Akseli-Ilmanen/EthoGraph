@@ -1334,9 +1334,7 @@ def test_sidecar_without_calibration_loads_an_empty_table(store, tmp_path):
 def test_world_transform_exports_cm(store):
     store.set_point(0, "beak", (100.0, 0.0))
     ds = store_to_movement_ds(store, FPS, world_transform=_calibrated_table().fit())
-    np.testing.assert_allclose(
-        ds["position"].isel(time=0, individual=0).sel(keypoint="beak").values, [210.0, -5.0]
-    )
+    np.testing.assert_allclose(ds["position"].isel(time=0, individual=0).sel(keypoint="beak").values, [210.0, -5.0])
     assert ds.attrs["space_unit"] == "cm"
     assert len(ds.attrs["pixels_to_cm"]) == 9
 

@@ -152,6 +152,9 @@ class TopBarBuilder:
 
         menu.addSeparator()
         menu.addAction("Keypoint labelling…", self._open_keypoint_labelling)
+        # Correcting an imported pose file (DLC/SLEAP/…) rather than labelling
+        # from scratch — writes {stem}_refined copies beside the sources.
+        menu.addAction("Refine imported poses…", self._open_pose_refinement)
 
         menu.addSeparator()
         # Escape hatch for a frozen video image (dead pynaviz render chain):
@@ -177,6 +180,12 @@ class TopBarBuilder:
         """Open the keypoint labelling dialog (owned by the DataWidget, so the
         Tools entry and the Pose sidebar button raise the same instance)."""
         open_dialog = self._first_method(getattr(self.meta, "data_widget", None), "open_keypoint_labelling")
+        if open_dialog is not None:
+            open_dialog()
+
+    def _open_pose_refinement(self):
+        """Open the pose refinement dialog (owned by the DataWidget)."""
+        open_dialog = self._first_method(getattr(self.meta, "data_widget", None), "open_pose_refinement")
         if open_dialog is not None:
             open_dialog()
 

@@ -56,7 +56,6 @@ from .plots_raster import RasterPlot
 from .plots_spectrogram import SharedAudioCache, SpectrogramPlot
 from .widgets_transform import compute_energy_envelope
 
-
 # Panel size ratios keyed by (has_audio, has_neurons_or_neo)
 # Values: dict mapping panel_name -> fraction of splitter height
 _PANEL_RATIOS = {

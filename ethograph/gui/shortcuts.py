@@ -170,7 +170,8 @@ def bind_global_shortcuts(meta_widget):
     # --- Label activation grid layout ---
     number_keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"]
     qwerty_row = ["Q", "W", "E", "R", "T", "Z", "U", "I", "O", "P"]
-    home_row = ["A", "S", "D", "F", "G", "H", "J", "K", "L"]
+    home_row = ["A", "S", "D", "F", "G", "H", "J", "K", "L", "Y"]
+    fn_row = ["F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10"]
 
     for i, key in enumerate(number_keys):
         labels = i + 1 if key != "0" else 10
@@ -181,6 +182,9 @@ def bind_global_shortcuts(meta_widget):
 
     for i, key in enumerate(home_row):
         bind(key, lambda mk=i + 21: labels_widget.activate_label(mk), guarded=True)
+
+    for i, key in enumerate(fn_row):
+        bind(key, lambda mk=i + 31: labels_widget.activate_label(mk), guarded=True)
 
     bind("Ctrl+E", labels_widget._edit_label)
     bind("Ctrl+D", labels_widget._delete_label)

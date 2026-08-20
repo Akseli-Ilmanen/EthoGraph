@@ -853,10 +853,16 @@ class LabelsWidget(QWidget):
         labels_TO_KEY[_id] = key.upper()  # Display as uppercase for clarity
 
     # Row 3: A-; (Labels 21-30)
-    home_row = ["a", "s", "d", "f", "g", "h", "j", "k", "l", ";"]
+    home_row = ["a", "s", "d", "f", "g", "h", "j", "k", "l", "y"]
     for i, key in enumerate(home_row):
         _id = i + 21
         labels_TO_KEY[_id] = key.upper() if key != ";" else ";"  # Keep ; as is
+
+    # Row 4: F1-F10 (Labels 31-40)
+    fn_row = ["F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10"]
+    for i, key in enumerate(fn_row):
+        _id = i + 31
+        labels_TO_KEY[_id] = key
 
     # Also provide reverse mapping for key to _id
     KEY_TO_labels = {v.lower(): k for k, v in labels_TO_KEY.items()}
