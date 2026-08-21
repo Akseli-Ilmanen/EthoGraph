@@ -213,6 +213,10 @@ CP_SCATTER_Y_POSITION_RATIO = 0.05  # 5% from bottom of y-range
 ENVELOPE_OVERLAY_COLOR = "#ff8800"
 ENVELOPE_OVERLAY_WIDTH = 2
 
+# User-drawn horizontal reference lines on a line plot (widgets_plot_settings.py)
+HLINE_COLOR = "#555555"
+HLINE_WIDTH = 1
+
 # =============================================================================
 # AUDIO PLAYBACK (widgets_navigation.py, unified_container.py)
 # =============================================================================

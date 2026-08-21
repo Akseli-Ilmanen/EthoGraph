@@ -615,6 +615,11 @@ class DataWidget(QWidget):
         self.radial_plots: list[RadialPlot] = []
         self.active_radial_plot: RadialPlot | None = None
         self._radial_signals_connected = False
+        #: While True, trial changes skip video/extra-camera/pose loading —
+        #: set by the label-frames dialog while it captures panel screenshots
+        #: (the plots need the trial's data, never its video). Whoever sets it
+        #: reloads the media after clearing it.
+        self.suppress_video_load = False
 
         self.combos = {}
         #: The widget occupying each combo's row in the coords form. Kept so a
@@ -2847,13 +2852,15 @@ class DataWidget(QWidget):
         self._build_restrict_window(trials_sel)
 
         self.app_state.current_frame = 0
-        self.update_video()
-        self._init_or_update_extra_cameras()
-        # Reconcile background proxy jobs to the new trial's visible videos
-        # (cancel stale ones, start/swap for the current set).
-        self.video_mgr.sync_proxies()
+        if not self.suppress_video_load:
+            self.update_video()
+            self._init_or_update_extra_cameras()
+            # Reconcile background proxy jobs to the new trial's visible videos
+            # (cancel stale ones, start/swap for the current set).
+            self.video_mgr.sync_proxies()
         self.update_audio()
-        self.update_pose()
+        if not self.suppress_video_load:
+            self.update_pose()
         self.update_label()
         if self.ephys_widget:
             self.ephys_widget.on_trial_changed()
