@@ -417,6 +417,13 @@ confidence     (float64) - how sure the label is: 1.0 for a human label,</p>
 <blockquote>
 <div><p>the model’s own score for a predicted one</p>
 </div></blockquote>
+<dl class="simple">
+<dt>labeling_method (str)    - who vouches for the label: “manual” (placed or</dt><dd><p>edited by hand), “automated” (a model’s output
+nobody has looked at) or “curated” (automated,
+then approved by a human) — the vocabulary of
+ndx-ethogram</p>
+</dd>
+</dl>
 </dd>
 </dl>
 <p><code class="docutils literal notranslate"><span class="pre">individual</span></code> and <code class="docutils literal notranslate"><span class="pre">individual_rec</span></code> together are the <strong>subject</strong> of a label:

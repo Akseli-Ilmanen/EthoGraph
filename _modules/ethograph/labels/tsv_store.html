@@ -416,11 +416,15 @@
 <span class="sd">    offset_s                - end time in seconds (trial-relative)</span>
 <span class="sd">    confidence              - 1.0 for a human label, the model's own score for</span>
 <span class="sd">                              a predicted one</span>
+<span class="sd">    labeling_method         - per label: "manual" | "automated" | "curated"</span>
+<span class="sd">                              (see ethograph.labels.curation)</span>
 <span class="sd">    n_samples               - per-trial sample count for dense conversion (int, 0 if unknown)</span>
-<span class="sd">    human_verified          - per-trial flag (0/1), repeated per row</span>
 <span class="sd">    changepoint_corrected   - per-trial flag (0/1), repeated per row</span>
 <span class="sd">    prediction_source       - path to prediction file that produced this label (empty if human)</span>
 
+<span class="sd">A ``human_verified`` column in an older file is carried along untouched and</span>
+<span class="sd">never read: whether a trial is reviewed is a question answered per label by</span>
+<span class="sd">``labeling_method`` now.</span>
 
 <span class="sd">Label names are managed centrally in mapping.txt.</span>
 <span class="sd">"""</span>
@@ -442,6 +446,7 @@
     <span class="n">ensure_confidence</span><span class="p">,</span>
     <span class="n">ensure_event_type</span><span class="p">,</span>
     <span class="n">ensure_individual_rec</span><span class="p">,</span>
+    <span class="n">ensure_labeling_method</span><span class="p">,</span>
 <span class="p">)</span>
 
 <span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span>
@@ -455,7 +460,7 @@
     <span class="s2">"offset_s"</span><span class="p">,</span>
     <span class="s2">"event_type"</span><span class="p">,</span>
     <span class="s2">"confidence"</span><span class="p">,</span>
-    <span class="s2">"human_verified"</span><span class="p">,</span>
+    <span class="s2">"labeling_method"</span><span class="p">,</span>
     <span class="s2">"changepoint_corrected"</span><span class="p">,</span>
     <span class="s2">"prediction_source"</span><span class="p">,</span>
     <span class="s2">"n_samples"</span><span class="p">,</span>
@@ -463,18 +468,25 @@
 
 <span class="c1"># Per-trial metadata columns (same value for all rows in a trial)</span>
 <span class="n">TRIAL_META_COLUMNS</span> <span class="o">=</span> <span class="p">[</span>
-    <span class="s2">"human_verified"</span><span class="p">,</span>
     <span class="s2">"changepoint_corrected"</span><span class="p">,</span>
     <span class="s2">"prediction_source"</span><span class="p">,</span>
     <span class="s2">"n_samples"</span><span class="p">,</span>
 <span class="p">]</span>
 
 <span class="n">TRIAL_META_DEFAULTS</span> <span class="o">=</span> <span class="p">{</span>
-    <span class="s2">"human_verified"</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span>
     <span class="s2">"changepoint_corrected"</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span>
     <span class="s2">"prediction_source"</span><span class="p">:</span> <span class="s2">""</span><span class="p">,</span>
     <span class="s2">"n_samples"</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span>
 <span class="p">}</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_ensure_label_columns</span><span class="p">(</span><span class="n">df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Fill in every per-label column an older file may lack (in place)."""</span>
+    <span class="n">ensure_event_type</span><span class="p">(</span><span class="n">df</span><span class="p">)</span>
+    <span class="n">ensure_individual_rec</span><span class="p">(</span><span class="n">df</span><span class="p">)</span>
+    <span class="n">ensure_confidence</span><span class="p">(</span><span class="n">df</span><span class="p">)</span>
+    <span class="n">ensure_labeling_method</span><span class="p">(</span><span class="n">df</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">df</span>
 
 
 <span class="c1"># ---------------------------------------------------------------------------</span>
@@ -539,7 +551,7 @@
 <span class="sd">    -------</span>
 <span class="sd">    pd.DataFrame</span>
 <span class="sd">        Columns: ``trial``, ``onset_s``, ``offset_s``, ``labels`` (int),</span>
-<span class="sd">        ``individual``, ``human_verified``, ``changepoint_corrected``,</span>
+<span class="sd">        ``individual``, ``labeling_method``, ``changepoint_corrected``,</span>
 <span class="sd">        ``prediction_source``.</span>
 
 <span class="sd">    Examples</span>
@@ -562,9 +574,7 @@
         <span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_csv</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="n">sep</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">engine</span><span class="o">=</span><span class="s2">"python"</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s2">"utf-8-sig"</span><span class="p">,</span> <span class="n">comment</span><span class="o">=</span><span class="s2">"#"</span><span class="p">)</span>
     <span class="n">validate_labels_tsv</span><span class="p">(</span><span class="n">df</span><span class="p">,</span> <span class="n">path</span><span class="p">)</span>
 
-    <span class="n">ensure_event_type</span><span class="p">(</span><span class="n">df</span><span class="p">)</span>
-    <span class="n">ensure_individual_rec</span><span class="p">(</span><span class="n">df</span><span class="p">)</span>
-    <span class="n">ensure_confidence</span><span class="p">(</span><span class="n">df</span><span class="p">)</span>
+    <span class="n">_ensure_label_columns</span><span class="p">(</span><span class="n">df</span><span class="p">)</span>
     <span class="k">for</span> <span class="n">col</span> <span class="ow">in</span> <span class="n">INTERVAL_COLUMNS</span><span class="p">:</span>
         <span class="k">if</span> <span class="n">col</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">columns</span> <span class="ow">and</span> <span class="n">col</span> <span class="ow">in</span> <span class="n">INTERVAL_DTYPES</span><span class="p">:</span>
             <span class="n">df</span><span class="p">[</span><span class="n">col</span><span class="p">]</span> <span class="o">=</span> <span class="n">df</span><span class="p">[</span><span class="n">col</span><span class="p">]</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">INTERVAL_DTYPES</span><span class="p">[</span><span class="n">col</span><span class="p">])</span>
@@ -610,6 +620,7 @@
         <span class="s2">"offset_s"</span><span class="p">,</span>
         <span class="s2">"event_type"</span><span class="p">,</span>
         <span class="s2">"confidence"</span><span class="p">,</span>
+        <span class="s2">"labeling_method"</span><span class="p">,</span>
         <span class="s2">"trial_onset"</span><span class="p">,</span>
         <span class="s2">"trial_offset"</span><span class="p">,</span>
         <span class="s2">"onset_global"</span><span class="p">,</span>
@@ -664,10 +675,7 @@
 <span class="w">    </span><span class="sd">"""*df* reduced to the canonical columns, in a canonical order."""</span>
     <span class="k">if</span> <span class="n">df</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">df</span><span class="o">.</span><span class="n">empty</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">_empty_all_labels</span><span class="p">()[</span><span class="n">TSV_COLUMNS</span><span class="p">]</span>
-    <span class="n">out</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
-    <span class="n">ensure_event_type</span><span class="p">(</span><span class="n">out</span><span class="p">)</span>
-    <span class="n">ensure_individual_rec</span><span class="p">(</span><span class="n">out</span><span class="p">)</span>
-    <span class="n">ensure_confidence</span><span class="p">(</span><span class="n">out</span><span class="p">)</span>
+    <span class="n">out</span> <span class="o">=</span> <span class="n">_ensure_label_columns</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">copy</span><span class="p">())</span>
     <span class="k">for</span> <span class="n">col</span> <span class="ow">in</span> <span class="n">TSV_COLUMNS</span><span class="p">:</span>
         <span class="k">if</span> <span class="n">col</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">out</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
             <span class="n">out</span><span class="p">[</span><span class="n">col</span><span class="p">]</span> <span class="o">=</span> <span class="n">TRIAL_META_DEFAULTS</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">col</span><span class="p">,</span> <span class="s2">""</span><span class="p">)</span>
@@ -705,7 +713,9 @@
     <span class="n">trial_df</span> <span class="o">=</span> <span class="n">all_df</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">mask</span><span class="p">,</span> <span class="n">cols</span><span class="p">]</span><span class="o">.</span><span class="n">reset_index</span><span class="p">(</span><span class="n">drop</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">trial_df</span><span class="o">.</span><span class="n">empty</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">empty_intervals</span><span class="p">()</span>
-    <span class="k">return</span> <span class="n">trial_df</span></div>
+    <span class="c1"># A table built before a per-label column existed still hands out rows</span>
+    <span class="c1"># carrying every INTERVAL_COLUMN, so callers can index them blindly.</span>
+    <span class="k">return</span> <span class="n">_ensure_label_columns</span><span class="p">(</span><span class="n">trial_df</span><span class="p">)</span></div>
 
 
 
@@ -720,23 +730,30 @@
 
 <span class="sd">    Preserves per-trial metadata columns from the existing rows.  The columns</span>
 <span class="sd">    added to files written before they existed (``event_type``,</span>
-<span class="sd">    ``individual_rec``, ``confidence``) are filled in on the *whole* table</span>
-<span class="sd">    first: the untouched trials must not end up with NaN where the rewritten</span>
-<span class="sd">    trial has a value.</span>
+<span class="sd">    ``individual_rec``, ``confidence``, ``labeling_method``) are filled in on</span>
+<span class="sd">    the *whole* table first: the untouched trials must not end up with NaN</span>
+<span class="sd">    where the rewritten trial has a value.  Any other per-trial column a</span>
+<span class="sd">    loaded file carries (a legacy ``human_verified``, say) rides along with</span>
+<span class="sd">    the trial's previous value, so rewriting one trial never blanks it.</span>
 <span class="sd">    """</span>
     <span class="k">if</span> <span class="n">all_df</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
         <span class="n">all_df</span> <span class="o">=</span> <span class="n">_empty_all_labels</span><span class="p">()</span>
-    <span class="n">all_df</span> <span class="o">=</span> <span class="n">ensure_confidence</span><span class="p">(</span><span class="n">ensure_individual_rec</span><span class="p">(</span><span class="n">ensure_event_type</span><span class="p">(</span><span class="n">all_df</span><span class="o">.</span><span class="n">copy</span><span class="p">())))</span>
+    <span class="n">all_df</span> <span class="o">=</span> <span class="n">_ensure_label_columns</span><span class="p">(</span><span class="n">all_df</span><span class="o">.</span><span class="n">copy</span><span class="p">())</span>
 
     <span class="c1"># Preserve existing meta values for this trial</span>
     <span class="n">old_meta</span> <span class="o">=</span> <span class="n">get_trial_meta</span><span class="p">(</span><span class="n">all_df</span><span class="p">,</span> <span class="n">trial</span><span class="p">)</span>
+    <span class="n">old_rows</span> <span class="o">=</span> <span class="n">all_df</span><span class="p">[</span><span class="n">all_df</span><span class="p">[</span><span class="s2">"trial"</span><span class="p">]</span> <span class="o">==</span> <span class="n">trial</span><span class="p">]</span>
     <span class="n">other</span> <span class="o">=</span> <span class="n">all_df</span><span class="p">[</span><span class="n">all_df</span><span class="p">[</span><span class="s2">"trial"</span><span class="p">]</span> <span class="o">!=</span> <span class="n">trial</span><span class="p">]</span>
 
-    <span class="n">trial_df</span> <span class="o">=</span> <span class="n">ensure_confidence</span><span class="p">(</span><span class="n">ensure_individual_rec</span><span class="p">(</span><span class="n">ensure_event_type</span><span class="p">(</span><span class="n">trial_df</span><span class="o">.</span><span class="n">copy</span><span class="p">())))</span>
+    <span class="n">trial_df</span> <span class="o">=</span> <span class="n">_ensure_label_columns</span><span class="p">(</span><span class="n">trial_df</span><span class="o">.</span><span class="n">copy</span><span class="p">())</span>
     <span class="n">new_rows</span> <span class="o">=</span> <span class="n">trial_df</span><span class="p">[</span><span class="n">INTERVAL_COLUMNS</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
     <span class="n">new_rows</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="s2">"trial"</span><span class="p">,</span> <span class="n">trial</span><span class="p">)</span>
     <span class="k">for</span> <span class="n">col</span><span class="p">,</span> <span class="n">default</span> <span class="ow">in</span> <span class="n">TRIAL_META_DEFAULTS</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
         <span class="n">new_rows</span><span class="p">[</span><span class="n">col</span><span class="p">]</span> <span class="o">=</span> <span class="n">old_meta</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">col</span><span class="p">,</span> <span class="n">default</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">col</span> <span class="ow">in</span> <span class="n">all_df</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">col</span> <span class="ow">in</span> <span class="n">new_rows</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
+            <span class="k">continue</span>
+        <span class="n">new_rows</span><span class="p">[</span><span class="n">col</span><span class="p">]</span> <span class="o">=</span> <span class="n">old_rows</span><span class="p">[</span><span class="n">col</span><span class="p">]</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">if</span> <span class="ow">not</span> <span class="n">old_rows</span><span class="o">.</span><span class="n">empty</span> <span class="k">else</span> <span class="kc">None</span>
 
     <span class="n">result</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">concat</span><span class="p">([</span><span class="n">other</span><span class="p">,</span> <span class="n">new_rows</span><span class="p">],</span> <span class="n">ignore_index</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">result</span></div>
@@ -800,9 +817,9 @@
 <span class="k">class</span><span class="w"> </span><span class="nc">LabelEdit</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""One trial's labels as they stood *before* a single edit.</span>
 
-<span class="sd">    ``rows`` carries :data:`~ethograph.labels.intervals.INTERVAL_COLUMNS` only;</span>
-<span class="sd">    ``meta`` the per-trial flags, so undoing a placement also takes back the</span>
-<span class="sd">    ``human_verified`` it set.</span>
+<span class="sd">    ``rows`` carries :data:`~ethograph.labels.intervals.INTERVAL_COLUMNS` only</span>
+<span class="sd">    (so each row's ``labeling_method`` is restored with it); ``meta`` the</span>
+<span class="sd">    per-trial flags, so undoing an edit also takes back the flags it set.</span>
 <span class="sd">    """</span>
 
     <span class="n">trial</span><span class="p">:</span> <span class="nb">object</span>

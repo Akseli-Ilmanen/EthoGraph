@@ -417,12 +417,18 @@ confidence              - 1.0 for a human label, the model’s own score for</p>
 <blockquote>
 <div><p>a predicted one</p>
 </div></blockquote>
+<dl class="simple">
+<dt>labeling_method         - per label: “manual” | “automated” | “curated”</dt><dd><p>(see ethograph.labels.curation)</p>
+</dd>
+</dl>
 <p>n_samples               - per-trial sample count for dense conversion (int, 0 if unknown)
-human_verified          - per-trial flag (0/1), repeated per row
 changepoint_corrected   - per-trial flag (0/1), repeated per row
 prediction_source       - path to prediction file that produced this label (empty if human)</p>
 </dd>
 </dl>
+<p>A <code class="docutils literal notranslate"><span class="pre">human_verified</span></code> column in an older file is carried along untouched and
+never read: whether a trial is reviewed is a question answered per label by
+<code class="docutils literal notranslate"><span class="pre">labeling_method</span></code> now.</p>
 <p>Label names are managed centrally in mapping.txt.</p>
 <p class="rubric">Functions</p>
 <div class="pst-scrollable-table-container"><table class="autosummary longtable table">
@@ -468,7 +474,7 @@ set(iterable) -&gt; new set object</p>
 
 <dl class="py data">
 <dt class="sig sig-object py" id="ethograph.labels.tsv_store.TSV_COLUMNS">
-<span class="sig-prename descclassname"><span class="pre">ethograph.labels.tsv_store.</span></span><span class="sig-name descname"><span class="pre">TSV_COLUMNS</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">['trial',</span> <span class="pre">'individual',</span> <span class="pre">'individual_rec',</span> <span class="pre">'labels',</span> <span class="pre">'onset_s',</span> <span class="pre">'offset_s',</span> <span class="pre">'event_type',</span> <span class="pre">'confidence',</span> <span class="pre">'human_verified',</span> <span class="pre">'changepoint_corrected',</span> <span class="pre">'prediction_source',</span> <span class="pre">'n_samples']</span></em><a class="headerlink" href="#ethograph.labels.tsv_store.TSV_COLUMNS" title="Link to this definition">#</a></dt>
+<span class="sig-prename descclassname"><span class="pre">ethograph.labels.tsv_store.</span></span><span class="sig-name descname"><span class="pre">TSV_COLUMNS</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">['trial',</span> <span class="pre">'individual',</span> <span class="pre">'individual_rec',</span> <span class="pre">'labels',</span> <span class="pre">'onset_s',</span> <span class="pre">'offset_s',</span> <span class="pre">'event_type',</span> <span class="pre">'confidence',</span> <span class="pre">'labeling_method',</span> <span class="pre">'changepoint_corrected',</span> <span class="pre">'prediction_source',</span> <span class="pre">'n_samples']</span></em><a class="headerlink" href="#ethograph.labels.tsv_store.TSV_COLUMNS" title="Link to this definition">#</a></dt>
 <dd><p>Built-in mutable sequence.</p>
 <p>If no argument is given, the constructor creates a new empty list.
 The argument must be an iterable if specified.</p>
@@ -476,7 +482,7 @@ The argument must be an iterable if specified.</p>
 
 <dl class="py data">
 <dt class="sig sig-object py" id="ethograph.labels.tsv_store.TRIAL_META_COLUMNS">
-<span class="sig-prename descclassname"><span class="pre">ethograph.labels.tsv_store.</span></span><span class="sig-name descname"><span class="pre">TRIAL_META_COLUMNS</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">['human_verified',</span> <span class="pre">'changepoint_corrected',</span> <span class="pre">'prediction_source',</span> <span class="pre">'n_samples']</span></em><a class="headerlink" href="#ethograph.labels.tsv_store.TRIAL_META_COLUMNS" title="Link to this definition">#</a></dt>
+<span class="sig-prename descclassname"><span class="pre">ethograph.labels.tsv_store.</span></span><span class="sig-name descname"><span class="pre">TRIAL_META_COLUMNS</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">['changepoint_corrected',</span> <span class="pre">'prediction_source',</span> <span class="pre">'n_samples']</span></em><a class="headerlink" href="#ethograph.labels.tsv_store.TRIAL_META_COLUMNS" title="Link to this definition">#</a></dt>
 <dd><p>Built-in mutable sequence.</p>
 <p>If no argument is given, the constructor creates a new empty list.
 The argument must be an iterable if specified.</p>
@@ -484,7 +490,7 @@ The argument must be an iterable if specified.</p>
 
 <dl class="py data">
 <dt class="sig sig-object py" id="ethograph.labels.tsv_store.TRIAL_META_DEFAULTS">
-<span class="sig-prename descclassname"><span class="pre">ethograph.labels.tsv_store.</span></span><span class="sig-name descname"><span class="pre">TRIAL_META_DEFAULTS</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">{'changepoint_corrected':</span> <span class="pre">0,</span> <span class="pre">'human_verified':</span> <span class="pre">0,</span> <span class="pre">'n_samples':</span> <span class="pre">0,</span> <span class="pre">'prediction_source':</span> <span class="pre">''}</span></em><a class="headerlink" href="#ethograph.labels.tsv_store.TRIAL_META_DEFAULTS" title="Link to this definition">#</a></dt>
+<span class="sig-prename descclassname"><span class="pre">ethograph.labels.tsv_store.</span></span><span class="sig-name descname"><span class="pre">TRIAL_META_DEFAULTS</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">{'changepoint_corrected':</span> <span class="pre">0,</span> <span class="pre">'n_samples':</span> <span class="pre">0,</span> <span class="pre">'prediction_source':</span> <span class="pre">''}</span></em><a class="headerlink" href="#ethograph.labels.tsv_store.TRIAL_META_DEFAULTS" title="Link to this definition">#</a></dt>
 <dd><p>dict() -&gt; new empty dictionary
 dict(mapping) -&gt; new dictionary initialized from a mapping object’s</p>
 <blockquote>

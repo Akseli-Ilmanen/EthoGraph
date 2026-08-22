@@ -426,9 +426,11 @@
 <dd><p>Replace all rows for a trial in the all-labels DataFrame.</p>
 <p>Preserves per-trial metadata columns from the existing rows.  The columns
 added to files written before they existed (<code class="docutils literal notranslate"><span class="pre">event_type</span></code>,
-<code class="docutils literal notranslate"><span class="pre">individual_rec</span></code>, <code class="docutils literal notranslate"><span class="pre">confidence</span></code>) are filled in on the <em>whole</em> table
-first: the untouched trials must not end up with NaN where the rewritten
-trial has a value.</p>
+<code class="docutils literal notranslate"><span class="pre">individual_rec</span></code>, <code class="docutils literal notranslate"><span class="pre">confidence</span></code>, <code class="docutils literal notranslate"><span class="pre">labeling_method</span></code>) are filled in on
+the <em>whole</em> table first: the untouched trials must not end up with NaN
+where the rewritten trial has a value.  Any other per-trial column a
+loaded file carries (a legacy <code class="docutils literal notranslate"><span class="pre">human_verified</span></code>, say) rides along with
+the trial’s previous value, so rewriting one trial never blanks it.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html#pandas.DataFrame" title="(in pandas v3.0.5)"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code></a></span></p>

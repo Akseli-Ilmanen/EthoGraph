@@ -584,6 +584,28 @@ the segment you just labelled.</p>
 <li><p>export labels</p></li>
 </ul>
 </section>
+<section id="trial-metadata">
+<span id="target-user-manual-metadata"></span><h2>Trial metadata<a class="headerlink" href="#trial-metadata" title="Link to this heading">#</a></h2>
+<p>Per-trial conditions (stimulus, reward, pellet count, …) live in a small
+table — a <code class="docutils literal notranslate"><span class="pre">{stem}_metadata.tsv</span></code> next to your data, or the NWB trials table —
+and show up as the <strong>trials table</strong> at the top of the Navigation section,
+where each column becomes a filter. See <a class="reference internal" href="../advanced/metadata.html"><span class="doc">Trial metadata</span></a>.</p>
+<div class="admonition important">
+<p class="admonition-title">Important</p>
+<p><strong>The trials table is the one place trials are included or excluded — and it
+applies to everything.</strong> Filter <code class="docutils literal notranslate"><span class="pre">num_pellets</span></code> to <code class="docutils literal notranslate"><span class="pre">1,</span> <span class="pre">2</span></code> (not <code class="docutils literal notranslate"><span class="pre">0</span></code>) and every
+operation sees only those trials: navigation, label/sequence jumps,
+changepoint correction, curation (Ctrl+C, inspect mode, frame-by-frame
+review, the label and video grids), model <strong>training</strong> and model
+<strong>inference</strong>. A label in a filtered-out trial is not visited, curated,
+trained on or predicted over until you widen the filter. No dialog has a
+trial filter of its own; each one tells you how many trials it will run over.</p>
+</div>
+<p>Two more things worth knowing: EthoGraph keeps a <code class="docutils literal notranslate"><span class="pre">curated</span></code> column in that
+table itself (<code class="docutils literal notranslate"><span class="pre">1</span></code> once every label of a trial is manual or curated — see
+<a class="reference internal" href="../advanced/labels/curation.html"><span class="doc">Curating labels</span></a>), and metadata edits save on their own,
+about a second after you stop typing — <code class="docutils literal notranslate"><span class="pre">Ctrl+S</span></code> is only for labels.</p>
+</section>
 <section id="the-interface">
 <h2>The interface<a class="headerlink" href="#the-interface" title="Link to this heading">#</a></h2>
 <p>The layout is <strong>responsive and panel-based</strong>: every plot, video and trace lives
@@ -1493,6 +1515,7 @@ from the start page. The notebooks that built them are in the
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#labelling">Labelling</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#trial-metadata">Trial metadata</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#the-interface">The interface</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#video-audio-playback">Video &amp; audio playback</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#feature-dropdowns">Feature dropdowns</a></li>

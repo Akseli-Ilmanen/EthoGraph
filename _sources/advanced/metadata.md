@@ -5,6 +5,19 @@ Attach per-trial conditions (e.g. stimulus, reward outcome) via a TSV file. The
 trials table in the GUI turns those columns into filters, restricting navigation
 and analysis to a subset of trials.
 
+```{important}
+**The trials table's filters are the one trial filter in EthoGraph, and they
+apply to everything.** Filter, say, `num_pellets` to `1, 2` (not `0`) in the
+trials table, and every operation from then on sees only those trials:
+navigation, label and sequence jumps, changepoint correction, purging short
+labels, curation (Ctrl+C, inspect mode, frame-by-frame review, the label and
+video grids), model **training** and model **inference**. A label in a
+filtered-out trial is not visited, not curated, not trained on and not
+predicted over — it simply does not exist for those operations until you
+widen the filter again. No dialog has a trial filter of its own; each one says
+how many trials it will run over, read off the table.
+```
+
 ---
 
 ## The metadata file
@@ -81,10 +94,21 @@ Filtered-out trials disappear from the table and from the trial navigator — th
 *Previous / Next trial* buttons and the trial slider skip them. A combination
 matching no trials is ignored rather than emptying the navigator.
 
-**Note:** operations across trials, such as changepoint correction or purging
-short labels, apply only to the filtered trials.
+And not just the navigator: as the box at the top says, **every** operation —
+changepoint correction, purging short labels, curation, model training and
+inference — runs over the filtered trials only.
 
 ---
+
+### The `curated` column
+
+EthoGraph maintains one column itself: **`curated`** is `1` when every label
+of the trial is `manual` or `curated` and `0` while any is still a model's
+unreviewed `automated` output (see {doc}`labels/curation`). It is refreshed
+every few seconds while you curate rather than on every edit, so labelling
+never waits on a file write, and it flips back to `0` whenever new predictions
+land in a trial. Filter on it like any other column to walk only the trials
+that still need a look.
 
 ## Editing metadata as you watch
 

@@ -51,7 +51,7 @@
     <link rel="index" title="Index" href="../../genindex.html" />
     <link rel="search" title="Search" href="../../search.html" />
     <link rel="next" title="Label mapping (mapping.txt)" href="mapping.html" />
-    <link rel="prev" title="Refining labels frame-by-frame" href="refining.html" />
+    <link rel="prev" title="Curating labels" href="curation.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="" />
@@ -369,7 +369,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../time_slider_trial_session.html">Time slider &amp; trial/session</a></li>
 <li class="toctree-l1 current active has-children"><a class="reference internal" href="index.html">Labels</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
 <li class="toctree-l2"><a class="reference internal" href="labelling_gui.html">Labelling in the GUI</a></li>
-<li class="toctree-l2"><a class="reference internal" href="refining.html">Refining labels frame-by-frame</a></li>
+<li class="toctree-l2"><a class="reference internal" href="curation.html">Curating labels</a></li>
 <li class="toctree-l2 current active"><a class="current reference internal" href="#">Predicting point events (LightGBM)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="mapping.html">Label mapping (<code class="docutils literal notranslate"><span class="pre">mapping.txt</span></code>)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="branches.html">Label branches</a></li>
@@ -571,17 +571,20 @@ to, and press <strong>Predict missing onsets</strong>. Two things are never touc
 <li><p><strong>Trials that already carry a class</strong> keep what they have — the model fills
 gaps, it never overrides. A trial that already has <em>one</em> class can still
 receive the others.</p></li>
-<li><p><strong>Trials excluded by the filters.</strong> The trials table’s filters apply as
-always, and the dialog adds one filter per metadata column of its own. Those
-<strong>combine</strong>: setting <code class="docutils literal notranslate"><span class="pre">genotype</span> <span class="pre">=</span> <span class="pre">wt</span></code> and <code class="docutils literal notranslate"><span class="pre">stimulus</span> <span class="pre">=</span> <span class="pre">tone</span></code> predicts only the
-trials that are both. A column left on <em>All</em> constrains nothing, and the
-dialog says how many trials survive before you run anything.</p></li>
+<li><p><strong>Trials the trials table hides.</strong> Training and prediction both run over
+exactly the trials the <a class="reference internal" href="../metadata.html"><span class="doc">trials table</span></a> shows — its filters
+are the one trial filter in EthoGraph, so filtering <code class="docutils literal notranslate"><span class="pre">genotype</span> <span class="pre">=</span> <span class="pre">wt</span></code> there
+trains on and predicts into wild-type trials only. The dialog has no
+filters of its own; it says how many trials it will run over, read off the
+table.</p></li>
 </ul>
-<p>Predictions land in memory like any other label — review them, correct them,
-and save with <code class="docutils literal notranslate"><span class="pre">Ctrl+S</span></code>. <strong>Review predictions…</strong> at the bottom of the dialog
-opens the <a class="reference internal" href="#target-onset-model-confidence"><span class="std std-ref">label-frames grid</span></a> on exactly
-what the run just wrote — those classes, those trials — so you can check the
-video frame at each one and click through to fix the doubtful ones.</p>
+<p>Predictions land in memory like any other label, stamped
+<code class="docutils literal notranslate"><span class="pre">labeling_method</span> <span class="pre">=</span> <span class="pre">automated</span></code> — they draw dotted on the plots until you
+<a class="reference internal" href="curation.html"><span class="doc">curate</span></a> them, and a trial holding one stays red in the trial
+list. <strong>Review predictions…</strong> at the bottom of the dialog opens the
+<a class="reference internal" href="#target-onset-model-confidence"><span class="std std-ref">label grid view</span></a> on exactly what the run
+just wrote — those classes, those trials — so you can check the video frame at
+each one and either click through to fix it or mark it curated.</p>
 <hr class="docutils" />
 </section>
 <section id="confidence">
@@ -623,10 +626,11 @@ everything and triage afterwards — the confidence is on every label either
 way, so nothing is lost by writing first and filtering later.</p>
 <section id="reviewing-by-confidence">
 <h3>Reviewing by confidence<a class="headerlink" href="#reviewing-by-confidence" title="Link to this heading">#</a></h3>
-<p><strong>Tools ▸ Labels: Show frames as Grid/PDF…</strong> puts each label’s confidence on
-its tile and takes a <strong>Flag confidence below</strong> threshold: every tile under it
-gets a red outline, in the grid and in the exported PDF. Set it to <code class="docutils literal notranslate"><span class="pre">0.6</span></code>, scan
-the sheet, and click straight through to the ones worth fixing.</p>
+<p>The <strong>Label grid view…</strong> (Labels tab ▸ Curation) puts each label’s confidence
+and <code class="docutils literal notranslate"><span class="pre">labeling_method</span></code> on its tile and takes a <strong>Flag confidence below</strong>
+threshold: every tile under it gets a red outline, in the grid and in the
+exported PDF. Set it to <code class="docutils literal notranslate"><span class="pre">0.6</span></code>, scan the sheet, and click straight through to
+the ones worth fixing.</p>
 <p><strong>Histogram…</strong> next to the threshold shows where the scores actually sit
 before you commit to a number: one histogram per label class — split per
 individual as well, when more than one animal is labelled — with everything
@@ -635,14 +639,15 @@ below the threshold drawn in the same red. A class whose scores pile up near
 is a class the model has not learnt, and the whole class is worth reviewing.
 Its threshold spin is the grid’s, so dragging it there recolours the tiles
 behind it.</p>
-<p><strong>Tick flagged</strong> ticks exactly the outlined tiles, <strong>Tick their whole trials</strong>
-every event of every trial holding one — the second is the honest default for a
-model review, since a trial with one bad event rarely has only one.</p>
-<p>Ticking tiles and pressing <strong>Refine ticked frame-by-frame…</strong> hands them
-to <a class="reference internal" href="refining.html#target-refining-labels"><span class="std std-ref">frame-by-frame refinement</span></a> as a queue of just
-those boundaries: <code class="docutils literal notranslate"><span class="pre">Enter</span></code> moves an event onto the right frame, <code class="docutils literal notranslate"><span class="pre">Backspace</span></code>
-deletes one that never happened. Either way the row stops being a prediction —
-a corrected event is stamped back to <code class="docutils literal notranslate"><span class="pre">confidence</span> <span class="pre">=</span> <span class="pre">1.0</span></code>.</p>
+<p>The grid’s mode then decides what a click means. In <em>Click = uncurated, rest =
+curated</em> — the honest default for a model review — <strong>Mark low-confidence as
+uncurated</strong> pre-clicks exactly the outlined tiles; click any other tile that
+looks wrong, and <strong>Done</strong>
+curates everything else in one go. Switch the Curation section to
+<a class="reference internal" href="curation.html#target-curation-frame"><span class="std std-ref">frame-by-frame review</span></a> and a tile click drops
+straight into that boundary: <code class="docutils literal notranslate"><span class="pre">Enter</span></code> moves an event onto the right frame
+(the label becomes manual, <code class="docutils literal notranslate"><span class="pre">confidence</span> <span class="pre">=</span> <span class="pre">1.0</span></code>), <code class="docutils literal notranslate"><span class="pre">Backspace</span></code> deletes one that
+never happened, <code class="docutils literal notranslate"><span class="pre">N</span></code> leaves it as it is and marks it curated.</p>
 </section>
 </section>
 </section>
@@ -658,12 +663,12 @@ a corrected event is stamped back to <code class="docutils literal notranslate">
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="refining.html"
+       href="curation.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">Refining labels frame-by-frame</p>
+        <p class="prev-next-title">Curating labels</p>
       </div>
     </a>
     <a class="right-next"

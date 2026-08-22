@@ -369,7 +369,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../time_slider_trial_session.html">Time slider &amp; trial/session</a></li>
 <li class="toctree-l1 current active has-children"><a class="reference internal" href="index.html">Labels</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
 <li class="toctree-l2"><a class="reference internal" href="labelling_gui.html">Labelling in the GUI</a></li>
-<li class="toctree-l2"><a class="reference internal" href="refining.html">Refining labels frame-by-frame</a></li>
+<li class="toctree-l2"><a class="reference internal" href="curation.html">Curating labels</a></li>
 <li class="toctree-l2"><a class="reference internal" href="onset_model.html">Predicting point events (LightGBM)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="mapping.html">Label mapping (<code class="docutils literal notranslate"><span class="pre">mapping.txt</span></code>)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="branches.html">Label branches</a></li>
@@ -533,6 +533,10 @@ the GUI; computed columns are derived on each save from the data file.</p>
 <td><p>float</p></td>
 <td><p>How sure the label is: <code class="docutils literal notranslate"><span class="pre">1.0</span></code> for a hand-placed label, the model’s own score for a predicted one (see <a class="reference internal" href="onset_model.html#target-onset-model-confidence"><span class="std std-ref">Confidence</span></a>)</p></td>
 </tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">labeling_method</span></code></p></td>
+<td><p>str</p></td>
+<td><p>Who vouches for the label: <code class="docutils literal notranslate"><span class="pre">manual</span></code> (placed or edited by hand), <code class="docutils literal notranslate"><span class="pre">automated</span></code> (a model’s output nobody has looked at) or <code class="docutils literal notranslate"><span class="pre">curated</span></code> (automated, then approved) — see <a class="reference internal" href="curation.html"><span class="doc">Curating labels</span></a>. A file without the column reads <code class="docutils literal notranslate"><span class="pre">automated</span></code> for any row with <code class="docutils literal notranslate"><span class="pre">confidence</span> <span class="pre">&lt;</span> <span class="pre">1.0</span></code>, <code class="docutils literal notranslate"><span class="pre">manual</span></code> otherwise</p></td>
+</tr>
 </tbody>
 </table>
 </div>
@@ -554,21 +558,20 @@ overwrite one another. Files written before recipients existed have no
 </tr>
 </thead>
 <tbody>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">human_verified</span></code></p></td>
-<td><p>int</p></td>
-<td><p>1 if a human has made label edits or manually verified this trial (Ctrl+V or button)</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">changepoint_corrected</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">changepoint_corrected</span></code></p></td>
 <td><p>int</p></td>
 <td><p>1 if changepoint correction has been applied to this trial</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">prediction_source</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">prediction_source</span></code></p></td>
 <td><p>str</p></td>
 <td><p>Path to the prediction file that produced these labels (empty for human-labeled)</p></td>
 </tr>
 </tbody>
 </table>
 </div>
+<p>A <code class="docutils literal notranslate"><span class="pre">human_verified</span></code> column in an older file is carried along unchanged and
+never read: whether a trial has been reviewed is answered per label by
+<code class="docutils literal notranslate"><span class="pre">labeling_method</span></code>, and per trial by the metadata table’s <code class="docutils literal notranslate"><span class="pre">curated</span></code> column.</p>
 </section>
 <section id="computed-columns-generated-on-save">
 <h3>Computed columns (generated on save)<a class="headerlink" href="#computed-columns-generated-on-save" title="Link to this heading">#</a></h3>

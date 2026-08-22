@@ -50,6 +50,7 @@ the GUI; computed columns are derived on each save from the data file.
 | `individual_rec` | str | The recipient of a dyadic behaviour (e.g. the bird being mounted); empty for a solo behaviour |
 | `trial` | int/str | Trial identifier, matches the TrialTree |
 | `confidence` | float | How sure the label is: `1.0` for a hand-placed label, the model's own score for a predicted one (see {ref}`target-onset-model-confidence`) |
+| `labeling_method` | str | Who vouches for the label: `manual` (placed or edited by hand), `automated` (a model's output nobody has looked at) or `curated` (automated, then approved) — see {doc}`curation`. A file without the column reads `automated` for any row with `confidence < 1.0`, `manual` otherwise |
 
 `individual` and `individual_rec` together are the **subject** of a label. Each
 (actor, recipient) pair is an independent track: labels are shown, selected and
@@ -64,9 +65,12 @@ These have the same value for every row in a trial:
 
 | Column | Type | Description |
 |--------|------|-------------|
-| `human_verified` | int | 1 if a human has made label edits or manually verified this trial (Ctrl+V or button) |
 | `changepoint_corrected` | int | 1 if changepoint correction has been applied to this trial |
 | `prediction_source` | str | Path to the prediction file that produced these labels (empty for human-labeled) |
+
+A `human_verified` column in an older file is carried along unchanged and
+never read: whether a trial has been reviewed is answered per label by
+`labeling_method`, and per trial by the metadata table's `curated` column.
 
 ### Computed columns (generated on save)
 

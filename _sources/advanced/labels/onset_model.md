@@ -121,17 +121,20 @@ to, and press **Predict missing onsets**. Two things are never touched:
 * **Trials that already carry a class** keep what they have — the model fills
   gaps, it never overrides. A trial that already has *one* class can still
   receive the others.
-* **Trials excluded by the filters.** The trials table's filters apply as
-  always, and the dialog adds one filter per metadata column of its own. Those
-  **combine**: setting `genotype = wt` and `stimulus = tone` predicts only the
-  trials that are both. A column left on *All* constrains nothing, and the
-  dialog says how many trials survive before you run anything.
+* **Trials the trials table hides.** Training and prediction both run over
+  exactly the trials the {doc}`trials table <../metadata>` shows — its filters
+  are the one trial filter in EthoGraph, so filtering `genotype = wt` there
+  trains on and predicts into wild-type trials only. The dialog has no
+  filters of its own; it says how many trials it will run over, read off the
+  table.
 
-Predictions land in memory like any other label — review them, correct them,
-and save with `Ctrl+S`. **Review predictions…** at the bottom of the dialog
-opens the {ref}`label-frames grid <target-onset-model-confidence>` on exactly
-what the run just wrote — those classes, those trials — so you can check the
-video frame at each one and click through to fix the doubtful ones.
+Predictions land in memory like any other label, stamped
+`labeling_method = automated` — they draw dotted on the plots until you
+{doc}`curate <curation>` them, and a trial holding one stays red in the trial
+list. **Review predictions…** at the bottom of the dialog opens the
+{ref}`label grid view <target-onset-model-confidence>` on exactly what the run
+just wrote — those classes, those trials — so you can check the video frame at
+each one and either click through to fix it or mark it curated.
 
 ---
 
@@ -166,10 +169,11 @@ way, so nothing is lost by writing first and filtering later.
 
 ### Reviewing by confidence
 
-**Tools ▸ Labels: Show frames as Grid/PDF…** puts each label's confidence on
-its tile and takes a **Flag confidence below** threshold: every tile under it
-gets a red outline, in the grid and in the exported PDF. Set it to `0.6`, scan
-the sheet, and click straight through to the ones worth fixing.
+The **Label grid view…** (Labels tab ▸ Curation) puts each label's confidence
+and `labeling_method` on its tile and takes a **Flag confidence below**
+threshold: every tile under it gets a red outline, in the grid and in the
+exported PDF. Set it to `0.6`, scan the sheet, and click straight through to
+the ones worth fixing.
 
 **Histogram…** next to the threshold shows where the scores actually sit
 before you commit to a number: one histogram per label class — split per
@@ -180,12 +184,12 @@ is a class the model has not learnt, and the whole class is worth reviewing.
 Its threshold spin is the grid's, so dragging it there recolours the tiles
 behind it.
 
-**Tick flagged** ticks exactly the outlined tiles, **Tick their whole trials**
-every event of every trial holding one — the second is the honest default for a
-model review, since a trial with one bad event rarely has only one.
-
-Ticking tiles and pressing **Refine ticked frame-by-frame…** hands them
-to {ref}`frame-by-frame refinement <target-refining-labels>` as a queue of just
-those boundaries: `Enter` moves an event onto the right frame, `Backspace`
-deletes one that never happened. Either way the row stops being a prediction —
-a corrected event is stamped back to `confidence = 1.0`.
+The grid's mode then decides what a click means. In *Click = uncurated, rest =
+curated* — the honest default for a model review — **Mark low-confidence as
+uncurated** pre-clicks exactly the outlined tiles; click any other tile that
+looks wrong, and **Done**
+curates everything else in one go. Switch the Curation section to
+{ref}`frame-by-frame review <target-curation-frame>` and a tile click drops
+straight into that boundary: `Enter` moves an event onto the right frame
+(the label becomes manual, `confidence = 1.0`), `Backspace` deletes one that
+never happened, `N` leaves it as it is and marks it curated.

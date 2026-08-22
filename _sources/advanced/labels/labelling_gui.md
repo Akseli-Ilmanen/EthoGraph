@@ -59,7 +59,7 @@ Use the labels widget interface:
 
 When a boundary must sit on an exact video frame, refine your existing labels
 frame-by-frame instead of re-placing them on the plots — see
-{doc}`refining`.
+{doc}`curation`.
 
 ---
 

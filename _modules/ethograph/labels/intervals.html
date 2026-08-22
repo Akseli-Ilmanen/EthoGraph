@@ -416,6 +416,11 @@
 <span class="sd">    event_type     (str)     - "state" (interval) or "point" (instantaneous)</span>
 <span class="sd">    confidence     (float64) - how sure the label is: 1.0 for a human label,</span>
 <span class="sd">                               the model's own score for a predicted one</span>
+<span class="sd">    labeling_method (str)    - who vouches for the label: "manual" (placed or</span>
+<span class="sd">                               edited by hand), "automated" (a model's output</span>
+<span class="sd">                               nobody has looked at) or "curated" (automated,</span>
+<span class="sd">                               then approved by a human) — the vocabulary of</span>
+<span class="sd">                               ndx-ethogram</span>
 
 <span class="sd">``individual`` and ``individual_rec`` together are the **subject** of a label:</span>
 <span class="sd">each (actor, recipient) pair is its own independent track, exactly as each</span>
@@ -449,6 +454,15 @@
 <span class="c1">#: other producer (a model) writes its own score in ``[0, 1]``.</span>
 <span class="n">HUMAN_CONFIDENCE</span> <span class="o">=</span> <span class="mf">1.0</span>
 
+<span class="c1">#: ``labeling_method`` values (the ndx-ethogram vocabulary). A label is</span>
+<span class="c1">#: *manual* when a human placed or last edited it, *automated* when a model</span>
+<span class="c1">#: produced it and nobody has looked at it yet, and *curated* once a human has</span>
+<span class="c1">#: looked at an automated label and let it stand.</span>
+<span class="n">LABELING_MANUAL</span> <span class="o">=</span> <span class="s2">"manual"</span>
+<span class="n">LABELING_AUTOMATED</span> <span class="o">=</span> <span class="s2">"automated"</span>
+<span class="n">LABELING_CURATED</span> <span class="o">=</span> <span class="s2">"curated"</span>
+<span class="n">LABELING_METHODS</span> <span class="o">=</span> <span class="p">(</span><span class="n">LABELING_MANUAL</span><span class="p">,</span> <span class="n">LABELING_AUTOMATED</span><span class="p">,</span> <span class="n">LABELING_CURATED</span><span class="p">)</span>
+
 <span class="n">INTERVAL_COLUMNS</span> <span class="o">=</span> <span class="p">[</span>
     <span class="s2">"onset_s"</span><span class="p">,</span>
     <span class="s2">"offset_s"</span><span class="p">,</span>
@@ -457,6 +471,7 @@
     <span class="s2">"individual_rec"</span><span class="p">,</span>
     <span class="s2">"event_type"</span><span class="p">,</span>
     <span class="s2">"confidence"</span><span class="p">,</span>
+    <span class="s2">"labeling_method"</span><span class="p">,</span>
 <span class="p">]</span>
 
 <span class="n">INTERVAL_DTYPES</span> <span class="o">=</span> <span class="p">{</span>
@@ -467,6 +482,7 @@
     <span class="s2">"individual_rec"</span><span class="p">:</span> <span class="nb">object</span><span class="p">,</span>
     <span class="s2">"event_type"</span><span class="p">:</span> <span class="nb">object</span><span class="p">,</span>
     <span class="s2">"confidence"</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">,</span>
+    <span class="s2">"labeling_method"</span><span class="p">:</span> <span class="nb">object</span><span class="p">,</span>
 <span class="p">}</span>
 
 <span class="c1">#: The columns identifying whose label a row is — the actor and the recipient.</span>
@@ -484,15 +500,14 @@
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
 <span class="sd">    pd.DataFrame</span>
-<span class="sd">        Empty DataFrame with columns ``onset_s``, ``offset_s``, ``labels``,</span>
-<span class="sd">        ``individual``, ``individual_rec``, ``event_type``.</span>
+<span class="sd">        Empty DataFrame with the :data:`INTERVAL_COLUMNS`.</span>
 
 <span class="sd">    Examples</span>
 <span class="sd">    --------</span>
 <span class="sd">    &gt;&gt;&gt; from ethograph.labels.intervals import empty_intervals</span>
 <span class="sd">    &gt;&gt;&gt; df = empty_intervals()</span>
-<span class="sd">    &gt;&gt;&gt; df.columns.tolist()</span>
-<span class="sd">    ['onset_s', 'offset_s', 'labels', 'individual', 'individual_rec', 'event_type', 'confidence']</span>
+<span class="sd">    &gt;&gt;&gt; df.columns.tolist()[:3]</span>
+<span class="sd">    ['onset_s', 'offset_s', 'labels']</span>
 <span class="sd">    &gt;&gt;&gt; len(df)</span>
 <span class="sd">    0</span>
 <span class="sd">    """</span>
@@ -540,6 +555,30 @@
         <span class="n">df</span><span class="p">[</span><span class="s2">"confidence"</span><span class="p">]</span> <span class="o">=</span> <span class="n">HUMAN_CONFIDENCE</span>
     <span class="k">else</span><span class="p">:</span>
         <span class="n">df</span><span class="p">[</span><span class="s2">"confidence"</span><span class="p">]</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">to_numeric</span><span class="p">(</span><span class="n">df</span><span class="p">[</span><span class="s2">"confidence"</span><span class="p">],</span> <span class="n">errors</span><span class="o">=</span><span class="s2">"coerce"</span><span class="p">)</span><span class="o">.</span><span class="n">fillna</span><span class="p">(</span><span class="n">HUMAN_CONFIDENCE</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">df</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">ensure_labeling_method</span><span class="p">(</span><span class="n">df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Add a ``labeling_method`` column where it is missing or blank.</span>
+
+<span class="sd">    Mutates and returns *df*.  A row with no method is read off its</span>
+<span class="sd">    ``confidence``: a label written before methods existed is a hand-made one</span>
+<span class="sd">    unless a model scored it below :data:`HUMAN_CONFIDENCE`, in which case it</span>
+<span class="sd">    is automated output nobody has curated yet — the conservative reading, so</span>
+<span class="sd">    a file from an older EthoGraph never claims more review than it got.</span>
+<span class="sd">    """</span>
+    <span class="n">ensure_confidence</span><span class="p">(</span><span class="n">df</span><span class="p">)</span>
+    <span class="n">derived</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">(</span>
+        <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">df</span><span class="p">[</span><span class="s2">"confidence"</span><span class="p">]</span><span class="o">.</span><span class="n">to_numpy</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">HUMAN_CONFIDENCE</span><span class="p">,</span> <span class="n">LABELING_AUTOMATED</span><span class="p">,</span> <span class="n">LABELING_MANUAL</span><span class="p">),</span>
+        <span class="n">index</span><span class="o">=</span><span class="n">df</span><span class="o">.</span><span class="n">index</span><span class="p">,</span>
+        <span class="n">dtype</span><span class="o">=</span><span class="nb">object</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="k">if</span> <span class="s2">"labeling_method"</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
+        <span class="n">df</span><span class="p">[</span><span class="s2">"labeling_method"</span><span class="p">]</span> <span class="o">=</span> <span class="n">derived</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">method</span> <span class="o">=</span> <span class="n">df</span><span class="p">[</span><span class="s2">"labeling_method"</span><span class="p">]</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">object</span><span class="p">)</span>
+        <span class="n">blank</span> <span class="o">=</span> <span class="n">method</span><span class="o">.</span><span class="n">isna</span><span class="p">()</span> <span class="o">|</span> <span class="o">~</span><span class="n">method</span><span class="o">.</span><span class="n">isin</span><span class="p">(</span><span class="n">LABELING_METHODS</span><span class="p">)</span>
+        <span class="n">df</span><span class="p">[</span><span class="s2">"labeling_method"</span><span class="p">]</span> <span class="o">=</span> <span class="n">method</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="o">~</span><span class="n">blank</span><span class="p">,</span> <span class="n">derived</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">object</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">df</span>
 
 
@@ -840,6 +879,7 @@
     <span class="n">individual</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
     <span class="n">individual_rec</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">NO_RECIPIENT</span><span class="p">,</span>
     <span class="n">confidence</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="n">HUMAN_CONFIDENCE</span><span class="p">,</span>
+    <span class="n">labeling_method</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">LABELING_MANUAL</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Add a point event (instantaneous label) at *time_s*.</span>
 
@@ -848,8 +888,10 @@
 <span class="sd">    :func:`add_interval`, :func:`purge_short_intervals`,</span>
 <span class="sd">    :func:`stitch_intervals`, or :func:`snap_boundaries`.</span>
 
-<span class="sd">    *confidence* defaults to :data:`HUMAN_CONFIDENCE`; a model passes its own</span>
-<span class="sd">    score so a later review pass can rank what to check first.</span>
+<span class="sd">    *confidence* defaults to :data:`HUMAN_CONFIDENCE` and *labeling_method* to</span>
+<span class="sd">    :data:`LABELING_MANUAL` — a hand-placed label; a model passes its own</span>
+<span class="sd">    score and :data:`LABELING_AUTOMATED` so a later curation pass knows what</span>
+<span class="sd">    still needs a look.</span>
 
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
@@ -864,9 +906,10 @@
         <span class="s2">"individual_rec"</span><span class="p">:</span> <span class="n">individual_rec</span><span class="p">,</span>
         <span class="s2">"event_type"</span><span class="p">:</span> <span class="n">EVENT_TYPE_POINT</span><span class="p">,</span>
         <span class="s2">"confidence"</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">confidence</span><span class="p">),</span>
+        <span class="s2">"labeling_method"</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">labeling_method</span><span class="p">),</span>
     <span class="p">}</span>
     <span class="n">new_df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">([</span><span class="n">new_row</span><span class="p">])</span>
-    <span class="n">df</span> <span class="o">=</span> <span class="n">ensure_individual_rec</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">copy</span><span class="p">())</span>
+    <span class="n">df</span> <span class="o">=</span> <span class="n">ensure_labeling_method</span><span class="p">(</span><span class="n">ensure_individual_rec</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">copy</span><span class="p">()))</span>
     <span class="k">for</span> <span class="n">col</span><span class="p">,</span> <span class="n">dtype</span> <span class="ow">in</span> <span class="n">INTERVAL_DTYPES</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
         <span class="n">new_df</span><span class="p">[</span><span class="n">col</span><span class="p">]</span> <span class="o">=</span> <span class="n">new_df</span><span class="p">[</span><span class="n">col</span><span class="p">]</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">dtype</span><span class="p">)</span>
     <span class="n">result</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">concat</span><span class="p">([</span><span class="n">df</span><span class="p">,</span> <span class="n">new_df</span><span class="p">],</span> <span class="n">ignore_index</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
@@ -886,6 +929,7 @@
     <span class="n">protected_label_ids</span><span class="p">:</span> <span class="nb">set</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
     <span class="n">individual_rec</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">NO_RECIPIENT</span><span class="p">,</span>
     <span class="n">confidence</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="n">HUMAN_CONFIDENCE</span><span class="p">,</span>
+    <span class="n">labeling_method</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">LABELING_MANUAL</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Add an interval, resolving overlaps for the same subject.</span>
 
@@ -912,6 +956,10 @@
 <span class="sd">        Recipient of the behaviour; :data:`NO_RECIPIENT` for a solo one.</span>
 <span class="sd">    confidence : float</span>
 <span class="sd">        How sure this label is; :data:`HUMAN_CONFIDENCE` for a hand-placed one.</span>
+<span class="sd">    labeling_method : str</span>
+<span class="sd">        Who vouches for it; :data:`LABELING_MANUAL` for a hand-placed one.</span>
+<span class="sd">        A remnant trimmed off an existing interval keeps that interval's</span>
+<span class="sd">        method — nobody re-judged it.</span>
 
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
@@ -931,7 +979,7 @@
     <span class="k">if</span> <span class="n">onset_s</span> <span class="o">&gt;</span> <span class="n">offset_s</span><span class="p">:</span>
         <span class="n">onset_s</span><span class="p">,</span> <span class="n">offset_s</span> <span class="o">=</span> <span class="n">offset_s</span><span class="p">,</span> <span class="n">onset_s</span>
 
-    <span class="n">states_df</span><span class="p">,</span> <span class="n">points_df</span> <span class="o">=</span> <span class="n">split_by_kind</span><span class="p">(</span><span class="n">ensure_individual_rec</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">copy</span><span class="p">()))</span>
+    <span class="n">states_df</span><span class="p">,</span> <span class="n">points_df</span> <span class="o">=</span> <span class="n">split_by_kind</span><span class="p">(</span><span class="n">ensure_labeling_method</span><span class="p">(</span><span class="n">ensure_individual_rec</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">copy</span><span class="p">())))</span>
     <span class="n">mask_same_ind</span> <span class="o">=</span> <span class="n">subject_mask</span><span class="p">(</span><span class="n">states_df</span><span class="p">,</span> <span class="n">individual</span><span class="p">,</span> <span class="n">individual_rec</span><span class="p">)</span>
     <span class="n">other</span> <span class="o">=</span> <span class="n">states_df</span><span class="p">[</span><span class="o">~</span><span class="n">mask_same_ind</span><span class="p">]</span>
     <span class="n">same</span> <span class="o">=</span> <span class="n">states_df</span><span class="p">[</span><span class="n">mask_same_ind</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
@@ -954,6 +1002,7 @@
         <span class="c1"># A trimmed remnant is the same label as before — it keeps the</span>
         <span class="c1"># confidence of the row it was cut from, not the new label's.</span>
         <span class="n">row_conf</span> <span class="o">=</span> <span class="n">row</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"confidence"</span><span class="p">,</span> <span class="n">HUMAN_CONFIDENCE</span><span class="p">)</span>
+        <span class="n">row_method</span> <span class="o">=</span> <span class="n">row</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"labeling_method"</span><span class="p">,</span> <span class="n">LABELING_MANUAL</span><span class="p">)</span>
         <span class="k">if</span> <span class="n">ro</span> <span class="o">&lt;</span> <span class="n">onset_s</span><span class="p">:</span>
             <span class="n">kept</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
                 <span class="p">{</span>
@@ -963,6 +1012,7 @@
                     <span class="s2">"individual"</span><span class="p">:</span> <span class="n">individual</span><span class="p">,</span>
                     <span class="s2">"individual_rec"</span><span class="p">:</span> <span class="n">individual_rec</span><span class="p">,</span>
                     <span class="s2">"confidence"</span><span class="p">:</span> <span class="n">row_conf</span><span class="p">,</span>
+                    <span class="s2">"labeling_method"</span><span class="p">:</span> <span class="n">row_method</span><span class="p">,</span>
                 <span class="p">}</span>
             <span class="p">)</span>
         <span class="k">if</span> <span class="n">rf</span> <span class="o">&gt;</span> <span class="n">offset_s</span><span class="p">:</span>
@@ -974,6 +1024,7 @@
                     <span class="s2">"individual"</span><span class="p">:</span> <span class="n">individual</span><span class="p">,</span>
                     <span class="s2">"individual_rec"</span><span class="p">:</span> <span class="n">individual_rec</span><span class="p">,</span>
                     <span class="s2">"confidence"</span><span class="p">:</span> <span class="n">row_conf</span><span class="p">,</span>
+                    <span class="s2">"labeling_method"</span><span class="p">:</span> <span class="n">row_method</span><span class="p">,</span>
                 <span class="p">}</span>
             <span class="p">)</span>
 
@@ -985,6 +1036,7 @@
             <span class="s2">"individual"</span><span class="p">:</span> <span class="n">individual</span><span class="p">,</span>
             <span class="s2">"individual_rec"</span><span class="p">:</span> <span class="n">individual_rec</span><span class="p">,</span>
             <span class="s2">"confidence"</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">confidence</span><span class="p">),</span>
+            <span class="s2">"labeling_method"</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">labeling_method</span><span class="p">),</span>
         <span class="p">}</span>
     <span class="p">)</span>
 
@@ -1317,6 +1369,7 @@
     <span class="n">df</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">reindex</span><span class="p">(</span><span class="n">columns</span><span class="o">=</span><span class="n">INTERVAL_COLUMNS</span><span class="p">)</span>
     <span class="n">ensure_individual_rec</span><span class="p">(</span><span class="n">df</span><span class="p">)</span>
     <span class="n">ensure_confidence</span><span class="p">(</span><span class="n">df</span><span class="p">)</span>
+    <span class="n">ensure_labeling_method</span><span class="p">(</span><span class="n">df</span><span class="p">)</span>
     <span class="k">for</span> <span class="n">col</span><span class="p">,</span> <span class="n">dtype</span> <span class="ow">in</span> <span class="n">INTERVAL_DTYPES</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
         <span class="n">df</span><span class="p">[</span><span class="n">col</span><span class="p">]</span> <span class="o">=</span> <span class="n">df</span><span class="p">[</span><span class="n">col</span><span class="p">]</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">dtype</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">df</span>
