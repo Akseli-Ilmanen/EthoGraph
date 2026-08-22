@@ -88,7 +88,7 @@ def test_every_panel_has_close_and_move_buttons(gui):
 def test_top_bar_has_expected_menus(gui):
     shell, meta = gui
     titles = [a.text().replace("&", "") for a in shell.menuBar().actions()]
-    assert titles == ["File", "Changepoints", "Tools", "Docs", "Help"]
+    assert titles == ["File", "Changepoints", "Tools", "Model", "Docs", "Help"]
 
 
 def test_tools_menu_screen_record_is_a_plain_action(gui, monkeypatch):

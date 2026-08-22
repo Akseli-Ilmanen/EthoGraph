@@ -107,16 +107,7 @@ def bind_global_shortcuts(meta_widget):
     bind("Up", navigation_widget.prev_trial, guarded=True)
     bind("Ctrl+Down", lambda: meta_widget._cycle_channel(+1))
     bind("Ctrl+Up", lambda: meta_widget._cycle_channel(-1))
-
-    def toggle_sync():
-        btn = getattr(navigation_widget, "sync_toggle_btn", None)
-        if btn is None:
-            return
-        next_index = (btn.currentIndex() + 1) % btn.count()
-        btn.setCurrentIndex(next_index)
-
-    bind("Ctrl+P", toggle_sync)
-    bind("Ctrl+N", meta_widget.show_source_popup)
+    bind("Shift+N", meta_widget.show_source_popup, guarded=True)
     bind("Ctrl+Y", data_widget.toggle_predictions_slot)
 
     def toggle_autoscale():
@@ -130,7 +121,6 @@ def bind_global_shortcuts(meta_widget):
         plot_settings_widget.lock_axes_checkbox.setChecked(not lock_status)
 
     bind("Ctrl+L", toggle_lock)
-    bind("Ctrl+Return", plot_settings_widget.apply_button.click)
     bind("Ctrl+V", lambda: io_widget._human_verification_true(mode="single_trial"))
 
     def toggle_changepoint_correction():
@@ -188,8 +178,10 @@ def bind_global_shortcuts(meta_widget):
 
     bind("Ctrl+E", labels_widget._edit_label)
     bind("Ctrl+D", labels_widget._delete_label)
+    # Auto-guarded (Ctrl+Z is a text-editing key), so it undoes labels only
+    # when the user is not typing.
+    bind("Ctrl+Z", labels_widget.undo_last_label_edit)
     bind("Shift+B", labels_widget.toggle_branch, guarded=True)
-    bind("Ctrl+F", lambda: app_state.toggle_key_sel("features", data_widget))
     bind("Ctrl+I", lambda: app_state.toggle_key_sel("individual", data_widget))
     bind("Ctrl+K", lambda: app_state.toggle_key_sel("keypoint", data_widget))
 
@@ -199,18 +191,9 @@ def bind_global_shortcuts(meta_widget):
             next_index = (combo.currentIndex() + 1) % combo.count()
             combo.setCurrentIndex(next_index)
 
-    bind("Ctrl+C", cycle_cameras)
-    bind("Ctrl+M", lambda: app_state.toggle_key_sel("mics", data_widget))
+    bind("Shift+C", cycle_cameras, guarded=True)
+    bind("Shift+M", lambda: app_state.toggle_key_sel("mics", data_widget), guarded=True)
     bind("Ctrl+H", data_widget.cycle_neural_view)
-    bind("Ctrl+G", data_widget.cycle_view_mode)
 
     bind("Ctrl+Right", lambda: changepoints_widget.jump_changepoint(+1))
     bind("Ctrl+Left", lambda: changepoints_widget.jump_changepoint(-1))
-
-    def toggle_space_keypoint():
-        sp = getattr(data_widget, "space_plot", None)
-        if sp is None or not sp.isVisible():
-            return
-        sp.toggle_keypoint()
-
-    bind("Shift+K", toggle_space_keypoint, guarded=True)

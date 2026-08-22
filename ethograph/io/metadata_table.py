@@ -144,6 +144,28 @@ def condition_columns(df: pd.DataFrame) -> list[str]:
     return [c for c in df.columns if c != "trial" and not _is_nwb_infrastructure_col(c)]
 
 
+def allowed_trials_from_metadata(
+    metadata_df: pd.DataFrame | None,
+    filters: dict[str, set[str]],
+) -> set[str] | None:
+    """Trials (as strings) passing **every** column filter; ``None`` = no filtering.
+
+    *filters* maps a condition column to the values it admits, an empty set
+    meaning "any". The columns combine: ``{"genotype": {"wt"},
+    "stimulus": {"tone"}}`` selects the wild-type tone trials only. Trial ids
+    come back as strings so callers can compare without caring whether the
+    metadata table stored them as ints.
+    """
+    if metadata_df is None or metadata_df.empty or not any(filters.values()):
+        return None
+    mask = pd.Series(True, index=metadata_df.index)
+    for col, allowed in filters.items():
+        if not allowed or col not in metadata_df.columns:
+            continue
+        mask &= metadata_df[col].astype(str).isin(allowed)
+    return set(metadata_df.loc[mask, "trial"].astype(str))
+
+
 def _is_nwb_infrastructure_col(col: str) -> bool:
     """True if column is structural (timing, media, offsets) rather than metadata."""
     if col in _NWB_STRUCTURAL_COLUMNS:

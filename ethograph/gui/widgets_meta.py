@@ -104,7 +104,7 @@ class MetaWidget(GridSectionContainer):
 
         # Add-panel popup: drag Media/Feature sources onto the plot area (or
         # press Enter) to add panels. Opened via the bottom bar's "➕ Add
-        # panel" button or Ctrl+N.
+        # panel" button or Shift+N.
         # Parented to the shell so the top-level popup window is destroyed
         # with it (a parentless popup outlives QApplication → crash at exit).
         self.source_popup = SourcePopup(self.app_state, parent=self.shell)
@@ -209,6 +209,12 @@ class MetaWidget(GridSectionContainer):
         self.context_panel = self._build_context_panel()
         self._add_feature_view_switch()
 
+        # The label-name overlay drawn on the video is a video display setting,
+        # so its checkbox lives in the sidebar's video context.
+        video_label_gb = getattr(self.data_panel, "videolabel_groupbox", None)
+        if video_label_gb is not None:
+            self.labels_widget.attach_video_groupbox(video_label_gb)
+
         # The label-branch overlay selectors (Main / top1 / top2) belong with the
         # Labels section, retitled "Label overlay".
         overlay_gb = getattr(self.data_panel, "overlays_groupbox", None)
@@ -287,6 +293,7 @@ class MetaWidget(GridSectionContainer):
             "coords": getattr(dp, "coords_groupbox", None),
             "slot": getattr(dp, "slot_groupbox", None),
             "videocrop": getattr(dp, "videocrop_groupbox", None),
+            "videolabel": getattr(dp, "videolabel_groupbox", None),
             "pose": getattr(dp, "pose_groupbox", None),
             "energy": getattr(dp, "energy_group", None),
             "audiochannel": getattr(ps, "audio_channel_group", None),
@@ -438,7 +445,7 @@ class MetaWidget(GridSectionContainer):
                 view.selected = view is active
 
     def show_source_popup(self, anchor: QWidget | None = None):
-        """Open the add-panel popup (bottom-bar ➕ button or Ctrl+N).
+        """Open the add-panel popup (bottom-bar ➕ button or Shift+N).
 
         With *anchor* (the ➕ button) the popup opens upward from it; without,
         it opens at the plot area's top-left corner.

@@ -41,6 +41,9 @@ class _State:
     def set_trial_intervals(self, _trial, df):
         self.label_intervals = df
 
+    def record_label_edit(self, _description, trial=None):
+        pass
+
 
 class _Signal:
     def __init__(self):

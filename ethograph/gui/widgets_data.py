@@ -167,6 +167,7 @@ class DataPanel(QWidget):
         pose_layout.setContentsMargins(2, 2, 2, 2)
         self.pose_panel.setLayout(pose_layout)
         self._create_video_crop_section(pose_layout)
+        self._create_video_label_section(pose_layout)
         self._create_pose_section(pose_layout)
         layout.addWidget(self.pose_panel)
 
@@ -335,6 +336,20 @@ class DataPanel(QWidget):
         row.addStretch()
 
         parent_layout.addWidget(self.videocrop_groupbox)
+
+    def _create_video_label_section(self, parent_layout):
+        """Host for the video's label-name overlay control.
+
+        The checkbox itself is owned by ``LabelsWidget`` (it edits label state)
+        and is added here via ``LabelsWidget.attach_video_groupbox``.
+        """
+        self.videolabel_groupbox = QGroupBox("Label overlay")
+        video_label_layout = QVBoxLayout()
+        video_label_layout.setSpacing(4)
+        video_label_layout.setContentsMargins(4, 4, 4, 4)
+        self.videolabel_groupbox.setLayout(video_label_layout)
+
+        parent_layout.addWidget(self.videolabel_groupbox)
 
     def _create_pose_section(self, parent_layout):
         self.pose_groupbox = QGroupBox("Pose overlay")
@@ -714,6 +729,7 @@ class DataWidget(QWidget):
         panel._update_pose_callback = self.update_pose
 
         self.videocrop_groupbox = panel.videocrop_groupbox
+        self.videolabel_groupbox = panel.videolabel_groupbox
         panel.crop_video_btn.clicked.connect(self._on_crop_video_clicked)
         panel.uncrop_video_btn.clicked.connect(self._on_uncrop_video_clicked)
 
@@ -958,6 +974,7 @@ class DataWidget(QWidget):
         self.app_state.data_loader = None
         self.app_state.source_collection = None
         self.app_state._all_labels_df = None
+        self.app_state.clear_label_history()
         self.app_state.labels_confidence_ds = None
         self.catalog = None
         self.app_state.ready = False
@@ -1140,6 +1157,7 @@ class DataWidget(QWidget):
         self.app_state.downsample_factor_used = ctx.downsample_factor
 
         self.app_state._all_labels_df = ctx.all_labels_df
+        self.app_state.clear_label_history()
         self.app_state._labels_file_path = ctx.result.labels_file_path
         self.app_state.trials = ctx.trials if ctx.trials else [1]
         self.app_state.ds = ctx.ds
@@ -1340,7 +1358,7 @@ class DataWidget(QWidget):
         per-stream controls (mic / view-mode / neo / neural combos).
 
         Panels are layout instances: shown when their data exists, removed via
-        a panel's ✕ button, re-added via the add-panel popup (➕ / Ctrl+N).
+        a panel's ✕ button, re-added via the add-panel popup (➕ / Shift+N).
         There is no per-plot-type on/off toggle state.
         """
         self._audio_row_widgets = []
@@ -1623,12 +1641,6 @@ class DataWidget(QWidget):
             entry = source_map.get(getattr(plot, "neo_stream_name", None))
             if entry and self._stream_matches_kilosort(entry[0], entry[1]):
                 pc.remove_panel(plot)
-
-    def cycle_view_mode(self):
-        if not hasattr(self, "view_mode_combo") or not self.view_mode_combo.isVisible():
-            return
-        next_index = (self.view_mode_combo.currentIndex() + 1) % self.view_mode_combo.count()
-        self.view_mode_combo.setCurrentIndex(next_index)
 
     def _create_default_audio_panels(self, mic_names: list) -> None:
         """Data-availability default for audio: an audio trace + spectrogram per mic.

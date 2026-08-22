@@ -6,8 +6,8 @@ Layout
   pygfx camera view + optional extra camera stack.
 - **Bottom dock** — the synced plots (``UnifiedPanelContainer``).
 - **Right dock** — the control sidebar (``MetaWidget``), collapsible via the
-  toolbar button or ``Ctrl+0``.
-- Panels are added via the add-panel popup (bottom bar ➕ button or Ctrl+N):
+  toolbar button.
+- Panels are added via the add-panel popup (bottom bar ➕ button or Shift+N):
   drag a source onto the plot area, or press Enter for default placement.
 
 Layout persistence (no JSON files): ALL layout — the plot-panel layout and
@@ -134,7 +134,7 @@ class EthographMainWindow(QMainWindow):
         self._bottom_bar_dock.setFeatures(QDockWidget.DockWidgetFeature.NoDockWidgetFeatures)
         self.bottom_bar = bottom_bar
 
-        # Add-panel popup: opened from the bottom bar's ➕ button (or Ctrl+N),
+        # Add-panel popup: opened from the bottom bar's ➕ button (or Shift+N),
         # anchored above the button.
         bottom_bar.add_panel_btn.clicked.connect(lambda: meta_widget.show_source_popup(bottom_bar.add_panel_btn))
 
@@ -206,7 +206,6 @@ class EthographMainWindow(QMainWindow):
         keyboard shortcuts must work regardless of the menu bar.
         """
         self._sidebar_toggle = QAction("Show sidebar", self, checkable=True, checked=True)
-        self._sidebar_toggle.setShortcut(QKeySequence("Ctrl+0"))
         self._sidebar_toggle.toggled.connect(self._set_sidebar_visible)
         self.addAction(self._sidebar_toggle)
 

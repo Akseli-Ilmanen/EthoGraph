@@ -155,7 +155,7 @@ class BottomPlaybackBar(QWidget):
         self.add_panel_btn = QPushButton("➕ Add\npanel")
         self.add_panel_btn.setFixedWidth(90)
         self.add_panel_btn.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
-        self.add_panel_btn.setToolTip("Add a panel: drag a source onto the plot area, or press Enter  (Ctrl+N)")
+        self.add_panel_btn.setToolTip("Add a panel: drag a source onto the plot area, or press Enter  (Shift+N)")
         outer.addWidget(self.add_panel_btn)
 
         rows = QVBoxLayout()

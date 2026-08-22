@@ -23,6 +23,8 @@ from ethograph.io.time_model import (
     TrialVideoBounds,
 )
 from ethograph.labels.tsv_store import (
+    LabelEdit,
+    LabelHistory,
     get_trial_from_tsv,
     get_trial_meta,
     labels_equal,
@@ -493,6 +495,7 @@ class ObservableAppState(QObject):
         self.ephys_stream_sel: str | None = None
         self._suspend_local_autoload = False
         self._all_labels_df: pd.DataFrame | None = None
+        self._label_history = LabelHistory()
         self._metadata_df: pd.DataFrame | None = None
         self._label_mappings: dict | None = None
         # Label branches have a fixed position mapping: branch 0 always draws
@@ -857,6 +860,7 @@ class ObservableAppState(QObject):
             "_suspend_local_autoload",
             "_layout_snapshot_provider",
             "_all_labels_df",
+            "_label_history",
             "_metadata_df",
             "_label_mappings",
             "_active_branch",
@@ -1503,6 +1507,46 @@ class ObservableAppState(QObject):
         nav = getattr(self, "navigation_widget", None)
         if nav is not None and hasattr(nav, "on_labels_changed"):
             nav.on_labels_changed()
+
+    # --- Label undo history ---
+    def record_label_edit(self, description: str, trial=None) -> None:
+        """Snapshot the labels of *trial* before an edit, for ``Ctrl+Z``.
+
+        Call this once at the top of a handler, before anything mutates the
+        labels: everything the handler goes on to do (trimming, sliver purge,
+        changepoint correction) then belongs to the same undo step.
+        """
+        if trial is None:
+            trial = getattr(self, "trials_sel", None)
+        if trial is None:
+            return
+        self._label_history.record(self._all_labels_df, trial, description)
+
+    def undo_label_edit(self) -> LabelEdit | None:
+        """Take back the last recorded label edit; returns what it took back.
+
+        ``label_intervals`` is re-read from the restored table when the edit
+        belongs to the trial on screen — an undo can land on another trial, and
+        the caller is the one that knows whether to navigate there.
+        """
+        result = self._label_history.undo(self._all_labels_df)
+        if result is None:
+            return None
+        self._all_labels_df, edit = result
+        current = getattr(self, "trials_sel", None)
+        if current is not None and str(edit.trial) == str(current):
+            self.label_intervals = get_trial_from_tsv(self._all_labels_df, edit.trial)
+        nav = getattr(self, "navigation_widget", None)
+        if nav is not None and hasattr(nav, "on_labels_changed"):
+            nav.on_labels_changed()
+        return edit
+
+    def can_undo_labels(self) -> bool:
+        return len(self._label_history) > 0
+
+    def clear_label_history(self) -> None:
+        """Drop the undo stack — the table it describes is being replaced."""
+        self._label_history.clear()
 
     def get_trial_meta(self, trial) -> dict:
         return get_trial_meta(self._all_labels_df, trial)

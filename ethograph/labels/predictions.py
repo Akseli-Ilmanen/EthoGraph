@@ -19,7 +19,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from ethograph.labels.intervals import empty_intervals
+from ethograph.labels.intervals import HUMAN_CONFIDENCE, empty_intervals
 from ethograph.labels.ml import dense_to_intervals
 
 logger = logging.getLogger(__name__)
@@ -197,6 +197,13 @@ class PredictionsStore:
             )
 
             intervals = dense_to_intervals(labels, [individual], time_coord=time_coord)
+            if confidence is not None and not intervals.empty:
+                # Each segment carries the mean frame confidence over its own
+                # span — the per-label number the review tools read.
+                intervals["confidence"] = [
+                    _segment_confidence(confidence, time_coord, seg["onset_s"], seg["offset_s"])
+                    for _, seg in intervals.iterrows()
+                ]
             if not intervals.empty:
                 intervals.insert(0, "trial", trial)
                 intervals["prediction_source"] = str(pred_file)
@@ -207,12 +214,8 @@ class PredictionsStore:
             if confidence is not None:
                 mean_conf = float(np.mean(confidence))
                 has_low_segment = False
-                if not intervals.empty and "onset_s" in intervals.columns:
-                    for _, seg in intervals.iterrows():
-                        seg_mask = (time_coord >= seg["onset_s"]) & (time_coord <= seg["offset_s"])
-                        if seg_mask.any() and float(np.mean(confidence[seg_mask])) < segment_confidence_threshold:
-                            has_low_segment = True
-                            break
+                if not intervals.empty and "confidence" in intervals.columns:
+                    has_low_segment = bool((intervals["confidence"] < segment_confidence_threshold).any())
                 low = mean_conf < confidence_threshold or has_low_segment
                 confidence_levels[trial] = "low" if low else "high"
 
@@ -223,6 +226,20 @@ class PredictionsStore:
             all_df.insert(0, "trial", pd.Series(dtype=object))
 
         return all_df, confidence_levels
+
+
+def _segment_confidence(
+    confidence: np.ndarray,
+    time_coord: np.ndarray,
+    onset_s: float,
+    offset_s: float,
+) -> float:
+    """Mean frame confidence over one segment; :data:`HUMAN_CONFIDENCE` if it
+    spans no frame (a point event's NaN offset makes the mask empty)."""
+    mask = (time_coord >= onset_s) & (time_coord <= offset_s)
+    if not mask.any():
+        return float(HUMAN_CONFIDENCE)
+    return float(np.mean(confidence[mask]))
 
 
 def _extract_trial_from_filename(path: Path, trial_list: list) -> int | str | None:

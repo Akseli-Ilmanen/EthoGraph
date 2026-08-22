@@ -363,7 +363,6 @@ class SpacePlot(QWidget):
         self._dim_rows.setContentsMargins(0, 0, 0, 0)
         self._dim_rows.setSpacing(4)
         self._dim_combos: dict[str, QComboBox] = {}
-        self._prev_dim_values: dict[str, str | None] = {}  # for toggle-back with shift+k
         self._current_dim_values: dict[str, str | None] = {}
 
         # Last row: color combo
@@ -730,25 +729,6 @@ class SpacePlot(QWidget):
         text = self.color_combo.currentText()
         return text if text and text != LABELS_COLOR_MODE else None
 
-    def toggle_keypoint(self):
-        """Toggle the keypoint-like dim combo (else the first extra dim combo)
-        between its current and previous value (shift+k)."""
-        dim = next((d for d in self._dim_combos if d.lower() in ("keypoint", "keypoints")), None)
-        if dim is None:
-            dim = next(iter(self._dim_combos), None)
-        combo = self._dim_combos.get(dim)
-        if combo is None or combo.count() < 2:
-            return
-        current = combo.currentText()
-        prev = self._prev_dim_values.get(dim)
-        if prev and prev != current:
-            idx = combo.findText(prev)
-            if idx >= 0:
-                combo.setCurrentIndex(idx)
-                return
-        # No valid previous — cycle to next
-        combo.setCurrentIndex((combo.currentIndex() + 1) % combo.count())
-
     # --- Change handlers -----------------------------------------------------
 
     def _on_feature_changed(self, *_args):
@@ -772,7 +752,6 @@ class SpacePlot(QWidget):
             new_text = combo.currentText()
             current = self._current_dim_values.get(dim)
             if new_text and new_text != current:
-                self._prev_dim_values[dim] = current
                 self._current_dim_values[dim] = new_text
         if self._store is not None:
             self._update_plot()

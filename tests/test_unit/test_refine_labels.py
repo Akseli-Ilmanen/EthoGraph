@@ -11,7 +11,7 @@ from qtpy.QtCore import Qt
 from qtpy.QtWidgets import QApplication, QWidget
 
 from ethograph.gui.app_state import ObservableAppState
-from ethograph.gui.dialog_refine import RefineLabelsDialog, export_refine_log
+from ethograph.gui.dialog_refine import RefineLabelsDialog, export_refine_log, targets_from_seeds
 from ethograph.gui.widgets_navigation import NavigationWidget
 
 
@@ -417,3 +417,180 @@ def test_confirm_moves_point_event(dialog):
     assert row["onset_s"] == pytest.approx(0.96)
     assert math.isnan(row["offset_s"])
     dialog._stop()
+
+
+# ----------------------------------------------------------------------
+# Confidence: a boundary placed by eye is a hand-made label
+# ----------------------------------------------------------------------
+
+
+def test_confirm_stamps_the_refined_row_as_hand_made(dialog):
+    """Committing a boundary sets that row's confidence to 1.0; the rows the
+    model also predicted keep their own scores."""
+    state = dialog.app_state
+    state._all_labels_df = state._all_labels_df.assign(confidence=[0.3, 0.4, 0.5, 0.6])
+    _check_all_labels(dialog)
+    dialog._start()  # first seed: trial "0", label 4, point at 1.0 s
+    state.trials_sel = "0"
+    state.label_intervals = state.get_trial_intervals("0")
+
+    state.current_frame = _FakeVideo().time_to_frame(1.1, round_nearest=True)
+    dialog._confirm()
+
+    df = state._all_labels_df
+    trial0 = df[df["trial"] == "0"]
+    assert float(trial0[trial0["labels"] == 4].iloc[0]["confidence"]) == 1.0
+    assert float(trial0[trial0["labels"] == 8].iloc[0]["confidence"]) == pytest.approx(0.4)
+    dialog._stop()
+
+
+def test_confirm_adds_confidence_when_the_column_is_absent(dialog):
+    """A labels file written before the column existed still records the
+    refined row as human — every other row reads as certain anyway."""
+    state = dialog.app_state
+    _check_all_labels(dialog)
+    dialog._start()
+    state.trials_sel = "0"
+    state.label_intervals = state.get_trial_intervals("0")
+    state.current_frame = _FakeVideo().time_to_frame(1.1, round_nearest=True)
+    dialog._confirm()
+
+    df = state._all_labels_df
+    assert (df["confidence"] == 1.0).all()
+    dialog._stop()
+
+
+# ----------------------------------------------------------------------
+# Backspace: the event should not exist at all
+# ----------------------------------------------------------------------
+
+
+def test_delete_removes_the_row_and_skips_its_other_boundary(dialog):
+    """Deleting a state event's START drops the whole label, so its END seed
+    leaves the queue with it and the next seed is the following label."""
+    state = dialog.app_state
+    _check_all_labels(dialog)
+    dialog._start()
+    dialog._idx = 1  # START of the state event (label 8)
+    dialog._jump_current()
+    state.trials_sel = "0"
+    state.label_intervals = state.get_trial_intervals("0")
+
+    dialog._delete_current()
+
+    df = state._all_labels_df
+    assert df[(df["trial"] == "0") & (df["labels"] == 8)].empty
+    assert dialog._n_deleted == 1
+    target = dialog._targets[dialog._idx]
+    assert (target.inst["labels"], target.field) == (6, "point")
+    dialog._stop()
+
+
+def test_delete_is_logged_as_a_deletion(dialog, tmp_path):
+    """The history keeps the original times and no new ones; the export says
+    so in a ``deleted`` column."""
+    state = dialog.app_state
+    _check_all_labels(dialog)
+    dialog._start()
+    state.trials_sel = "0"
+    state.label_intervals = state.get_trial_intervals("0")
+    dialog._delete_current()
+
+    rec = state.refine_log[-1]
+    assert rec["deleted"] is True
+    assert rec["labels"] == 4 and rec["orig_onset_s"] == pytest.approx(1.0)
+    assert rec["new_onset_s"] is None
+
+    pre_path, post_path = export_refine_log(state.refine_log, tmp_path / "labels.tsv")
+    post = pd.read_csv(post_path, sep="	")
+    assert bool(post["deleted"].iloc[0])
+    assert pd.isna(post["onset_s"].iloc[0])
+    assert pd.read_csv(pre_path, sep="	")["onset_s"].iloc[0] == pytest.approx(1.0)
+    dialog._stop()
+
+
+def test_delete_refuses_a_seed_from_another_trial(dialog):
+    """The row lives in the current trial's table — deleting while the GUI
+    sits elsewhere would drop the wrong label."""
+    state = dialog.app_state
+    _check_all_labels(dialog)
+    dialog._start()
+    state.trials_sel = "1"  # the first seed belongs to trial "0"
+    state.label_intervals = state.get_trial_intervals("1")
+
+    dialog._delete_current()
+
+    assert dialog._n_deleted == 0
+    assert len(state._all_labels_df) == 4
+    dialog._stop()
+
+
+def test_delete_shortcuts_live_with_the_session(dialog):
+    """Backspace/Delete are application-wide only while refining."""
+    _check_all_labels(dialog)
+    assert dialog._delete_shortcuts == []
+    dialog._start()
+    assert len(dialog._delete_shortcuts) == 2
+    assert all(sc.context() == Qt.ApplicationShortcut for sc in dialog._delete_shortcuts)
+    dialog._stop()
+    assert dialog._delete_shortcuts == []
+
+
+# ----------------------------------------------------------------------
+# Queues handed over from the frames grid
+# ----------------------------------------------------------------------
+
+
+def _seed(trial, labels, onset, offset, field, event_type="point"):
+    return {
+        "trial": trial,
+        "labels": labels,
+        "onset_s": onset,
+        "offset_s": offset,
+        "individual": "a",
+        "individual_rec": "",
+        "event_type": event_type,
+        "field": field,
+    }
+
+
+def test_targets_from_seeds_orders_and_shares_the_instance():
+    """Seeds arrive in tile order; the queue visits (trial, onset) with START
+    before END, and one state event's two boundaries share an inst."""
+    seeds = [
+        _seed("1", 4, 0.5, math.nan, "point"),
+        _seed("0", 8, 2.0, 3.0, "end", "state"),
+        _seed("0", 8, 2.0, 3.0, "start", "state"),
+    ]
+    targets = targets_from_seeds(seeds)
+    assert [(t.inst["trial"], t.inst["labels"], t.field) for t in targets] == [
+        ("0", 8, "start"),
+        ("0", 8, "end"),
+        ("1", 4, "point"),
+    ]
+    assert targets[0].inst is targets[1].inst
+
+
+def test_start_from_seeds_walks_only_those_boundaries(dialog):
+    """The class list and the trials filter play no part — the handed-over
+    seeds are the whole queue, and it is not remembered as a resume point."""
+    state = dialog.app_state
+    assert dialog.start_from_seeds([_seed("1", 4, 0.5, math.nan, "point")], from_grid=True)
+    assert dialog._session_active
+    assert [(t.inst["trial"], t.inst["labels"]) for t in dialog._targets] == [("1", 4)]
+    assert state.refine_resume is None
+    # The class list mirrors what is being refined.
+    checked = {
+        dialog.label_list.item(i).data(Qt.UserRole)
+        for i in range(dialog.label_list.count())
+        if dialog.label_list.item(i).checkState() == Qt.Checked
+    }
+    assert checked == {4}
+    dialog._stop()
+
+
+def test_start_from_seeds_needs_a_video(dialog):
+    state = dialog.app_state
+    state.video = None
+    assert not dialog.start_from_seeds([_seed("1", 4, 0.5, math.nan, "point")])
+    assert not dialog._session_active

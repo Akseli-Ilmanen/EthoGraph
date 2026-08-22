@@ -8,8 +8,10 @@ from ethograph.features.changepoints import correct_changepoints
 from ethograph.labels.intervals import (
     NO_RECIPIENT,
     add_interval,
+    add_point,
     delete_interval,
     empty_intervals,
+    ensure_confidence,
     ensure_individual_rec,
     find_interval_at,
     get_interval_bounds,
@@ -62,6 +64,7 @@ class TestEmptyIntervals:
             "individual",
             "individual_rec",
             "event_type",
+            "confidence",
         ]
 
     def test_empty(self):
@@ -448,3 +451,43 @@ class TestRecipient:
             }
         )
         assert len(select_subject(ensure_individual_rec(legacy), "bird1", NO_RECIPIENT)) == 1
+
+
+class TestConfidence:
+    """A label's confidence: 1.0 by hand, the model's own score otherwise."""
+
+    def test_hand_placed_labels_are_certain(self):
+        df = add_interval(empty_intervals(), 0.0, 1.0, 1, "bird1")
+        df = add_point(df, 2.0, 2, "bird1")
+        assert list(df["confidence"]) == [1.0, 1.0]
+
+    def test_model_score_is_stored(self):
+        df = add_point(empty_intervals(), 2.0, 1, "bird1", confidence=0.37)
+        assert df.iloc[0]["confidence"] == pytest.approx(0.37)
+
+    def test_trimmed_remnant_keeps_its_own_confidence(self):
+        df = add_point(empty_intervals(), 9.0, 3, "bird1", confidence=0.2)
+        df = add_interval(df, 0.0, 2.0, 1, "bird1", confidence=0.5)
+        df = add_interval(df, 1.0, 3.0, 2, "bird1")
+        by_label = dict(zip(df["labels"], df["confidence"]))
+        assert by_label[1] == pytest.approx(0.5)  # trimmed remnant, unchanged
+        assert by_label[2] == pytest.approx(1.0)  # the new hand-placed one
+        assert by_label[3] == pytest.approx(0.2)  # points are never touched
+
+    def test_stitch_takes_the_weakest_part(self):
+        df = add_interval(empty_intervals(), 0.0, 1.0, 1, "bird1", confidence=0.9)
+        df = add_interval(df, 1.05, 2.0, 1, "bird1", confidence=0.4)
+        stitched = stitch_intervals(df, max_gap_s=0.5)
+        assert len(stitched) == 1
+        assert stitched.iloc[0]["confidence"] == pytest.approx(0.4)
+
+    def test_legacy_frame_without_the_column_reads_as_certain(self):
+        legacy = pd.DataFrame(
+            {
+                "onset_s": [1.0],
+                "offset_s": [2.0],
+                "labels": [1],
+                "individual": ["bird1"],
+            }
+        )
+        assert ensure_confidence(legacy).iloc[0]["confidence"] == 1.0

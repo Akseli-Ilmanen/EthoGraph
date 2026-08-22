@@ -258,10 +258,12 @@ class LabelsWidget(QWidget):
         """Set reference to the meta widget for layout refresh."""
         self.meta_widget = meta_widget
 
-    def attach_overlay_groupbox(self, groupbox):
-        """Add per-plot-type label controls to the "Label overlay" groupbox."""
+    def attach_video_groupbox(self, groupbox):
+        """Add the video label-name overlay control to the video context group."""
         groupbox.layout().addWidget(self.hide_label_cb)
 
+    def attach_overlay_groupbox(self, groupbox):
+        """Add per-plot-type label controls to the "Label overlay" groupbox."""
         self.labels_per_plot_btn = QPushButton("Show labels per plot type")
         self.labels_per_plot_btn.setToolTip(
             "Choose how label rectangles render on each plot type: full plot, bottom strip, or not at all"
@@ -348,9 +350,9 @@ class LabelsWidget(QWidget):
         legend.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         layout.addWidget(legend)
 
-        # "Hide label" lives in the "Label overlay" groupbox at the bottom of
-        # this panel (see attach_overlay_groupbox) since it's an overlay
-        # display setting, not a labeling action.
+        # "Hide label" lives in the video context of the right sidebar (see
+        # attach_video_groupbox) since it's a video-overlay display setting,
+        # not a labeling action.
         self.hide_label_cb = QCheckBox("Hide label")
         self.hide_label_cb.setToolTip("Hide the label-name overlay shown on the video during playback")
         self.hide_label_cb.setChecked(bool(self.app_state.get_with_default("hide_label_text")))
@@ -1296,6 +1298,8 @@ class LabelsWidget(QWidget):
         individual = self._current_individual()
         recipient = self._current_recipient()
 
+        self.app_state.record_label_edit("move label" if self.old_labels_pos is not None else "place label")
+
         self.highlight_spaceplot.emit(self._to_display(onset_s), self._to_display(offset_s))
 
         df = self.app_state.label_intervals
@@ -1365,6 +1369,8 @@ class LabelsWidget(QWidget):
         """
         individual = self._current_individual()
         recipient = self._current_recipient()
+
+        self.app_state.record_label_edit("move point" if self.old_labels_pos is not None else "place point")
 
         df = self.app_state.label_intervals
         if df is None:
@@ -1453,6 +1459,7 @@ class LabelsWidget(QWidget):
         if self._refuse_foreign_branch(int(labels)):
             return
 
+        self.app_state.record_label_edit("delete label")
         df = delete_interval(df, self.current_labels_pos)
         self.app_state.label_intervals = df
         self.app_state.set_trial_intervals(self.app_state.trials_sel, df)
@@ -1465,6 +1472,43 @@ class LabelsWidget(QWidget):
         if self.data_widget:
             self.data_widget.update_main_plot(preserve_x_range=True)
         self.refresh_labels_shapes_layer()
+
+    def undo_last_label_edit(self):
+        """``Ctrl+Z``: take back the last label placed, moved or deleted.
+
+        A half-placed state label is the one thing undone in place: its first
+        click has changed nothing yet, so cancelling it is what the key means
+        there — popping a finished edit instead would take back the wrong one.
+        """
+        if self.first_click is not None and self.second_click is None:
+            self._reset_label_clicks()
+            notify("Cancelled the label being placed")
+            return
+
+        edit = self.app_state.undo_label_edit()
+        if edit is None:
+            notify("Nothing to undo", severity="warning")
+            return
+
+        self.current_labels_pos = None
+        self.current_labels = None
+        self.current_labels_is_prediction = False
+        self.old_labels_pos = None
+        self.old_labels = None
+        self._reset_label_clicks()
+        self.ready_for_label_click = False
+
+        trial = self.app_state.trials_sel
+        # An undo can land on a trial the user has navigated away from; going
+        # there is what makes it visible, and the trial change redraws for us.
+        if trial is not None and str(edit.trial) != str(trial):
+            self._switch_trial_for_click(edit.trial)
+        elif self.data_widget:
+            self.data_widget.update_main_plot(preserve_x_range=True)
+
+        self._mark_changes_unsaved()
+        self.refresh_labels_shapes_layer()
+        notify(f"Undo: {edit.description}")
 
     def _edit_label(self):
         """Enter edit mode for adjusting interval boundaries."""
@@ -1637,7 +1681,7 @@ class LabelsWidget(QWidget):
         _update_labels_text()
 
     def _on_hide_label_text_changed(self, *_):
-        """React to the bottom-bar "Hide label text" checkbox."""
+        """React to the video context's "Hide label" checkbox."""
         overlay = getattr(self, "_label_overlay", None)
         if overlay is None:
             return

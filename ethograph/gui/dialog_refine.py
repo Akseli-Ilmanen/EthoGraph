@@ -10,7 +10,15 @@ ordinary label-jump navigation (:meth:`NavigationWidget.jump_to_label_instance`)
 the boundary being edited is named in large coloured text, the global ←/→
 shortcuts (or the dialog's ◀/▶ buttons) nudge the video one frame at a time,
 and **Enter** commits the frame on screen as the new boundary time and jumps
-straight to the next seed.
+straight to the next seed. **Backspace** is the other verdict: this event does
+not belong in the trial at all, so its label is deleted and the queue moves on.
+
+The queue normally comes from the label classes ticked here, but the frames
+grid (:mod:`ethograph.gui.dialog_label_frames`) can hand one over instead —
+tick the tiles that look wrong there and only those boundaries are visited
+(:meth:`RefineLabelsDialog.start_from_seeds`). Every commit stamps the row's
+``confidence`` back to :data:`~ethograph.labels.intervals.HUMAN_CONFIDENCE`:
+a boundary placed by eye is a hand-made label, whatever produced it first.
 """
 
 from __future__ import annotations
@@ -47,11 +55,19 @@ from ethograph.gui.notify import notify
 from ethograph.gui.shortcuts import typing_in_text_field
 from ethograph.gui.table_filter import CategoryFilterDialog, FilterHeaderView, MultiColumnFilterProxy
 from ethograph.io.time_model import TimeRange
-from ethograph.labels.intervals import EVENT_TYPE_POINT
+from ethograph.labels.intervals import (
+    EVENT_TYPE_POINT,
+    HUMAN_CONFIDENCE,
+    delete_interval,
+    ensure_confidence,
+)
 
 logger = logging.getLogger(__name__)
 
 _FIELD_TITLES = {"point": "POINT", "start": "START", "end": "END"}
+
+#: Visit order of the boundaries of one label: START before END.
+_FIELD_RANK = {"point": 0, "start": 0, "end": 1}
 
 #: Linger on a just-committed boundary this long before jumping to the next
 #: seed, so the user sees the label land where they put it.
@@ -91,6 +107,57 @@ def _subject_str(value) -> str:
     return str(value)
 
 
+def _log_identity(inst: dict) -> dict:
+    """The columns identifying one label row in ``app_state.refine_log``."""
+    return {
+        "trial": str(inst["trial"]),
+        "labels": int(inst["labels"]),
+        "individual": _subject_str(inst.get("individual")),
+        "individual_rec": _subject_str(inst.get("individual_rec")),
+    }
+
+
+def targets_from_seeds(seeds: list[dict]) -> list["_Target"]:
+    """Build a seed queue from boundaries chosen elsewhere (the frames grid).
+
+    Each seed is a label row (``trial``, ``labels``, ``onset_s``, ``offset_s``,
+    the subject columns, ``event_type``) plus the ``field`` to edit. Sorted
+    (trial, onset) with START before END, so a trial is visited once; the two
+    boundaries of one state event share a single ``inst`` — exactly as in
+    :meth:`RefineLabelsDialog._build_queue`, so committing a new start is seen
+    by the end target.
+    """
+    ordered = sorted(
+        seeds,
+        key=lambda s: (str(s["trial"]), float(s["onset_s"]), _FIELD_RANK.get(s.get("field", "point"), 0)),
+    )
+    insts: dict[tuple, dict] = {}
+    targets: list[_Target] = []
+    for seed in ordered:
+        key = (
+            str(seed["trial"]),
+            int(seed["labels"]),
+            round(float(seed["onset_s"]), 6),
+            _subject_str(seed.get("individual")),
+            _subject_str(seed.get("individual_rec")),
+        )
+        inst = insts.get(key)
+        if inst is None:
+            offset = seed.get("offset_s")
+            inst = {
+                "trial": seed["trial"],
+                "labels": int(seed["labels"]),
+                "onset_s": float(seed["onset_s"]),
+                "offset_s": float(offset) if offset is not None else float("nan"),
+                "individual": seed.get("individual"),
+                "individual_rec": seed.get("individual_rec"),
+                "event_type": seed.get("event_type", "state"),
+            }
+            insts[key] = inst
+        targets.append(_Target(inst, seed.get("field", "point")))
+    return targets
+
+
 def _fmt_bounds(onset: float | None, offset: float | None) -> str:
     if onset is None:
         return ""
@@ -107,7 +174,8 @@ def export_refine_log(log: list[dict], base_path: str | Path) -> tuple[Path, Pat
 
     ``{base}_prerefined.tsv`` carries each refined row's original
     onset/offset, ``{base}_postrefined.tsv`` its latest refined values —
-    same row order, so the files diff line-for-line.
+    same row order, so the files diff line-for-line. A deleted event has no
+    refined times: its post row is blank and its ``deleted`` column is True.
     """
     stem = Path(base_path).with_suffix("")
 
@@ -117,11 +185,12 @@ def export_refine_log(log: list[dict], base_path: str | Path) -> tuple[Path, Pat
                 "onset_s": rec.get(f"{which}_onset_s"),
                 "offset_s": rec.get(f"{which}_offset_s"),
                 **{col: rec.get(col) for col in _EXPORT_COLS},
+                "deleted": bool(rec.get("deleted", False)),
                 "refined_time": rec.get("time"),
             }
             for rec in log
         ]
-        return pd.DataFrame(rows, columns=["onset_s", "offset_s", *_EXPORT_COLS, "refined_time"])
+        return pd.DataFrame(rows, columns=["onset_s", "offset_s", *_EXPORT_COLS, "deleted", "refined_time"])
 
     pre_path = stem.parent / f"{stem.name}_prerefined.tsv"
     post_path = stem.parent / f"{stem.name}_postrefined.tsv"
@@ -189,7 +258,7 @@ class RefineHistoryDialog(QDialog):
                 str(rec.get("individual", "")),
                 "/".join(rec.get("fields", [])),
                 _fmt_bounds(rec.get("orig_onset_s"), rec.get("orig_offset_s")),
-                _fmt_bounds(rec.get("new_onset_s"), rec.get("new_offset_s")),
+                "deleted" if rec.get("deleted") else _fmt_bounds(rec.get("new_onset_s"), rec.get("new_offset_s")),
                 str(rec.get("time", "")),
             ]
             items = []
@@ -261,7 +330,11 @@ def _row_mask(df: pd.DataFrame, inst: dict) -> pd.Series:
 
 
 class RefineLabelsDialog(QDialog):
-    """Non-modal dialog driving the seed-by-seed refinement workflow."""
+    """Non-modal dialog driving the seed-by-seed refinement workflow.
+
+    The queue comes from the label classes ticked here (**Start refining**) or
+    from boundaries chosen elsewhere (:meth:`start_from_seeds`).
+    """
 
     def __init__(self, meta, parent=None):
         super().__init__(parent)
@@ -280,7 +353,17 @@ class RefineLabelsDialog(QDialog):
         self._idx = 0
         self._seed_frame: int | None = None
         self._n_refined = 0
+        self._n_deleted = 0
         self._frame_conn = False
+        #: Label classes the running queue covers — the ticked ones, or those
+        #: the handed-over seeds happen to carry.
+        self._session_label_ids: list[int] = []
+        #: A queue handed over from outside cannot be rebuilt from the class
+        #: list, so it is not written to ``refine_resume``.
+        self._remember_resume = True
+        #: True when the frames grid seeded this session — its tiles are stale
+        #: once the queue is done, and the summary says so.
+        self._from_grid = False
         #: True between a commit and the delayed jump to the next seed.
         self._advance_pending = False
         #: True while WE are navigating — the trial-follow handler must not
@@ -295,6 +378,8 @@ class RefineLabelsDialog(QDialog):
         #: session runs: the dialog's default button needs dialog focus, and a
         #: user clicking plots between nudges loses exactly that.
         self._enter_shortcuts: list[QShortcut] = []
+        #: Backspace/Delete → drop this event, same session scope.
+        self._delete_shortcuts: list[QShortcut] = []
 
         layout = QVBoxLayout(self)
         layout.setSpacing(8)
@@ -422,14 +507,27 @@ class RefineLabelsDialog(QDialog):
         confirm_row.addWidget(self.confirm_btn, stretch=1)
         refine_lay.addLayout(confirm_row)
 
-        hint = QLabel("←/→ step one frame · Enter confirms (works anywhere) and jumps to the next seed · Space plays")
+        self.delete_btn = QPushButton("Delete this event (Backspace)")
+        self.delete_btn.setAutoDefault(False)
+        self.delete_btn.setToolTip(
+            "This event should not exist in this trial at all: delete the label\n"
+            "without placing a replacement and jump to the next seed.\n"
+            "Nothing reaches disk until you save (Ctrl+S)."
+        )
+        self.delete_btn.clicked.connect(self._delete_current)
+        refine_lay.addWidget(self.delete_btn)
+
+        hint = QLabel(
+            "←/→ step one frame · Enter confirms (works anywhere) and jumps to the next seed\n"
+            "Backspace deletes an event that should not exist · Space plays"
+        )
         hint.setStyleSheet("color: grey; font-size: 10px;")
         hint.setAlignment(Qt.AlignCenter)
         refine_lay.addWidget(hint)
 
         self.stop_btn = QPushButton("Stop")
         self.stop_btn.setAutoDefault(False)
-        self.stop_btn.clicked.connect(self._stop)
+        self.stop_btn.clicked.connect(lambda: self._stop())
         refine_lay.addWidget(self.stop_btn)
 
         self.refine_group.setVisible(False)
@@ -496,19 +594,70 @@ class RefineLabelsDialog(QDialog):
     # ==================================================================
 
     def _start(self, resume: dict | None = None):
-        if getattr(self.app_state, "video", None) is None:
-            notify("Frame-by-frame refinement needs a loaded video.", severity="warning")
+        if not self._video_ready():
             return
         label_ids = self._selected_label_ids()
         if not label_ids:
             notify("Tick at least one label class to refine.", severity="warning")
             return
-        self._targets = self._build_queue(label_ids)
-        if not self._targets:
+        targets = self._build_queue(label_ids)
+        if not targets:
             notify("No labels of the selected classes found.", severity="warning")
             return
-        self._idx = self._resume_index(resume) if resume else 0
+        # _resume_index reads the queue, so it has to be in place first.
+        self._targets = targets
+        self._begin_session(targets, label_ids=label_ids, idx=self._resume_index(resume) if resume else 0)
+
+    def start_from_seeds(self, seeds: list[dict], *, from_grid: bool = False) -> bool:
+        """Refine exactly *seeds* — one boundary each — instead of whole classes.
+
+        This is how the frames grid hands over the tiles the user ticked: the
+        queue holds those boundaries and nothing else, so neither the class
+        list here nor the trials-table filter narrows it further. Returns
+        whether a session started.
+        """
+        if not self._video_ready():
+            return False
+        if self._session_active:
+            # A running queue is replaced, not merged — report what it did.
+            self._stop()
+        targets = targets_from_seeds(seeds)
+        if not targets:
+            notify("Nothing selected to refine.", severity="warning")
+            return False
+        label_ids = sorted({target.inst["labels"] for target in targets})
+        # Mirror the queue in the class list, so Stop leaves the setup panel
+        # describing what was just refined.
+        wanted = set(label_ids)
+        for i in range(self.label_list.count()):
+            item = self.label_list.item(i)
+            item.setCheckState(Qt.Checked if int(item.data(Qt.UserRole)) in wanted else Qt.Unchecked)
+        self._begin_session(targets, label_ids=label_ids, remember=False, from_grid=from_grid)
+        return True
+
+    def _video_ready(self) -> bool:
+        if getattr(self.app_state, "video", None) is None:
+            notify("Frame-by-frame refinement needs a loaded video.", severity="warning")
+            return False
+        return True
+
+    def _begin_session(
+        self,
+        targets: list[_Target],
+        *,
+        label_ids: list[int],
+        idx: int = 0,
+        remember: bool = True,
+        from_grid: bool = False,
+    ):
+        """Start walking *targets*, whatever built them."""
+        self._targets = targets
+        self._idx = min(max(idx, 0), len(targets) - 1)
         self._n_refined = 0
+        self._n_deleted = 0
+        self._session_label_ids = list(label_ids)
+        self._remember_resume = remember
+        self._from_grid = from_grid
         self._session_active = True
         self.setup_group.setVisible(False)
         self.refine_group.setVisible(True)
@@ -518,16 +667,26 @@ class RefineLabelsDialog(QDialog):
         if not self._trial_conn:
             self.app_state.trial_changed.connect(self._on_trial_changed)
             self._trial_conn = True
-        self._install_enter_shortcuts()
+        self._install_session_shortcuts()
         self._jump_current()
 
-    def _stop(self):
+    def _stop(self, done: bool = False):
+        n_refined, n_deleted, from_grid = self._n_refined, self._n_deleted, self._from_grid
         self._teardown_session()
         self.refine_group.setVisible(False)
         self.setup_group.setVisible(True)
         self._sync_resume_button()
-        if self._n_refined:
-            notify(f"Refined {self._n_refined} boundaries — remember to save (Ctrl+S).")
+        if not (n_refined or n_deleted):
+            return
+        parts = []
+        if n_refined:
+            parts.append(f"refined {n_refined} boundar{'y' if n_refined == 1 else 'ies'}")
+        if n_deleted:
+            parts.append(f"deleted {n_deleted} event{'' if n_deleted == 1 else 's'}")
+        message = f"{'Done' if done else 'Stopped'} — {' and '.join(parts)}. Save with Ctrl+S."
+        if done and from_grid:
+            message += " Then close the label-frames grid and generate it again to check the updated frames."
+        notify(message)
 
     # ------------------------------------------------------------------
     # Resume + history
@@ -589,57 +748,68 @@ class RefineLabelsDialog(QDialog):
     def _teardown_session(self):
         self._session_active = False
         self._advance_pending = False
+        self._from_grid = False
         if self._frame_conn:
             self.app_state.current_frame_changed.disconnect(self._on_frame_changed)
             self._frame_conn = False
         if self._trial_conn:
             self.app_state.trial_changed.disconnect(self._on_trial_changed)
             self._trial_conn = False
-        self._remove_enter_shortcuts()
+        self._remove_session_shortcuts()
 
     def closeEvent(self, event):
         self._teardown_session()
         super().closeEvent(event)
 
     # ------------------------------------------------------------------
-    # Global Enter → Confirm (session-scoped)
+    # Global Enter → Confirm, Backspace → Delete (session-scoped)
     # ------------------------------------------------------------------
 
-    def _install_enter_shortcuts(self):
-        """Bind Return/Enter application-wide for the life of the session.
+    def _install_session_shortcuts(self):
+        """Bind the two verdict keys application-wide for the session's life.
 
         Disabled while a text field has focus, exactly like the shell's
         guarded shortcuts — an enabled QShortcut would swallow the key
         before the field sees it (see gui/shortcuts.py).
         """
-        if self._enter_shortcuts:
+        if self._session_shortcuts():
             return
-        for key in (Qt.Key_Return, Qt.Key_Enter):
-            shortcut = QShortcut(QKeySequence(key), self)
-            shortcut.setContext(Qt.ApplicationShortcut)
-            shortcut.activated.connect(self._confirm)
-            self._enter_shortcuts.append(shortcut)
+        self._enter_shortcuts = [self._session_shortcut(key, self._confirm) for key in (Qt.Key_Return, Qt.Key_Enter)]
+        self._delete_shortcuts = [
+            self._session_shortcut(key, self._delete_current) for key in (Qt.Key_Backspace, Qt.Key_Delete)
+        ]
         app = QApplication.instance()
         if app is not None:
-            app.focusChanged.connect(self._sync_enter_shortcuts)
-        self._sync_enter_shortcuts()
+            app.focusChanged.connect(self._sync_session_shortcuts)
+        self._sync_session_shortcuts()
 
-    def _sync_enter_shortcuts(self, *_args):
+    def _session_shortcut(self, key, slot) -> QShortcut:
+        shortcut = QShortcut(QKeySequence(key), self)
+        shortcut.setContext(Qt.ApplicationShortcut)
+        shortcut.activated.connect(slot)
+        return shortcut
+
+    def _session_shortcuts(self) -> list[QShortcut]:
+        return [*self._enter_shortcuts, *self._delete_shortcuts]
+
+    def _sync_session_shortcuts(self, *_args):
         enabled = not typing_in_text_field()
-        for shortcut in self._enter_shortcuts:
+        for shortcut in self._session_shortcuts():
             shortcut.setEnabled(enabled)
 
-    def _remove_enter_shortcuts(self):
-        if not self._enter_shortcuts:
+    def _remove_session_shortcuts(self):
+        shortcuts = self._session_shortcuts()
+        if not shortcuts:
             return
         app = QApplication.instance()
         if app is not None:
-            app.focusChanged.disconnect(self._sync_enter_shortcuts)
-        for shortcut in self._enter_shortcuts:
+            app.focusChanged.disconnect(self._sync_session_shortcuts)
+        for shortcut in shortcuts:
             shortcut.setEnabled(False)
             shortcut.setParent(None)
             shortcut.deleteLater()
         self._enter_shortcuts = []
+        self._delete_shortcuts = []
 
     # ==================================================================
     # Jumping + display
@@ -743,15 +913,18 @@ class RefineLabelsDialog(QDialog):
         seed_display = self.app_state.to_display(inst["trial"], seed_rel)
         self._seed_frame = video.time_to_frame(seed_display, round_nearest=True) if video else None
         # Remember where the session stands — every jump, not just commits,
-        # so a Stop (or crash) mid-seed resumes exactly here.
-        self.app_state.refine_resume = {
-            "label_ids": self._selected_label_ids(),
-            "individual": self.individual_combo.currentText(),
-            "trial": str(inst["trial"]),
-            "labels": int(inst["labels"]),
-            "onset_s": float(inst["onset_s"]),
-            "field": target.field,
-        }
+        # so a Stop (or crash) mid-seed resumes exactly here. A queue handed
+        # over from the frames grid is not rebuildable from the class list, so
+        # it leaves the remembered session alone.
+        if self._remember_resume:
+            self.app_state.refine_resume = {
+                "label_ids": list(self._session_label_ids),
+                "individual": self.individual_combo.currentText(),
+                "trial": str(inst["trial"]),
+                "labels": int(inst["labels"]),
+                "onset_s": float(inst["onset_s"]),
+                "field": target.field,
+            }
         self._update_target_display()
         self._update_delta()
 
@@ -830,6 +1003,12 @@ class RefineLabelsDialog(QDialog):
         old_onset = _num(inst["onset_s"])
         old_offset = _num(inst["offset_s"])
 
+        # A boundary placed by eye is a hand-made label: the row stops carrying
+        # whatever score the model that produced it had.
+        df = ensure_confidence(df)
+        df.loc[row_idx, "confidence"] = HUMAN_CONFIDENCE
+        inst["confidence"] = HUMAN_CONFIDENCE
+
         if target.field == "end":
             df.loc[row_idx, "offset_s"] = t_rel
             inst["offset_s"] = t_rel
@@ -861,6 +1040,91 @@ class RefineLabelsDialog(QDialog):
         self.delta_label.setText("✓ placed")
         QTimer.singleShot(_CONFIRM_PAUSE_MS, self._advance_after_pause)
 
+    def _delete_current(self):
+        """Backspace: this event does not belong in the trial — drop the label.
+
+        The whole row goes, so a state event's other boundary is dropped from
+        the queue with it; the queue then moves on exactly as a commit does.
+        Nothing reaches disk until the labels are saved.
+        """
+        if not self._targets or not self._session_active or self._advance_pending:
+            return
+        target = self._targets[self._idx]
+        inst = target.inst
+        trial = inst["trial"]
+        current = getattr(self.app_state, "trials_sel", None)
+        if current is not None and str(current) != str(trial):
+            notify(
+                f"The GUI is on trial {current}, but this seed belongs to trial {trial} — navigate back first.",
+                severity="warning",
+            )
+            return
+
+        df = self.app_state.label_intervals
+        if df is None or df.empty:
+            notify("No labels in the current trial.", severity="warning")
+            return
+        mask = _row_mask(df, inst)
+        pos = np.flatnonzero(mask.to_numpy())
+        if not len(pos):
+            notify("This label no longer exists (edited elsewhere?) — use Skip.", severity="warning")
+            return
+
+        df = delete_interval(df, df.index[pos[0]])
+        self.app_state.label_intervals = df
+        self.app_state.set_trial_intervals(trial, df)
+        self.app_state.changes_saved = False
+        self._n_deleted += 1
+        self._record_deletion(inst, target.field)
+
+        if self.io_widget is not None:
+            self.io_widget._human_verification_true(mode="single_trial")
+        if self.data_widget is not None:
+            self.data_widget.update_main_plot(preserve_x_range=True)
+        if self.labels_widget is not None:
+            self.labels_widget.refresh_labels_shapes_layer()
+
+        self.delta_label.setText("✗ deleted")
+        self._advance_past(inst)
+
+    def _advance_past(self, inst: dict):
+        """Jump to the next target that is not part of *inst* (whose row is gone)."""
+        idx = self._idx + 1
+        while idx < len(self._targets) and self._targets[idx].inst is inst:
+            idx += 1
+        if idx >= len(self._targets):
+            self._stop(done=True)
+            return
+        self._idx = idx
+        self._jump_current()
+
+    def _record_deletion(self, inst: dict, field: str):
+        """Append a deletion to ``app_state.refine_log``.
+
+        It keeps the original times and has no new ones, so the history shows
+        it as *deleted* and the pre/post export carries the row on one side.
+        """
+        log = list(getattr(self.app_state, "refine_log", None) or [])
+        identity = _log_identity(inst)
+        mappings = getattr(self.labels_widget, "_mappings", {}) or {}
+        log.append(
+            {
+                **identity,
+                "name": str(mappings.get(identity["labels"], {}).get("name", identity["labels"])),
+                "event_type": str(inst.get("event_type", "state")),
+                "orig_onset_s": _num(inst["onset_s"]),
+                "orig_offset_s": _num(inst["offset_s"]),
+                "new_onset_s": None,
+                "new_offset_s": None,
+                "fields": [field],
+                "deleted": True,
+                "time": datetime.now().isoformat(timespec="seconds"),
+            }
+        )
+        self.app_state.refine_log = log
+        if self._history_dialog is not None and self._history_dialog.isVisible():
+            self._history_dialog.refresh()
+
     def _record_refinement(self, inst: dict, field: str, old_onset: float | None, old_offset: float | None):
         """Append this commit to ``app_state.refine_log`` (→ local_settings.yaml).
 
@@ -870,18 +1134,14 @@ class RefineLabelsDialog(QDialog):
         very first values — exactly what the pre/post export wants.
         """
         log = list(getattr(self.app_state, "refine_log", None) or [])
-        identity = {
-            "trial": str(inst["trial"]),
-            "labels": int(inst["labels"]),
-            "individual": _subject_str(inst.get("individual")),
-            "individual_rec": _subject_str(inst.get("individual_rec")),
-        }
+        identity = _log_identity(inst)
         new_onset = _num(inst["onset_s"])
         new_offset = _num(inst["offset_s"])
         now = datetime.now().isoformat(timespec="seconds")
         for rec in log:
             if (
-                all(rec.get(k) == v for k, v in identity.items())
+                not rec.get("deleted")
+                and all(rec.get(k) == v for k, v in identity.items())
                 and _close(rec.get("new_onset_s"), old_onset)
                 and _close(rec.get("new_offset_s"), old_offset)
             ):
@@ -919,8 +1179,22 @@ class RefineLabelsDialog(QDialog):
         self._advance_pending = False
         new_idx = self._idx + direction
         if new_idx >= len(self._targets):
-            notify(f"Done — refined {self._n_refined} boundaries. Save with Ctrl+S.")
-            self._stop()
+            self._stop(done=True)
             return
         self._idx = max(0, new_idx)
         self._jump_current()
+
+
+def open_refine_dialog(meta, parent=None) -> RefineLabelsDialog:
+    """Show the session's one refine dialog, creating it if needed.
+
+    The top bar owns the instance wherever there is one, so Tools ▸ Refine and
+    the frames grid raise the same dialog — two would fight over the
+    application-wide Enter/Backspace shortcuts.
+    """
+    top_bar = getattr(getattr(meta, "shell", None), "_top_bar", None)
+    dialog = top_bar.refine_dialog() if top_bar is not None else RefineLabelsDialog(meta, parent=parent)
+    dialog.show()
+    dialog.raise_()
+    dialog.activateWindow()
+    return dialog

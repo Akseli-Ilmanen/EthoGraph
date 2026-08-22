@@ -1,6 +1,6 @@
 """Add-panel popup: a transient, searchable list of Media / Feature sources.
 
-Opened from the "➕ Add panel" button in the bottom playback bar (or Ctrl+N).
+Opened from the "➕ Add panel" button in the bottom playback bar (or Shift+N).
 The popup overlays the plot area and vanishes on focus-out. Two workflows:
 
 * **Drag** an entry onto the plot container (:class:`UnifiedPanelContainer`)

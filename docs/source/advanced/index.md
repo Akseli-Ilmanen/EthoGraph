@@ -18,7 +18,7 @@ Per-trial conditions (metadata.tsv) and the trials table filter UI.
 :link-type: doc
 
 
-Labelling in the GUI, importing/exporting labels.
+Labelling in the GUI, predicting point events, importing/exporting labels.
 :::
 
 :::{grid-item-card} {fas}`wave-square` Changepoints

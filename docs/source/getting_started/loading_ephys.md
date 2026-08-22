@@ -26,7 +26,7 @@ EthoGraph recognises a Kilosort folder by the `spike_times.npy` inside it, and r
 (target-ephys-viewers)=
 ## Two ephys trace viewers
 
-Raw traces can be shown in either of two panels, added from **➕ Add panel** (`Ctrl+N`) under the **Ephys** header.
+Raw traces can be shown in either of two panels, added from **➕ Add panel** (`Shift+N`) under the **Ephys** header.
 
 | | **Neo (`stream`)** | **Ephys (Phy-like viewer)** |
 |---|---|---|

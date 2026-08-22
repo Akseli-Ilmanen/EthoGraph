@@ -7,6 +7,8 @@ File format:
     labels                  - integer label class ID
     onset_s                 - start time in seconds (trial-relative)
     offset_s                - end time in seconds (trial-relative)
+    confidence              - 1.0 for a human label, the model's own score for
+                              a predicted one
     n_samples               - per-trial sample count for dense conversion (int, 0 if unknown)
     human_verified          - per-trial flag (0/1), repeated per row
     changepoint_corrected   - per-trial flag (0/1), repeated per row
@@ -19,6 +21,8 @@ Label names are managed centrally in mapping.txt.
 from __future__ import annotations
 
 import logging
+from collections import deque
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -28,6 +32,7 @@ from ethograph.labels.intervals import (
     INTERVAL_COLUMNS,
     INTERVAL_DTYPES,
     empty_intervals,
+    ensure_confidence,
     ensure_event_type,
     ensure_individual_rec,
 )
@@ -42,6 +47,7 @@ TSV_COLUMNS = [
     "onset_s",
     "offset_s",
     "event_type",
+    "confidence",
     "human_verified",
     "changepoint_corrected",
     "prediction_source",
@@ -143,6 +149,7 @@ def load_labels_tsv(path: str | Path) -> pd.DataFrame:
 
     ensure_event_type(df)
     ensure_individual_rec(df)
+    ensure_confidence(df)
     for col in INTERVAL_COLUMNS:
         if col in df.columns and col in INTERVAL_DTYPES:
             df[col] = df[col].astype(INTERVAL_DTYPES[col])
@@ -184,6 +191,7 @@ def save_labels_tsv(path: str | Path, df: pd.DataFrame) -> None:
         "onset_s",
         "offset_s",
         "event_type",
+        "confidence",
         "trial_onset",
         "trial_offset",
         "onset_global",
@@ -240,6 +248,7 @@ def _comparable_labels(df: pd.DataFrame | None) -> pd.DataFrame:
     out = df.copy()
     ensure_event_type(out)
     ensure_individual_rec(out)
+    ensure_confidence(out)
     for col in TSV_COLUMNS:
         if col not in out.columns:
             out[col] = TRIAL_META_DEFAULTS.get(col, "")
@@ -285,16 +294,21 @@ def set_trial_in_tsv(
 ) -> pd.DataFrame:
     """Replace all rows for a trial in the all-labels DataFrame.
 
-    Preserves per-trial metadata columns from the existing rows.
+    Preserves per-trial metadata columns from the existing rows.  The columns
+    added to files written before they existed (``event_type``,
+    ``individual_rec``, ``confidence``) are filled in on the *whole* table
+    first: the untouched trials must not end up with NaN where the rewritten
+    trial has a value.
     """
     if all_df is None:
         all_df = _empty_all_labels()
+    all_df = ensure_confidence(ensure_individual_rec(ensure_event_type(all_df.copy())))
 
     # Preserve existing meta values for this trial
     old_meta = get_trial_meta(all_df, trial)
     other = all_df[all_df["trial"] != trial]
 
-    trial_df = ensure_individual_rec(ensure_event_type(trial_df.copy()))
+    trial_df = ensure_confidence(ensure_individual_rec(ensure_event_type(trial_df.copy())))
     new_rows = trial_df[INTERVAL_COLUMNS].copy()
     new_rows.insert(0, "trial", trial)
     for col, default in TRIAL_META_DEFAULTS.items():
@@ -341,3 +355,77 @@ def set_trial_meta_attr(all_df: pd.DataFrame, trial, key: str, value) -> pd.Data
 def init_empty_labels(trials: list) -> pd.DataFrame:
     """Create empty labels DataFrame."""
     return _empty_all_labels()
+
+
+# ---------------------------------------------------------------------------
+# Undo history
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class LabelEdit:
+    """One trial's labels as they stood *before* a single edit.
+
+    ``rows`` carries :data:`~ethograph.labels.intervals.INTERVAL_COLUMNS` only;
+    ``meta`` the per-trial flags, so undoing a placement also takes back the
+    ``human_verified`` it set.
+    """
+
+    trial: object
+    description: str
+    rows: pd.DataFrame
+    meta: dict
+
+
+class LabelHistory:
+    """Bounded undo stack over the label table.
+
+    A snapshot holds **one trial's rows**, never the whole table: every trial's
+    labels share one DataFrame, so copying all of them per click would cost
+    with the size of the dataset instead of the size of the edit. Depth is
+    bounded, so a long labelling session cannot grow without limit.
+
+    One entry is one *user action*: the caller records once, before the action,
+    and everything that action goes on to do (interval trimming, sliver purge,
+    changepoint correction) is inside that single step.
+    """
+
+    def __init__(self, max_depth: int = 200) -> None:
+        self._stack: deque[LabelEdit] = deque(maxlen=max_depth)
+
+    def __len__(self) -> int:
+        return len(self._stack)
+
+    def clear(self) -> None:
+        self._stack.clear()
+
+    def peek(self) -> LabelEdit | None:
+        """What the next :meth:`undo` would take back, without taking it back."""
+        return self._stack[-1] if self._stack else None
+
+    def record(self, all_df: pd.DataFrame | None, trial, description: str) -> None:
+        """Snapshot *trial*'s rows as they are now, before an edit changes them."""
+        rows = get_trial_from_tsv(all_df, trial)
+        cols = [c for c in INTERVAL_COLUMNS if c in rows.columns]
+        self._stack.append(
+            LabelEdit(
+                trial=trial,
+                description=description,
+                rows=rows[cols].copy(),
+                meta=get_trial_meta(all_df, trial),
+            )
+        )
+
+    def undo(self, all_df: pd.DataFrame | None) -> tuple[pd.DataFrame, LabelEdit] | None:
+        """Put the newest snapshot back.
+
+        Returns the restored table and the edit it took back, or ``None`` when
+        there is nothing left to undo.
+        """
+        if not self._stack:
+            return None
+        edit = self._stack.pop()
+        restored = set_trial_in_tsv(all_df, edit.trial, edit.rows)
+        for key, value in edit.meta.items():
+            restored = set_trial_meta_attr(restored, edit.trial, key, value)
+        return restored, edit

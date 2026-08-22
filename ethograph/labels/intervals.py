@@ -7,6 +7,8 @@ Labels are stored as a pandas DataFrame with columns:
     individual     (str)     - the individual performing the behaviour (actor)
     individual_rec (str)     - the recipient of a dyadic behaviour, "" if none
     event_type     (str)     - "state" (interval) or "point" (instantaneous)
+    confidence     (float64) - how sure the label is: 1.0 for a human label,
+                               the model's own score for a predicted one
 
 ``individual`` and ``individual_rec`` together are the **subject** of a label:
 each (actor, recipient) pair is its own independent track, exactly as each
@@ -36,7 +38,19 @@ EVENT_TYPES = (EVENT_TYPE_STATE, EVENT_TYPE_POINT)
 #: Value of ``individual_rec`` for a behaviour with no recipient.
 NO_RECIPIENT = ""
 
-INTERVAL_COLUMNS = ["onset_s", "offset_s", "labels", "individual", "individual_rec", "event_type"]
+#: Confidence of a label placed by a human — certain by definition. Every
+#: other producer (a model) writes its own score in ``[0, 1]``.
+HUMAN_CONFIDENCE = 1.0
+
+INTERVAL_COLUMNS = [
+    "onset_s",
+    "offset_s",
+    "labels",
+    "individual",
+    "individual_rec",
+    "event_type",
+    "confidence",
+]
 
 INTERVAL_DTYPES = {
     "onset_s": np.float64,
@@ -45,6 +59,7 @@ INTERVAL_DTYPES = {
     "individual": object,
     "individual_rec": object,
     "event_type": object,
+    "confidence": np.float64,
 }
 
 #: The columns identifying whose label a row is — the actor and the recipient.
@@ -68,7 +83,7 @@ def empty_intervals() -> pd.DataFrame:
     >>> from ethograph.labels.intervals import empty_intervals
     >>> df = empty_intervals()
     >>> df.columns.tolist()
-    ['onset_s', 'offset_s', 'labels', 'individual', 'individual_rec', 'event_type']
+    ['onset_s', 'offset_s', 'labels', 'individual', 'individual_rec', 'event_type', 'confidence']
     >>> len(df)
     0
     """
@@ -101,6 +116,20 @@ def ensure_individual_rec(df: pd.DataFrame) -> pd.DataFrame:
         df["individual_rec"] = NO_RECIPIENT
     else:
         df["individual_rec"] = df["individual_rec"].fillna(NO_RECIPIENT).astype(object)
+    return df
+
+
+def ensure_confidence(df: pd.DataFrame) -> pd.DataFrame:
+    """Add a ``confidence`` column defaulting to :data:`HUMAN_CONFIDENCE`.
+
+    Mutates and returns *df*.  A row with no confidence is a row nobody
+    expressed a doubt about — every label file written before models scored
+    their own output reads back as fully confident, which is what it is.
+    """
+    if "confidence" not in df.columns:
+        df["confidence"] = HUMAN_CONFIDENCE
+    else:
+        df["confidence"] = pd.to_numeric(df["confidence"], errors="coerce").fillna(HUMAN_CONFIDENCE)
     return df
 
 
@@ -391,6 +420,7 @@ def add_point(
     labels: int,
     individual: str,
     individual_rec: str = NO_RECIPIENT,
+    confidence: float = HUMAN_CONFIDENCE,
 ) -> pd.DataFrame:
     """Add a point event (instantaneous label) at *time_s*.
 
@@ -398,6 +428,9 @@ def add_point(
     ``event_type = "point"``.  They are never trimmed, split, or merged by
     :func:`add_interval`, :func:`purge_short_intervals`,
     :func:`stitch_intervals`, or :func:`snap_boundaries`.
+
+    *confidence* defaults to :data:`HUMAN_CONFIDENCE`; a model passes its own
+    score so a later review pass can rank what to check first.
 
     Returns
     -------
@@ -411,6 +444,7 @@ def add_point(
         "individual": individual,
         "individual_rec": individual_rec,
         "event_type": EVENT_TYPE_POINT,
+        "confidence": float(confidence),
     }
     new_df = pd.DataFrame([new_row])
     df = ensure_individual_rec(df.copy())
@@ -430,6 +464,7 @@ def add_interval(
     individual: str,
     protected_label_ids: set[int] | None = None,
     individual_rec: str = NO_RECIPIENT,
+    confidence: float = HUMAN_CONFIDENCE,
 ) -> pd.DataFrame:
     """Add an interval, resolving overlaps for the same subject.
 
@@ -454,6 +489,8 @@ def add_interval(
         to inactive branches).  ``None`` means no protection.
     individual_rec : str
         Recipient of the behaviour; :data:`NO_RECIPIENT` for a solo one.
+    confidence : float
+        How sure this label is; :data:`HUMAN_CONFIDENCE` for a hand-placed one.
 
     Returns
     -------
@@ -493,6 +530,9 @@ def add_interval(
             continue
 
         eps = 1e-3
+        # A trimmed remnant is the same label as before — it keeps the
+        # confidence of the row it was cut from, not the new label's.
+        row_conf = row.get("confidence", HUMAN_CONFIDENCE)
         if ro < onset_s:
             kept.append(
                 {
@@ -501,6 +541,7 @@ def add_interval(
                     "labels": rid,
                     "individual": individual,
                     "individual_rec": individual_rec,
+                    "confidence": row_conf,
                 }
             )
         if rf > offset_s:
@@ -511,6 +552,7 @@ def add_interval(
                     "labels": rid,
                     "individual": individual,
                     "individual_rec": individual_rec,
+                    "confidence": row_conf,
                 }
             )
 
@@ -521,6 +563,7 @@ def add_interval(
             "labels": labels,
             "individual": individual,
             "individual_rec": individual_rec,
+            "confidence": float(confidence),
         }
     )
 
@@ -704,6 +747,11 @@ def stitch_intervals(
                 and (nxt["onset_s"] - current["offset_s"]) < max_gap_s
             ):
                 current["offset_s"] = nxt["offset_s"]
+                # A merged interval is only as trustworthy as its weakest part.
+                current["confidence"] = min(
+                    float(current.get("confidence", HUMAN_CONFIDENCE)),
+                    float(nxt.get("confidence", HUMAN_CONFIDENCE)),
+                )
                 j += 1
             else:
                 break
@@ -828,6 +876,7 @@ def _rows_to_df(rows: list[dict]) -> pd.DataFrame:
         df["event_type"] = df["event_type"].fillna(EVENT_TYPE_STATE).astype(object)
     df = df.reindex(columns=INTERVAL_COLUMNS)
     ensure_individual_rec(df)
+    ensure_confidence(df)
     for col, dtype in INTERVAL_DTYPES.items():
         df[col] = df[col].astype(dtype)
     return df

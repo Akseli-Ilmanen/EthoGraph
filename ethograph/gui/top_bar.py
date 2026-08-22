@@ -131,7 +131,7 @@ class TopBarBuilder:
         #: Label-frames dialog, rebuilt when reopened so its label list,
         #: metadata columns and cameras reflect the currently loaded dataset.
         self._label_frames_dialog = None
-        #: GradBoost onset-model dialogs, rebuilt when reopened so the feature
+        #: LightGBM onset-model dialogs, rebuilt when reopened so the feature
         #: tree and point-event classes reflect the currently loaded session.
         self._onset_train_dialog = None
         self._onset_predict_dialog = None
@@ -193,15 +193,17 @@ class TopBarBuilder:
         menu.addAction("Neural: Compute firing rates…", lambda: self._popup_section("firing", "Firing rates", ephys))
 
     def _build_model_menu(self, menu_bar):
-        """Model menu — supervised point-event onset detection (GradBoost).
+        """Model menu — supervised point-event onset detection (LightGBM).
 
-        Train collects the session's existing point events as training data
-        for a ``HistGradientBoostingClassifier``; Predict fills the target
-        event into trials that don't carry it yet.
+        Train collects the session's existing point events as training data,
+        one ``HistGradientBoostingClassifier`` per ticked class (plus an
+        optional sequence CRF); Predict fills those events into the trials
+        that don't carry them yet, each with the model's own confidence.
+        Documented in ``docs/source/advanced/labels/onset_model.md``.
         """
         menu = menu_bar.addMenu("&Model")
-        menu.addAction("Train onset detector (GradBoost)…", self._open_onset_train)
-        menu.addAction("Predict onsets (GradBoost)…", self._open_onset_predict)
+        menu.addAction("LightGBM: Train…", self._open_onset_train)
+        menu.addAction("LightGBM: Predict…", self._open_onset_predict)
 
     def _open_onset_train(self):
         from .dialog_onset_model import TrainOnsetDialog
@@ -236,23 +238,33 @@ class TopBarBuilder:
         if open_dialog is not None:
             open_dialog()
 
-    def _open_refine_labels(self):
-        """Open the frame-by-frame label refinement dialog."""
+    def refine_dialog(self):
+        """The one frame-by-frame refinement dialog, rebuilt once closed.
+
+        Public because the frames grid hands its ticked boundaries to the same
+        instance (``dialog_refine.open_refine_dialog``) rather than opening a
+        second one.
+        """
         from .dialog_refine import RefineLabelsDialog
 
         if self._refine_dialog is None or not self._refine_dialog.isVisible():
             self._refine_dialog = RefineLabelsDialog(self.meta, parent=self.shell)
-        self._refine_dialog.show()
-        self._refine_dialog.raise_()
-        self._refine_dialog.activateWindow()
+        return self._refine_dialog
+
+    def _open_refine_labels(self):
+        """Open the frame-by-frame label refinement dialog."""
+        dialog = self.refine_dialog()
+        dialog.show()
+        dialog.raise_()
+        dialog.activateWindow()
 
     def _open_label_frames(self):
         """Open the label-frames config dialog (label/metadata/camera picks →
         a clickable, PDF-exportable grid of video frames at label times)."""
-        from .dialog_label_frames import LabelFramesConfigDialog
+        from .dialog_label_frames import LabelFramesDialog
 
         if self._label_frames_dialog is None or not self._label_frames_dialog.isVisible():
-            self._label_frames_dialog = LabelFramesConfigDialog(self.meta, parent=self.shell)
+            self._label_frames_dialog = LabelFramesDialog(self.meta, parent=self.shell)
         self._label_frames_dialog.show()
         self._label_frames_dialog.raise_()
         self._label_frames_dialog.activateWindow()

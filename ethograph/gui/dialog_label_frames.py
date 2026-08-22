@@ -1,15 +1,30 @@
-"""Grid of video frames at label times (Tools ▸ Labels: Show frames as PDF…).
+"""Grid of video frames at label times (Tools ▸ Labels: Show frames as Grid/PDF…).
 
-A config dialog lets the user tick label classes from ``mapping.txt`` (point
-and state events), narrow the trials through the metadata table's condition
-columns, and pick which cameras matter. *Generate* decodes, for every matching
-label instance, the video frame closest to its time — one frame per point
-event, a start and an end frame per state event — overlays the pose when a
-pose file exists for that (trial, camera), and opens a scrollable grid of the
-thumbnails. Each tile is titled with the label, trial, camera and time;
-clicking it jumps the main GUI to that trial with the cursor on the label's
-time. The grid's column count is adjustable and the whole grid exports to a
-paginated PDF.
+One window with two tabs. On *Setup* the user ticks label classes from
+``mapping.txt`` (point and state events), narrows the trials through the
+metadata table's condition columns, and picks which cameras matter.
+*Generate* decodes, for every matching label instance, the video frame closest
+to its time — one frame per point event, a start and an end frame per state
+event — overlays the pose when a pose file exists for that (trial, camera),
+and fills the *Frames* tab with a scrollable grid of the thumbnails (the
+window carries minimise/maximise buttons, so the grid goes full screen in one
+click and the tiles refit to the new width). Each tile is titled with the
+label, trial, camera, time and the label's confidence; clicking it jumps the
+main GUI to that trial with the
+cursor on the label's time. A confidence threshold outlines every tile below
+it in red — the review loop for model predictions, which carry the model's own
+score while human labels are 1.0. **Histogram…** next to it shows where those
+scores actually pile up: one histogram per label class (per individual too,
+when more than one is labelled), the part below the threshold drawn in the
+same red, and its threshold spin bound both ways to the grid's. The grid's
+column count is adjustable and the whole grid exports to a paginated PDF.
+
+The grid is also where a frame-by-frame review pass is *scoped*: tick the
+tiles that look wrong (**Tick flagged** ticks everything the confidence
+threshold outlines) and **Refine ticked frame-by-frame…** hands exactly those
+boundaries to :mod:`ethograph.gui.dialog_refine`, whose queue then walks them
+and nothing else — Enter to move a boundary onto the right frame, Backspace to
+delete an event that should not be there.
 """
 
 from __future__ import annotations
@@ -23,8 +38,9 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pyqtgraph as pg
 from qtpy.QtCore import QEventLoop, QRect, Qt, QTimer, Signal
-from qtpy.QtGui import QFont, QImage, QPageSize, QPainter, QPdfWriter, QPixmap
+from qtpy.QtGui import QColor, QFont, QImage, QPageSize, QPainter, QPdfWriter, QPen, QPixmap
 from qtpy.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -40,23 +56,24 @@ from qtpy.QtWidgets import (
     QListWidgetItem,
     QProgressDialog,
     QPushButton,
-    QRadioButton,
     QScrollArea,
     QSpinBox,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
 
 from ethograph.gui.app_constants import MULTIDIM_COLORS
+from ethograph.gui.dialog_refine import open_refine_dialog
 from ethograph.gui.file_dialogs import browse_save_file
 from ethograph.gui.notify import notify
 from ethograph.gui.pose_fill import VideoFrameSource
 from ethograph.gui.pose_render import POSES_DATASET_SUFFIX, PoseRenderData, load_pose_from_file
 from ethograph.gui.table_filter import CategoryFilterDialog
 from ethograph.gui.video_manager import probe_video
-from ethograph.io.metadata_table import condition_columns
+from ethograph.io.metadata_table import allowed_trials_from_metadata, condition_columns
 from ethograph.io.time_model import TimeRange
-from ethograph.labels.intervals import EVENT_TYPE_POINT
+from ethograph.labels.intervals import EVENT_TYPE_POINT, HUMAN_CONFIDENCE
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +87,33 @@ THUMB_MAX_SIDE = 512
 #: trial switch, whose refresh cascade schedules more of them.
 PANEL_SETTLE_MS = 100
 PANEL_TRIAL_SETTLE_MS = 300
+
+#: Size the dialog grows to when the grid first appears — the setup form is
+#: narrow, a grid of thumbnails is not.
+_GRID_MIN_WIDTH = 1100
+_GRID_MIN_HEIGHT = 780
+
+#: Quiet period after a resize before the tiles are rescaled, so dragging the
+#: window edge does not rescale every pixmap per pixel.
+_REFLOW_DEBOUNCE_MS = 120
+
+#: Outline drawn around a tile whose label falls below the confidence
+#: threshold — in the grid (stylesheet) and in the PDF (pen colour).
+LOW_CONFIDENCE_COLOR = "#d94040"
+_LOW_CONFIDENCE_STYLE = f"QFrame#frameCell {{ border: 2px solid {LOW_CONFIDENCE_COLOR}; border-radius: 3px; }}"
+
+#: Confidence-histogram popup: dark canvas (the label colours are picked for
+#: one), plots per row and each plot's floor.
+_HIST_BG = "#1a1d21"
+_HIST_COLUMNS = 3
+_HIST_MIN_SIZE = (300, 210)
+_HIST_BINS = 20
+
+#: A label class drawn in its own colour would hide the flagged part of its
+#: histogram if that colour is itself reddish — those bars go neutral instead
+#: (the plot title still carries the label's colour).
+_HIST_NEUTRAL = "#8a9099"
+_HIST_MIN_COLOR_DISTANCE = 90.0
 
 
 # ----------------------------------------------------------------------
@@ -92,6 +136,9 @@ class FrameEntry:
     offset_s: float
     individual: object = None
     individual_rec: object = None
+    #: How sure the label is: 1.0 for a human label, the model's own score for
+    #: a predicted one (see ``labels/onset_model.py``).
+    confidence: float = HUMAN_CONFIDENCE
     color_hex: str = "#ffffff"
     image: np.ndarray | None = None
     frame_idx: int | None = None
@@ -102,26 +149,16 @@ class FrameEntry:
     panels: list = field(default_factory=list)
 
 
+def is_low_confidence(entry: "FrameEntry", threshold: float) -> bool:
+    """Whether *entry* should be flagged. A threshold of 0 flags nothing."""
+    return threshold > 0.0 and entry.confidence < threshold
+
+
 def _mapping_color_hex(info: dict) -> str:
     color = info.get("color")
     if color is None:
         return "#ffffff"
     return "#{:02x}{:02x}{:02x}".format(*(int(c * 255) for c in color[:3]))
-
-
-def allowed_trials_from_metadata(
-    metadata_df: pd.DataFrame | None,
-    filters: dict[str, set[str]],
-) -> set[str] | None:
-    """Trials (as strings) passing every column filter; ``None`` = no filtering."""
-    if metadata_df is None or metadata_df.empty or not any(filters.values()):
-        return None
-    mask = pd.Series(True, index=metadata_df.index)
-    for col, allowed in filters.items():
-        if not allowed or col not in metadata_df.columns:
-            continue
-        mask &= metadata_df[col].astype(str).isin(allowed)
-    return set(metadata_df.loc[mask, "trial"].astype(str))
 
 
 def build_frame_entries(
@@ -169,10 +206,130 @@ def build_frame_entries(
                         offset_s=offset,
                         individual=row.get("individual"),
                         individual_rec=row.get("individual_rec"),
+                        confidence=_row_confidence(row),
                         color_hex=_mapping_color_hex(info),
                     )
                 )
     return entries
+
+
+def _subject_key(value) -> str:
+    """Subject columns compare as text; ``None`` and NaN are the same blank."""
+    if value is None or (isinstance(value, float) and math.isnan(value)):
+        return ""
+    return str(value)
+
+
+def seeds_from_entries(entries: list[FrameEntry]) -> list[dict]:
+    """Refine seeds for *entries* — one per boundary, cameras deduplicated.
+
+    A boundary two cameras saw is two tiles but one label, and the refine
+    queue must stop at it once. Each seed is the label row plus the ``field``
+    to edit, which is what :func:`ethograph.gui.dialog_refine.targets_from_seeds`
+    consumes.
+    """
+    seeds: dict[tuple, dict] = {}
+    for entry in entries:
+        key = (
+            str(entry.trial),
+            entry.label_id,
+            round(entry.onset_s, 6),
+            _subject_key(entry.individual),
+            _subject_key(entry.individual_rec),
+            entry.boundary,
+        )
+        seeds.setdefault(
+            key,
+            {
+                "trial": entry.trial,
+                "labels": entry.label_id,
+                "onset_s": entry.onset_s,
+                "offset_s": entry.offset_s,
+                "individual": entry.individual,
+                "individual_rec": entry.individual_rec,
+                "event_type": entry.event_type,
+                "field": entry.boundary,
+            },
+        )
+    return list(seeds.values())
+
+
+def flagged_trials(entries: list[FrameEntry], threshold: float) -> set[str]:
+    """Trials holding at least one entry below *threshold* (as strings).
+
+    A trial the model got wrong once is worth reading end to end: its other
+    events may score high and still be misplaced, so this is what widens a
+    review from the flagged frames to the trials they sit in.
+    """
+    return {str(entry.trial) for entry in entries if is_low_confidence(entry, threshold)}
+
+
+@dataclass
+class ConfidenceGroup:
+    """One histogram's worth of confidences: a label class, one animal's."""
+
+    label_id: int
+    name: str
+    #: ``None`` when the labels name a single individual — then the label
+    #: class alone is the split.
+    individual: str | None
+    color_hex: str
+    values: list[float] = field(default_factory=list)
+
+
+def confidence_groups(entries: list[FrameEntry]) -> list[ConfidenceGroup]:
+    """Group the entries' confidences, one group per histogram.
+
+    A label instance seen by two cameras is two tiles but one score, and a
+    state event's start and end tiles share their row's — both collapse here,
+    so a histogram counts events, not tiles. Groups split per individual as
+    well as per label class whenever more than one individual is labelled: a
+    model is rarely equally sure about every animal.
+    """
+    rows: dict[tuple, FrameEntry] = {}
+    for entry in entries:
+        key = (
+            str(entry.trial),
+            entry.label_id,
+            round(entry.onset_s, 6),
+            _subject_key(entry.individual),
+            _subject_key(entry.individual_rec),
+        )
+        rows.setdefault(key, entry)
+
+    per_individual = len({_subject_key(e.individual) for e in rows.values()}) > 1
+    groups: dict[tuple[int, str], ConfidenceGroup] = {}
+    for entry in rows.values():
+        individual = _subject_key(entry.individual) if per_individual else None
+        group = groups.get((entry.label_id, individual or ""))
+        if group is None:
+            group = ConfidenceGroup(entry.label_id, entry.name, individual, entry.color_hex)
+            groups[(entry.label_id, individual or "")] = group
+        group.values.append(entry.confidence)
+    return [groups[key] for key in sorted(groups)]
+
+
+def split_histogram(values, threshold: float, bins: int = 20) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Bin *values* into ``(edges, below threshold, the rest)``.
+
+    Both halves share one set of edges over [0, 1], so the bin the threshold
+    falls inside splits into a red part and a normal part instead of being
+    coloured all one way. A threshold of 0 flags nothing, as in the grid.
+    """
+    data = np.clip(np.asarray(list(values), dtype=float), 0.0, 1.0)
+    edges = np.linspace(0.0, 1.0, int(bins) + 1)
+    low = data < threshold if threshold > 0.0 else np.zeros(data.shape, dtype=bool)
+    below, _ = np.histogram(data[low], bins=edges)
+    above, _ = np.histogram(data[~low], bins=edges)
+    return edges, below, above
+
+
+def _row_confidence(row) -> float:
+    """A label row's confidence; fully confident when the column is absent."""
+    value = row.get("confidence", HUMAN_CONFIDENCE)
+    if value is None or (isinstance(value, float) and math.isnan(value)):
+        return HUMAN_CONFIDENCE
+    return float(value)
 
 
 def _hex_to_rgb(color_hex: str) -> tuple[int, int, int]:
@@ -449,7 +606,7 @@ def capture_panel_images(
     nav,
     panels: list[tuple[str, QWidget]],
     window_s: float,
-    y_mode: str = "lock",
+    autoscale: bool = True,
     progress_cb=None,
 ) -> int:
     """Screenshot the ticked GUI panels around each entry's time, in place.
@@ -460,11 +617,11 @@ def capture_panel_images(
     same capture the screen recorder uses, so pygfx canvases come out too).
     Cameras of the same boundary share the captures.
 
-    ``y_mode`` fixes each panel's y-axis behaviour for the duration:
-    ``"lock"`` freezes the ranges the user has set now (tiles compare across
-    trials on one scale), ``"autoscale"`` fits each window's visible data.
-    The panels' own view state is restored afterwards. Returns the number of
-    positions visited; ``progress_cb(done)`` returning False stops early.
+    ``autoscale`` fits each panel's y-range to the data visible in that
+    capture's time window; with it off, the ranges the user has set now stay
+    frozen for the duration. The panels' own view state is restored
+    afterwards. Returns the number of positions visited;
+    ``progress_cb(done)`` returning False stops early.
     """
     keyed: dict[tuple[str, float], list[FrameEntry]] = {}
     for entry in entries:
@@ -473,7 +630,7 @@ def capture_panel_images(
     view_boxes = [vb for vb in (_panel_viewbox(widget) for _, widget in panels) if vb is not None]
     saved_states = [vb.getState(copy=True) for vb in view_boxes]
     for vb in view_boxes:
-        if y_mode == "autoscale":
+        if autoscale:
             # Fit y to the data visible in the x window, not the whole trace.
             vb.setAutoVisible(y=True)
             vb.enableAutoRange(y=True)
@@ -538,6 +695,7 @@ def _entry_info(entry: FrameEntry) -> str:
     if individual is not None and not (isinstance(individual, float) and math.isnan(individual)):
         parts.append(str(individual))
     parts.append(f"{entry.t_rel:.3f} s")
+    parts.append(f"conf {entry.confidence:.2f}")
     if entry.cropped:
         parts.append("cropped")
     return "  ·  ".join(parts)
@@ -553,8 +711,17 @@ def _to_qimage(image: np.ndarray) -> QImage:
     return QImage(image.data, w, h, 3 * w, QImage.Format_RGB888).copy()
 
 
-def write_frames_pdf(path: str | Path, entries: list[FrameEntry], columns: int) -> None:
-    """Write the grid as a paginated PDF, *columns* tiles per row."""
+def write_frames_pdf(
+    path: str | Path,
+    entries: list[FrameEntry],
+    columns: int,
+    confidence_threshold: float = 0.0,
+) -> None:
+    """Write the grid as a paginated PDF, *columns* tiles per row.
+
+    Tiles below *confidence_threshold* get the same red outline they carry in
+    the grid, so a printed review sheet flags what to check.
+    """
     writer = QPdfWriter(str(path))
     writer.setPageSize(QPageSize(QPageSize.A4))
     writer.setResolution(150)
@@ -588,6 +755,11 @@ def write_frames_pdf(path: str | Path, entries: list[FrameEntry], columns: int) 
                 y = margin
             for i, entry in enumerate(row):
                 x = margin + i * (cell_w + gap)
+                if is_low_confidence(entry, confidence_threshold):
+                    painter.save()
+                    painter.setPen(QPen(QColor(LOW_CONFIDENCE_COLOR), 2))
+                    painter.drawRect(x - 5, y - 5, cell_w + 10, cell_height(entry) + 10)
+                    painter.restore()
                 painter.drawText(x, y + line_h, _entry_title(entry))
                 painter.drawText(x, y + 2 * line_h, _entry_info(entry))
                 cy = y + text_h
@@ -622,17 +794,165 @@ class _ClickableLabel(QLabel):
         super().mousePressEvent(event)
 
 
-class LabelFramesGridDialog(QDialog):
-    """Scrollable grid of label frames; a tile click navigates the GUI there."""
+def histogram_bar_color(color_hex: str) -> str:
+    """The colour the unflagged bars take.
+
+    The label's own, unless it sits so close to the flag red that the flagged
+    part of the same histogram would not read as a separate colour.
+    """
+    if math.dist(_hex_to_rgb(color_hex), _hex_to_rgb(LOW_CONFIDENCE_COLOR)) < _HIST_MIN_COLOR_DISTANCE:
+        return _HIST_NEUTRAL
+    return color_hex
+
+
+def _group_title(group: ConfidenceGroup, flagged: int) -> str:
+    title = f"{group.name} ({group.label_id})"
+    if group.individual:
+        title += f" — {group.individual}"
+    counts = f"n={len(group.values)}"
+    if flagged:
+        counts += f" · {flagged} flagged"
+    return f"{title}   {counts}"
+
+
+class ConfidenceHistogramsDialog(QDialog):
+    """How the confidences of each label class are distributed.
+
+    One histogram per label class — per (class, individual) when more than one
+    individual is labelled — with the part below the threshold drawn in the
+    same red the grid outlines flagged tiles in, so the threshold can be
+    chosen by looking at where the model's scores actually pile up. The
+    threshold spin is bound both ways to the grid's.
+    """
+
+    threshold_changed = Signal(float)
+
+    def __init__(self, groups: list[ConfidenceGroup], threshold: float = 0.0, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Confidence histograms")
+        self.setModal(False)
+        self.setAttribute(Qt.WA_DeleteOnClose)
+        self._groups = list(groups)
+        self._plots: list[tuple[ConfidenceGroup, pg.PlotWidget]] = []
+
+        layout = QVBoxLayout(self)
+        bar = QHBoxLayout()
+        bar.addWidget(QLabel("Flag confidence below:"))
+        self.threshold_spin = QDoubleSpinBox()
+        self.threshold_spin.setRange(0.0, 1.0)
+        self.threshold_spin.setDecimals(2)
+        self.threshold_spin.setSingleStep(0.05)
+        self.threshold_spin.setSpecialValueText("off")
+        self.threshold_spin.setValue(threshold)
+        self.threshold_spin.setToolTip("Shared with the grid — moving it here recolours the tiles too.")
+        self.threshold_spin.valueChanged.connect(self._on_threshold)
+        bar.addWidget(self.threshold_spin)
+        bar.addSpacing(12)
+        bar.addWidget(QLabel("Bins:"))
+        self.bins_spin = QSpinBox()
+        self.bins_spin.setRange(5, 100)
+        self.bins_spin.setValue(_HIST_BINS)
+        self.bins_spin.valueChanged.connect(self._redraw)
+        bar.addWidget(self.bins_spin)
+        bar.addStretch()
+        layout.addLayout(bar)
+
+        hint = QLabel(
+            "Each event counts once, whatever it was seen by · red is what falls below the threshold · "
+            "human labels score 1.0."
+        )
+        hint.setStyleSheet("color: grey; font-size: 10px;")
+        layout.addWidget(hint)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        container = QWidget()
+        grid = QGridLayout(container)
+        grid.setSpacing(8)
+        for i, group in enumerate(self._groups):
+            plot = pg.PlotWidget()
+            plot.setBackground(_HIST_BG)
+            plot.setLabel("bottom", "confidence")
+            plot.setLabel("left", "events")
+            plot.setXRange(0.0, 1.0, padding=0.02)
+            plot.setMinimumSize(*_HIST_MIN_SIZE)
+            grid.addWidget(plot, i // _HIST_COLUMNS, i % _HIST_COLUMNS)
+            self._plots.append((group, plot))
+        scroll.setWidget(container)
+        layout.addWidget(scroll)
+
+        self._redraw()
+        columns = min(_HIST_COLUMNS, max(1, len(self._groups)))
+        rows = math.ceil(len(self._groups) / _HIST_COLUMNS) if self._groups else 1
+        self.resize(columns * (_HIST_MIN_SIZE[0] + 20) + 40, min(rows, 2) * (_HIST_MIN_SIZE[1] + 20) + 120)
+
+    def set_threshold(self, value: float) -> None:
+        """Follow the grid's threshold (a no-op when it already matches)."""
+        self.threshold_spin.setValue(float(value))
+
+    def _on_threshold(self, value: float) -> None:
+        self.threshold_changed.emit(float(value))
+        self._redraw()
+
+    def _redraw(self) -> None:
+        threshold = self.threshold_spin.value()
+        bins = self.bins_spin.value()
+        for group, plot in self._plots:
+            edges, below, above = split_histogram(group.values, threshold, bins)
+            centers = (edges[:-1] + edges[1:]) / 2.0
+            width = (edges[1] - edges[0]) * 0.9
+            plot.clear()
+            plot.addItem(
+                pg.BarGraphItem(
+                    x=centers,
+                    height=above,
+                    y0=below,
+                    width=width,
+                    brush=pg.mkBrush(histogram_bar_color(group.color_hex)),
+                    pen=pg.mkPen(None),
+                )
+            )
+            plot.addItem(
+                pg.BarGraphItem(
+                    x=centers,
+                    height=below,
+                    width=width,
+                    brush=pg.mkBrush(LOW_CONFIDENCE_COLOR),
+                    pen=pg.mkPen(None),
+                )
+            )
+            if threshold > 0.0:
+                plot.addItem(
+                    pg.InfiniteLine(
+                        pos=threshold,
+                        angle=90,
+                        pen=pg.mkPen(LOW_CONFIDENCE_COLOR, width=1, style=Qt.DashLine),
+                    )
+                )
+            plot.setTitle(_group_title(group, int(below.sum())), color=group.color_hex, size="10pt")
+
+
+class LabelFramesGridView(QWidget):
+    """Scrollable grid of label frames — the *Frames* tab of the dialog.
+
+    A tile click navigates the GUI there; a tile's tick box queues that
+    boundary for frame-by-frame refinement, which is the review loop this grid
+    exists for — scan the sheet, tick what is wrong, refine exactly those.
+    """
 
     def __init__(self, meta, entries: list[FrameEntry], parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Label frames")
-        self.setWindowFlag(Qt.Window)
-        self.setModal(False)
         self.meta = meta
         self.app_state = meta.app_state
         self._entries = entries
+        #: The refine dialog handed the ticked boundaries — kept alive here
+        #: only when no top bar owns one (tests, embedded use).
+        self._refine_dialog = None
+        #: The confidence-histogram popup while it is open.
+        self._hist_dialog: ConfidenceHistogramsDialog | None = None
+        self._reflow_timer = QTimer(self)
+        self._reflow_timer.setSingleShot(True)
+        self._reflow_timer.timeout.connect(self._relayout)
 
         layout = QVBoxLayout(self)
         bar = QHBoxLayout()
@@ -642,6 +962,44 @@ class LabelFramesGridDialog(QDialog):
         self.columns_spin.setValue(4)
         self.columns_spin.valueChanged.connect(self._relayout)
         bar.addWidget(self.columns_spin)
+        bar.addSpacing(12)
+        bar.addWidget(QLabel("Flag confidence below:"))
+        self.threshold_spin = QDoubleSpinBox()
+        self.threshold_spin.setRange(0.0, 1.0)
+        self.threshold_spin.setDecimals(2)
+        self.threshold_spin.setSingleStep(0.05)
+        self.threshold_spin.setValue(0.0)
+        self.threshold_spin.setSpecialValueText("off")
+        self.threshold_spin.setToolTip(
+            "Outline every tile whose label scores below this in red.\n"
+            "Human labels are 1.0; a predicted label carries the model's own score."
+        )
+        self.threshold_spin.valueChanged.connect(self._apply_threshold)
+        bar.addWidget(self.threshold_spin)
+        self.histogram_btn = QPushButton("Histogram…")
+        self.histogram_btn.setAutoDefault(False)
+        self.histogram_btn.setToolTip(
+            "How the confidences are distributed, one histogram per label class\n"
+            "(per individual too, when more than one is labelled). The part below\n"
+            "the threshold is red, and the threshold can be set from there."
+        )
+        self.histogram_btn.clicked.connect(self._show_histograms)
+        bar.addWidget(self.histogram_btn)
+        self.tick_flagged_btn = QPushButton("Tick flagged")
+        self.tick_flagged_btn.setAutoDefault(False)
+        self.tick_flagged_btn.setToolTip("Tick every tile the threshold outlines in red")
+        self.tick_flagged_btn.clicked.connect(self._tick_flagged)
+        bar.addWidget(self.tick_flagged_btn)
+        self.tick_flagged_trials_btn = QPushButton("Tick their whole trials")
+        self.tick_flagged_trials_btn.setAutoDefault(False)
+        self.tick_flagged_trials_btn.setToolTip(
+            "Tick every event of every trial that holds a flagged one.\n"
+            "A trial the model got one event wrong in is worth reviewing\n"
+            "end to end: its other events may score high and still sit\n"
+            "on the wrong frame."
+        )
+        self.tick_flagged_trials_btn.clicked.connect(self._tick_flagged_trials)
+        bar.addWidget(self.tick_flagged_trials_btn)
         bar.addStretch()
         bar.addWidget(QLabel(f"{len(entries)} frames"))
         export_btn = QPushButton("Export PDF…")
@@ -650,7 +1008,31 @@ class LabelFramesGridDialog(QDialog):
         bar.addWidget(export_btn)
         layout.addLayout(bar)
 
-        hint = QLabel("Click a frame to jump the GUI to that trial and time.")
+        select_bar = QHBoxLayout()
+        self.clear_ticks_btn = QPushButton("Clear ticks")
+        self.clear_ticks_btn.setAutoDefault(False)
+        self.clear_ticks_btn.clicked.connect(self._clear_ticks)
+        select_bar.addWidget(self.clear_ticks_btn)
+        self.selection_label = QLabel("")
+        self.selection_label.setStyleSheet("color: grey; font-size: 10px;")
+        select_bar.addWidget(self.selection_label)
+        select_bar.addStretch()
+        self.refine_btn = QPushButton("Refine ticked frame-by-frame…")
+        self.refine_btn.setAutoDefault(False)
+        self.refine_btn.setToolTip(
+            "Hand the ticked boundaries to the frame-by-frame refinement dialog:\n"
+            "its queue then walks exactly these — ←/→ nudge the video, Enter\n"
+            "commits the frame on screen, Backspace deletes an event that\n"
+            "should not exist at all."
+        )
+        self.refine_btn.clicked.connect(self._refine_ticked)
+        select_bar.addWidget(self.refine_btn)
+        layout.addLayout(select_bar)
+
+        hint = QLabel(
+            "Click a frame to jump the GUI to that trial and time · "
+            "tick the frames that look wrong, then refine them one by one."
+        )
         hint.setStyleSheet("color: grey; font-size: 10px;")
         layout.addWidget(hint)
 
@@ -663,18 +1045,28 @@ class LabelFramesGridDialog(QDialog):
         layout.addWidget(self._scroll)
 
         self._cells = [self._make_cell(entry) for entry in entries]
-        self.resize(1100, 780)
         self._relayout()
+        self._apply_threshold()
+        self._sync_selection()
 
-    def _make_cell(self, entry: FrameEntry) -> QWidget:
-        cell = QWidget()
+    def _make_cell(self, entry: FrameEntry) -> QFrame:
+        cell = QFrame()
+        cell.setObjectName("frameCell")
         lay = QVBoxLayout(cell)
         lay.setContentsMargins(2, 2, 2, 2)
         lay.setSpacing(2)
 
+        head = QHBoxLayout()
+        head.setSpacing(4)
+        select_cb = QCheckBox()
+        select_cb.setToolTip("Tick to queue this boundary for frame-by-frame refinement")
+        select_cb.toggled.connect(self._sync_selection)
+        head.addWidget(select_cb)
         title = QLabel(_entry_title(entry))
         title.setStyleSheet(f"font-weight: bold; color: {entry.color_hex};")
-        lay.addWidget(title)
+        head.addWidget(title, stretch=1)
+        lay.addLayout(head)
+        cell._select_cb = select_cb  # type: ignore[attr-defined]
         info = QLabel(_entry_info(entry))
         info.setStyleSheet("color: grey; font-size: 10px;")
         lay.addWidget(info)
@@ -711,6 +1103,84 @@ class LabelFramesGridDialog(QDialog):
         cell._pix_labels = pix_labels  # type: ignore[attr-defined]
         lay.addStretch()
         return cell
+
+    def _apply_threshold(self):
+        """Outline the tiles below the threshold; clear the rest."""
+        threshold = self.threshold_spin.value()
+        for cell, entry in zip(self._cells, self._entries):
+            cell.setStyleSheet(_LOW_CONFIDENCE_STYLE if is_low_confidence(entry, threshold) else "")
+        any_flagged = any(is_low_confidence(e, threshold) for e in self._entries)
+        self.tick_flagged_btn.setEnabled(any_flagged)
+        self.tick_flagged_trials_btn.setEnabled(any_flagged)
+        if self._hist_dialog is not None:
+            self._hist_dialog.set_threshold(threshold)
+
+    def _show_histograms(self):
+        """Open (or raise) the per-label confidence histograms."""
+        if self._hist_dialog is not None:
+            self._hist_dialog.show()
+            self._hist_dialog.raise_()
+            return
+        groups = confidence_groups(self._entries)
+        if not groups:
+            notify("No labels to plot confidences for.", severity="warning")
+            return
+        self._hist_dialog = ConfidenceHistogramsDialog(groups, self.threshold_spin.value(), parent=self)
+        self._hist_dialog.threshold_changed.connect(self.threshold_spin.setValue)
+        self._hist_dialog.destroyed.connect(self._on_histograms_closed)
+        self._hist_dialog.show()
+
+    def _on_histograms_closed(self, *_args):
+        self._hist_dialog = None
+
+    # ------------------------------------------------------------------
+    # Ticking tiles → frame-by-frame refinement
+    # ------------------------------------------------------------------
+
+    def _ticked_entries(self) -> list[FrameEntry]:
+        return [entry for cell, entry in zip(self._cells, self._entries) if cell._select_cb.isChecked()]
+
+    def _sync_selection(self, *_args):
+        """Keep the tick count and the Refine button honest."""
+        n = len(self._ticked_entries())
+        self.selection_label.setText(f"{n} ticked" if n else "")
+        self.refine_btn.setEnabled(bool(n))
+
+    def _tick_flagged(self):
+        """Tick every tile the confidence threshold flags."""
+        threshold = self.threshold_spin.value()
+        for cell, entry in zip(self._cells, self._entries):
+            if is_low_confidence(entry, threshold):
+                cell._select_cb.setChecked(True)
+
+    def _tick_flagged_trials(self):
+        """Tick every tile of every trial holding a flagged one."""
+        trials = flagged_trials(self._entries, self.threshold_spin.value())
+        for cell, entry in zip(self._cells, self._entries):
+            if str(entry.trial) in trials:
+                cell._select_cb.setChecked(True)
+
+    def _clear_ticks(self):
+        for cell in self._cells:
+            cell._select_cb.setChecked(False)
+
+    def _refine_ticked(self):
+        """Hand the ticked boundaries to the frame-by-frame refine dialog."""
+        entries = self._ticked_entries()
+        if not entries:
+            notify("Tick the frames that need refining first.", severity="warning")
+            return
+        seeds = seeds_from_entries(entries)
+        self._refine_dialog = open_refine_dialog(self.meta, parent=self)
+        if self._refine_dialog.start_from_seeds(seeds, from_grid=True):
+            notify(f"Refining {len(seeds)} boundaries — ←/→ nudge the video, Enter commits, Backspace deletes.")
+
+    def resizeEvent(self, event):
+        """Refit the thumbnails whenever the width changes — maximizing the
+        dialog grows every tile to the new column width."""
+        super().resizeEvent(event)
+        if event.oldSize().width() != event.size().width():
+            self._reflow_timer.start(_REFLOW_DEBOUNCE_MS)
 
     def _relayout(self):
         columns = self.columns_spin.value()
@@ -752,31 +1222,49 @@ class LabelFramesGridDialog(QDialog):
         )
         if not path:
             return
-        write_frames_pdf(path, self._entries, self.columns_spin.value())
+        write_frames_pdf(path, self._entries, self.columns_spin.value(), self.threshold_spin.value())
         notify(f"Wrote {Path(path).name}")
 
 
 # ----------------------------------------------------------------------
-# Config dialog
+# Dialog: Setup tab + Frames tab
 # ----------------------------------------------------------------------
 
 
-class LabelFramesConfigDialog(QDialog):
-    """Pick labels, metadata filters and cameras, then generate the grid."""
+class LabelFramesDialog(QDialog):
+    """One window, two tabs: *Setup* picks what to show, *Frames* is the grid.
 
-    def __init__(self, meta, parent=None):
+    *label_ids* pre-ticks label classes and *trials* narrows the run to a set
+    of trial ids on top of the metadata filters — how another dialog hands a
+    batch of labels over for review (see the Predict dialog's "Review
+    predictions" button).
+    """
+
+    def __init__(self, meta, parent=None, *, label_ids: list[int] | None = None, trials: set[str] | None = None):
         super().__init__(parent)
-        self.setWindowTitle("Show label frames")
-        self.setWindowFlag(Qt.Window)
+        self.setWindowTitle("Label frames")
+        # Minimise/maximise sit next to the close button, so the grid goes
+        # full screen in one click.
+        self.setWindowFlags(
+            Qt.Window | Qt.WindowMinimizeButtonHint | Qt.WindowMaximizeButtonHint | Qt.WindowCloseButtonHint
+        )
         self.setModal(False)
         self.meta = meta
         self.app_state = meta.app_state
         self.labels_widget = meta.labels_widget
         self._filters: dict[str, set[str]] = {}
         self._filter_buttons: dict[str, QPushButton] = {}
-        self._grid_dialog: LabelFramesGridDialog | None = None
+        self.grid_view: LabelFramesGridView | None = None
+        self._restrict_trials = set(trials) if trials else None
+        preselected = set(label_ids or ())
 
-        layout = QVBoxLayout(self)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        self.tabs = QTabWidget()
+        outer.addWidget(self.tabs)
+
+        setup_page = QWidget()
+        layout = QVBoxLayout(setup_page)
         layout.setSpacing(8)
 
         labels_group = QGroupBox("Labels")
@@ -792,9 +1280,14 @@ class LabelFramesConfigDialog(QDialog):
             item = QListWidgetItem(f"{label_id} — {name}  ({event_type})")
             item.setData(Qt.UserRole, label_id)
             item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
-            item.setCheckState(Qt.Unchecked)
+            item.setCheckState(Qt.Checked if label_id in preselected else Qt.Unchecked)
             self.label_list.addItem(item)
         labels_lay.addWidget(self.label_list)
+        if self._restrict_trials is not None:
+            restricted = QLabel(f"Restricted to {len(self._restrict_trials)} trials handed over for review.")
+            restricted.setWordWrap(True)
+            restricted.setStyleSheet("color: grey; font-size: 10px;")
+            labels_lay.addWidget(restricted)
         layout.addWidget(labels_group)
 
         meta_group = QGroupBox("Trial metadata filters")
@@ -841,8 +1334,7 @@ class LabelFramesConfigDialog(QDialog):
         self.panel_list: QListWidget | None = None
         self.window_spin: QDoubleSpinBox | None = None
         self.skip_video_cb: QCheckBox | None = None
-        self.axis_lock_rb: QRadioButton | None = None
-        self.axis_auto_rb: QRadioButton | None = None
+        self.axis_auto_cb: QCheckBox | None = None
         open_panels = open_gui_panels(self.meta)
         if open_panels:
             panel_lay.addWidget(QLabel("Tick open panels to screenshot below each frame:"))
@@ -865,19 +1357,13 @@ class LabelFramesConfigDialog(QDialog):
             self.window_spin.setToolTip("Plot window shown around each label time — the marker sits on the label.")
             window_row.addWidget(self.window_spin, stretch=1)
             panel_lay.addLayout(window_row)
-            axis_row = QHBoxLayout()
-            axis_row.addWidget(QLabel("Y axes:"))
-            self.axis_lock_rb = QRadioButton("Lock (as set now)")
-            self.axis_lock_rb.setChecked(True)
-            self.axis_lock_rb.setToolTip(
-                "Freeze each panel's current y-range for every capture —\ntiles compare across trials on one scale."
+            self.axis_auto_cb = QCheckBox("Autoscale y per window")
+            self.axis_auto_cb.setChecked(True)
+            self.axis_auto_cb.setToolTip(
+                "Fit each panel's y-range to the data visible in that capture's\n"
+                "time window; unticked freezes the y-ranges as they are set now."
             )
-            axis_row.addWidget(self.axis_lock_rb)
-            self.axis_auto_rb = QRadioButton("Autoscale per window")
-            self.axis_auto_rb.setToolTip("Fit each panel's y-range to the data visible in that capture's time window.")
-            axis_row.addWidget(self.axis_auto_rb)
-            axis_row.addStretch()
-            panel_lay.addLayout(axis_row)
+            panel_lay.addWidget(self.axis_auto_cb)
             self.skip_video_cb = QCheckBox("Skip video loading during capture (faster)")
             self.skip_video_cb.setChecked(True)
             self.skip_video_cb.setToolTip(
@@ -897,7 +1383,18 @@ class LabelFramesConfigDialog(QDialog):
         generate_btn.setAutoDefault(False)
         generate_btn.clicked.connect(self._generate)
         layout.addWidget(generate_btn)
-        self.resize(420, 520)
+
+        setup_scroll = QScrollArea()
+        setup_scroll.setWidgetResizable(True)
+        setup_scroll.setWidget(setup_page)
+        self.tabs.addTab(setup_scroll, "Setup")
+
+        self._frames_placeholder = QLabel("Pick labels on the Setup tab and press Generate.")
+        self._frames_placeholder.setAlignment(Qt.AlignCenter)
+        self._frames_placeholder.setStyleSheet("color: grey;")
+        self.tabs.addTab(self._frames_placeholder, "Frames")
+        self.tabs.setTabEnabled(1, False)
+        self.resize(460, 620)
 
     def _mappings(self) -> dict:
         return getattr(self.labels_widget, "_mappings", {}) or {}
@@ -1002,7 +1499,7 @@ class LabelFramesConfigDialog(QDialog):
                 nav=nav,
                 panels=panels,
                 window_s=self.window_spin.value() if self.window_spin is not None else 4.0,
-                y_mode="autoscale" if self.axis_auto_rb is not None and self.axis_auto_rb.isChecked() else "lock",
+                autoscale=self.axis_auto_cb is None or self.axis_auto_cb.isChecked(),
                 progress_cb=on_progress,
             )
         finally:
@@ -1042,6 +1539,8 @@ class LabelFramesConfigDialog(QDialog):
             notify("Tick at least one camera.", severity="warning")
             return
         allowed = allowed_trials_from_metadata(getattr(self.app_state, "metadata_df", None), self._filters)
+        if self._restrict_trials is not None:
+            allowed = self._restrict_trials if allowed is None else allowed & self._restrict_trials
         entries = build_frame_entries(df, self._mappings(), label_ids, cameras, allowed)
         if not entries:
             notify("No label instances match the selected labels and metadata filters.", severity="warning")
@@ -1076,7 +1575,17 @@ class LabelFramesConfigDialog(QDialog):
                 return
 
         self._capture_panels(entries)
+        self._show_grid(entries)
 
-        self._grid_dialog = LabelFramesGridDialog(self.meta, entries, parent=self.parent() or self)
-        self._grid_dialog.show()
-        self._grid_dialog.raise_()
+    def _show_grid(self, entries: list[FrameEntry]):
+        """Put a freshly built grid on the *Frames* tab and go there."""
+        old = self.tabs.widget(1)
+        self.grid_view = LabelFramesGridView(self.meta, entries, parent=self)
+        self.tabs.removeTab(1)
+        self.tabs.insertTab(1, self.grid_view, f"Frames ({len(entries)})")
+        self.tabs.setTabEnabled(1, True)
+        if old is not self._frames_placeholder:
+            old.deleteLater()
+        self.tabs.setCurrentIndex(1)
+        if self.width() < _GRID_MIN_WIDTH:
+            self.resize(max(self.width(), _GRID_MIN_WIDTH), max(self.height(), _GRID_MIN_HEIGHT))

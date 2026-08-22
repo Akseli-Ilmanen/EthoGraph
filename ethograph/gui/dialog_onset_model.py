@@ -1,17 +1,25 @@
-"""GradBoost onset-model dialogs (Model menu).
+"""LightGBM onset-model dialogs (Model menu).
 
 Two non-modal dialogs around :mod:`ethograph.labels.onset_model`:
 
-* **Train** — the user names a model, picks ONE point-event class to predict
-  (state events are out of scope; the model assumes at most one event per
-  trial), ticks features and, per dim (keypoints, individuals, space, …),
-  which values to include. The current session's existing point events become
-  training trials stored under ``~/.ethograph/models/{name}/train_data``;
-  more sessions can be added by reopening the dialog there, and Train fits
-  the classifier from everything collected so far.
-* **Predict** — pick a trained model and apply it to the current session.
-  Trials that already carry the target point event are never overridden; a
-  metadata-column filter restricts which trials are predicted at all.
+* **Train** — the user names a model, ticks one or more point-event classes
+  to predict (state events are out of scope; the model assumes at most one
+  event per class per trial), ticks features and, per dim (keypoints,
+  individuals, space, …), which values to include. The current session's
+  existing point events become training trials stored under
+  ``~/.ethograph/models/{name}/train_data``; more sessions can be added by
+  reopening the dialog there, and Train fits one classifier per class from
+  everything collected so far.
+* **Predict** — pick a trained model and apply it to the current session. All
+  of the model's classes are predicted in one pass; a trial that already
+  carries a class is never overridden for that class, and the metadata filters
+  restrict which trials are predicted at all — one filter per condition
+  column, combining, so "wild-type *and* tone" is a pair of filters. Each
+  predicted event carries the model's own confidence into the labels TSV.
+
+When the classes follow a stereotypic order, both dialogs can use the model's
+sequence CRF: Train fits it, Predict decodes the whole trial at once so the
+events come out in an order the training data actually showed.
 
 Extraction runs per trial through the same ``DataLoader.select`` path the
 plots use, but on throwaway loaders holding no display offset, so it never
@@ -28,10 +36,12 @@ import pandas as pd
 from qtpy.QtCore import Qt
 from qtpy.QtWidgets import (
     QApplication,
+    QCheckBox,
     QComboBox,
     QDialog,
     QDoubleSpinBox,
     QFormLayout,
+    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -45,9 +55,11 @@ from qtpy.QtWidgets import (
     QVBoxLayout,
 )
 
+from ethograph.gui.dialog_label_frames import LabelFramesDialog
 from ethograph.gui.notify import notify
+from ethograph.gui.table_filter import CategoryFilterDialog
 from ethograph.io.catalog import PynappleLoader, XarrayLoader
-from ethograph.io.metadata_table import condition_columns
+from ethograph.io.metadata_table import allowed_trials_from_metadata, condition_columns
 from ethograph.labels import onset_model as om
 from ethograph.labels.intervals import EVENT_TYPE_POINT, NO_RECIPIENT, add_point
 from ethograph.labels.tsv_store import get_trial_from_tsv
@@ -56,7 +68,8 @@ logger = logging.getLogger(__name__)
 
 _CAVEAT = (
     "Only point events can be predicted, and the model assumes each trial "
-    "contains that event at most once."
+    "contains each ticked event at most once. Trials that do not carry a "
+    "ticked event simply contribute nothing to that event's classifier."
 )
 
 
@@ -159,7 +172,7 @@ class FeatureTree(QTreeWidget):
                 for value in values:
                     value_item = QTreeWidgetItem(dim_item, [str(value)])
                     value_item.setFlags(value_item.flags() | Qt.ItemIsUserCheckable)
-                    value_item.setCheckState(0, Qt.Checked)
+                    value_item.setCheckState(0, Qt.Unchecked)
 
     def populate_from_config(self, features: dict[str, dict[str, list[str]]]) -> None:
         """Read-only view of a frozen config (existing model)."""
@@ -208,11 +221,11 @@ class FeatureTree(QTreeWidget):
 
 
 class TrainOnsetDialog(QDialog):
-    """Create a GradBoost onset model, collect training data, and train it."""
+    """Create a LightGBM onset model, collect training data, and train it."""
 
     def __init__(self, meta, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Train onset detector (GradBoost)")
+        self.setWindowTitle("LightGBM: Train onset detector")
         self.setWindowFlag(Qt.Window)
         self.setModal(False)
         self.app_state = meta.app_state
@@ -233,12 +246,17 @@ class TrainOnsetDialog(QDialog):
         model_row.addWidget(self.name_edit, stretch=1)
         layout.addLayout(model_row)
 
-        target_group = QGroupBox("1 — Point event to predict")
+        target_group = QGroupBox("1 — Point events to predict")
         target_lay = QVBoxLayout(target_group)
-        self.target_combo = QComboBox()
+        self.target_list = QListWidget()
+        self.target_list.setMaximumHeight(110)
         for label_id, name in _point_mappings(self.app_state).items():
-            self.target_combo.addItem(f"{name} ({label_id})", label_id)
-        target_lay.addWidget(self.target_combo)
+            item = QListWidgetItem(f"{name} ({label_id})")
+            item.setData(Qt.UserRole, label_id)
+            item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
+            item.setCheckState(Qt.Unchecked)
+            self.target_list.addItem(item)
+        target_lay.addWidget(self.target_list)
         caveat = QLabel(_CAVEAT)
         caveat.setWordWrap(True)
         caveat.setStyleSheet("color: grey; font-size: 10px;")
@@ -281,6 +299,14 @@ class TrainOnsetDialog(QDialog):
         self.lr_spin.setSingleStep(0.05)
         self.lr_spin.setValue(0.1)
         params_lay.addRow("Learning rate:", self.lr_spin)
+        self.crf_check = QCheckBox("Model the order of the events (CRF)")
+        self.crf_check.setToolTip(
+            "Tick when the ticked classes follow a stereotypic order in a trial\n"
+            "(A then B then C). A linear-chain CRF then decodes the whole trial at\n"
+            "once, so the predicted events come out in an order the training trials\n"
+            "actually showed. Needs at least 2 training trials."
+        )
+        params_lay.addRow("Sequence:", self.crf_check)
         layout.addWidget(params_group)
 
         data_group = QGroupBox("4 — Training data")
@@ -312,12 +338,13 @@ class TrainOnsetDialog(QDialog):
     def _config_widgets(self):
         return (
             self.name_edit,
-            self.target_combo,
+            self.target_list,
             self.tree,
             self.window_spin,
             self.tolerance_spin,
             self.max_iter_spin,
             self.lr_spin,
+            self.crf_check,
         )
 
     def _on_model_changed(self, text: str):
@@ -335,20 +362,35 @@ class TrainOnsetDialog(QDialog):
             return
         self._config = om.load_config(text)
         self.name_edit.setText(self._config.name)
-        idx = self.target_combo.findData(self._config.target_label)
-        if idx < 0:
-            self.target_combo.addItem(f"{self._config.target_name} ({self._config.target_label})",
-                                      self._config.target_label)
-            idx = self.target_combo.count() - 1
-        self.target_combo.setCurrentIndex(idx)
+        self._show_config_targets(self._config)
         self.tree.populate_from_config(self._config.features)
         self.window_spin.setValue(self._config.window_s)
         self.tolerance_spin.setValue(self._config.tolerance_s)
         self.max_iter_spin.setValue(self._config.max_iter)
         self.lr_spin.setValue(self._config.learning_rate)
+        self.crf_check.setChecked(self._config.use_crf)
         self._refresh_sessions()
         trained = "trained" if om.is_trained(text) else "not trained yet"
         self.status_label.setText(f"Config is frozen for an existing model ({trained}).")
+
+    def _show_config_targets(self, config: om.OnsetModelConfig):
+        """Read-only view of a frozen model's targets."""
+        self.target_list.clear()
+        for label_id, name in config.targets.items():
+            item = QListWidgetItem(f"{name} ({label_id})")
+            item.setData(Qt.UserRole, label_id)
+            item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
+            item.setCheckState(Qt.Checked)
+            self.target_list.addItem(item)
+
+    def _selected_targets(self) -> dict[int, str]:
+        """The ticked point-event classes as ``{label_id: name}``."""
+        targets: dict[int, str] = {}
+        for i in range(self.target_list.count()):
+            item = self.target_list.item(i)
+            if item.checkState() == Qt.Checked:
+                targets[int(item.data(Qt.UserRole))] = item.text().rsplit(" (", 1)[0]
+        return targets
 
     def _refresh_sessions(self):
         self.session_list.clear()
@@ -370,9 +412,12 @@ class TrainOnsetDialog(QDialog):
             notify(f"A model named {name!r} already exists — pick it from the combo to extend it.",
                    severity="warning")
             return None
-        target_label = self.target_combo.currentData()
-        if target_label is None:
-            notify("No point-event classes exist — mark a label as a point event first.", severity="warning")
+        targets = self._selected_targets()
+        if not targets:
+            notify(
+                "Tick at least one point-event class — mark a label as a point event first if none are listed.",
+                severity="warning",
+            )
             return None
         try:
             features = self.tree.selected_features()
@@ -381,13 +426,13 @@ class TrainOnsetDialog(QDialog):
             return None
         self._config = om.OnsetModelConfig(
             name=name,
-            target_label=int(target_label),
-            target_name=self.target_combo.currentText().rsplit(" (", 1)[0],
+            targets=targets,
             features=features,
             window_s=float(self.window_spin.value()),
             tolerance_s=float(self.tolerance_spin.value()),
             max_iter=int(self.max_iter_spin.value()),
             learning_rate=float(self.lr_spin.value()),
+            use_crf=self.crf_check.isChecked(),
         )
         om.save_config(self._config)
         self.model_combo.addItem(name)
@@ -412,17 +457,24 @@ class TrainOnsetDialog(QDialog):
         session = om.session_id(source_path)
         n_written = 0
         n_multi = 0
+        per_target: dict[int, int] = {label: 0 for label in config.targets}
         QApplication.setOverrideCursor(Qt.WaitCursor)
         try:
             for tid, loader, t0, t1, shift in _iter_trial_windows(self.app_state):
-                rows = _point_rows(df[df["trial"] == tid], config.target_label)
-                if rows.empty:
+                trial_rows = df[df["trial"] == tid]
+                y_times: dict[int, float] = {}
+                for label in config.targets:
+                    rows = _point_rows(trial_rows, label)
+                    if rows.empty:
+                        continue
+                    if len(rows) > 1:
+                        n_multi += 1
+                    y_times[label] = float(rows.iloc[0]["onset_s"])
+                    per_target[label] += 1
+                if not y_times:
                     continue
-                if len(rows) > 1:
-                    n_multi += 1
-                y_time = float(rows.iloc[0]["onset_s"])
                 time, data = om.extract_features(loader, config.features, t0, t1)
-                om.write_trial_training_data(config.name, session, tid, time - shift, data, y_time)
+                om.write_trial_training_data(config.name, session, tid, time - shift, data, y_times)
                 n_written += 1
         except ValueError as e:
             notify(f"Extraction failed: {e}", severity="error")
@@ -431,7 +483,7 @@ class TrainOnsetDialog(QDialog):
             QApplication.restoreOverrideCursor()
 
         if not n_written:
-            notify(f"No trials carry the point event {config.target_name!r}.", severity="warning")
+            notify(f"No trials carry any of: {config.describe_targets()}.", severity="warning")
             return
         om.write_session_meta(
             config.name,
@@ -444,11 +496,17 @@ class TrainOnsetDialog(QDialog):
             },
         )
         self._refresh_sessions()
-        msg = f"Stored {n_written} training trials from this session."
+        per_target_text = ", ".join(f"{config.target_name(label)}: {n}" for label, n in per_target.items())
+        msg = f"Stored {n_written} training trials from this session ({per_target_text})."
         if n_multi:
-            msg += f" {n_multi} trials had multiple events — only the first was used."
+            msg += f" {n_multi} trials had multiple events of one class — only the first was used."
         self.status_label.setText(msg)
         notify(msg)
+
+    @staticmethod
+    def _named_order(config: om.OnsetModelConfig, key: str) -> str:
+        """``"3-4"`` as the class names the user knows, ``"peck→land"``."""
+        return "→".join(config.target_name(int(label)) for label in key.split("-"))
 
     def _train(self):
         config = self._ensure_config()
@@ -462,11 +520,18 @@ class TrainOnsetDialog(QDialog):
             return
         finally:
             QApplication.restoreOverrideCursor()
+        per_target = ", ".join(
+            f"{config.target_name(label)}: {stats['n_trials']} trials / {stats['n_positive']} positive frames"
+            for label, stats in summary["targets"].items()
+        )
         msg = (
             f"Trained {config.name!r} on {summary['n_trials']} trials "
-            f"from {summary['n_sessions']} session(s) "
-            f"({summary['n_frames']} frames, {summary['n_positive']} positive)."
+            f"from {summary['n_sessions']} session(s) — {per_target}."
         )
+        if "crf" in summary:
+            orders = summary["crf"]["sequences"]
+            shown = ", ".join(f"{self._named_order(config, key)} ×{n}" for key, n in list(orders.items())[:3])
+            msg += f" Sequence model trained on the orders it saw: {shown}."
         self.status_label.setText(msg)
         notify(msg)
 
@@ -479,14 +544,17 @@ class TrainOnsetDialog(QDialog):
 class PredictOnsetDialog(QDialog):
     """Apply a trained onset model to the current session.
 
-    Trials that already carry the target point event are skipped — the model
-    only fills gaps, it never overrides. The metadata filter restricts which
-    of the remaining trials are predicted.
+    Every class the model was trained on is predicted in one pass. A trial
+    that already carries a class is skipped for that class — the model only
+    fills gaps, it never overrides — and the metadata filters restrict which
+    of the remaining trials are predicted at all. Each written event carries
+    the model's confidence in the label's ``confidence`` column.
     """
 
     def __init__(self, meta, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Predict onsets (GradBoost)")
+        self._review_dialog: LabelFramesDialog | None = None
+        self.setWindowTitle("LightGBM: Predict onsets")
         self.setWindowFlag(Qt.Window)
         self.setModal(False)
         self.meta = meta
@@ -499,6 +567,10 @@ class PredictOnsetDialog(QDialog):
         for name in om.list_models():
             self.model_combo.addItem(name)
         self.model_combo.currentTextChanged.connect(self._refresh_info)
+        self.model_combo.setToolTip(
+            "Trained models from ~/.ethograph/models. The line below says which\n"
+            "classes this one predicts and what it was trained on."
+        )
         form.addRow("Model:", self.model_combo)
 
         self.info_label = QLabel("")
@@ -517,34 +589,74 @@ class PredictOnsetDialog(QDialog):
         self.individual_combo.setToolTip("Predicted events are written for this individual")
         form.addRow("Individual:", self.individual_combo)
 
+        self.crf_check = QCheckBox("Use the sequence model")
+        self.crf_check.setChecked(True)
+        self.crf_check.setToolTip(
+            "Decode the whole trial at once so the events come out in an order the\n"
+            "training trials showed, instead of picking each class's best frame\n"
+            "independently. A class the decoded order leaves out gets no prediction."
+        )
+        form.addRow("", self.crf_check)
+
         self.min_conf_spin = QDoubleSpinBox()
         self.min_conf_spin.setRange(0.0, 1.0)
         self.min_conf_spin.setSingleStep(0.05)
         self.min_conf_spin.setValue(0.0)
-        self.min_conf_spin.setToolTip("Trials whose peak probability falls below this get no prediction")
+        self.min_conf_spin.setToolTip(
+            "A prediction scoring below this is not written at all: the trial is\n"
+            "left unlabelled for that class rather than given a doubtful label.\n"
+            "\n"
+            "Confidence combines how strongly the model believes (the peak of its\n"
+            "probability curve) with how localised that belief is in time — a\n"
+            "strong belief smeared over two seconds scores low, and so does a\n"
+            "sharp spike the model barely believes in.\n"
+            "\n"
+            "Leave it at 0 to write every prediction and triage afterwards with\n"
+            "Review predictions — nothing is lost that way, and the confidence is\n"
+            "on each label either way."
+        )
         form.addRow("Min confidence:", self.min_conf_spin)
         layout.addLayout(form)
 
         filter_group = QGroupBox("Restrict by trial metadata (optional)")
         filter_lay = QVBoxLayout(filter_group)
-        self.filter_col_combo = QComboBox()
-        self.filter_col_combo.addItem("(no filter)")
+        filter_grid = QGridLayout()
+        self._filters: dict[str, set[str]] = {}
+        self._filter_buttons: dict[str, QPushButton] = {}
         mdf = getattr(self.app_state, "metadata_df", None)
-        if mdf is not None and not mdf.empty:
-            for col in condition_columns(mdf):
-                self.filter_col_combo.addItem(str(col))
-        self.filter_col_combo.currentTextChanged.connect(self._refresh_filter_values)
-        filter_lay.addWidget(self.filter_col_combo)
-        self.filter_values = QListWidget()
-        self.filter_values.setMaximumHeight(110)
-        filter_lay.addWidget(self.filter_values)
-        hint = QLabel("Only trials whose value is ticked get a prediction.")
+        columns = condition_columns(mdf) if mdf is not None and not mdf.empty else []
+        if not columns:
+            filter_grid.addWidget(QLabel("No metadata columns available."), 0, 0)
+        for i, column in enumerate(columns):
+            filter_grid.addWidget(QLabel(str(column)), i, 0)
+            button = QPushButton("All")
+            button.setAutoDefault(False)
+            button.setToolTip(
+                f"Pick which {column} values get predictions. Every column's filter\n"
+                "has to pass, so setting two of them predicts only the trials that\n"
+                "match both. 'All' means this column constrains nothing."
+            )
+            button.clicked.connect(lambda _=False, c=str(column): self._edit_filter(c))
+            filter_grid.addWidget(button, i, 1)
+            self._filter_buttons[str(column)] = button
+        filter_lay.addLayout(filter_grid)
+        hint = QLabel("Filters combine: a trial is predicted only if it passes every one of them.")
+        hint.setWordWrap(True)
         hint.setStyleSheet("color: grey; font-size: 10px;")
         filter_lay.addWidget(hint)
+        self.filter_summary = QLabel("")
+        self.filter_summary.setWordWrap(True)
+        self.filter_summary.setStyleSheet("color: grey; font-size: 10px;")
+        filter_lay.addWidget(self.filter_summary)
         layout.addWidget(filter_group)
 
         self.run_btn = QPushButton("Predict missing onsets")
         self.run_btn.setAutoDefault(False)
+        self.run_btn.setToolTip(
+            "Predict every class of this model, for every trial the filters admit\n"
+            "that does not already carry that class. Existing labels are never\n"
+            "overwritten. Nothing is saved to disk until you press Ctrl+S."
+        )
         self.run_btn.clicked.connect(self._run)
         layout.addWidget(self.run_btn)
 
@@ -552,9 +664,22 @@ class PredictOnsetDialog(QDialog):
         self.status_label.setWordWrap(True)
         layout.addWidget(self.status_label)
 
-        self.resize(420, 440)
+        #: What the last run wrote — the label classes and the trials that got
+        #: one — so the review grid opens on exactly those predictions.
+        self._reviewable: tuple[list[int], set[str]] = ([], set())
+        self.review_btn = QPushButton("Review predictions…")
+        self.review_btn.setAutoDefault(False)
+        self.review_btn.setEnabled(False)
+        self.review_btn.setToolTip(
+            "Open the label-frames grid on the events just predicted: the video\n"
+            "frame at each one, with its confidence, and a click to jump there."
+        )
+        self.review_btn.clicked.connect(self._review)
+        layout.addWidget(self.review_btn)
+
+        self.resize(420, 480)
         self._refresh_info(self.model_combo.currentText())
-        self._refresh_filter_values(self.filter_col_combo.currentText())
+        self._refresh_filter_summary()
 
     # ------------------------------------------------------------------
 
@@ -567,40 +692,43 @@ class PredictOnsetDialog(QDialog):
         trained = "trained" if om.is_trained(name) else "NOT trained yet"
         n_sessions = len(om.list_sessions(name))
         self.info_label.setText(
-            f"Predicts {config.target_name!r} ({config.target_label}) · "
+            f"Predicts {config.describe_targets()} · "
             f"{len(om.enumerate_columns(config.features))} feature columns · "
-            f"{n_sessions} training session(s) · {trained}."
+            f"{n_sessions} training session(s) · {trained}"
+            + (" · sequence model" if config.use_crf else "")
+            + "."
         )
+        self.crf_check.setEnabled(config.use_crf)
+        if not config.use_crf:
+            self.crf_check.setChecked(False)
         self.run_btn.setEnabled(om.is_trained(name))
 
-    def _refresh_filter_values(self, column: str):
-        self.filter_values.clear()
-        if column == "(no filter)" or not column:
-            return
+    def _edit_filter(self, column: str):
+        """Pick the values *column* admits, the same popup the tables use."""
         mdf = getattr(self.app_state, "metadata_df", None)
         if mdf is None or column not in mdf.columns:
             return
-        for value in sorted({str(v) for v in mdf[column].dropna().unique()}):
-            item = QListWidgetItem(value)
-            item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
-            item.setCheckState(Qt.Checked)
-            self.filter_values.addItem(item)
+        values = sorted(mdf[column].dropna().astype(str).unique())
+        dialog = CategoryFilterDialog(0, values, self._filters.get(column, set()), self)
+        if dialog.exec_() != QDialog.Accepted:
+            return
+        allowed = dialog.get_allowed()
+        self._filters[column] = allowed
+        self._filter_buttons[column].setText("All" if not allowed else f"{len(allowed)} of {len(values)}")
+        self._refresh_filter_summary()
 
-    def _allowed_trials(self) -> set | None:
-        """Trial ids the metadata filter admits, or ``None`` for no filter."""
-        column = self.filter_col_combo.currentText()
-        if column == "(no filter)" or not column:
-            return None
-        mdf = getattr(self.app_state, "metadata_df", None)
-        if mdf is None or column not in mdf.columns:
-            return None
-        allowed_values = {
-            self.filter_values.item(i).text()
-            for i in range(self.filter_values.count())
-            if self.filter_values.item(i).checkState() == Qt.Checked
-        }
-        mask = mdf[column].astype(str).isin(allowed_values)
-        return set(mdf.loc[mask, "trial"])
+    def _refresh_filter_summary(self):
+        """Say how many trials survive every filter, before anything is run."""
+        allowed = self._allowed_trials()
+        if allowed is None:
+            self.filter_summary.setText("")
+            return
+        active = ", ".join(f"{col}={'|'.join(sorted(values))}" for col, values in self._filters.items() if values)
+        self.filter_summary.setText(f"{len(allowed)} trials match {active}.")
+
+    def _allowed_trials(self) -> set[str] | None:
+        """Trial ids (as strings) passing every filter, or ``None`` for none set."""
+        return allowed_trials_from_metadata(getattr(self.app_state, "metadata_df", None), self._filters)
 
     # ------------------------------------------------------------------
 
@@ -613,41 +741,73 @@ class PredictOnsetDialog(QDialog):
         except ValueError as e:
             notify(str(e), severity="warning")
             return
-        config = om.OnsetModelConfig(**bundle["config"])
+        config = om.bundle_config(bundle)
         individual = self.individual_combo.currentText()
         min_conf = float(self.min_conf_spin.value())
         allowed = self._allowed_trials()
 
+        use_crf = self.crf_check.isChecked()
         df = getattr(self.app_state, "_all_labels_df", None)
-        n_predicted = n_existing = n_filtered = n_low = 0
+        n_predicted = n_existing = n_filtered = n_low = n_absent = 0
+        per_target: dict[int, int] = {label: 0 for label in config.targets}
+        predicted_trials: set[str] = set()
         errors: list[str] = []
         QApplication.setOverrideCursor(Qt.WaitCursor)
         try:
             for tid, loader, t0, t1, shift in _iter_trial_windows(self.app_state):
-                if allowed is not None and tid not in allowed:
+                if allowed is not None and str(tid) not in allowed:
                     n_filtered += 1
                     continue
-                if df is not None and not _point_rows(df[df["trial"] == tid], config.target_label).empty:
-                    n_existing += 1
+                trial_rows = df[df["trial"] == tid] if df is not None else None
+                # Each class is filled independently: a trial already carrying
+                # one of them can still receive the others.
+                wanted = [
+                    label
+                    for label in config.targets
+                    if trial_rows is None or _point_rows(trial_rows, label).empty
+                ]
+                n_existing += len(config.targets) - len(wanted)
+                if not wanted:
                     continue
                 try:
                     time, data = om.extract_features(loader, config.features, t0, t1)
-                    t_pred, conf = om.predict_onset(bundle, time - shift, data)
+                    predictions = om.predict_events(bundle, time - shift, data, use_crf=use_crf)
                 except ValueError as e:
                     errors.append(f"trial {tid}: {e}")
                     continue
-                if conf < min_conf:
-                    n_low += 1
-                    continue
-                trial_df = get_trial_from_tsv(self.app_state._all_labels_df, tid)
-                trial_df = add_point(trial_df, t_pred, config.target_label, individual, NO_RECIPIENT)
-                self.app_state.set_trial_intervals(tid, trial_df)
-                self.app_state.set_trial_meta_attr(tid, "prediction_source", f"gradboost:{name}")
-                n_predicted += 1
-                df = self.app_state._all_labels_df
+                written = False
+                for label in wanted:
+                    prediction = predictions.get(label)
+                    if prediction is None:
+                        # Only the sequence model can leave a class out: the
+                        # decoded order says it did not happen in this trial.
+                        n_absent += 1
+                        continue
+                    if prediction.confidence < min_conf:
+                        n_low += 1
+                        continue
+                    trial_df = get_trial_from_tsv(self.app_state._all_labels_df, tid)
+                    trial_df = add_point(
+                        trial_df,
+                        prediction.time,
+                        label,
+                        individual,
+                        NO_RECIPIENT,
+                        confidence=prediction.confidence,
+                    )
+                    self.app_state.set_trial_intervals(tid, trial_df)
+                    per_target[label] += 1
+                    n_predicted += 1
+                    written = True
+                    predicted_trials.add(str(tid))
+                    df = self.app_state._all_labels_df
+                if written:
+                    self.app_state.set_trial_meta_attr(tid, "prediction_source", f"lightgbm:{name}")
         finally:
             QApplication.restoreOverrideCursor()
 
+        self._reviewable = ([label for label, n in per_target.items() if n], predicted_trials)
+        self.review_btn.setEnabled(bool(n_predicted))
         if n_predicted:
             self.app_state.changes_saved = False
             current = getattr(self.app_state, "trials_sel", None)
@@ -660,13 +820,16 @@ class PredictOnsetDialog(QDialog):
             if labels_widget is not None:
                 labels_widget.refresh_labels_shapes_layer()
 
-        parts = [f"Predicted {n_predicted} onsets."]
+        per_target_text = ", ".join(f"{config.target_name(label)}: {n}" for label, n in per_target.items())
+        parts = [f"Predicted {n_predicted} onsets ({per_target_text})."]
         if n_existing:
-            parts.append(f"{n_existing} trials already labelled (untouched).")
+            parts.append(f"{n_existing} trial/class pairs already labelled (untouched).")
         if n_filtered:
-            parts.append(f"{n_filtered} excluded by the metadata filter.")
+            parts.append(f"{n_filtered} trials excluded by the metadata filter.")
         if n_low:
             parts.append(f"{n_low} below the confidence threshold.")
+        if n_absent:
+            parts.append(f"{n_absent} left out by the decoded event order.")
         if errors:
             parts.append(f"{len(errors)} trials failed — first: {errors[0]}")
             logger.warning("Onset prediction failures: %s", "; ".join(errors))
@@ -675,3 +838,18 @@ class PredictOnsetDialog(QDialog):
         notify(msg, severity="warning" if errors else "info")
         if n_predicted:
             notify("Review the predictions and save with Ctrl+S.")
+
+    def _review(self):
+        """Open the label-frames grid on what the last run predicted."""
+        label_ids, trials = self._reviewable
+        if not label_ids:
+            return
+        self._review_dialog = LabelFramesDialog(
+            self.meta,
+            parent=self.parent() or self,
+            label_ids=label_ids,
+            trials=trials,
+        )
+        self._review_dialog.show()
+        self._review_dialog.raise_()
+        self._review_dialog.activateWindow()

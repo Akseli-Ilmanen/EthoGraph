@@ -831,6 +831,7 @@ class IOWidget(QWidget):
             return
 
         self.app_state._all_labels_df = load_labels_tsv(file_path)
+        self.app_state.clear_label_history()
         if self.data_widget:
             # With no individual dimension the selector's names come from the
             # labels, which have just been replaced.
@@ -1049,6 +1050,7 @@ class IOWidget(QWidget):
 
         # Set the complete imported dataframe as the active labels
         self.app_state._all_labels_df = intervals_df
+        self.app_state.clear_label_history()
         if self.data_widget:
             self.data_widget.refresh_individual_choices()
 
@@ -1681,6 +1683,7 @@ class IOWidget(QWidget):
                     return
 
                 self.app_state._all_labels_df = load_labels_tsv(labels_file_path)
+                self.app_state.clear_label_history()
                 if self.data_widget:
                     self.data_widget.refresh_individual_choices()
 
