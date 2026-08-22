@@ -119,5 +119,6 @@ trial the label sits (`at 0.03 s` for a point event, `1.20–1.85 s` for a
 state) and whether the clip had to be cut at the video's start or end — so a
 point event that seems to show "the start of the trial" can be told apart
 from one whose window was clipped. Clips decode a screenful at a time at a
-reduced size, so opening long events takes a moment. Clicks mean the same as
-in the label grid.
+reduced size, so opening long events takes a moment; while a screenful is
+showing, the next one is already decoding in the background, so stepping on
+is quick. Clicks mean the same as in the label grid.
