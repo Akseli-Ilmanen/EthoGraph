@@ -398,9 +398,7 @@ class TestPrefetch:
         state._yaml_path = str(tmp_path / "gui_settings.yaml")
         state._all_labels_df = labels_df
         dialog = VideoGridDialog(_Meta(state), label_ids=[1])
-        page = [_clip(1, "1", 0, 1.0, n_frames=0, fps=None), _clip(1, "3", 0, 1.0, n_frames=0, fps=None)]
-        for e in page:
-            e.frames = None
+        page = [_clip(1, "1", 0, 1.0), _clip(1, "3", 0, 1.0)]  # nothing decoded yet
         # Plan on the GUI thread (stubbed — no alignment here), decode off-thread.
         monkeypatch.setattr(mod, "plan_clip_jobs", lambda entries, **kw: [(list(entries), "vid.mp4", 10.0, 0.0, 11)])
         try:
