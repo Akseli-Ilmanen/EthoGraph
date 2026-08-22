@@ -317,6 +317,7 @@ class BottomPlaybackBar(QWidget):
         # set_data_widget), not current_frame — one time-based mapping both ways.
         app_state.playback_speed_pct_changed.connect(self._update_speed_display)
         app_state.trial_changed.connect(self._update_trial_label)
+        app_state.curation_changed.connect(self._update_trial_label)
         app_state.trial_changed.connect(self._update_audio_indicator)
         app_state.trial_changed.connect(self._update_playback_mode_combo)
         app_state.trial_changed.connect(self._update_speed_info)
@@ -563,7 +564,12 @@ class BottomPlaybackBar(QWidget):
         self.speed_info_label.setText(f"({', '.join(parts)})" if parts else "")
 
     def _update_trial_label(self):
-        """Update trial label with the actual trial ID plus positional counter."""
+        """Update trial label with the actual trial ID plus positional counter.
+
+        Coloured like the navigation combo: green when every label of the
+        trial is manual or curated, red while some are still a model's
+        unreviewed output (``labels/curation.py``).
+        """
         trials = getattr(self.app_state, "trials", None)
         trials_sel = getattr(self.app_state, "trials_sel", None)
         if trials and trials_sel is not None:
@@ -576,8 +582,17 @@ class BottomPlaybackBar(QWidget):
                 self.trial_label.setText(f"Trial {trials_sel}")
                 self.prev_btn.setEnabled(True)
                 self.next_btn.setEnabled(True)
+            curated = self.app_state.trial_is_curated(trials_sel)
+            self.trial_label.setStyleSheet(f"color: {'#7ee787' if curated else '#ff7b72'}; font-weight: bold;")
+            self.trial_label.setToolTip(
+                "Every label of this trial is manual or curated"
+                if curated
+                else "Some labels of this trial are still automated (not yet curated)"
+            )
         else:
             self.trial_label.setText("Trial - / -")
+            self.trial_label.setStyleSheet("")
+            self.trial_label.setToolTip("")
             self.prev_btn.setEnabled(False)
             self.next_btn.setEnabled(False)
 

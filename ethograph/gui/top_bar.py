@@ -125,12 +125,6 @@ class TopBarBuilder:
         self.meta = shell.meta_widget
         self.app_state = getattr(self.meta, "app_state", None)
         self._open_popups: dict[str, SectionPopup] = {}
-        #: Refine-labels dialog, rebuilt when reopened so its label list and
-        #: individuals always reflect the currently loaded labels.
-        self._refine_dialog = None
-        #: Label-frames dialog, rebuilt when reopened so its label list,
-        #: metadata columns and cameras reflect the currently loaded dataset.
-        self._label_frames_dialog = None
         #: LightGBM onset-model dialogs, rebuilt when reopened so the feature
         #: tree and point-event classes reflect the currently loaded session.
         self._onset_train_dialog = None
@@ -164,12 +158,6 @@ class TopBarBuilder:
             self._record_controller.toggle,
         )
         self._record_controller.state_changed.connect(self._on_record_state)
-
-        menu.addSeparator()
-        # Boundary refinement: existing labels become seeds the user nudges
-        # frame-by-frame — the exception to ethograph's plot-first labelling.
-        menu.addAction("Labels: Refine via frame-by-frame labelling…", self._open_refine_labels)
-        menu.addAction("Labels: Show frames as Grid/PDF…", self._open_label_frames)
 
         menu.addSeparator()
         menu.addAction("Pose tracking (from scratch)…", self._open_keypoint_labelling)
@@ -237,37 +225,6 @@ class TopBarBuilder:
         open_dialog = self._first_method(getattr(self.meta, "data_widget", None), "open_pose_refinement")
         if open_dialog is not None:
             open_dialog()
-
-    def refine_dialog(self):
-        """The one frame-by-frame refinement dialog, rebuilt once closed.
-
-        Public because the frames grid hands its ticked boundaries to the same
-        instance (``dialog_refine.open_refine_dialog``) rather than opening a
-        second one.
-        """
-        from .dialog_refine import RefineLabelsDialog
-
-        if self._refine_dialog is None or not self._refine_dialog.isVisible():
-            self._refine_dialog = RefineLabelsDialog(self.meta, parent=self.shell)
-        return self._refine_dialog
-
-    def _open_refine_labels(self):
-        """Open the frame-by-frame label refinement dialog."""
-        dialog = self.refine_dialog()
-        dialog.show()
-        dialog.raise_()
-        dialog.activateWindow()
-
-    def _open_label_frames(self):
-        """Open the label-frames config dialog (label/metadata/camera picks →
-        a clickable, PDF-exportable grid of video frames at label times)."""
-        from .dialog_label_frames import LabelFramesDialog
-
-        if self._label_frames_dialog is None or not self._label_frames_dialog.isVisible():
-            self._label_frames_dialog = LabelFramesDialog(self.meta, parent=self.shell)
-        self._label_frames_dialog.show()
-        self._label_frames_dialog.raise_()
-        self._label_frames_dialog.activateWindow()
 
     def _reset_video_view(self):
         """Rebuild the primary video panel — recovery for a frozen image."""

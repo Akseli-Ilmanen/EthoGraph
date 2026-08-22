@@ -19,7 +19,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from ethograph.labels.intervals import HUMAN_CONFIDENCE, empty_intervals
+from ethograph.labels.intervals import HUMAN_CONFIDENCE, LABELING_AUTOMATED, empty_intervals
 from ethograph.labels.ml import dense_to_intervals
 
 logger = logging.getLogger(__name__)
@@ -207,7 +207,7 @@ class PredictionsStore:
             if not intervals.empty:
                 intervals.insert(0, "trial", trial)
                 intervals["prediction_source"] = str(pred_file)
-                intervals["human_verified"] = 0
+                intervals["labeling_method"] = LABELING_AUTOMATED
                 intervals["changepoint_corrected"] = 0
                 rows.append(intervals)
 

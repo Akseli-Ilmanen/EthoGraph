@@ -310,18 +310,6 @@ class IOWidget(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         self.export_panel.setLayout(layout)
 
-        # Human verification row
-        hv_row = QHBoxLayout()
-        hv_row.addWidget(QLabel("Apply human verification to:"))
-        self.human_verify_trial_btn = QPushButton("Single Trial")
-        self.human_verify_trial_btn.clicked.connect(lambda: self._human_verification_true("single_trial"))
-        hv_row.addWidget(self.human_verify_trial_btn)
-        self.human_verify_all_trials_btn = QPushButton("All Trials (Filtered only)")
-        self.human_verify_all_trials_btn.clicked.connect(lambda: self._human_verification_true("all_trials"))
-        hv_row.addWidget(self.human_verify_all_trials_btn)
-        hv_row.addStretch()
-        layout.addLayout(hv_row)
-
         # Correct offsets row
         co_row = QHBoxLayout()
         co_row.addWidget(QLabel("Apply offset correction to:"))
@@ -503,45 +491,6 @@ class IOWidget(QWidget):
         if folder:
             self.remote_backup_edit.setText(folder)
             self.app_state.remote_backup_path = folder
-
-    def _human_verification_true(self, mode=None):
-        if self.app_state.trials_sel is None:
-            return
-        if mode == "single_trial":
-            self.app_state.set_trial_meta_attr(self.app_state.trials_sel, "human_verified", 1)
-        elif mode == "all_trials":
-            for trial in self.app_state.trials:
-                self.app_state.set_trial_meta_attr(trial, "human_verified", 1)
-
-        self._update_human_verified_status()
-        self.app_state.changes_saved = False
-        if self.data_widget:
-            self.data_widget.update_trials_combo()
-        if hasattr(self, "meta_widget") and self.meta_widget:
-            self.meta_widget.update_labels_widget_title()
-
-    def _update_human_verified_status(self):
-        if not hasattr(self, "human_verify_trial_btn"):
-            return
-        default_style = ""
-        verified_style = "background-color: green; color: white;"
-
-        if self.app_state.trials_sel is None:
-            self.human_verify_trial_btn.setStyleSheet(default_style)
-            self.human_verify_all_trials_btn.setStyleSheet(default_style)
-            return
-
-        trial_meta = self.app_state.get_trial_meta(self.app_state.trials_sel)
-        if trial_meta.get("human_verified", 0):
-            self.human_verify_trial_btn.setStyleSheet(verified_style)
-        else:
-            self.human_verify_trial_btn.setStyleSheet(default_style)
-
-        all_verified = all(self.app_state.get_trial_meta(t).get("human_verified", 0) for t in self.app_state.trials)
-        if all_verified and self.app_state.trials:
-            self.human_verify_all_trials_btn.setStyleSheet(verified_style)
-        else:
-            self.human_verify_all_trials_btn.setStyleSheet(default_style)
 
     def _apply_correct_offsets(self, mode: str):
         if self.app_state.trials_sel is None:
@@ -849,7 +798,6 @@ class IOWidget(QWidget):
         if self.labels_widget:
             self.labels_widget._mark_changes_unsaved()
             self.labels_widget.refresh_labels_shapes_layer()
-        self._update_human_verified_status()
         self._update_correct_offsets_status()
         self._update_purge_small_labels_status()
         if self.data_widget:
@@ -1072,7 +1020,6 @@ class IOWidget(QWidget):
         if self.labels_widget:
             self.labels_widget._mark_changes_unsaved()
             self.labels_widget.refresh_labels_shapes_layer()
-        self._update_human_verified_status()
         self._update_correct_offsets_status()
         self._update_purge_small_labels_status()
         if self.data_widget:
@@ -1372,7 +1319,6 @@ class IOWidget(QWidget):
         attr = attr_map.get(object_name)
         if attr:
             setattr(self.app_state, attr, None)
-        self._update_human_verified_status()
         self._update_correct_offsets_status()
         self._update_purge_small_labels_status()
 
@@ -1695,7 +1641,6 @@ class IOWidget(QWidget):
                 if self.labels_widget:
                     self.labels_widget._mark_changes_unsaved()
                     self.labels_widget.refresh_labels_shapes_layer()
-                self._update_human_verified_status()
                 self._update_correct_offsets_status()
                 self._update_purge_small_labels_status()
                 if self.data_widget:

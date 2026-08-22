@@ -7,7 +7,8 @@ import numpy as np
 import pyqtgraph as pg
 from qtpy.QtCore import Qt
 
-from ethograph.labels.intervals import EVENT_TYPE_POINT
+from ethograph.labels.curation import subject_str
+from ethograph.labels.intervals import EVENT_TYPE_POINT, LABELING_AUTOMATED
 
 from .app_constants import (
     CP_COLOR_OSC_EVENT,
@@ -45,6 +46,30 @@ _POINT_EVENT_Z_INDEX = Z_INDEX_CHANGEPOINTS - 1
 # the committed rectangles it is about to join.
 _PENDING_LABEL_LINE_WIDTH = 2.0
 _PENDING_LABEL_ALPHA = 70
+
+# A label's outline says who vouches for it: an automated label (a model's
+# output nobody has looked at) is drawn dotted, a manual or curated one solid.
+# Restyling one label swaps these pens on its existing items — no redraw.
+_BOUNDARY_COLOR = (255, 255, 255, 180)
+_AUTOMATED_BOUNDARY_WIDTH = 2.0
+
+
+def _method_style(automated: bool):
+    return Qt.PenStyle.DotLine if automated else Qt.PenStyle.SolidLine
+
+
+def _point_pen(color_rgb, automated: bool):
+    return pg.mkPen(color=(*color_rgb, 230), width=_POINT_EVENT_LINE_WIDTH, style=_method_style(automated))
+
+
+def _boundary_pen(automated: bool, width: float):
+    width = _AUTOMATED_BOUNDARY_WIDTH if automated else width
+    return pg.mkPen(color=_BOUNDARY_COLOR, width=width, style=_method_style(automated))
+
+
+def draw_key(labels, onset_s, individual=None, individual_rec=None) -> tuple:
+    """The identity a drawn label is registered under (display-clock onset)."""
+    return (int(labels), round(float(onset_s), 4), subject_str(individual), subject_str(individual_rec))
 
 
 class LabelDrawingMixin:
@@ -118,6 +143,10 @@ class LabelDrawingMixin:
         if not self.label_mappings:
             return
 
+        #: draw_key → [(item, color_rgb, base_width)] for every item drawn
+        #: for that label on any plot, so one label can be restyled in place.
+        self._label_item_index: dict[tuple, list] = {}
+
         # "Full" (main) must not visually cover the top1/top2 strips — reserve
         # their height so the main rectangle stops right below them.
         top_positions_present = {slot["position"] for slot in (slots or []) if slot["position"] in ("top1", "top2")}
@@ -162,6 +191,10 @@ class LabelDrawingMixin:
         if intervals_df is None or intervals_df.empty:
             return
         has_event_type = "event_type" in intervals_df.columns
+        has_method = "labeling_method" in intervals_df.columns
+        index = getattr(self, "_label_item_index", None)
+        if index is None:
+            index = self._label_item_index = {}
         for _, row in intervals_df.iterrows():
             labels = int(row["labels"])
             if labels == 0:
@@ -169,31 +202,30 @@ class LabelDrawingMixin:
             if label_ids is not None and labels not in label_ids:
                 continue
             is_point = has_event_type and row["event_type"] == EVENT_TYPE_POINT
+            automated = has_method and row["labeling_method"] == LABELING_AUTOMATED
             if is_point:
-                self._draw_single_point(plot, row["onset_s"], labels)
+                items = self._draw_single_point(plot, row["onset_s"], labels, automated)
             else:
-                self._draw_single_label(
-                    plot, row["onset_s"], row["offset_s"], labels, position, mode, top_positions_present
+                items = self._draw_single_label(
+                    plot, row["onset_s"], row["offset_s"], labels, position, mode, top_positions_present, automated
                 )
+            if items:
+                key = draw_key(labels, row["onset_s"], row.get("individual"), row.get("individual_rec"))
+                index.setdefault(key, []).extend(items)
 
-    def _draw_single_point(self, plot, time_s, labels):
-        """Draw a point event as a thick vertical line in the label's color."""
+    def _draw_single_point(self, plot, time_s, labels, automated=False) -> list:
+        """Draw a point event as a thick vertical line in the label's color.
+
+        Dotted while the label is automated (see :func:`_point_pen`).
+        """
         if labels not in self.label_mappings:
-            return
+            return []
         color_rgb = tuple(int(c * 255) for c in self.label_mappings[labels]["color"])
-        line = pg.InfiniteLine(
-            pos=time_s,
-            angle=90,
-            pen=pg.mkPen(
-                color=(*color_rgb, 230),
-                width=_POINT_EVENT_LINE_WIDTH,
-                style=Qt.PenStyle.SolidLine,
-            ),
-            movable=False,
-        )
+        line = pg.InfiniteLine(pos=time_s, angle=90, pen=_point_pen(color_rgb, automated), movable=False)
         line.setZValue(_POINT_EVENT_Z_INDEX)
         plot.plot_item.addItem(line)
         plot.label_items.append(line)
+        return [(line, color_rgb, _POINT_EVENT_LINE_WIDTH)]
 
     def _is_inverted_y_plot(self, plot) -> bool:
         return plot in (getattr(self, "heatmap_plots", ()) or ())
@@ -207,8 +239,9 @@ class LabelDrawingMixin:
         position="main",
         mode=LABEL_OVERLAY_MODE_FULL,
         top_positions_present: frozenset = frozenset(),
-    ):
-        """Draw a single label rectangle.
+        automated=False,
+    ) -> list:
+        """Draw a single label rectangle; returns its restylable items.
 
         position: ``"main"`` -> standard full-plot rectangle (or, when top1/top2
         are also shown, a rectangle stopping short of those strips so it never
@@ -216,16 +249,16 @@ class LabelDrawingMixin:
         bottom strip (top strip on the inverted-Y heatmap). ``"top1"``/``"top2"``
         -> stacked thin top strips, drawn over the main rectangles. Top2 sits
         directly under Top1 so two prediction-like sources can co-exist visibly.
+        *automated* draws the outline dotted (see :func:`_boundary_pen`).
         """
         if labels not in self.label_mappings:
-            return
+            return []
         color_rgb = tuple(int(c * 255) for c in self.label_mappings[labels]["color"])
 
         is_main = position == "main"
 
         if is_main and mode == LABEL_OVERLAY_MODE_FULL and not top_positions_present:
-            self._draw_standard_label(plot, start_time, end_time, color_rgb)
-            return
+            return self._draw_standard_label(plot, start_time, end_time, color_rgb, automated)
 
         inverted_y = self._is_inverted_y_plot(plot)
         y_lo, y_hi = plot.plot_item.getViewBox().viewRange()[1]
@@ -247,8 +280,9 @@ class LabelDrawingMixin:
                 y_bottom = 0 if degenerate else y_lo
                 y_top = PREDICTION_FALLBACK_Y_TOP if degenerate else y_hi
                 y0, y1 = y_bottom, y_top - reserved
-            self._draw_label_region(plot, start_time, end_time, color_rgb, y0, y1, Z_INDEX_LABELS, alpha=180)
-            return
+            return self._draw_label_region(
+                plot, start_time, end_time, color_rgb, y0, y1, Z_INDEX_LABELS, alpha=180, automated=automated
+            )
 
         if is_main:
             # Main in "bottom" mode: bottom strip (or top strip when y is inverted)
@@ -279,9 +313,9 @@ class LabelDrawingMixin:
             alpha = 200 if slot_idx == 0 else 170
             z = Z_INDEX_PREDICTIONS + slot_idx
 
-        self._draw_label_region(plot, start_time, end_time, color_rgb, y0, y1, z, alpha)
+        return self._draw_label_region(plot, start_time, end_time, color_rgb, y0, y1, z, alpha, automated=automated)
 
-    def _draw_standard_label(self, plot, start_time, end_time, color_rgb):
+    def _draw_standard_label(self, plot, start_time, end_time, color_rgb, automated=False) -> list:
         rect = pg.LinearRegionItem(
             values=(start_time, end_time),
             orientation="vertical",
@@ -289,25 +323,53 @@ class LabelDrawingMixin:
             pen=pg.mkPen(None),
             movable=False,
         )
-        sep_pen = pg.mkPen(color=(255, 255, 255, 180), width=1)
+        sep_pen = _boundary_pen(automated, 1)
         for line in rect.lines:
             line.setPen(sep_pen)
         rect.setZValue(Z_INDEX_LABELS)
         plot.plot_item.addItem(rect)
         plot.label_items.append(rect)
+        return [(rect, color_rgb, 1)]
 
-    def _draw_label_region(self, plot, start_time, end_time, color_rgb, y0, y1, z_value, alpha=220):
-        sep_pen = pg.mkPen(color=(255, 255, 255, 180), width=0)
+    def _draw_label_region(
+        self, plot, start_time, end_time, color_rgb, y0, y1, z_value, alpha=220, automated=False
+    ) -> list:
         rect = pg.PlotDataItem(
             [start_time, end_time, end_time, start_time, start_time],
             [y0, y0, y1, y1, y0],
             fillLevel=y0,
             brush=(*color_rgb, alpha),
-            pen=sep_pen,
+            pen=_boundary_pen(automated, 0),
         )
         rect.setZValue(z_value)
         plot.plot_item.addItem(rect)
         plot.label_items.append(rect)
+        return [(rect, color_rgb, 0)]
+
+    def restyle_label(self, key: tuple, automated: bool) -> int:
+        """Swap the outline pens of one drawn label (dotted ⇄ solid), in place.
+
+        *key* is :func:`draw_key` of the label as it was drawn (display-clock
+        onset). Returns how many items changed; 0 means the label is not on
+        screen, and the caller falls back to a full redraw. A whole trial
+        changing method (Ctrl+C) is a full redraw anyway — only the one-label
+        transitions of a review pass come through here.
+        """
+        entries = (getattr(self, "_label_item_index", None) or {}).get(key, [])
+        n = 0
+        for item, color_rgb, width in entries:
+            try:
+                if isinstance(item, pg.InfiniteLine):
+                    item.setPen(_point_pen(color_rgb, automated))
+                elif isinstance(item, pg.LinearRegionItem):
+                    for line in item.lines:
+                        line.setPen(_boundary_pen(automated, width))
+                else:
+                    item.setPen(_boundary_pen(automated, width))
+            except RuntimeError:
+                continue  # the plot it sat on was closed
+            n += 1
+        return n
 
     # --- State label in progress (between its two clicks) ---
 

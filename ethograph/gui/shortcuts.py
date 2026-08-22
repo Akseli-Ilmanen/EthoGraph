@@ -23,10 +23,10 @@ logger = logging.getLogger(__name__)
 _TEXT_WIDGETS = (QLineEdit, QTextEdit, QPlainTextEdit, QAbstractSpinBox)
 
 #: Keys a focused text editor owns. A global binding on one of these is always
-#: guarded: unguarded, ``Ctrl+V`` swallowed the paste into a metadata cell *and*
-#: ran the action behind it (mark the trial human-verified), which flagged the
-#: labels unsaved and asked to save them on close after a metadata-only edit.
-#: Same for ``Ctrl+A``/``Ctrl+C`` (select-all, copy) and the cursor keys.
+#: guarded: unguarded, ``Ctrl+C`` would swallow the copy out of a metadata cell
+#: *and* run the action behind it (curate the trial), which flags the labels
+#: unsaved after a metadata-only edit. Same for ``Ctrl+A``/``Ctrl+V``
+#: (select-all, paste) and the cursor keys.
 _TEXT_EDITING_KEYS = frozenset(
     QKeySequence(key).toString()
     for key in (
@@ -121,7 +121,9 @@ def bind_global_shortcuts(meta_widget):
         plot_settings_widget.lock_axes_checkbox.setChecked(not lock_status)
 
     bind("Ctrl+L", toggle_lock)
-    bind("Ctrl+V", lambda: io_widget._human_verification_true(mode="single_trial"))
+    # Curate the current trial: every automated label in scope becomes curated
+    # (manual ones stay manual). Auto-guarded — Ctrl+C is copy in a text field.
+    bind("Ctrl+C", labels_widget.curation_panel.curate_current_trial)
 
     def toggle_changepoint_correction():
         checkbox = changepoints_widget.changepoint_correction_checkbox

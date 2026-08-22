@@ -22,6 +22,7 @@ from ethograph.io.time_model import (
     TimeRange,
     TrialVideoBounds,
 )
+from ethograph.labels.curation import trial_curation_status
 from ethograph.labels.tsv_store import (
     LabelEdit,
     LabelHistory,
@@ -104,18 +105,21 @@ class AppStateSpec:
         "after_s_label": (float, 1.0, True),
         "before_s_sequence": (float, 1.0, True),
         "after_s_sequence": (float, 1.0, True),
-        # Refine-labels dialog (dialog_refine): total seconds of time series
-        # shown around the boundary seed being nudged, seed centred. Decoupled
-        # from the navigation Before/After padding — a reviewing preference,
-        # so global like autoplay_on_navigate.
+        # Frame-by-frame review (widgets_curation): total seconds of time
+        # series shown around the boundary being nudged, seed centred.
+        # Decoupled from the navigation Before/After padding — a reviewing
+        # preference, so global like autoplay_on_navigate.
         "refine_window_s": (float, 0.5, True),
-        # Refinement bookkeeping (dialog_refine), both SCOPE_LOCAL — they
-        # describe THIS dataset's labels. refine_log: one record per refined
-        # boundary chain (original → latest values, see _record_refinement);
-        # refine_resume: where the last session stood, so the user can jump
-        # back mid-queue after a Stop or restart.
-        "refine_log": (list | None, None, True, SCOPE_LOCAL),
-        "refine_resume": (dict | None, None, True, SCOPE_LOCAL),
+        # Curation (widgets_curation, docs advanced/labels/curation.md).
+        # curation_mode: "manual" | "inspect" | "frame" — SCOPE_LOCAL, because
+        # "inspect is enough" curates a trial by merely opening it and must not
+        # silently follow the user into the next dataset. curation_label_ids:
+        # the label classes dropped into the scope area (None = every class),
+        # per dataset too. curation_next_curates: N in frame-by-frame review
+        # also curates the boundary it leaves — a reviewing preference.
+        "curation_mode": (str, "manual", True, SCOPE_LOCAL),
+        "curation_label_ids": (list | None, None, True, SCOPE_LOCAL),
+        "curation_next_curates": (bool, True, True),
         # How the plot x-limits are derived: "interval" (follows slider scope:
         # trial/label/sequence extent + before/after padding) or "fixed"
         # (fixed-size window from t=0). User preference, not tied to how the
@@ -162,6 +166,16 @@ class AppStateSpec:
         # speed). Drives both the video frame rate and the audio pitch/rate
         # together — there is no separate FPS or audio-speed control.
         "playback_speed_pct": (float, 100.0, True),
+        # Review-grid layout (dialog_video_grid, dialog_label_gridview): how
+        # the grids are laid out is a viewing habit, not a dataset property —
+        # global, like refine_window_s. The video grid's speed has no setting
+        # of its own: it opens at the GUI's playback_speed_pct and a change
+        # there lives only as long as the grid.
+        "video_grid_point_window_s": (float, 0.5, True),
+        "video_grid_per_page": (int, 6, True),
+        "video_grid_columns": (int, 3, True),
+        "label_grid_columns": (int, 3, True),
+        "label_grid_window_s": (float, 1.0, True),
         # Output volume as a % (0–100) applied inside EthoGraph's own audio
         # stream, independent of the system volume. Global — a listening
         # preference, not a dataset property.
@@ -468,6 +482,10 @@ class ObservableAppState(QObject):
         locals()[f"{var}_changed"] = Signal(get_signal_type(type_hint))
 
     trial_changed = Signal()
+    #: Some label's ``labeling_method`` changed (or a whole trial's): the
+    #: trial colouring in the navigation combo and bottom bar re-reads the
+    #: per-trial verdict. Emitted by the curation panel, never by the store.
+    curation_changed = Signal()
     GLOBAL_SETTINGS_FILENAME = "gui_settings.yaml"
     LOCAL_SETTINGS_FILENAME = "local_settings.yaml"
     SETTINGS_DIRNAME = ".ethograph"
@@ -1553,6 +1571,29 @@ class ObservableAppState(QObject):
 
     def set_trial_meta_attr(self, trial, key: str, value) -> None:
         self._all_labels_df = set_trial_meta_attr(self._all_labels_df, trial, key, value)
+
+    # --- Curation (labels/curation.py) ---
+    def curation_scope(self) -> set[int] | None:
+        """The label classes curation acts on; ``None`` means every class."""
+        ids = self.curation_label_ids
+        return {int(i) for i in ids} if ids else None
+
+    def trial_curation_status(self) -> dict[str, bool]:
+        """``{str(trial): curated?}`` over the trials the table shows."""
+        return trial_curation_status(self._all_labels_df, self.trials or [])
+
+    def trial_is_curated(self, trial) -> bool:
+        """Whether no label of *trial* is still automated."""
+        return trial_curation_status(self._all_labels_df, [trial])[str(trial)]
+
+    def replace_all_labels(self, df: pd.DataFrame | None) -> None:
+        """Swap in a table whose rows were restamped (curation), re-reading
+        the current trial's view. Row identities are unchanged, so the undo
+        stack is left alone — a method change is not an edit it tracks."""
+        self._all_labels_df = df
+        current = getattr(self, "trials_sel", None)
+        if current is not None:
+            self.label_intervals = get_trial_from_tsv(df, current)
 
     def get_global_meta_attr(self, key: str, default=0):
         """Check if ALL trials with labels have a meta attr set to truthy."""

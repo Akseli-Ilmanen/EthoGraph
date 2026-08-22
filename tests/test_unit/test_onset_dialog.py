@@ -1,4 +1,4 @@
-"""Predict dialog wiring: combinatorial metadata filters and the review hand-off.
+"""Predict dialog wiring: the trials-table scope note and the review hand-off.
 
 The model itself is covered by ``test_onset_model.py``; these tests only touch
 the dialog, so no classifier is ever fitted here.
@@ -14,7 +14,7 @@ from qtpy.QtCore import Qt
 from qtpy.QtWidgets import QApplication
 
 from ethograph.gui.app_state import ObservableAppState
-from ethograph.gui.dialog_label_frames import LabelFramesDialog
+from ethograph.gui.dialog_label_gridview import LabelGridViewDialog
 from ethograph.gui.dialog_onset_model import PredictOnsetDialog
 from ethograph.io.catalog import XarrayLoader
 from ethograph.labels import onset_model as om
@@ -79,34 +79,18 @@ def predict_dialog(qapp, tmp_path):
     dialog.close()
 
 
-class TestCombinatorialFilters:
-    def test_every_condition_column_gets_a_button(self, predict_dialog):
-        assert set(predict_dialog._filter_buttons) == {"genotype", "stimulus"}
+class TestTrialsScope:
+    """The dialog has no trial filters of its own: the trials table decides."""
 
-    def test_no_filters_predicts_everything(self, predict_dialog):
-        assert predict_dialog._allowed_trials() is None
+    def test_no_filter_controls(self, predict_dialog):
+        assert not hasattr(predict_dialog, "_filters")
+        assert not hasattr(predict_dialog, "_allowed_trials")
 
-    def test_columns_combine(self, predict_dialog):
-        """Two filters intersect — wild-type *and* tone, not either."""
-        predict_dialog._filters["genotype"] = {"wt"}
-        assert predict_dialog._allowed_trials() == {"1", "2", "5"}
-        predict_dialog._filters["stimulus"] = {"tone"}
-        assert predict_dialog._allowed_trials() == {"1", "5"}
-
-    def test_a_cleared_column_means_any(self, predict_dialog):
-        predict_dialog._filters["genotype"] = set()
-        predict_dialog._filters["stimulus"] = {"tone"}
-        assert predict_dialog._allowed_trials() == {"1", "3", "5", "6"}
-
-    def test_summary_counts_the_surviving_trials(self, predict_dialog):
-        predict_dialog._filters["genotype"] = {"ko"}
-        predict_dialog._filters["stimulus"] = {"tone"}
-        predict_dialog._refresh_filter_summary()
-        assert predict_dialog.filter_summary.text().startswith("2 trials match")
-
-    def test_summary_is_blank_without_filters(self, predict_dialog):
-        predict_dialog._refresh_filter_summary()
-        assert predict_dialog.filter_summary.text() == ""
+    def test_note_follows_the_trials_table(self, predict_dialog):
+        predict_dialog.app_state.trials = [1, 2, 5]
+        assert predict_dialog.trials_note.text().startswith("Runs over the 3 trial(s) the trials table")
+        predict_dialog.app_state.trials = [1]
+        assert predict_dialog.trials_note.text().startswith("Runs over the 1 trial(s)")
 
 
 class TestReviewHandOff:
@@ -130,13 +114,9 @@ class TestReviewHandOff:
         predict_dialog._review()
 
         dialog = predict_dialog._review_dialog
-        assert isinstance(dialog, LabelFramesDialog)
-        ticked = [
-            dialog.label_list.item(i).data(Qt.UserRole)
-            for i in range(dialog.label_list.count())
-            if dialog.label_list.item(i).checkState() == Qt.Checked
-        ]
-        assert ticked == [1]  # only the class that was predicted
+        assert isinstance(dialog, LabelGridViewDialog)
+        listed = [dialog.label_list.item(i).data(Qt.UserRole) for i in range(dialog.label_list.count())]
+        assert listed == [1]  # only the class that was predicted, shown read-only
         assert dialog._restrict_trials == {"2", "4"}
 
     def test_review_does_nothing_with_no_predictions(self, predict_dialog):
@@ -162,9 +142,9 @@ class TestRestrictedGrid:
         state._yaml_path = str(tmp_path / "gui_settings.yaml")
         state._all_labels_df = labels
         state.metadata_df = pd.DataFrame({"trial": [1, 2, 3], "genotype": ["wt", "ko", "wt"]})
-        dialog = LabelFramesDialog(_Meta(state), label_ids=[1], trials={"1", "3"})
+        dialog = LabelGridViewDialog(_Meta(state), label_ids=[1], trials={"1", "3"})
         try:
-            from ethograph.gui.dialog_label_frames import build_frame_entries
+            from ethograph.gui.dialog_label_gridview import build_frame_entries
 
             entries = build_frame_entries(labels, MAPPINGS, [1], [None], dialog._restrict_trials)
             assert [entry.trial for entry in entries] == [1, 3]
@@ -176,7 +156,7 @@ class TestRestrictedGrid:
         state = ObservableAppState()
         state._yaml_path = str(tmp_path / "gui_settings.yaml")
         state._all_labels_df = pd.DataFrame()
-        dialog = LabelFramesDialog(_Meta(state))
+        dialog = LabelGridViewDialog(_Meta(state))
         try:
             assert dialog._restrict_trials is None
         finally:

@@ -9,11 +9,15 @@ File format:
     offset_s                - end time in seconds (trial-relative)
     confidence              - 1.0 for a human label, the model's own score for
                               a predicted one
+    labeling_method         - per label: "manual" | "automated" | "curated"
+                              (see ethograph.labels.curation)
     n_samples               - per-trial sample count for dense conversion (int, 0 if unknown)
-    human_verified          - per-trial flag (0/1), repeated per row
     changepoint_corrected   - per-trial flag (0/1), repeated per row
     prediction_source       - path to prediction file that produced this label (empty if human)
 
+A ``human_verified`` column in an older file is carried along untouched and
+never read: whether a trial is reviewed is a question answered per label by
+``labeling_method`` now.
 
 Label names are managed centrally in mapping.txt.
 """
@@ -35,6 +39,7 @@ from ethograph.labels.intervals import (
     ensure_confidence,
     ensure_event_type,
     ensure_individual_rec,
+    ensure_labeling_method,
 )
 
 logger = logging.getLogger(__name__)
@@ -48,7 +53,7 @@ TSV_COLUMNS = [
     "offset_s",
     "event_type",
     "confidence",
-    "human_verified",
+    "labeling_method",
     "changepoint_corrected",
     "prediction_source",
     "n_samples",
@@ -56,18 +61,25 @@ TSV_COLUMNS = [
 
 # Per-trial metadata columns (same value for all rows in a trial)
 TRIAL_META_COLUMNS = [
-    "human_verified",
     "changepoint_corrected",
     "prediction_source",
     "n_samples",
 ]
 
 TRIAL_META_DEFAULTS = {
-    "human_verified": 0,
     "changepoint_corrected": 0,
     "prediction_source": "",
     "n_samples": 0,
 }
+
+
+def _ensure_label_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Fill in every per-label column an older file may lack (in place)."""
+    ensure_event_type(df)
+    ensure_individual_rec(df)
+    ensure_confidence(df)
+    ensure_labeling_method(df)
+    return df
 
 
 # ---------------------------------------------------------------------------
@@ -124,7 +136,7 @@ def load_labels_tsv(path: str | Path) -> pd.DataFrame:
     -------
     pd.DataFrame
         Columns: ``trial``, ``onset_s``, ``offset_s``, ``labels`` (int),
-        ``individual``, ``human_verified``, ``changepoint_corrected``,
+        ``individual``, ``labeling_method``, ``changepoint_corrected``,
         ``prediction_source``.
 
     Examples
@@ -147,9 +159,7 @@ def load_labels_tsv(path: str | Path) -> pd.DataFrame:
         df = pd.read_csv(path, sep=None, engine="python", encoding="utf-8-sig", comment="#")
     validate_labels_tsv(df, path)
 
-    ensure_event_type(df)
-    ensure_individual_rec(df)
-    ensure_confidence(df)
+    _ensure_label_columns(df)
     for col in INTERVAL_COLUMNS:
         if col in df.columns and col in INTERVAL_DTYPES:
             df[col] = df[col].astype(INTERVAL_DTYPES[col])
@@ -192,6 +202,7 @@ def save_labels_tsv(path: str | Path, df: pd.DataFrame) -> None:
         "offset_s",
         "event_type",
         "confidence",
+        "labeling_method",
         "trial_onset",
         "trial_offset",
         "onset_global",
@@ -245,10 +256,7 @@ def _comparable_labels(df: pd.DataFrame | None) -> pd.DataFrame:
     """*df* reduced to the canonical columns, in a canonical order."""
     if df is None or df.empty:
         return _empty_all_labels()[TSV_COLUMNS]
-    out = df.copy()
-    ensure_event_type(out)
-    ensure_individual_rec(out)
-    ensure_confidence(out)
+    out = _ensure_label_columns(df.copy())
     for col in TSV_COLUMNS:
         if col not in out.columns:
             out[col] = TRIAL_META_DEFAULTS.get(col, "")
@@ -284,7 +292,9 @@ def get_trial_from_tsv(all_df: pd.DataFrame, trial) -> pd.DataFrame:
     trial_df = all_df.loc[mask, cols].reset_index(drop=True)
     if trial_df.empty:
         return empty_intervals()
-    return trial_df
+    # A table built before a per-label column existed still hands out rows
+    # carrying every INTERVAL_COLUMN, so callers can index them blindly.
+    return _ensure_label_columns(trial_df)
 
 
 def set_trial_in_tsv(
@@ -296,23 +306,30 @@ def set_trial_in_tsv(
 
     Preserves per-trial metadata columns from the existing rows.  The columns
     added to files written before they existed (``event_type``,
-    ``individual_rec``, ``confidence``) are filled in on the *whole* table
-    first: the untouched trials must not end up with NaN where the rewritten
-    trial has a value.
+    ``individual_rec``, ``confidence``, ``labeling_method``) are filled in on
+    the *whole* table first: the untouched trials must not end up with NaN
+    where the rewritten trial has a value.  Any other per-trial column a
+    loaded file carries (a legacy ``human_verified``, say) rides along with
+    the trial's previous value, so rewriting one trial never blanks it.
     """
     if all_df is None:
         all_df = _empty_all_labels()
-    all_df = ensure_confidence(ensure_individual_rec(ensure_event_type(all_df.copy())))
+    all_df = _ensure_label_columns(all_df.copy())
 
     # Preserve existing meta values for this trial
     old_meta = get_trial_meta(all_df, trial)
+    old_rows = all_df[all_df["trial"] == trial]
     other = all_df[all_df["trial"] != trial]
 
-    trial_df = ensure_confidence(ensure_individual_rec(ensure_event_type(trial_df.copy())))
+    trial_df = _ensure_label_columns(trial_df.copy())
     new_rows = trial_df[INTERVAL_COLUMNS].copy()
     new_rows.insert(0, "trial", trial)
     for col, default in TRIAL_META_DEFAULTS.items():
         new_rows[col] = old_meta.get(col, default)
+    for col in all_df.columns:
+        if col in new_rows.columns:
+            continue
+        new_rows[col] = old_rows[col].iloc[0] if not old_rows.empty else None
 
     result = pd.concat([other, new_rows], ignore_index=True)
     return result
@@ -366,9 +383,9 @@ def init_empty_labels(trials: list) -> pd.DataFrame:
 class LabelEdit:
     """One trial's labels as they stood *before* a single edit.
 
-    ``rows`` carries :data:`~ethograph.labels.intervals.INTERVAL_COLUMNS` only;
-    ``meta`` the per-trial flags, so undoing a placement also takes back the
-    ``human_verified`` it set.
+    ``rows`` carries :data:`~ethograph.labels.intervals.INTERVAL_COLUMNS` only
+    (so each row's ``labeling_method`` is restored with it); ``meta`` the
+    per-trial flags, so undoing an edit also takes back the flags it set.
     """
 
     trial: object

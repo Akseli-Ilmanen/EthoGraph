@@ -89,6 +89,7 @@ from .app_constants import (  # noqa: E402
     LABELS_WIDGET_SIZE_HINT_HEIGHT,
 )
 from .file_dialogs import browse_open_dir  # noqa: E402
+from .widgets_curation import CurationPanel, drag_label_ids  # noqa: E402
 
 
 class BranchTable(QTableWidget):
@@ -105,17 +106,30 @@ class BranchTable(QTableWidget):
         self.setDefaultDropAction(Qt.MoveAction)
 
     def startDrag(self, supportedActions):
-        item = self.currentItem()
-        if item is None:
-            return
-        label_id = item.data(Qt.UserRole)
-        if label_id is None:
+        """Drag every selected label (comma-separated ids, see :func:`drag_label_ids`).
+
+        A multi-selection is what the curation scope area is for — pull several
+        classes in at once; a branch drop moves them all.
+        """
+        ids = self.selected_label_ids()
+        if not ids:
             return
         drag = QDrag(self)
         mime = QMimeData()
-        mime.setText(str(label_id))
+        mime.setText(",".join(str(i) for i in ids))
         drag.setMimeData(mime)
         drag.exec_(Qt.MoveAction)
+
+    def selected_label_ids(self) -> list[int]:
+        """The distinct label ids of the selected cells, current item first."""
+        ids: list[int] = []
+        current = self.currentItem()
+        candidates = ([current] if current is not None else []) + list(self.selectedItems())
+        for item in candidates:
+            label_id = item.data(Qt.UserRole)
+            if label_id is not None and int(label_id) not in ids:
+                ids.append(int(label_id))
+        return ids
 
     def dragEnterEvent(self, event):
         if event.mimeData().hasText():
@@ -134,13 +148,13 @@ class BranchTable(QTableWidget):
         if source is self:
             event.ignore()
             return
-        try:
-            label_id = int(event.mimeData().text())
-        except (ValueError, TypeError):
+        label_ids = drag_label_ids(event.mimeData().text())
+        if not label_ids:
             event.ignore()
             return
         event.acceptProposedAction()
-        self.label_moved.emit(label_id, self.branch_idx)
+        for label_id in label_ids:
+            self.label_moved.emit(label_id, self.branch_idx)
 
 
 class LabelsWidget(QWidget):
@@ -223,6 +237,7 @@ class LabelsWidget(QWidget):
     def set_data_widget(self, data_widget):
         """Set reference to the data widget for plot updates."""
         self.data_widget = data_widget
+        self.curation_panel.set_data_widget(data_widget)
 
     def _mark_changes_unsaved(self):
         """Mark that changes have been made and are not saved."""
@@ -232,6 +247,7 @@ class LabelsWidget(QWidget):
         """Set the plot container reference and connect click handler to all plots."""
         self.plot_container = plot_container
         plot_container.set_label_mappings(self._mappings)
+        self.curation_panel.set_plot_container(plot_container)
         self._sync_active_label_ids()
         # A half-placed state label belongs to the trial it was started in — its
         # anchor must not survive into the next one (the second click would be
@@ -257,6 +273,7 @@ class LabelsWidget(QWidget):
     def set_meta_widget(self, meta_widget):
         """Set reference to the meta widget for layout refresh."""
         self.meta_widget = meta_widget
+        self.curation_panel.set_meta(meta_widget)
 
     def attach_video_groupbox(self, groupbox):
         """Add the video label-name overlay control to the video context group."""
@@ -377,6 +394,12 @@ class LabelsWidget(QWidget):
         add_branch_btn.setFixedWidth(28)
         add_branch_btn.clicked.connect(self._add_new_branch)
         layout.addWidget(add_branch_btn, alignment=Qt.AlignLeft)
+
+        # Curation lives under the label tables: every curation question
+        # starts with "which labels", and those are the rows right above —
+        # drag them into the scope area (see widgets_curation.py).
+        self.curation_panel = CurationPanel(self.app_state, self)
+        layout.addWidget(self.curation_panel)
 
     _TABLE_STYLE = """
         QTableWidget { gridline-color: transparent; background: #444; color: #fff; }
@@ -1348,9 +1371,10 @@ class LabelsWidget(QWidget):
         self._reset_label_clicks()
         self.ready_for_label_click = False
 
-        if self.io_widget:
-            self.io_widget._human_verification_true(mode="single_trial")
         self._mark_changes_unsaved()
+        # add_interval / add_point stamp the new row LABELING_MANUAL; the
+        # panel only has to re-read the trial's verdict.
+        self.curation_panel.note_labels_edited()
         if self.data_widget:
             self.data_widget.update_main_plot(preserve_x_range=True)
         self._seek_to_frame(self._to_display(onset_s))
@@ -1395,9 +1419,10 @@ class LabelsWidget(QWidget):
         self._reset_label_clicks()
         self.ready_for_label_click = False
 
-        if self.io_widget:
-            self.io_widget._human_verification_true(mode="single_trial")
         self._mark_changes_unsaved()
+        # add_interval / add_point stamp the new row LABELING_MANUAL; the
+        # panel only has to re-read the trial's verdict.
+        self.curation_panel.note_labels_edited()
         if self.data_widget:
             self.data_widget.update_main_plot(preserve_x_range=True)
         self._seek_to_frame(self._to_display(t_clicked))
@@ -1469,6 +1494,7 @@ class LabelsWidget(QWidget):
         self.current_labels_is_prediction = False
 
         self._mark_changes_unsaved()
+        self.curation_panel.note_labels_edited()
         if self.data_widget:
             self.data_widget.update_main_plot(preserve_x_range=True)
         self.refresh_labels_shapes_layer()
@@ -1507,6 +1533,7 @@ class LabelsWidget(QWidget):
             self.data_widget.update_main_plot(preserve_x_range=True)
 
         self._mark_changes_unsaved()
+        self.curation_panel.note_labels_edited()
         self.refresh_labels_shapes_layer()
         notify(f"Undo: {edit.description}")
 

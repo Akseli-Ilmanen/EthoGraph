@@ -9,6 +9,11 @@ Labels are stored as a pandas DataFrame with columns:
     event_type     (str)     - "state" (interval) or "point" (instantaneous)
     confidence     (float64) - how sure the label is: 1.0 for a human label,
                                the model's own score for a predicted one
+    labeling_method (str)    - who vouches for the label: "manual" (placed or
+                               edited by hand), "automated" (a model's output
+                               nobody has looked at) or "curated" (automated,
+                               then approved by a human) — the vocabulary of
+                               ndx-ethogram
 
 ``individual`` and ``individual_rec`` together are the **subject** of a label:
 each (actor, recipient) pair is its own independent track, exactly as each
@@ -42,6 +47,15 @@ NO_RECIPIENT = ""
 #: other producer (a model) writes its own score in ``[0, 1]``.
 HUMAN_CONFIDENCE = 1.0
 
+#: ``labeling_method`` values (the ndx-ethogram vocabulary). A label is
+#: *manual* when a human placed or last edited it, *automated* when a model
+#: produced it and nobody has looked at it yet, and *curated* once a human has
+#: looked at an automated label and let it stand.
+LABELING_MANUAL = "manual"
+LABELING_AUTOMATED = "automated"
+LABELING_CURATED = "curated"
+LABELING_METHODS = (LABELING_MANUAL, LABELING_AUTOMATED, LABELING_CURATED)
+
 INTERVAL_COLUMNS = [
     "onset_s",
     "offset_s",
@@ -50,6 +64,7 @@ INTERVAL_COLUMNS = [
     "individual_rec",
     "event_type",
     "confidence",
+    "labeling_method",
 ]
 
 INTERVAL_DTYPES = {
@@ -60,6 +75,7 @@ INTERVAL_DTYPES = {
     "individual_rec": object,
     "event_type": object,
     "confidence": np.float64,
+    "labeling_method": object,
 }
 
 #: The columns identifying whose label a row is — the actor and the recipient.
@@ -75,15 +91,14 @@ def empty_intervals() -> pd.DataFrame:
     Returns
     -------
     pd.DataFrame
-        Empty DataFrame with columns ``onset_s``, ``offset_s``, ``labels``,
-        ``individual``, ``individual_rec``, ``event_type``.
+        Empty DataFrame with the :data:`INTERVAL_COLUMNS`.
 
     Examples
     --------
     >>> from ethograph.labels.intervals import empty_intervals
     >>> df = empty_intervals()
-    >>> df.columns.tolist()
-    ['onset_s', 'offset_s', 'labels', 'individual', 'individual_rec', 'event_type', 'confidence']
+    >>> df.columns.tolist()[:3]
+    ['onset_s', 'offset_s', 'labels']
     >>> len(df)
     0
     """
@@ -130,6 +145,30 @@ def ensure_confidence(df: pd.DataFrame) -> pd.DataFrame:
         df["confidence"] = HUMAN_CONFIDENCE
     else:
         df["confidence"] = pd.to_numeric(df["confidence"], errors="coerce").fillna(HUMAN_CONFIDENCE)
+    return df
+
+
+def ensure_labeling_method(df: pd.DataFrame) -> pd.DataFrame:
+    """Add a ``labeling_method`` column where it is missing or blank.
+
+    Mutates and returns *df*.  A row with no method is read off its
+    ``confidence``: a label written before methods existed is a hand-made one
+    unless a model scored it below :data:`HUMAN_CONFIDENCE`, in which case it
+    is automated output nobody has curated yet — the conservative reading, so
+    a file from an older EthoGraph never claims more review than it got.
+    """
+    ensure_confidence(df)
+    derived = pd.Series(
+        np.where(df["confidence"].to_numpy(dtype=float) < HUMAN_CONFIDENCE, LABELING_AUTOMATED, LABELING_MANUAL),
+        index=df.index,
+        dtype=object,
+    )
+    if "labeling_method" not in df.columns:
+        df["labeling_method"] = derived
+    else:
+        method = df["labeling_method"].astype(object)
+        blank = method.isna() | ~method.isin(LABELING_METHODS)
+        df["labeling_method"] = method.where(~blank, derived).astype(object)
     return df
 
 
@@ -421,6 +460,7 @@ def add_point(
     individual: str,
     individual_rec: str = NO_RECIPIENT,
     confidence: float = HUMAN_CONFIDENCE,
+    labeling_method: str = LABELING_MANUAL,
 ) -> pd.DataFrame:
     """Add a point event (instantaneous label) at *time_s*.
 
@@ -429,8 +469,10 @@ def add_point(
     :func:`add_interval`, :func:`purge_short_intervals`,
     :func:`stitch_intervals`, or :func:`snap_boundaries`.
 
-    *confidence* defaults to :data:`HUMAN_CONFIDENCE`; a model passes its own
-    score so a later review pass can rank what to check first.
+    *confidence* defaults to :data:`HUMAN_CONFIDENCE` and *labeling_method* to
+    :data:`LABELING_MANUAL` — a hand-placed label; a model passes its own
+    score and :data:`LABELING_AUTOMATED` so a later curation pass knows what
+    still needs a look.
 
     Returns
     -------
@@ -445,9 +487,10 @@ def add_point(
         "individual_rec": individual_rec,
         "event_type": EVENT_TYPE_POINT,
         "confidence": float(confidence),
+        "labeling_method": str(labeling_method),
     }
     new_df = pd.DataFrame([new_row])
-    df = ensure_individual_rec(df.copy())
+    df = ensure_labeling_method(ensure_individual_rec(df.copy()))
     for col, dtype in INTERVAL_DTYPES.items():
         new_df[col] = new_df[col].astype(dtype)
     result = pd.concat([df, new_df], ignore_index=True)
@@ -465,6 +508,7 @@ def add_interval(
     protected_label_ids: set[int] | None = None,
     individual_rec: str = NO_RECIPIENT,
     confidence: float = HUMAN_CONFIDENCE,
+    labeling_method: str = LABELING_MANUAL,
 ) -> pd.DataFrame:
     """Add an interval, resolving overlaps for the same subject.
 
@@ -491,6 +535,10 @@ def add_interval(
         Recipient of the behaviour; :data:`NO_RECIPIENT` for a solo one.
     confidence : float
         How sure this label is; :data:`HUMAN_CONFIDENCE` for a hand-placed one.
+    labeling_method : str
+        Who vouches for it; :data:`LABELING_MANUAL` for a hand-placed one.
+        A remnant trimmed off an existing interval keeps that interval's
+        method — nobody re-judged it.
 
     Returns
     -------
@@ -510,7 +558,7 @@ def add_interval(
     if onset_s > offset_s:
         onset_s, offset_s = offset_s, onset_s
 
-    states_df, points_df = split_by_kind(ensure_individual_rec(df.copy()))
+    states_df, points_df = split_by_kind(ensure_labeling_method(ensure_individual_rec(df.copy())))
     mask_same_ind = subject_mask(states_df, individual, individual_rec)
     other = states_df[~mask_same_ind]
     same = states_df[mask_same_ind].copy()
@@ -533,6 +581,7 @@ def add_interval(
         # A trimmed remnant is the same label as before — it keeps the
         # confidence of the row it was cut from, not the new label's.
         row_conf = row.get("confidence", HUMAN_CONFIDENCE)
+        row_method = row.get("labeling_method", LABELING_MANUAL)
         if ro < onset_s:
             kept.append(
                 {
@@ -542,6 +591,7 @@ def add_interval(
                     "individual": individual,
                     "individual_rec": individual_rec,
                     "confidence": row_conf,
+                    "labeling_method": row_method,
                 }
             )
         if rf > offset_s:
@@ -553,6 +603,7 @@ def add_interval(
                     "individual": individual,
                     "individual_rec": individual_rec,
                     "confidence": row_conf,
+                    "labeling_method": row_method,
                 }
             )
 
@@ -564,6 +615,7 @@ def add_interval(
             "individual": individual,
             "individual_rec": individual_rec,
             "confidence": float(confidence),
+            "labeling_method": str(labeling_method),
         }
     )
 
@@ -877,6 +929,7 @@ def _rows_to_df(rows: list[dict]) -> pd.DataFrame:
     df = df.reindex(columns=INTERVAL_COLUMNS)
     ensure_individual_rec(df)
     ensure_confidence(df)
+    ensure_labeling_method(df)
     for col, dtype in INTERVAL_DTYPES.items():
         df[col] = df[col].astype(dtype)
     return df

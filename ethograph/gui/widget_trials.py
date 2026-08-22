@@ -690,6 +690,40 @@ class TrialsWidget(QWidget):
         self._register_filter_value(column, value)
         self._queue_save(column)
 
+    def set_column_values(self, column: str, values: dict[str, object]) -> None:
+        """Set *column* for many trials at once (keyed by trial id as text), then save.
+
+        The curation sync's path: it runs on a timer, so a new column costs one
+        table rebuild and an existing one only the changed cells. Filters are
+        left alone for the same reason :meth:`set_metadata_value` leaves them.
+        """
+        df = getattr(self.app_state, "metadata_df", None)
+        df = self._metadata_df.copy() if df is None else df.copy()
+        if df.empty or "trial" not in df.columns:
+            return
+        new_column = column not in df.columns
+        if new_column:
+            df[column] = blank_column(df)
+        trials = df["trial"].astype(str)
+        hit = trials.isin(values.keys())
+        if not hit.any():
+            return
+        incoming = [values[t] for t in trials[hit]]
+        if not all(fits_dtype(df[column], v) for v in incoming):
+            df[column] = df[column].astype(object)
+        df.loc[hit, column] = incoming
+
+        self.app_state.metadata_df = df
+        self._metadata_df = df.copy()
+        if new_column:
+            self.reload_metadata()
+        else:
+            for trial, value in values.items():
+                self._show_value(trial, column, value)
+        for value in set(values.values()):
+            self._register_filter_value(column, value)
+        self._queue_save(column)
+
     def _show_value(self, trial, column: str, value) -> None:
         """Put the stored (typed) value in the cell."""
         item = self._cell_item(trial, column)

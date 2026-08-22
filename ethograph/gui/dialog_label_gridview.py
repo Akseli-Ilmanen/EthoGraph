@@ -1,30 +1,35 @@
-"""Grid of video frames at label times (Tools ▸ Labels: Show frames as Grid/PDF…).
+"""Label grid view: video frames at label times, and verdicts by clicking them.
 
-One window with two tabs. On *Setup* the user ticks label classes from
-``mapping.txt`` (point and state events), narrows the trials through the
-metadata table's condition columns, and picks which cameras matter.
-*Generate* decodes, for every matching label instance, the video frame closest
-to its time — one frame per point event, a start and an end frame per state
-event — overlays the pose when a pose file exists for that (trial, camera),
-and fills the *Frames* tab with a scrollable grid of the thumbnails (the
-window carries minimise/maximise buttons, so the grid goes full screen in one
-click and the tiles refit to the new width). Each tile is titled with the
-label, trial, camera, time and the label's confidence; clicking it jumps the
-main GUI to that trial with the
-cursor on the label's time. A confidence threshold outlines every tile below
-it in red — the review loop for model predictions, which carry the model's own
-score while human labels are 1.0. **Histogram…** next to it shows where those
-scores actually pile up: one histogram per label class (per individual too,
-when more than one is labelled), the part below the threshold drawn in the
-same red, and its threshold spin bound both ways to the grid's. The grid's
-column count is adjustable and the whole grid exports to a paginated PDF.
+Opened from the Labels tab's Curation section (**Label grid view…**) on the
+labels in scope — or from the Predict dialog on what it just predicted. One
+window with two tabs. On *Setup* the label classes are listed read-only (the
+scope area in the Labels tab is the one place to pick them), the trials are
+the ones the trials table shows (its filters are the one place trials are
+included or excluded, for every operation), and the cameras that matter are
+picked. *Generate* decodes, for every matching label instance, the
+video frame closest to its time — one frame per point event, a start and an
+end frame per state event — overlays the pose when a pose file exists for
+that (trial, camera), and fills the *Frames* tab with a grid of thumbnails.
+Each tile is titled with the label, trial, camera, time, confidence and
+``labeling_method``; a confidence threshold outlines doubtful tiles in red and
+**Histogram…** shows where the scores pile up.
 
-The grid is also where a frame-by-frame review pass is *scoped*: tick the
-tiles that look wrong (**Tick flagged** ticks everything the confidence
-threshold outlines) and **Refine ticked frame-by-frame…** hands exactly those
-boundaries to :mod:`ethograph.gui.dialog_refine`, whose queue then walks them
-and nothing else — Enter to move a boundary onto the right frame, Backspace to
-delete an event that should not be there.
+What a tile click does is the grid's **mode**:
+
+* *Click = navigate* — jump the main GUI to that trial and time. In
+  frame-by-frame curation mode this drops straight into the review at that
+  boundary (:meth:`CurationPanel.start_review_at`).
+* *Click = curated* — every tile clicked turns green; **Done** curates those
+  labels (automated → curated).
+* *Click = uncurated, rest = curated* — for a batch that is mostly right:
+  click only the bad ones (orange), and **Done** curates everything else.
+  **Mark low-confidence as uncurated** pre-clicks the tiles the confidence
+  threshold outlines — only in this mode, since a low score is a reason to
+  doubt a label, never to approve it.
+
+The grid's column count is adjustable and the whole grid exports to a
+paginated PDF. The same verdict machinery (:class:`TileVerdicts`) drives the
+video grid (``dialog_video_grid.py``).
 """
 
 from __future__ import annotations
@@ -42,8 +47,10 @@ import pyqtgraph as pg
 from qtpy.QtCore import QEventLoop, QRect, Qt, QTimer, Signal
 from qtpy.QtGui import QColor, QFont, QImage, QPageSize, QPainter, QPdfWriter, QPen, QPixmap
 from qtpy.QtWidgets import (
+    QAbstractItemView,
     QApplication,
     QCheckBox,
+    QComboBox,
     QDialog,
     QDockWidget,
     QDoubleSpinBox,
@@ -64,16 +71,20 @@ from qtpy.QtWidgets import (
 )
 
 from ethograph.gui.app_constants import MULTIDIM_COLORS
-from ethograph.gui.dialog_refine import open_refine_dialog
 from ethograph.gui.file_dialogs import browse_save_file
 from ethograph.gui.notify import notify
 from ethograph.gui.pose_fill import VideoFrameSource
 from ethograph.gui.pose_render import POSES_DATASET_SUFFIX, PoseRenderData, load_pose_from_file
-from ethograph.gui.table_filter import CategoryFilterDialog
 from ethograph.gui.video_manager import probe_video
-from ethograph.io.metadata_table import allowed_trials_from_metadata, condition_columns
 from ethograph.io.time_model import TimeRange
-from ethograph.labels.intervals import EVENT_TYPE_POINT, HUMAN_CONFIDENCE
+from ethograph.labels.curation import subject_str
+from ethograph.labels.intervals import (
+    EVENT_TYPE_POINT,
+    HUMAN_CONFIDENCE,
+    LABELING_AUTOMATED,
+    LABELING_CURATED,
+    LABELING_MANUAL,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -102,6 +113,21 @@ _REFLOW_DEBOUNCE_MS = 120
 LOW_CONFIDENCE_COLOR = "#d94040"
 _LOW_CONFIDENCE_STYLE = f"QFrame#frameCell {{ border: 2px solid {LOW_CONFIDENCE_COLOR}; border-radius: 3px; }}"
 
+#: Tile outlines for the verdict a click gave: curated (green) or flagged as
+#: wrong (orange — distinct from the confidence red, which is a hint, not a
+#: verdict).
+CURATE_COLOR = "#3fb950"
+UNCURATE_COLOR = "#ff9f1c"
+_CURATE_STYLE = f"QFrame#frameCell {{ border: 3px solid {CURATE_COLOR}; border-radius: 3px; }}"
+_UNCURATE_STYLE = f"QFrame#frameCell {{ border: 3px solid {UNCURATE_COLOR}; border-radius: 3px; }}"
+
+#: Grid click modes: key → combo text.
+GRID_MODES = {
+    "navigate": "Click = navigate",
+    "curate": "Click = curated",
+    "uncurate": "Click = uncurated, rest = curated",
+}
+
 #: Confidence-histogram popup: dark canvas (the label colours are picked for
 #: one), plots per row and each plot's floor.
 _HIST_BG = "#1a1d21"
@@ -117,7 +143,7 @@ _HIST_MIN_COLOR_DISTANCE = 90.0
 
 
 # ----------------------------------------------------------------------
-# Pure logic (Qt-free, unit-tested in tests/test_unit/test_label_frames.py)
+# Pure logic (Qt-free, unit-tested in tests/test_unit/test_label_gridview.py)
 # ----------------------------------------------------------------------
 
 
@@ -139,6 +165,8 @@ class FrameEntry:
     #: How sure the label is: 1.0 for a human label, the model's own score for
     #: a predicted one (see ``labels/onset_model.py``).
     confidence: float = HUMAN_CONFIDENCE
+    #: Who vouches for the label (``labels/curation.py``).
+    labeling_method: str = LABELING_MANUAL
     color_hex: str = "#ffffff"
     image: np.ndarray | None = None
     frame_idx: int | None = None
@@ -159,6 +187,31 @@ def _mapping_color_hex(info: dict) -> str:
     if color is None:
         return "#ffffff"
     return "#{:02x}{:02x}{:02x}".format(*(int(c * 255) for c in color[:3]))
+
+
+def entry_key(entry) -> tuple:
+    """The label an entry belongs to — two cameras, or a start and an end
+    tile, share one key, so a verdict on any of them is a verdict on the label."""
+    return (
+        str(entry.trial),
+        int(entry.label_id),
+        round(float(entry.onset_s), 6),
+        subject_str(entry.individual),
+        subject_str(entry.individual_rec),
+    )
+
+
+def entry_inst(entry) -> dict:
+    """The label row an entry stands for, as the curation helpers want it."""
+    return {
+        "trial": entry.trial,
+        "labels": entry.label_id,
+        "onset_s": entry.onset_s,
+        "offset_s": entry.offset_s,
+        "individual": entry.individual,
+        "individual_rec": entry.individual_rec,
+        "event_type": entry.event_type,
+    }
 
 
 def build_frame_entries(
@@ -207,61 +260,69 @@ def build_frame_entries(
                         individual=row.get("individual"),
                         individual_rec=row.get("individual_rec"),
                         confidence=_row_confidence(row),
+                        labeling_method=_row_method(row),
                         color_hex=_mapping_color_hex(info),
                     )
                 )
     return entries
 
 
-def _subject_key(value) -> str:
-    """Subject columns compare as text; ``None`` and NaN are the same blank."""
-    if value is None or (isinstance(value, float) and math.isnan(value)):
-        return ""
-    return str(value)
-
-
 def seeds_from_entries(entries: list[FrameEntry]) -> list[dict]:
-    """Refine seeds for *entries* — one per boundary, cameras deduplicated.
+    """Review seeds for *entries* — one per boundary, cameras deduplicated.
 
-    A boundary two cameras saw is two tiles but one label, and the refine
+    A boundary two cameras saw is two tiles but one label, and the review
     queue must stop at it once. Each seed is the label row plus the ``field``
-    to edit, which is what :func:`ethograph.gui.dialog_refine.targets_from_seeds`
+    to edit, which is what :func:`ethograph.labels.curation.targets_from_seeds`
     consumes.
     """
     seeds: dict[tuple, dict] = {}
     for entry in entries:
-        key = (
-            str(entry.trial),
-            entry.label_id,
-            round(entry.onset_s, 6),
-            _subject_key(entry.individual),
-            _subject_key(entry.individual_rec),
-            entry.boundary,
-        )
-        seeds.setdefault(
-            key,
-            {
-                "trial": entry.trial,
-                "labels": entry.label_id,
-                "onset_s": entry.onset_s,
-                "offset_s": entry.offset_s,
-                "individual": entry.individual,
-                "individual_rec": entry.individual_rec,
-                "event_type": entry.event_type,
-                "field": entry.boundary,
-            },
-        )
+        key = (*entry_key(entry), entry.boundary)
+        seeds.setdefault(key, {**entry_inst(entry), "field": entry.boundary})
     return list(seeds.values())
 
 
 def flagged_trials(entries: list[FrameEntry], threshold: float) -> set[str]:
-    """Trials holding at least one entry below *threshold* (as strings).
-
-    A trial the model got wrong once is worth reading end to end: its other
-    events may score high and still be misplaced, so this is what widens a
-    review from the flagged frames to the trials they sit in.
-    """
+    """Trials holding at least one entry below *threshold* (as strings)."""
     return {str(entry.trial) for entry in entries if is_low_confidence(entry, threshold)}
+
+
+class TileVerdicts:
+    """Which labels were clicked in a curate/uncurate mode, and what Done does.
+
+    Keyed by :func:`entry_key`, so clicking any tile of a label marks the
+    label. Shared by the frame grid and the video grid.
+    """
+
+    def __init__(self) -> None:
+        self.clicked: set[tuple] = set()
+
+    def toggle(self, entry) -> bool:
+        """Flip *entry*'s label; returns whether it is clicked now."""
+        key = entry_key(entry)
+        if key in self.clicked:
+            self.clicked.discard(key)
+            return False
+        self.clicked.add(key)
+        return True
+
+    def is_clicked(self, entry) -> bool:
+        return entry_key(entry) in self.clicked
+
+    def clear(self) -> None:
+        self.clicked.clear()
+
+    def insts_for_done(self, mode: str, entries) -> list[dict]:
+        """The labels Done curates under *mode* — clicked ones in ``curate``,
+        every other one in ``uncurate`` — each label once, automated only."""
+        out: dict[tuple, dict] = {}
+        for entry in entries:
+            if entry.labeling_method != LABELING_AUTOMATED:
+                continue
+            clicked = entry_key(entry) in self.clicked
+            if (mode == "curate" and clicked) or (mode == "uncurate" and not clicked):
+                out.setdefault(entry_key(entry), entry_inst(entry))
+        return list(out.values())
 
 
 @dataclass
@@ -288,19 +349,12 @@ def confidence_groups(entries: list[FrameEntry]) -> list[ConfidenceGroup]:
     """
     rows: dict[tuple, FrameEntry] = {}
     for entry in entries:
-        key = (
-            str(entry.trial),
-            entry.label_id,
-            round(entry.onset_s, 6),
-            _subject_key(entry.individual),
-            _subject_key(entry.individual_rec),
-        )
-        rows.setdefault(key, entry)
+        rows.setdefault(entry_key(entry), entry)
 
-    per_individual = len({_subject_key(e.individual) for e in rows.values()}) > 1
+    per_individual = len({subject_str(e.individual) for e in rows.values()}) > 1
     groups: dict[tuple[int, str], ConfidenceGroup] = {}
     for entry in rows.values():
-        individual = _subject_key(entry.individual) if per_individual else None
+        individual = subject_str(entry.individual) if per_individual else None
         group = groups.get((entry.label_id, individual or ""))
         if group is None:
             group = ConfidenceGroup(entry.label_id, entry.name, individual, entry.color_hex)
@@ -330,6 +384,15 @@ def _row_confidence(row) -> float:
     if value is None or (isinstance(value, float) and math.isnan(value)):
         return HUMAN_CONFIDENCE
     return float(value)
+
+
+def _row_method(row) -> str:
+    """A label row's ``labeling_method``; a row without one is read off its
+    confidence, exactly as :func:`ensure_labeling_method` would."""
+    value = row.get("labeling_method")
+    if isinstance(value, str) and value in (LABELING_MANUAL, LABELING_AUTOMATED, LABELING_CURATED):
+        return value
+    return LABELING_AUTOMATED if _row_confidence(row) < HUMAN_CONFIDENCE else LABELING_MANUAL
 
 
 def _hex_to_rgb(color_hex: str) -> tuple[int, int, int]:
@@ -437,6 +500,43 @@ def _load_group_pose(
         return None
 
 
+def resolve_video_jobs(
+    groups: dict,
+    *,
+    alignment,
+    video_folder: str | None,
+    current_trial=None,
+    current_video_path: str | None = None,
+) -> list[tuple]:
+    """Resolve each (trial, camera) group's video path, fps, offset and frame count.
+
+    Sequential on purpose — the alignment NWB (h5py) is not safe to read from
+    worker threads. A group whose video cannot be found or probed has its
+    entries' ``error`` set and is left out. Shared with the video grid.
+    """
+    jobs: list[tuple] = []
+    for (_, camera), group in groups.items():
+        trial = group[0].trial
+        path = alignment.resolve_media_path(trial, "video", device=camera, fallback_folder=video_folder)
+        if not path and current_video_path and str(trial) == str(current_trial):
+            path = current_video_path
+        if not path or not Path(path).exists():
+            for entry in group:
+                entry.error = "video not found"
+            continue
+        try:
+            probe = probe_video(path)
+            fps = alignment.get_stream_rate("video", camera) or probe.fps
+            offset = alignment.stream_offset_for_trial(trial, "video", camera)
+        except (OSError, ValueError) as exc:
+            logger.warning("Video probe failed for %s: %s", path, exc)
+            for entry in group:
+                entry.error = str(exc)
+            continue
+        jobs.append((group, path, fps, offset, probe.nframes))
+    return jobs
+
+
 def decode_entry_images(
     entries: list[FrameEntry],
     *,
@@ -468,28 +568,17 @@ def decode_entry_images(
         groups.setdefault((str(entry.trial), entry.camera), []).append(entry)
 
     # Phase 1 — sequential: resolve paths, rates, offsets and pose files.
-    # The alignment NWB (h5py) is not safe to read from worker threads.
-    jobs: list[tuple[list[FrameEntry], str, float, float, PoseRenderData | None, object, int]] = []
-    for (_, camera), group in groups.items():
-        trial = group[0].trial
-        path = alignment.resolve_media_path(trial, "video", device=camera, fallback_folder=video_folder)
-        if not path and current_video_path and str(trial) == str(current_trial):
-            path = current_video_path
-        if not path or not Path(path).exists():
-            for entry in group:
-                entry.error = "video not found"
-            continue
-        try:
-            probe = probe_video(path)
-            fps = alignment.get_stream_rate("video", camera) or probe.fps
-            offset = alignment.stream_offset_for_trial(trial, "video", camera)
-            pose = _load_group_pose(alignment, trial, camera, pose_folder, source_software, fps)
-        except (OSError, ValueError) as exc:
-            logger.warning("Frame extraction failed for %s: %s", path, exc)
-            for entry in group:
-                entry.error = str(exc)
-            continue
-        jobs.append((group, path, fps, offset, pose, (camera_crops or {}).get(camera), probe.nframes))
+    jobs: list[tuple] = []
+    for group, path, fps, offset, nframes in resolve_video_jobs(
+        groups,
+        alignment=alignment,
+        video_folder=video_folder,
+        current_trial=current_trial,
+        current_video_path=current_video_path,
+    ):
+        camera = group[0].camera
+        pose = _load_group_pose(alignment, group[0].trial, camera, pose_folder, source_software, fps)
+        jobs.append((group, path, fps, offset, pose, (camera_crops or {}).get(camera), nframes))
 
     def report() -> bool:
         if progress_cb is None:
@@ -532,7 +621,7 @@ def decode_entry_images(
             if not report():
                 cancel.set()
             # Keep the progress dialog painting while the workers decode.
-            _settle(50)
+            settle(50)
     report()
     for future in futures:
         future.result()
@@ -543,7 +632,7 @@ def decode_entry_images(
 # ----------------------------------------------------------------------
 
 
-def _settle(ms: int) -> None:
+def settle(ms: int) -> None:
     """Let the GUI redraw for *ms* — a local event loop, not a blocking sleep."""
     loop = QEventLoop()
     QTimer.singleShot(ms, loop.quit)
@@ -655,7 +744,7 @@ def capture_panel_images(
                 play=False,
                 view_rel=TimeRange(lead.t_rel - half, lead.t_rel + half),
             )
-            _settle(PANEL_TRIAL_SETTLE_MS if trial_key != last_trial else PANEL_SETTLE_MS)
+            settle(PANEL_TRIAL_SETTLE_MS if trial_key != last_trial else PANEL_SETTLE_MS)
             last_trial = trial_key
 
             shots: list[tuple[str, QImage]] = []
@@ -696,6 +785,7 @@ def _entry_info(entry: FrameEntry) -> str:
         parts.append(str(individual))
     parts.append(f"{entry.t_rel:.3f} s")
     parts.append(f"conf {entry.confidence:.2f}")
+    parts.append(entry.labeling_method)
     if entry.cropped:
         parts.append("cropped")
     return "  ·  ".join(parts)
@@ -932,12 +1022,138 @@ class ConfidenceHistogramsDialog(QDialog):
             plot.setTitle(_group_title(group, int(below.sum())), color=group.color_hex, size="10pt")
 
 
-class LabelFramesGridView(QWidget):
-    """Scrollable grid of label frames — the *Frames* tab of the dialog.
+def curation_panel_of(meta):
+    """The Labels tab's curation panel, when the host GUI has one."""
+    return getattr(getattr(meta, "labels_widget", None), "curation_panel", None)
 
-    A tile click navigates the GUI there; a tile's tick box queues that
-    boundary for frame-by-frame refinement, which is the review loop this grid
-    exists for — scan the sheet, tick what is wrong, refine exactly those.
+
+class GridModeBar(QWidget):
+    """Mode combo + Done / Mark flagged — the verdict controls both grids share.
+
+    The host passes its entries and a ``restyle()`` callback; this widget owns
+    the :class:`TileVerdicts` and applies Done through the curation panel.
+    """
+
+    mode_changed = Signal(str)
+
+    def __init__(self, meta, entries_fn, restyle_fn, flagged_fn=None, parent=None):
+        super().__init__(parent)
+        self.meta = meta
+        self._entries_fn = entries_fn
+        self._restyle_fn = restyle_fn
+        self._flagged_fn = flagged_fn
+        self.verdicts = TileVerdicts()
+
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.addWidget(QLabel("Mode:"))
+        self.mode_combo = QComboBox()
+        for key, text in GRID_MODES.items():
+            self.mode_combo.addItem(text, key)
+        self.mode_combo.setToolTip(
+            "Click = navigate: a tile click jumps the GUI there (into the frame-by-frame\n"
+            "review when that curation mode is on).\n"
+            "Click = curated: Done curates every clicked label.\n"
+            "Click = uncurated, rest = curated: click the bad ones, Done curates the rest."
+        )
+        self.mode_combo.currentIndexChanged.connect(self._on_mode)
+        lay.addWidget(self.mode_combo)
+        self.mark_flagged_btn = QPushButton("Mark low-confidence as uncurated")
+        self.mark_flagged_btn.setAutoDefault(False)
+        self.mark_flagged_btn.setToolTip(
+            "Click every tile the confidence threshold outlines in red, as uncurated.\n"
+            "Only in 'Click = uncurated, rest = curated': a low score is a reason to\n"
+            "doubt a label, never to approve it."
+        )
+        self.mark_flagged_btn.clicked.connect(self._mark_flagged)
+        lay.addWidget(self.mark_flagged_btn)
+        self.clear_btn = QPushButton("Clear")
+        self.clear_btn.setAutoDefault(False)
+        self.clear_btn.clicked.connect(self.clear)
+        lay.addWidget(self.clear_btn)
+        self.count_label = QLabel("")
+        self.count_label.setStyleSheet("color: grey; font-size: 10px;")
+        lay.addWidget(self.count_label)
+        self.done_btn = QPushButton("Done")
+        self.done_btn.setAutoDefault(False)
+        self.done_btn.setToolTip("Apply the verdicts: curate the labels this mode selects")
+        self.done_btn.clicked.connect(self.apply_done)
+        lay.addWidget(self.done_btn)
+        self._sync_buttons()
+
+    def mode(self) -> str:
+        return str(self.mode_combo.currentData() or "navigate")
+
+    def _sync_buttons(self) -> None:
+        verdict_mode = self.mode() != "navigate"
+        self.done_btn.setEnabled(verdict_mode)
+        self.clear_btn.setEnabled(verdict_mode)
+        # Low confidence argues for doubt, not approval: the shortcut exists
+        # only where a click means "uncurated".
+        self.mark_flagged_btn.setEnabled(self.mode() == "uncurate" and self._flagged_fn is not None)
+
+    def _on_mode(self, *_args) -> None:
+        """A mode switch forgets the clicks — a click means something else now."""
+        self._sync_buttons()
+        self.verdicts.clear()
+        self._restyle_fn()
+        self._sync_count()
+        self.mode_changed.emit(self.mode())
+
+    def _sync_count(self) -> None:
+        n = len(self.verdicts.clicked)
+        self.count_label.setText(f"{n} clicked" if n else "")
+
+    def click(self, entry) -> bool:
+        """A tile click in a verdict mode; returns whether it is marked now."""
+        marked = self.verdicts.toggle(entry)
+        self._restyle_fn()
+        self._sync_count()
+        return marked
+
+    def clear(self) -> None:
+        self.verdicts.clear()
+        self._restyle_fn()
+        self._sync_count()
+
+    def _mark_flagged(self) -> None:
+        if self._flagged_fn is None or self.mode() != "uncurate":
+            return
+        for entry in self._flagged_fn():
+            self.verdicts.clicked.add(entry_key(entry))
+        self._restyle_fn()
+        self._sync_count()
+
+    def apply_done(self) -> int:
+        """Curate what the mode selects; the entries are restamped to match."""
+        panel = curation_panel_of(self.meta)
+        entries = list(self._entries_fn())
+        insts = self.verdicts.insts_for_done(self.mode(), entries)
+        if not insts:
+            notify("Nothing to curate — no automated labels selected.", severity="warning")
+            return 0
+        if panel is None:
+            notify("No curation panel to apply the verdicts to.", severity="warning")
+            return 0
+        n = panel.curate_labels(insts)
+        done_keys = {
+            (str(i["trial"]), int(i["labels"]), round(float(i["onset_s"]), 6), subject_str(i.get("individual")),
+             subject_str(i.get("individual_rec")))
+            for i in insts
+        }
+        for entry in entries:
+            if entry_key(entry) in done_keys:
+                entry.labeling_method = LABELING_CURATED
+        self.verdicts.clear()
+        self._restyle_fn()
+        self._sync_count()
+        return n
+
+
+class LabelGridView(QWidget):
+    """Grid of label frames — the *Frames* tab of the dialog.
+
+    A tile click is what the mode bar says it is: a jump, or a verdict.
     """
 
     def __init__(self, meta, entries: list[FrameEntry], parent=None):
@@ -945,9 +1161,8 @@ class LabelFramesGridView(QWidget):
         self.meta = meta
         self.app_state = meta.app_state
         self._entries = entries
-        #: The refine dialog handed the ticked boundaries — kept alive here
-        #: only when no top bar owns one (tests, embedded use).
-        self._refine_dialog = None
+        #: Filled once the toolbar exists — the mode bar restyles on creation.
+        self._cells: list[QFrame] = []
         #: The confidence-histogram popup while it is open.
         self._hist_dialog: ConfidenceHistogramsDialog | None = None
         self._reflow_timer = QTimer(self)
@@ -959,8 +1174,9 @@ class LabelFramesGridView(QWidget):
         bar.addWidget(QLabel("Columns:"))
         self.columns_spin = QSpinBox()
         self.columns_spin.setRange(1, 12)
-        self.columns_spin.setValue(4)
-        self.columns_spin.valueChanged.connect(self._relayout)
+        # Remembered across sessions and datasets (SCOPE_GLOBAL).
+        self.columns_spin.setValue(int(self.app_state.get_with_default("label_grid_columns")))
+        self.columns_spin.valueChanged.connect(self._on_columns_changed)
         bar.addWidget(self.columns_spin)
         bar.addSpacing(12)
         bar.addWidget(QLabel("Flag confidence below:"))
@@ -974,7 +1190,7 @@ class LabelFramesGridView(QWidget):
             "Outline every tile whose label scores below this in red.\n"
             "Human labels are 1.0; a predicted label carries the model's own score."
         )
-        self.threshold_spin.valueChanged.connect(self._apply_threshold)
+        self.threshold_spin.valueChanged.connect(self._apply_styles)
         bar.addWidget(self.threshold_spin)
         self.histogram_btn = QPushButton("Histogram…")
         self.histogram_btn.setAutoDefault(False)
@@ -985,21 +1201,6 @@ class LabelFramesGridView(QWidget):
         )
         self.histogram_btn.clicked.connect(self._show_histograms)
         bar.addWidget(self.histogram_btn)
-        self.tick_flagged_btn = QPushButton("Tick flagged")
-        self.tick_flagged_btn.setAutoDefault(False)
-        self.tick_flagged_btn.setToolTip("Tick every tile the threshold outlines in red")
-        self.tick_flagged_btn.clicked.connect(self._tick_flagged)
-        bar.addWidget(self.tick_flagged_btn)
-        self.tick_flagged_trials_btn = QPushButton("Tick their whole trials")
-        self.tick_flagged_trials_btn.setAutoDefault(False)
-        self.tick_flagged_trials_btn.setToolTip(
-            "Tick every event of every trial that holds a flagged one.\n"
-            "A trial the model got one event wrong in is worth reviewing\n"
-            "end to end: its other events may score high and still sit\n"
-            "on the wrong frame."
-        )
-        self.tick_flagged_trials_btn.clicked.connect(self._tick_flagged_trials)
-        bar.addWidget(self.tick_flagged_trials_btn)
         bar.addStretch()
         bar.addWidget(QLabel(f"{len(entries)} frames"))
         export_btn = QPushButton("Export PDF…")
@@ -1008,33 +1209,18 @@ class LabelFramesGridView(QWidget):
         bar.addWidget(export_btn)
         layout.addLayout(bar)
 
-        select_bar = QHBoxLayout()
-        self.clear_ticks_btn = QPushButton("Clear ticks")
-        self.clear_ticks_btn.setAutoDefault(False)
-        self.clear_ticks_btn.clicked.connect(self._clear_ticks)
-        select_bar.addWidget(self.clear_ticks_btn)
-        self.selection_label = QLabel("")
-        self.selection_label.setStyleSheet("color: grey; font-size: 10px;")
-        select_bar.addWidget(self.selection_label)
-        select_bar.addStretch()
-        self.refine_btn = QPushButton("Refine ticked frame-by-frame…")
-        self.refine_btn.setAutoDefault(False)
-        self.refine_btn.setToolTip(
-            "Hand the ticked boundaries to the frame-by-frame refinement dialog:\n"
-            "its queue then walks exactly these — ←/→ nudge the video, Enter\n"
-            "commits the frame on screen, Backspace deletes an event that\n"
-            "should not exist at all."
+        self.mode_bar = GridModeBar(
+            meta,
+            entries_fn=lambda: self._entries,
+            restyle_fn=self._apply_styles,
+            flagged_fn=self._flagged_entries,
         )
-        self.refine_btn.clicked.connect(self._refine_ticked)
-        select_bar.addWidget(self.refine_btn)
-        layout.addLayout(select_bar)
+        layout.addWidget(self.mode_bar)
 
-        hint = QLabel(
-            "Click a frame to jump the GUI to that trial and time · "
-            "tick the frames that look wrong, then refine them one by one."
-        )
-        hint.setStyleSheet("color: grey; font-size: 10px;")
-        layout.addWidget(hint)
+        self.hint = QLabel("")
+        self.hint.setStyleSheet("color: grey; font-size: 10px;")
+        layout.addWidget(self.hint)
+        self.mode_bar.mode_changed.connect(self._sync_hint)
 
         self._scroll = QScrollArea()
         self._scroll.setWidgetResizable(True)
@@ -1046,8 +1232,25 @@ class LabelFramesGridView(QWidget):
 
         self._cells = [self._make_cell(entry) for entry in entries]
         self._relayout()
-        self._apply_threshold()
-        self._sync_selection()
+        self._apply_styles()
+        self._sync_hint()
+
+    @property
+    def entries(self) -> list[FrameEntry]:
+        return self._entries
+
+    def _sync_hint(self, *_args) -> None:
+        mode = self.mode_bar.mode()
+        if mode == "navigate":
+            panel = curation_panel_of(self.meta)
+            if panel is not None and panel.mode() == "frame":
+                self.hint.setText("Click a frame to review that boundary frame by frame in the main GUI.")
+            else:
+                self.hint.setText("Click a frame to jump the GUI to that trial and time.")
+        elif mode == "curate":
+            self.hint.setText("Click the frames that are right, then Done curates those labels.")
+        else:
+            self.hint.setText("Click the frames that are wrong, then Done curates every other label.")
 
     def _make_cell(self, entry: FrameEntry) -> QFrame:
         cell = QFrame()
@@ -1056,20 +1259,13 @@ class LabelFramesGridView(QWidget):
         lay.setContentsMargins(2, 2, 2, 2)
         lay.setSpacing(2)
 
-        head = QHBoxLayout()
-        head.setSpacing(4)
-        select_cb = QCheckBox()
-        select_cb.setToolTip("Tick to queue this boundary for frame-by-frame refinement")
-        select_cb.toggled.connect(self._sync_selection)
-        head.addWidget(select_cb)
         title = QLabel(_entry_title(entry))
         title.setStyleSheet(f"font-weight: bold; color: {entry.color_hex};")
-        head.addWidget(title, stretch=1)
-        lay.addLayout(head)
-        cell._select_cb = select_cb  # type: ignore[attr-defined]
+        lay.addWidget(title)
         info = QLabel(_entry_info(entry))
         info.setStyleSheet("color: grey; font-size: 10px;")
         lay.addWidget(info)
+        cell._info = info  # type: ignore[attr-defined]
 
         #: (label, unscaled pixmap) pairs — relayout rescales each to the
         #: current column width.
@@ -1086,7 +1282,7 @@ class LabelFramesGridView(QWidget):
             image_label.setText(f"(no frame:\n{entry.error or 'unavailable'})")
             image_label.setFrameShape(QFrame.StyledPanel)
             image_label.setMinimumSize(160, 90)
-        image_label.clicked.connect(lambda e=entry: self._jump(e))
+        image_label.clicked.connect(lambda e=entry: self._on_tile_clicked(e))
         lay.addWidget(image_label)
 
         for panel_title, qimage in entry.panels:
@@ -1104,14 +1300,21 @@ class LabelFramesGridView(QWidget):
         lay.addStretch()
         return cell
 
-    def _apply_threshold(self):
-        """Outline the tiles below the threshold; clear the rest."""
+    def _flagged_entries(self) -> list[FrameEntry]:
         threshold = self.threshold_spin.value()
+        return [e for e in self._entries if is_low_confidence(e, threshold)]
+
+    def _apply_styles(self, *_args) -> None:
+        """Outline the tiles: verdict colour first, else the confidence red."""
+        threshold = self.threshold_spin.value()
+        mode = self.mode_bar.mode()
+        verdicts = self.mode_bar.verdicts
         for cell, entry in zip(self._cells, self._entries):
-            cell.setStyleSheet(_LOW_CONFIDENCE_STYLE if is_low_confidence(entry, threshold) else "")
-        any_flagged = any(is_low_confidence(e, threshold) for e in self._entries)
-        self.tick_flagged_btn.setEnabled(any_flagged)
-        self.tick_flagged_trials_btn.setEnabled(any_flagged)
+            if mode != "navigate" and verdicts.is_clicked(entry):
+                cell.setStyleSheet(_CURATE_STYLE if mode == "curate" else _UNCURATE_STYLE)
+            else:
+                cell.setStyleSheet(_LOW_CONFIDENCE_STYLE if is_low_confidence(entry, threshold) else "")
+            cell._info.setText(_entry_info(entry))
         if self._hist_dialog is not None:
             self._hist_dialog.set_threshold(threshold)
 
@@ -1133,54 +1336,16 @@ class LabelFramesGridView(QWidget):
     def _on_histograms_closed(self, *_args):
         self._hist_dialog = None
 
-    # ------------------------------------------------------------------
-    # Ticking tiles → frame-by-frame refinement
-    # ------------------------------------------------------------------
-
-    def _ticked_entries(self) -> list[FrameEntry]:
-        return [entry for cell, entry in zip(self._cells, self._entries) if cell._select_cb.isChecked()]
-
-    def _sync_selection(self, *_args):
-        """Keep the tick count and the Refine button honest."""
-        n = len(self._ticked_entries())
-        self.selection_label.setText(f"{n} ticked" if n else "")
-        self.refine_btn.setEnabled(bool(n))
-
-    def _tick_flagged(self):
-        """Tick every tile the confidence threshold flags."""
-        threshold = self.threshold_spin.value()
-        for cell, entry in zip(self._cells, self._entries):
-            if is_low_confidence(entry, threshold):
-                cell._select_cb.setChecked(True)
-
-    def _tick_flagged_trials(self):
-        """Tick every tile of every trial holding a flagged one."""
-        trials = flagged_trials(self._entries, self.threshold_spin.value())
-        for cell, entry in zip(self._cells, self._entries):
-            if str(entry.trial) in trials:
-                cell._select_cb.setChecked(True)
-
-    def _clear_ticks(self):
-        for cell in self._cells:
-            cell._select_cb.setChecked(False)
-
-    def _refine_ticked(self):
-        """Hand the ticked boundaries to the frame-by-frame refine dialog."""
-        entries = self._ticked_entries()
-        if not entries:
-            notify("Tick the frames that need refining first.", severity="warning")
-            return
-        seeds = seeds_from_entries(entries)
-        self._refine_dialog = open_refine_dialog(self.meta, parent=self)
-        if self._refine_dialog.start_from_seeds(seeds, from_grid=True):
-            notify(f"Refining {len(seeds)} boundaries — ←/→ nudge the video, Enter commits, Backspace deletes.")
-
     def resizeEvent(self, event):
         """Refit the thumbnails whenever the width changes — maximizing the
         dialog grows every tile to the new column width."""
         super().resizeEvent(event)
         if event.oldSize().width() != event.size().width():
             self._reflow_timer.start(_REFLOW_DEBOUNCE_MS)
+
+    def _on_columns_changed(self, value: int) -> None:
+        self.app_state.label_grid_columns = int(value)
+        self._relayout()
 
     def _relayout(self):
         columns = self.columns_spin.value()
@@ -1195,19 +1360,23 @@ class LabelFramesGridView(QWidget):
                     label.setPixmap(pixmap.scaledToWidth(min(thumb_w, pixmap.width()), Qt.SmoothTransformation))
             self._grid.addWidget(cell, i // columns, i % columns, alignment=Qt.AlignTop)
 
+    def _on_tile_clicked(self, entry: FrameEntry):
+        if self.mode_bar.mode() == "navigate":
+            self._jump(entry)
+        else:
+            self.mode_bar.click(entry)
+
     def _jump(self, entry: FrameEntry):
+        """Navigate mode: go there — into the frame-by-frame review when the
+        curation panel is in that mode, else a plain jump."""
+        panel = curation_panel_of(self.meta)
+        if panel is not None and panel.mode() == "frame":
+            panel.start_review_at(entry_inst(entry), entry.boundary)
+            return
         nav = getattr(self.meta, "navigation_widget", None)
         if nav is None:
             return
-        inst = {
-            "trial": entry.trial,
-            "labels": entry.label_id,
-            "onset_s": entry.onset_s,
-            "offset_s": entry.offset_s,
-            "individual": entry.individual,
-            "individual_rec": entry.individual_rec,
-        }
-        nav.jump_to_label_instance(inst, seek_rel=entry.t_rel, play=False)
+        nav.jump_to_label_instance(entry_inst(entry), seek_rel=entry.t_rel, play=False)
 
     def _export_pdf(self):
         labels_path = self.app_state.labels_file_path()
@@ -1227,62 +1396,52 @@ class LabelFramesGridView(QWidget):
 
 
 # ----------------------------------------------------------------------
-# Dialog: Setup tab + Frames tab
+# Setup page shared with the video grid
 # ----------------------------------------------------------------------
 
 
-class LabelFramesDialog(QDialog):
-    """One window, two tabs: *Setup* picks what to show, *Frames* is the grid.
+class LabelSetupPage(QWidget):
+    """Label classes + metadata filters + cameras — what both grids start from."""
 
-    *label_ids* pre-ticks label classes and *trials* narrows the run to a set
-    of trial ids on top of the metadata filters — how another dialog hands a
-    batch of labels over for review (see the Predict dialog's "Review
-    predictions" button).
-    """
-
-    def __init__(self, meta, parent=None, *, label_ids: list[int] | None = None, trials: set[str] | None = None):
+    def __init__(self, meta, *, label_ids=None, trials=None, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Label frames")
-        # Minimise/maximise sit next to the close button, so the grid goes
-        # full screen in one click.
-        self.setWindowFlags(
-            Qt.Window | Qt.WindowMinimizeButtonHint | Qt.WindowMaximizeButtonHint | Qt.WindowCloseButtonHint
-        )
-        self.setModal(False)
         self.meta = meta
         self.app_state = meta.app_state
         self.labels_widget = meta.labels_widget
-        self._filters: dict[str, set[str]] = {}
-        self._filter_buttons: dict[str, QPushButton] = {}
-        self.grid_view: LabelFramesGridView | None = None
         self._restrict_trials = set(trials) if trials else None
-        preselected = set(label_ids or ())
+        #: The label classes this run is about — chosen elsewhere (the
+        #: curation scope, or what the Predict dialog just wrote) and only
+        #: *shown* here: the one place to pick labels is the scope area.
+        self._label_ids = [int(i) for i in (label_ids or ()) if int(i) != 0]
 
-        outer = QVBoxLayout(self)
-        outer.setContentsMargins(0, 0, 0, 0)
-        self.tabs = QTabWidget()
-        outer.addWidget(self.tabs)
-
-        setup_page = QWidget()
-        layout = QVBoxLayout(setup_page)
+        layout = QVBoxLayout(self)
         layout.setSpacing(8)
+        self.layout_ = layout
 
-        labels_group = QGroupBox("Labels")
+        labels_group = QGroupBox("Labels in scope")
         labels_lay = QVBoxLayout(labels_group)
-        labels_lay.addWidget(QLabel("Tick the label classes to show frames for:"))
+        mappings = self.mappings()
         self.label_list = QListWidget()
-        mappings = self._mappings()
-        for label_id, info in sorted(mappings.items(), key=lambda x: x[0]):
-            if not isinstance(label_id, int) or label_id == 0:
-                continue
+        self.label_list.setSelectionMode(QAbstractItemView.NoSelection)
+        self.label_list.setFocusPolicy(Qt.NoFocus)
+        for label_id in self._label_ids:
+            info = mappings.get(label_id, {})
             name = info.get("name", str(label_id))
             event_type = info.get("event_type", "state")
             item = QListWidgetItem(f"{label_id} — {name}  ({event_type})")
             item.setData(Qt.UserRole, label_id)
-            item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
-            item.setCheckState(Qt.Checked if label_id in preselected else Qt.Unchecked)
+            item.setFlags(Qt.ItemIsEnabled)
             self.label_list.addItem(item)
+        self.label_list.setMaximumHeight(max(40, min(160, 22 * len(self._label_ids) + 6)))
         labels_lay.addWidget(self.label_list)
+        scope_hint = QLabel(
+            "No labels in scope — drag label rows into the Curation section's scope area."
+            if not self._label_ids
+            else "To change this, drag other label rows into the Curation section's scope area."
+        )
+        scope_hint.setWordWrap(True)
+        scope_hint.setStyleSheet("color: grey; font-size: 10px;")
+        labels_lay.addWidget(scope_hint)
         if self._restrict_trials is not None:
             restricted = QLabel(f"Restricted to {len(self._restrict_trials)} trials handed over for review.")
             restricted.setWordWrap(True)
@@ -1290,20 +1449,14 @@ class LabelFramesDialog(QDialog):
             labels_lay.addWidget(restricted)
         layout.addWidget(labels_group)
 
-        meta_group = QGroupBox("Trial metadata filters")
-        meta_lay = QGridLayout(meta_group)
-        mdf = getattr(self.app_state, "metadata_df", None)
-        columns = condition_columns(mdf) if mdf is not None and not mdf.empty else []
-        if not columns:
-            meta_lay.addWidget(QLabel("No metadata columns available."), 0, 0)
-        for i, column in enumerate(columns):
-            meta_lay.addWidget(QLabel(column), i, 0)
-            btn = QPushButton("All")
-            btn.setAutoDefault(False)
-            btn.clicked.connect(lambda _=False, c=column: self._edit_filter(c))
-            meta_lay.addWidget(btn, i, 1)
-            self._filter_buttons[column] = btn
-        layout.addWidget(meta_group)
+        # Which trials: the trials table's filters, and nothing else — the one
+        # place trials are included or excluded for every operation.
+        self.trials_note = QLabel("")
+        self.trials_note.setWordWrap(True)
+        self.trials_note.setStyleSheet("color: grey; font-size: 10px;")
+        layout.addWidget(self.trials_note)
+        self._refresh_trials_note()
+        self.app_state.trials_changed.connect(self._refresh_trials_note)
 
         self.camera_list: QListWidget | None = None
         cameras = list(getattr(getattr(self.app_state, "nwb_alignment", None), "cameras", None) or [])
@@ -1312,7 +1465,7 @@ class LabelFramesDialog(QDialog):
             cam_lay = QVBoxLayout(cam_group)
             self.camera_list = QListWidget()
             for camera in cameras:
-                cropped = self._gui_crop_for(camera) is not None
+                cropped = self.gui_crop_for(camera) is not None
                 item = QListWidgetItem(f"{camera}  (cropped)" if cropped else str(camera))
                 item.setData(Qt.UserRole, camera)
                 item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
@@ -1328,6 +1481,105 @@ class LabelFramesDialog(QDialog):
         )
         crop_hint.setStyleSheet("color: grey; font-size: 10px;")
         layout.addWidget(crop_hint)
+
+    def mappings(self) -> dict:
+        return getattr(self.labels_widget, "_mappings", {}) or {}
+
+    def gui_crop_for(self, camera: str | None) -> tuple[int, int, int, int] | None:
+        """The display crop the GUI holds for *camera* (source pixels).
+
+        With no named cameras the entries carry ``camera=None`` — that maps
+        to whatever camera the primary view currently shows.
+        """
+        vm = getattr(getattr(self.meta, "data_widget", None), "video_mgr", None)
+        if vm is None:
+            return None
+        name = camera if camera is not None else getattr(vm.primary_view, "camera_name", None)
+        return vm.camera_crop(name)
+
+    def camera_crops(self, cameras: list[str | None]) -> dict[str | None, tuple[int, int, int, int]]:
+        crops = {}
+        for camera in cameras:
+            rect = self.gui_crop_for(camera)
+            if rect is not None:
+                crops[camera] = rect
+        return crops
+
+    def _refresh_trials_note(self, *_args) -> None:
+        visible = self.visible_trials()
+        n = len(visible) if visible is not None else 0
+        text = (
+            f"Runs over the {n} trial(s) the trials table currently shows — filter there "
+            "(Navigation section) to include or exclude trials."
+        )
+        if self._restrict_trials is not None:
+            text += f" Further restricted to the {len(self._restrict_trials)} trial(s) handed over for review."
+        self.trials_note.setText(text)
+
+    def visible_trials(self) -> set[str] | None:
+        """Trial ids (as strings) the trials table shows; ``None`` when unknown."""
+        trials = getattr(self.app_state, "trials", None)
+        if not trials:
+            return None
+        return {str(t) for t in trials}
+
+    def selected_label_ids(self) -> list[int]:
+        """The label classes in scope — fixed for the life of the dialog."""
+        return list(self._label_ids)
+
+    def selected_cameras(self) -> list[str | None]:
+        if self.camera_list is None:
+            return [None]
+        cameras = []
+        for i in range(self.camera_list.count()):
+            item = self.camera_list.item(i)
+            if item.checkState() == Qt.Checked:
+                cameras.append(item.data(Qt.UserRole))
+        return cameras
+
+    def allowed_trials(self) -> set[str] | None:
+        """The trials this run covers: what the trials table shows, further
+        narrowed to a handed-over set (the Predict dialog's review)."""
+        allowed = self.visible_trials()
+        if self._restrict_trials is not None:
+            allowed = self._restrict_trials if allowed is None else allowed & self._restrict_trials
+        return allowed
+
+
+# ----------------------------------------------------------------------
+# Dialog: Setup tab + Frames tab
+# ----------------------------------------------------------------------
+
+
+class LabelGridViewDialog(QDialog):
+    """One window, two tabs: *Setup* picks what to show, *Frames* is the grid.
+
+    *label_ids* pre-ticks label classes (the curation scope) and *trials*
+    narrows the run to a set of trial ids on top of the metadata filters —
+    how the Predict dialog hands a batch of labels over for review.
+    """
+
+    def __init__(self, meta, parent=None, *, label_ids: list[int] | None = None, trials: set[str] | None = None):
+        super().__init__(parent)
+        self.setWindowTitle("Label grid view")
+        # Minimise/maximise sit next to the close button, so the grid goes
+        # full screen in one click.
+        self.setWindowFlags(
+            Qt.Window | Qt.WindowMinimizeButtonHint | Qt.WindowMaximizeButtonHint | Qt.WindowCloseButtonHint
+        )
+        self.setModal(False)
+        self.meta = meta
+        self.app_state = meta.app_state
+        self.labels_widget = meta.labels_widget
+        self.grid_view: LabelGridView | None = None
+
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        self.tabs = QTabWidget()
+        outer.addWidget(self.tabs)
+
+        self.setup = LabelSetupPage(meta, label_ids=label_ids, trials=trials)
+        layout = self.setup.layout_
 
         panel_group = QGroupBox("GUI panels under each frame")
         panel_lay = QVBoxLayout(panel_group)
@@ -1352,9 +1604,13 @@ class LabelFramesDialog(QDialog):
             self.window_spin = QDoubleSpinBox()
             self.window_spin.setRange(0.01, 600.0)
             self.window_spin.setDecimals(2)
-            self.window_spin.setValue(1.0)
+            # Remembered across sessions and datasets (SCOPE_GLOBAL).
+            self.window_spin.setValue(float(self.app_state.get_with_default("label_grid_window_s")))
             self.window_spin.setSuffix(" s")
             self.window_spin.setToolTip("Plot window shown around each label time — the marker sits on the label.")
+            self.window_spin.valueChanged.connect(
+                lambda v: setattr(self.app_state, "label_grid_window_s", float(v))
+            )
             window_row.addWidget(self.window_spin, stretch=1)
             panel_lay.addLayout(window_row)
             self.axis_auto_cb = QCheckBox("Autoscale y per window")
@@ -1386,7 +1642,7 @@ class LabelFramesDialog(QDialog):
 
         setup_scroll = QScrollArea()
         setup_scroll.setWidgetResizable(True)
-        setup_scroll.setWidget(setup_page)
+        setup_scroll.setWidget(self.setup)
         self.tabs.addTab(setup_scroll, "Setup")
 
         self._frames_placeholder = QLabel("Pick labels on the Setup tab and press Generate.")
@@ -1396,48 +1652,17 @@ class LabelFramesDialog(QDialog):
         self.tabs.setTabEnabled(1, False)
         self.resize(460, 620)
 
+    # Setup-page pass-throughs (the tests and the Predict dialog read these).
+    @property
+    def label_list(self) -> QListWidget:
+        return self.setup.label_list
+
+    @property
+    def _restrict_trials(self) -> set[str] | None:
+        return self.setup._restrict_trials
+
     def _mappings(self) -> dict:
-        return getattr(self.labels_widget, "_mappings", {}) or {}
-
-    def _gui_crop_for(self, camera: str | None) -> tuple[int, int, int, int] | None:
-        """The display crop the GUI holds for *camera* (source pixels).
-
-        With no named cameras the entries carry ``camera=None`` — that maps
-        to whatever camera the primary view currently shows.
-        """
-        vm = getattr(getattr(self.meta, "data_widget", None), "video_mgr", None)
-        if vm is None:
-            return None
-        name = camera if camera is not None else getattr(vm.primary_view, "camera_name", None)
-        return vm.camera_crop(name)
-
-    def _camera_crops(self, cameras: list[str | None]) -> dict[str | None, tuple[int, int, int, int]]:
-        crops = {}
-        for camera in cameras:
-            rect = self._gui_crop_for(camera)
-            if rect is not None:
-                crops[camera] = rect
-        return crops
-
-    def _edit_filter(self, column: str):
-        mdf = getattr(self.app_state, "metadata_df", None)
-        if mdf is None or column not in mdf.columns:
-            return
-        values = sorted(mdf[column].dropna().astype(str).unique())
-        dialog = CategoryFilterDialog(0, values, self._filters.get(column, set()), self)
-        if dialog.exec_() != QDialog.Accepted:
-            return
-        allowed = dialog.get_allowed()
-        self._filters[column] = allowed
-        self._filter_buttons[column].setText("All" if not allowed else f"{len(allowed)} of {len(values)}")
-
-    def _selected_label_ids(self) -> list[int]:
-        ids = []
-        for i in range(self.label_list.count()):
-            item = self.label_list.item(i)
-            if item.checkState() == Qt.Checked:
-                ids.append(int(item.data(Qt.UserRole)))
-        return ids
+        return self.setup.mappings()
 
     def _checked_panels(self) -> list[tuple[str, QWidget]]:
         if self.panel_list is None:
@@ -1515,33 +1740,20 @@ class LabelFramesDialog(QDialog):
                 data_widget.video_mgr.sync_proxies()
                 data_widget.update_pose()
 
-    def _selected_cameras(self) -> list[str | None]:
-        if self.camera_list is None:
-            return [None]
-        cameras = []
-        for i in range(self.camera_list.count()):
-            item = self.camera_list.item(i)
-            if item.checkState() == Qt.Checked:
-                cameras.append(item.data(Qt.UserRole))
-        return cameras
-
     def _generate(self):
-        label_ids = self._selected_label_ids()
+        label_ids = self.setup.selected_label_ids()
         if not label_ids:
-            notify("Tick at least one label class.", severity="warning")
+            notify("No labels in scope — drag label rows into the Curation section's scope area.", severity="warning")
             return
         df = getattr(self.app_state, "_all_labels_df", None)
         if df is None or df.empty:
             notify("No labels loaded.", severity="warning")
             return
-        cameras = self._selected_cameras()
+        cameras = self.setup.selected_cameras()
         if not cameras:
             notify("Tick at least one camera.", severity="warning")
             return
-        allowed = allowed_trials_from_metadata(getattr(self.app_state, "metadata_df", None), self._filters)
-        if self._restrict_trials is not None:
-            allowed = self._restrict_trials if allowed is None else allowed & self._restrict_trials
-        entries = build_frame_entries(df, self._mappings(), label_ids, cameras, allowed)
+        entries = build_frame_entries(df, self._mappings(), label_ids, cameras, self.setup.allowed_trials())
         if not entries:
             notify("No label instances match the selected labels and metadata filters.", severity="warning")
             return
@@ -1563,7 +1775,7 @@ class LabelFramesDialog(QDialog):
             pose_folder=self.app_state.pose_folder,
             source_software=source_software,
             pose_color_by=getattr(self.app_state, "pose_color_by", "keypoint") or "keypoint",
-            camera_crops=self._camera_crops(cameras),
+            camera_crops=self.setup.camera_crops(cameras),
             current_trial=getattr(self.app_state, "trials_sel", None),
             current_video_path=getattr(self.app_state, "video_path", None),
             progress_cb=on_progress,
@@ -1580,7 +1792,7 @@ class LabelFramesDialog(QDialog):
     def _show_grid(self, entries: list[FrameEntry]):
         """Put a freshly built grid on the *Frames* tab and go there."""
         old = self.tabs.widget(1)
-        self.grid_view = LabelFramesGridView(self.meta, entries, parent=self)
+        self.grid_view = LabelGridView(self.meta, entries, parent=self)
         self.tabs.removeTab(1)
         self.tabs.insertTab(1, self.grid_view, f"Frames ({len(entries)})")
         self.tabs.setTabEnabled(1, True)

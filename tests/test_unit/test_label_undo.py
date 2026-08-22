@@ -30,7 +30,6 @@ def _all_labels() -> pd.DataFrame:
             "offset_s": [0.8, 1.0, 0.5],
             "event_type": ["state", "point", "state"],
             "confidence": [1.0, 1.0, 1.0],
-            "human_verified": [0, 0, 0],
             "changepoint_corrected": [0, 0, 0],
             "prediction_source": ["", "", ""],
             "n_samples": [0, 0, 0],
@@ -124,10 +123,10 @@ class TestLabelHistory:
 
         history.record(before, 1, "place point")
         after = _place_point(before, 1, 1.5)
-        after.loc[after["trial"] == 1, "human_verified"] = 1
+        after.loc[after["trial"] == 1, "changepoint_corrected"] = 1
 
         restored, _ = history.undo(after)
-        assert get_trial_meta(restored, 1)["human_verified"] == 0
+        assert get_trial_meta(restored, 1)["changepoint_corrected"] == 0
 
     def test_edits_undo_newest_first(self):
         history = LabelHistory()

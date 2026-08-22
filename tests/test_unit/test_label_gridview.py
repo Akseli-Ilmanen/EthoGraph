@@ -1,4 +1,4 @@
-"""Pure logic of the label-frames grid (Tools ▸ Labels: Show frames as PDF…)."""
+"""Pure logic of the label grid view (Labels ▸ Curation ▸ Label grid view…)."""
 
 import numpy as np
 import pandas as pd
@@ -9,15 +9,15 @@ from qtpy.QtGui import QImage
 from qtpy.QtWidgets import QApplication, QCheckBox, QLabel, QListWidget, QListWidgetItem, QWidget
 
 from ethograph.gui.app_state import ObservableAppState
-from ethograph.gui.dialog_label_frames import (
+from ethograph.gui.dialog_label_gridview import (
     LOW_CONFIDENCE_COLOR,
     FrameEntry,
-    LabelFramesDialog,
-    LabelFramesGridView,
+    LabelGridView,
+    LabelGridViewDialog,
+    TileVerdicts,
     _draw_disc,
     _entry_info,
     _entry_title,
-    allowed_trials_from_metadata,
     build_frame_entries,
     capture_panel_images,
     confidence_groups,
@@ -32,6 +32,7 @@ from ethograph.gui.dialog_label_frames import (
     split_histogram,
 )
 from ethograph.gui.pose_render import PoseRenderData
+from ethograph.labels.intervals import LABELING_AUTOMATED, LABELING_CURATED, LABELING_MANUAL
 
 MAPPINGS = {
     1: {"name": "peck", "event_type": "point", "color": (1.0, 0.0, 0.0)},
@@ -123,29 +124,6 @@ class TestBuildFrameEntries:
         assert entries[0].color_hex == "#ff0000"
 
 
-class TestAllowedTrials:
-    def test_no_filters_means_none(self):
-        mdf = pd.DataFrame({"trial": [1, 2], "genotype": ["wt", "ko"]})
-        assert allowed_trials_from_metadata(mdf, {}) is None
-        assert allowed_trials_from_metadata(mdf, {"genotype": set()}) is None
-        assert allowed_trials_from_metadata(None, {"genotype": {"wt"}}) is None
-
-    def test_single_column(self):
-        mdf = pd.DataFrame({"trial": [1, 2, 3], "genotype": ["wt", "ko", "wt"]})
-        assert allowed_trials_from_metadata(mdf, {"genotype": {"wt"}}) == {"1", "3"}
-
-    def test_columns_intersect(self):
-        mdf = pd.DataFrame(
-            {
-                "trial": [1, 2, 3],
-                "genotype": ["wt", "wt", "ko"],
-                "treatment": ["sal", "drug", "sal"],
-            }
-        )
-        allowed = allowed_trials_from_metadata(mdf, {"genotype": {"wt"}, "treatment": {"sal"}})
-        assert allowed == {"1"}
-
-
 class TestTitles:
     def test_point_has_no_boundary_suffix(self):
         entry = FrameEntry(
@@ -161,7 +139,7 @@ class TestTitles:
             individual="a",
         )
         assert _entry_title(entry) == "peck (1)"
-        assert _entry_info(entry) == "trial 2  ·  cam-1  ·  a  ·  0.500 s  ·  conf 1.00"
+        assert _entry_info(entry) == "trial 2  ·  cam-1  ·  a  ·  0.500 s  ·  conf 1.00  ·  manual"
 
     def test_state_names_boundary(self):
         entry = FrameEntry(
@@ -176,7 +154,7 @@ class TestTitles:
             offset_s=1.8,
         )
         assert _entry_title(entry) == "hop (2) — END"
-        assert _entry_info(entry) == "trial 1  ·  1.800 s  ·  conf 1.00"
+        assert _entry_info(entry) == "trial 1  ·  1.800 s  ·  conf 1.00  ·  manual"
 
     def test_cropped_entry_says_so(self):
         entry = FrameEntry(
@@ -191,7 +169,7 @@ class TestTitles:
             offset_s=float("nan"),
             cropped=True,
         )
-        assert _entry_info(entry) == "trial 1  ·  cam-1  ·  0.500 s  ·  conf 1.00  ·  cropped"
+        assert _entry_info(entry) == "trial 1  ·  cam-1  ·  0.500 s  ·  conf 1.00  ·  manual  ·  cropped"
 
     def test_predicted_confidence_shown(self):
         entry = FrameEntry(
@@ -266,7 +244,7 @@ class TestConfidenceFlagging:
             offset_s=float("nan"),
             confidence=0.9,
         )
-        dlg = LabelFramesGridView(_Meta(ObservableAppState(), None), [low, high])
+        dlg = LabelGridView(_Meta(ObservableAppState(), None), [low, high])
         try:
             assert dlg._cells[0].styleSheet() == ""  # threshold starts off
             dlg.threshold_spin.setValue(0.5)
@@ -325,34 +303,57 @@ class TestConfigDialog:
         state._yaml_path = str(tmp_path / "gui_settings.yaml")
         state._all_labels_df = labels_df
         state.metadata_df = pd.DataFrame({"trial": [1, 2, 3], "genotype": ["wt", "ko", "wt"]})
-        dlg = LabelFramesDialog(_Meta(state, _LabelsStub({0: {"name": "none"}, **MAPPINGS})))
+        dlg = LabelGridViewDialog(_Meta(state, _LabelsStub({0: {"name": "none"}, **MAPPINGS})), label_ids=[0, 1, 2])
         yield dlg
         dlg.close()
 
-    def test_label_list_skips_background(self, dialog):
+    def test_label_list_echoes_the_scope_read_only(self, dialog):
         ids = [dialog.label_list.item(i).data(Qt.UserRole) for i in range(dialog.label_list.count())]
-        assert ids == [1, 2]
+        assert ids == [1, 2]  # background never; the scope, in order
+        assert not (dialog.label_list.item(0).flags() & Qt.ItemIsUserCheckable)
+        assert dialog.setup.selected_label_ids() == [1, 2]
 
-    def test_metadata_columns_get_filter_buttons(self, dialog):
-        assert set(dialog._filter_buttons) == {"genotype"}
+    def test_columns_are_global_and_remembered(self, dialog):
+        """The grid's column count lives in gui_settings.yaml — a viewing
+        habit that follows the user across datasets (so does the panel
+        capture's time window, label_grid_window_s)."""
+        from ethograph.gui.app_state import AppStateSpec
+
+        for key in ("label_grid_columns", "label_grid_window_s"):
+            assert AppStateSpec.get_meta(key)[3] == AppStateSpec.SCOPE_GLOBAL
+        dialog.app_state.trials = [1, 3]
+        dialog._generate()
+        assert dialog.grid_view.columns_spin.value() == 3
+        dialog.grid_view.columns_spin.setValue(5)
+        assert dialog.app_state.label_grid_columns == 5
+        dialog._generate()
+        assert dialog.grid_view.columns_spin.value() == 5
+
+    def test_the_trials_table_is_the_only_trial_filter(self, dialog):
+        """No filters of its own: the dialog covers what the trials table shows."""
+        assert not hasattr(dialog.setup, "_filters")
+        assert dialog.setup.allowed_trials() is None  # no trials known yet
+        dialog.app_state.trials = [1, 3]
+        assert dialog.setup.allowed_trials() == {"1", "3"}
+        assert dialog.setup.trials_note.text().startswith("Runs over the 2 trial(s) the trials table")
 
     def test_generate_fills_the_frames_tab(self, dialog):
         """No resolvable video (EmpytAlignment) → every tile carries an error,
         and the grid tab still opens so the user sees what went wrong."""
         assert not dialog.tabs.isTabEnabled(1)
-        dialog.label_list.item(0).setCheckState(Qt.Checked)  # label 1: two points
-        dialog._filters["genotype"] = {"wt"}  # trials 1 + 3
+        dialog.app_state.trials = [1, 3]  # what the trials table shows
         dialog._generate()
         grid = dialog.grid_view
         assert grid is not None
         assert dialog.tabs.currentIndex() == 1 and dialog.tabs.widget(1) is grid
-        assert [str(e.trial) for e in grid._entries] == ["1", "3"]
+        # Scope [1, 2]: trial 1 holds a point (label 1) and a state (label 2,
+        # start + end); trial 3 a point — trial 2 is filtered out.
+        assert [str(e.trial) for e in grid._entries] == ["1", "1", "1", "3"]
         assert all(e.image is None and e.error == "video not found" for e in grid._entries)
-        assert len(grid._cells) == 2
+        assert len(grid._cells) == 4
 
     def test_regenerating_replaces_the_grid_tab(self, dialog):
         """A second run swaps the tab's grid — never a second Frames tab."""
-        dialog.label_list.item(0).setCheckState(Qt.Checked)
         dialog._generate()
         first = dialog.grid_view
         dialog._generate()
@@ -543,7 +544,7 @@ class TestPanelCapture:
         nav = _FlagNav(data_widget)
         state = ObservableAppState()
         state._yaml_path = str(tmp_path / "gui_settings.yaml")
-        dlg = LabelFramesDialog(_Meta(state, _LabelsStub(MAPPINGS), nav=nav, data_widget=data_widget))
+        dlg = LabelGridViewDialog(_Meta(state, _LabelsStub(MAPPINGS), nav=nav, data_widget=data_widget))
         try:
             panel = QLabel("plot")
             panel.setFixedSize(40, 30)
@@ -572,7 +573,7 @@ class TestPanelCapture:
         entry = _point_entry(1, "cam-1", 2.0)
         entry.image = np.zeros((20, 30, 3), dtype=np.uint8)
         entry.panels = [("Lineplot — speed", QImage(40, 20, QImage.Format_RGB888))]
-        dlg = LabelFramesGridView(_Meta(ObservableAppState(), None), [entry])
+        dlg = LabelGridView(_Meta(ObservableAppState(), None), [entry])
         try:
             # Frame pixmap + one panel pixmap, both rescalable on relayout.
             assert len(dlg._cells[0]._pix_labels) == 2
@@ -641,6 +642,7 @@ def _entry(
     confidence=1.0,
     offset_s=float("nan"),
     individual="a",
+    labeling_method=LABELING_MANUAL,
 ):
     return FrameEntry(
         trial=trial,
@@ -655,6 +657,7 @@ def _entry(
         individual=individual,
         individual_rec="",
         confidence=confidence,
+        labeling_method=labeling_method,
     )
 
 
@@ -682,77 +685,126 @@ class TestSeedsFromEntries:
         assert seed["individual"] == "a" and seed["individual_rec"] == ""
 
 
-class TestGridSelection:
+class _PanelStub:
+    """Stands in for the Labels tab's curation panel."""
+
+    def __init__(self, mode="manual"):
+        self._mode = mode
+        self.curated: list[dict] = []
+        self.reviews: list[tuple[dict, str]] = []
+
+    def mode(self):
+        return self._mode
+
+    def curate_labels(self, insts):
+        self.curated.extend(insts)
+        return len(insts)
+
+    def start_review_at(self, inst, field):
+        self.reviews.append((inst, field))
+        return True
+
+
+class _NavStub2:
+    def __init__(self):
+        self.jumps = []
+
+    def jump_to_label_instance(self, inst, **kwargs):
+        self.jumps.append(inst)
+
+
+def _set_grid_mode(grid, key):
+    grid.mode_bar.mode_combo.setCurrentIndex(grid.mode_bar.mode_combo.findData(key))
+
+
+class TestGridVerdicts:
     @pytest.fixture()
     def grid(self, qapp, tmp_path, labels_df):
         state = ObservableAppState()
         state._yaml_path = str(tmp_path / "gui_settings.yaml")
         state._all_labels_df = labels_df
+        labels = _LabelsStub(MAPPINGS)
+        labels.curation_panel = _PanelStub()
         entries = [
-            _entry(trial="1", confidence=0.2),
-            _entry(trial="2", confidence=0.9),
+            _entry(trial="1", confidence=0.2, labeling_method=LABELING_AUTOMATED),
+            _entry(trial="2", confidence=0.9, labeling_method=LABELING_AUTOMATED),
+            _entry(trial="3", confidence=1.0, labeling_method=LABELING_MANUAL),
         ]
-        dlg = LabelFramesGridView(_Meta(state, _LabelsStub(MAPPINGS)), entries)
+        meta = _Meta(state, labels, nav=_NavStub2())
+        dlg = LabelGridView(meta, entries)
+        dlg._meta = meta
         yield dlg
         dlg.close()
 
-    def test_refine_button_follows_the_ticks(self, grid):
-        assert not grid.refine_btn.isEnabled()
-        grid._cells[0]._select_cb.setChecked(True)
-        assert grid.refine_btn.isEnabled()
-        assert grid.selection_label.text() == "1 ticked"
-        grid._clear_ticks()
-        assert not grid.refine_btn.isEnabled()
+    def test_navigate_mode_jumps(self, grid):
+        grid._on_tile_clicked(grid._entries[0])
+        assert [i["trial"] for i in grid._meta.navigation_widget.jumps] == ["1"]
+        assert not grid.mode_bar.done_btn.isEnabled()
 
-    def test_tick_flagged_ticks_only_what_the_threshold_outlines(self, grid):
+    def test_navigate_mode_drops_into_the_frame_review_when_that_curation_mode_is_on(self, grid):
+        grid._meta.labels_widget.curation_panel._mode = "frame"
+        grid._on_tile_clicked(grid._entries[1])
+        panel = grid._meta.labels_widget.curation_panel
+        assert panel.reviews and panel.reviews[0][0]["trial"] == "2" and panel.reviews[0][1] == "point"
+        assert grid._meta.navigation_widget.jumps == []
+
+    def test_curate_mode_curates_the_clicked_labels_on_done(self, grid):
+        _set_grid_mode(grid, "curate")
+        grid._on_tile_clicked(grid._entries[0])
+        assert grid.mode_bar.count_label.text() == "1 clicked"
+        grid._on_tile_clicked(grid._entries[0])  # a second click unmarks
+        grid._on_tile_clicked(grid._entries[1])
+        grid.mode_bar.apply_done()
+        panel = grid._meta.labels_widget.curation_panel
+        assert [i["trial"] for i in panel.curated] == ["2"]
+        assert grid._entries[1].labeling_method == LABELING_CURATED
+        assert grid._entries[0].labeling_method == LABELING_AUTOMATED
+
+    def test_uncurate_mode_curates_every_other_automated_label(self, grid):
+        _set_grid_mode(grid, "uncurate")
+        grid._on_tile_clicked(grid._entries[0])
+        grid.mode_bar.apply_done()
+        panel = grid._meta.labels_widget.curation_panel
+        assert [i["trial"] for i in panel.curated] == ["2"]  # not the clicked one, not the manual one
+
+    def test_mark_low_confidence_exists_only_where_a_click_means_uncurated(self, grid):
         grid.threshold_spin.setValue(0.5)
-        grid._tick_flagged()
-        assert [cell._select_cb.isChecked() for cell in grid._cells] == [True, False]
+        assert not grid.mode_bar.mark_flagged_btn.isEnabled()  # navigate
+        _set_grid_mode(grid, "curate")
+        assert not grid.mode_bar.mark_flagged_btn.isEnabled()
+        grid.mode_bar._mark_flagged()  # a stray call in curate mode marks nothing
+        assert not grid.mode_bar.verdicts.clicked
+        _set_grid_mode(grid, "uncurate")
+        assert grid.mode_bar.mark_flagged_btn.isEnabled()
 
-    def test_tick_flagged_is_dead_while_the_threshold_is_off(self, grid):
-        assert grid.threshold_spin.value() == 0.0
-        assert not grid.tick_flagged_btn.isEnabled()
-        assert not grid.tick_flagged_trials_btn.isEnabled()
+    def test_mark_flagged_clicks_what_the_threshold_outlines(self, grid):
+        _set_grid_mode(grid, "uncurate")
         grid.threshold_spin.setValue(0.5)
-        assert grid.tick_flagged_btn.isEnabled()
-        assert grid.tick_flagged_trials_btn.isEnabled()
+        grid.mode_bar._mark_flagged()
+        assert [grid.mode_bar.verdicts.is_clicked(e) for e in grid._entries] == [True, False, False]
 
-    def test_ticked_entries_become_the_refine_queue(self, qapp, tmp_path, labels_df):
-        """End to end: tick a tile, hand it over, and the refine dialog walks
-        exactly that boundary."""
-        from ethograph.gui.widgets_navigation import NavigationWidget
+    def test_switching_mode_clears_the_clicks(self, grid):
+        _set_grid_mode(grid, "curate")
+        grid._on_tile_clicked(grid._entries[0])
+        _set_grid_mode(grid, "navigate")
+        assert not grid.mode_bar.verdicts.clicked
 
-        class _FakeVideo:
-            fps = 50.0
 
-            def time_to_frame(self, t, round_nearest=False):
-                return int(round(t * self.fps))
+class TestTileVerdicts:
+    def test_cameras_of_one_label_share_a_verdict(self):
+        a = _entry(trial="1", camera="c1", labeling_method=LABELING_AUTOMATED)
+        b = _entry(trial="1", camera="c2", labeling_method=LABELING_AUTOMATED)
+        verdicts = TileVerdicts()
+        assert verdicts.toggle(a) is True
+        assert verdicts.is_clicked(b)
+        assert [i["trial"] for i in verdicts.insts_for_done("curate", [a, b])] == ["1"]  # once
+        assert verdicts.insts_for_done("uncurate", [a, b]) == []
 
-            def frame_to_time(self, frame):
-                return frame / self.fps
-
-            def seek_to_frame(self, frame):
-                pass
-
-        state = ObservableAppState()
-        state._yaml_path = str(tmp_path / "gui_settings.yaml")
-        state._all_labels_df = labels_df
-        state.video = _FakeVideo()
-        nav = NavigationWidget(QWidget(), state)
-        meta = _Meta(state, _LabelsStub(MAPPINGS), nav=nav)
-        entries = build_frame_entries(labels_df, MAPPINGS, [1], [None])  # two point events
-        grid = LabelFramesGridView(meta, entries)
-
-        grid._cells[1]._select_cb.setChecked(True)
-        grid._refine_ticked()
-
-        refine = grid._refine_dialog
-        assert refine is not None and refine._session_active
-        assert [(str(t.inst["trial"]), t.inst["labels"], t.field) for t in refine._targets] == [("3", 1, "point")]
-        refine._stop()
-        refine.close()
-        grid.close()
-        nav.close()
+    def test_manual_labels_are_never_part_of_a_verdict(self):
+        manual = _entry(trial="1", labeling_method=LABELING_MANUAL)
+        verdicts = TileVerdicts()
+        verdicts.toggle(manual)
+        assert verdicts.insts_for_done("curate", [manual]) == []
 
 
 class TestFlaggedTrials:
@@ -771,20 +823,17 @@ class TestFlaggedTrials:
     def test_threshold_off_flags_nothing(self):
         assert flagged_trials(self._entries(), 0.0) == set()
 
-    def test_ticking_whole_trials_takes_the_confident_siblings(self, qapp, tmp_path, labels_df):
+    def test_flagged_tiles_are_outlined_and_mark_flagged_follows_the_threshold(self, qapp, tmp_path, labels_df):
         state = ObservableAppState()
         state._yaml_path = str(tmp_path / "gui_settings.yaml")
         state._all_labels_df = labels_df
-        grid = LabelFramesGridView(_Meta(state, _LabelsStub(MAPPINGS)), self._entries())
+        grid = LabelGridView(_Meta(state, _LabelsStub(MAPPINGS)), self._entries())
         grid.threshold_spin.setValue(0.6)
+        assert [bool(c.styleSheet()) for c in grid._cells] == [False, True, False]
 
-        grid._tick_flagged()
-        assert [c._select_cb.isChecked() for c in grid._cells] == [False, True, False]
-
-        grid._clear_ticks()
-        grid._tick_flagged_trials()
-        # Both events of trial 20 — the 0.95 one included — and none of 21.
-        assert [c._select_cb.isChecked() for c in grid._cells] == [True, True, False]
+        _set_grid_mode(grid, "uncurate")
+        grid.mode_bar._mark_flagged()
+        assert [grid.mode_bar.verdicts.is_clicked(e) for e in grid._entries] == [False, True, False]
         grid.close()
 
 
@@ -856,7 +905,7 @@ class TestHistogramDialog:
             _entry(trial="1", confidence=0.2),
             _entry(trial="2", confidence=0.9),
         ]
-        dlg = LabelFramesGridView(_Meta(state, _LabelsStub(MAPPINGS)), entries)
+        dlg = LabelGridView(_Meta(state, _LabelsStub(MAPPINGS)), entries)
         yield dlg
         dlg.close()
 

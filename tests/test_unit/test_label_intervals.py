@@ -65,6 +65,7 @@ class TestEmptyIntervals:
             "individual_rec",
             "event_type",
             "confidence",
+            "labeling_method",
         ]
 
     def test_empty(self):

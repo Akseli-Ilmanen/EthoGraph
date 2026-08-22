@@ -1239,21 +1239,20 @@ class DataWidget(QWidget):
         for trial in self.app_state.trials:
             combo.addItem(str(trial))
             index = combo.count() - 1
-            is_verified = trial_status.get(trial)
-            bg_color = QColor(144, 238, 144) if is_verified else QColor(255, 182, 193)
+            # Green: every label of the trial is manual or curated; red: some
+            # are still a model's unreviewed output (labels/curation.py).
+            is_curated = trial_status.get(str(trial), True)
+            bg_color = QColor(144, 238, 144) if is_curated else QColor(255, 182, 193)
             combo.setItemData(index, bg_color, Qt.BackgroundRole)
-            text_color = QColor(0, 100, 0) if is_verified else QColor(139, 0, 0)
+            text_color = QColor(0, 100, 0) if is_curated else QColor(139, 0, 0)
             combo.setItemData(index, text_color, Qt.ForegroundRole)
 
         combo.setCurrentText(str(self.app_state.trials_sel))
         combo.blockSignals(False)
+        self.navigation_widget._sync_trials_combo_color()
 
-    def _collect_trial_status(self) -> Dict[int, int]:
-        trial_status = {}
-        for trial in self.app_state.trials:
-            is_verified = self.app_state.get_trial_meta(trial).get("human_verified", 0)
-            trial_status[trial] = bool(is_verified)
-        return trial_status
+    def _collect_trial_status(self) -> Dict[str, bool]:
+        return self.app_state.trial_curation_status()
 
     def _on_trials_filtered(self, filtered_trials: list) -> None:
         """Handle TrialsWidget filter changes."""
@@ -2896,9 +2895,6 @@ class DataWidget(QWidget):
             self.plot_container.update_time_marker_by_time(self.app_state.to_display(trials_sel, 0.0))
 
         self._update_confidence_overlay()
-
-        if self.io_widget:
-            self.io_widget._update_human_verified_status()
 
     # ------------------------------------------------------------------
     # Plot updates

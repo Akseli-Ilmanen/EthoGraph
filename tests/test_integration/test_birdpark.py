@@ -226,15 +226,16 @@ class TestLabelsWidget:
         _, meta = birdpark_gui
         assert meta.app_state.changes_saved is True
 
-    def test_human_verification_single_trial(self, birdpark_gui):
+    def test_curate_trial_leaves_no_automated_label(self, birdpark_gui):
         _, meta = birdpark_gui
-        meta.io_widget._human_verification_true(mode="single_trial")
+        meta.labels_widget.curation_panel.curate_current_trial()
         QApplication.processEvents()
         df = meta.app_state._all_labels_df
         trial = meta.app_state.trials_sel
-        if df is not None and not df.empty and "human_verified" in df.columns:
+        if df is not None and not df.empty:
             trial_rows = df[df["trial"] == trial]
-            assert (trial_rows["human_verified"] == 1).all()
+            assert (trial_rows["labeling_method"] != "automated").all()
+            assert meta.app_state.trial_is_curated(trial)
 
     def test_label_creation_via_two_clicks(self, birdpark_gui):
         """Two-click state labelling on the xarray backend.

@@ -12,10 +12,12 @@ Two non-modal dialogs around :mod:`ethograph.labels.onset_model`:
   everything collected so far.
 * **Predict** — pick a trained model and apply it to the current session. All
   of the model's classes are predicted in one pass; a trial that already
-  carries a class is never overridden for that class, and the metadata filters
-  restrict which trials are predicted at all — one filter per condition
-  column, combining, so "wild-type *and* tone" is a pair of filters. Each
-  predicted event carries the model's own confidence into the labels TSV.
+  carries a class is never overridden for that class. Each predicted event
+  carries the model's own confidence into the labels TSV.
+
+Both dialogs run over **the trials the trials table shows** — its filters are
+the one place trials are included or excluded for every operation (see
+``docs/source/advanced/metadata.md``); neither dialog has filters of its own.
 
 When the classes follow a stereotypic order, both dialogs can use the model's
 sequence CRF: Train fits it, Predict decodes the whole trial at once so the
@@ -41,7 +43,6 @@ from qtpy.QtWidgets import (
     QDialog,
     QDoubleSpinBox,
     QFormLayout,
-    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -55,13 +56,11 @@ from qtpy.QtWidgets import (
     QVBoxLayout,
 )
 
-from ethograph.gui.dialog_label_frames import LabelFramesDialog
+from ethograph.gui.dialog_label_gridview import LabelGridViewDialog
 from ethograph.gui.notify import notify
-from ethograph.gui.table_filter import CategoryFilterDialog
 from ethograph.io.catalog import PynappleLoader, XarrayLoader
-from ethograph.io.metadata_table import allowed_trials_from_metadata, condition_columns
 from ethograph.labels import onset_model as om
-from ethograph.labels.intervals import EVENT_TYPE_POINT, NO_RECIPIENT, add_point
+from ethograph.labels.intervals import EVENT_TYPE_POINT, LABELING_AUTOMATED, NO_RECIPIENT, add_point
 from ethograph.labels.tsv_store import get_trial_from_tsv
 
 logger = logging.getLogger(__name__)
@@ -544,16 +543,16 @@ class TrainOnsetDialog(QDialog):
 class PredictOnsetDialog(QDialog):
     """Apply a trained onset model to the current session.
 
-    Every class the model was trained on is predicted in one pass. A trial
-    that already carries a class is skipped for that class — the model only
-    fills gaps, it never overrides — and the metadata filters restrict which
-    of the remaining trials are predicted at all. Each written event carries
-    the model's confidence in the label's ``confidence`` column.
+    Every class the model was trained on is predicted in one pass, over the
+    trials the trials table shows. A trial that already carries a class is
+    skipped for that class — the model only fills gaps, it never overrides.
+    Each written event carries the model's confidence in the label's
+    ``confidence`` column.
     """
 
     def __init__(self, meta, parent=None):
         super().__init__(parent)
-        self._review_dialog: LabelFramesDialog | None = None
+        self._review_dialog: LabelGridViewDialog | None = None
         self.setWindowTitle("LightGBM: Predict onsets")
         self.setWindowFlag(Qt.Window)
         self.setModal(False)
@@ -618,43 +617,18 @@ class PredictOnsetDialog(QDialog):
         form.addRow("Min confidence:", self.min_conf_spin)
         layout.addLayout(form)
 
-        filter_group = QGroupBox("Restrict by trial metadata (optional)")
-        filter_lay = QVBoxLayout(filter_group)
-        filter_grid = QGridLayout()
-        self._filters: dict[str, set[str]] = {}
-        self._filter_buttons: dict[str, QPushButton] = {}
-        mdf = getattr(self.app_state, "metadata_df", None)
-        columns = condition_columns(mdf) if mdf is not None and not mdf.empty else []
-        if not columns:
-            filter_grid.addWidget(QLabel("No metadata columns available."), 0, 0)
-        for i, column in enumerate(columns):
-            filter_grid.addWidget(QLabel(str(column)), i, 0)
-            button = QPushButton("All")
-            button.setAutoDefault(False)
-            button.setToolTip(
-                f"Pick which {column} values get predictions. Every column's filter\n"
-                "has to pass, so setting two of them predicts only the trials that\n"
-                "match both. 'All' means this column constrains nothing."
-            )
-            button.clicked.connect(lambda _=False, c=str(column): self._edit_filter(c))
-            filter_grid.addWidget(button, i, 1)
-            self._filter_buttons[str(column)] = button
-        filter_lay.addLayout(filter_grid)
-        hint = QLabel("Filters combine: a trial is predicted only if it passes every one of them.")
-        hint.setWordWrap(True)
-        hint.setStyleSheet("color: grey; font-size: 10px;")
-        filter_lay.addWidget(hint)
-        self.filter_summary = QLabel("")
-        self.filter_summary.setWordWrap(True)
-        self.filter_summary.setStyleSheet("color: grey; font-size: 10px;")
-        filter_lay.addWidget(self.filter_summary)
-        layout.addWidget(filter_group)
+        # Which trials: the trials table's filters, and nothing else — the one
+        # place trials are included or excluded for every operation.
+        self.trials_note = QLabel("")
+        self.trials_note.setWordWrap(True)
+        self.trials_note.setStyleSheet("color: grey; font-size: 10px;")
+        layout.addWidget(self.trials_note)
 
         self.run_btn = QPushButton("Predict missing onsets")
         self.run_btn.setAutoDefault(False)
         self.run_btn.setToolTip(
-            "Predict every class of this model, for every trial the filters admit\n"
-            "that does not already carry that class. Existing labels are never\n"
+            "Predict every class of this model, for every trial the trials table\n"
+            "shows that does not already carry that class. Existing labels are never\n"
             "overwritten. Nothing is saved to disk until you press Ctrl+S."
         )
         self.run_btn.clicked.connect(self._run)
@@ -679,7 +653,8 @@ class PredictOnsetDialog(QDialog):
 
         self.resize(420, 480)
         self._refresh_info(self.model_combo.currentText())
-        self._refresh_filter_summary()
+        self._refresh_trials_note()
+        self.app_state.trials_changed.connect(self._refresh_trials_note)
 
     # ------------------------------------------------------------------
 
@@ -703,32 +678,13 @@ class PredictOnsetDialog(QDialog):
             self.crf_check.setChecked(False)
         self.run_btn.setEnabled(om.is_trained(name))
 
-    def _edit_filter(self, column: str):
-        """Pick the values *column* admits, the same popup the tables use."""
-        mdf = getattr(self.app_state, "metadata_df", None)
-        if mdf is None or column not in mdf.columns:
-            return
-        values = sorted(mdf[column].dropna().astype(str).unique())
-        dialog = CategoryFilterDialog(0, values, self._filters.get(column, set()), self)
-        if dialog.exec_() != QDialog.Accepted:
-            return
-        allowed = dialog.get_allowed()
-        self._filters[column] = allowed
-        self._filter_buttons[column].setText("All" if not allowed else f"{len(allowed)} of {len(values)}")
-        self._refresh_filter_summary()
-
-    def _refresh_filter_summary(self):
-        """Say how many trials survive every filter, before anything is run."""
-        allowed = self._allowed_trials()
-        if allowed is None:
-            self.filter_summary.setText("")
-            return
-        active = ", ".join(f"{col}={'|'.join(sorted(values))}" for col, values in self._filters.items() if values)
-        self.filter_summary.setText(f"{len(allowed)} trials match {active}.")
-
-    def _allowed_trials(self) -> set[str] | None:
-        """Trial ids (as strings) passing every filter, or ``None`` for none set."""
-        return allowed_trials_from_metadata(getattr(self.app_state, "metadata_df", None), self._filters)
+    def _refresh_trials_note(self, *_args):
+        """Say which trials the run covers: the ones the trials table shows."""
+        n = len(getattr(self.app_state, "trials", None) or [])
+        self.trials_note.setText(
+            f"Runs over the {n} trial(s) the trials table currently shows — filter there "
+            "(Navigation section) to include or exclude trials."
+        )
 
     # ------------------------------------------------------------------
 
@@ -744,20 +700,16 @@ class PredictOnsetDialog(QDialog):
         config = om.bundle_config(bundle)
         individual = self.individual_combo.currentText()
         min_conf = float(self.min_conf_spin.value())
-        allowed = self._allowed_trials()
 
         use_crf = self.crf_check.isChecked()
         df = getattr(self.app_state, "_all_labels_df", None)
-        n_predicted = n_existing = n_filtered = n_low = n_absent = 0
+        n_predicted = n_existing = n_low = n_absent = 0
         per_target: dict[int, int] = {label: 0 for label in config.targets}
         predicted_trials: set[str] = set()
         errors: list[str] = []
         QApplication.setOverrideCursor(Qt.WaitCursor)
         try:
             for tid, loader, t0, t1, shift in _iter_trial_windows(self.app_state):
-                if allowed is not None and str(tid) not in allowed:
-                    n_filtered += 1
-                    continue
                 trial_rows = df[df["trial"] == tid] if df is not None else None
                 # Each class is filled independently: a trial already carrying
                 # one of them can still receive the others.
@@ -794,6 +746,7 @@ class PredictOnsetDialog(QDialog):
                         individual,
                         NO_RECIPIENT,
                         confidence=prediction.confidence,
+                        labeling_method=LABELING_AUTOMATED,
                     )
                     self.app_state.set_trial_intervals(tid, trial_df)
                     per_target[label] += 1
@@ -824,8 +777,6 @@ class PredictOnsetDialog(QDialog):
         parts = [f"Predicted {n_predicted} onsets ({per_target_text})."]
         if n_existing:
             parts.append(f"{n_existing} trial/class pairs already labelled (untouched).")
-        if n_filtered:
-            parts.append(f"{n_filtered} trials excluded by the metadata filter.")
         if n_low:
             parts.append(f"{n_low} below the confidence threshold.")
         if n_absent:
@@ -844,7 +795,7 @@ class PredictOnsetDialog(QDialog):
         label_ids, trials = self._reviewable
         if not label_ids:
             return
-        self._review_dialog = LabelFramesDialog(
+        self._review_dialog = LabelGridViewDialog(
             self.meta,
             parent=self.parent() or self,
             label_ids=label_ids,

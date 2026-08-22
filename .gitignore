@@ -1,6 +1,7 @@
 data/
 logging/
 result/
+dlc2action/
 configs/crowlab/model/
 *.mp4
 *.avi

@@ -163,14 +163,15 @@ class MetaWidget(GridSectionContainer):
 
         # Signal connections for decoupled communication
         self.plot_container.labels_redraw_needed.connect(self._on_labels_redraw_needed)
+        # A label's labeling_method changed: the green/red trial colouring
+        # re-reads the per-trial verdict (the bottom bar listens on its own).
+        self.app_state.curation_changed.connect(self.data_widget.update_trials_combo)
         self.plot_container.panel_content_changed.connect(self._rebind_console)
         self.app_state.trial_changed.connect(self.data_widget.on_trial_changed)
         # After DataWidget.on_trial_changed: the catalog it rebuilds is what the
         # console's derived features are removed from.
         self.app_state.trial_changed.connect(self._on_trial_changed_console)
         self.app_state.trial_changed.connect(self.changepoints_widget._update_cp_status)
-        self.app_state.trial_changed.connect(self.update_labels_widget_title)
-        self.app_state.trial_changed.connect(self.io_widget._update_human_verified_status)
         self.app_state.trial_changed.connect(self.io_widget._update_correct_offsets_status)
         self.app_state.trial_changed.connect(self.io_widget._update_purge_small_labels_status)
         self.changepoints_widget.changepoint_correction_checkbox.stateChanged.connect(
@@ -255,7 +256,6 @@ class MetaWidget(GridSectionContainer):
 
         self._overlays_relocated = False
         self._wire_plot_focus()
-        self.update_labels_widget_title()
 
     def _relocate_overlay_checkboxes(self):
         """Move the Confidence checkbox to the predictions importer and the
@@ -947,17 +947,6 @@ class MetaWidget(GridSectionContainer):
             return
         self.data_widget.update_label_plot()
         self.data_widget.update_trials_combo()
-
-    def update_labels_widget_title(self):
-        # Labels is the second sidebar section (index 1).
-        if hasattr(self, "collapsible_widgets") and len(self.collapsible_widgets) > 1:
-            labels_collapsible = self.collapsible_widgets[1]
-            verification_emoji = "❌"
-            if hasattr(self.app_state, "trials_sel") and self.app_state.trials_sel is not None:
-                trial_meta = self.app_state.get_trial_meta(self.app_state.trials_sel)
-                if trial_meta.get("human_verified", 0):
-                    verification_emoji = "✅"
-            self._set_collapsible_title(labels_collapsible, f"Label controls {verification_emoji}")
 
     def update_changepoints_widget_title(self):
         if hasattr(self, "collapsible_widgets") and len(self.collapsible_widgets) > 5:

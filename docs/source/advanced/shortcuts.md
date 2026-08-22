@@ -54,8 +54,22 @@ useful guide when guessing a binding.
 | `Ctrl+Z` | Undo the last label placed, moved or deleted (cancels a half-placed label first) |
 | `Ctrl+S` | Save `labels.tsv` file |
 | `Ctrl+Y` | Switch between labels and predictions |
-| `Ctrl+V` | 'Verify predictions' by editing once or this shortcut |
 | `Shift+B` | Switch the Main labels slot to the previously-selected branch |
+
+## Curation
+
+See {doc}`labels/curation`. `Ctrl+C` is always bound; the others are live
+only while a frame-by-frame review runs (started from the Labels tab's
+Curation section), wherever the key is pressed.
+
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl+C` | Curate the current trial: every automated label in scope becomes curated (manual ones stay manual) |
+| `Enter` | Confirm the frame on screen as the boundary — the label becomes manual if it moved, curated if not — and move on |
+| `Backspace` / `Delete` | Delete the event being reviewed and move on |
+| `N` | Next boundary (curates the one you leave when **N = seen, mark curated** is ticked) |
+| `B` | Previous boundary |
+| `Left` / `Right` | Step one frame — the main window's own binding |
 
 ## Keypoint Labelling
 

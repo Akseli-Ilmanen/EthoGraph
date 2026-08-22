@@ -113,9 +113,9 @@ def test_guarded_shortcuts_release_arrow_keys_to_text_fields(qtbot):
 def test_text_editing_shortcuts_are_guarded(qtbot):
     """Keys a text editor owns are guarded even when the call site doesn't ask.
 
-    An unguarded ``Ctrl+V`` ate the paste into a metadata cell and ran the
-    action behind it (mark the trial human-verified) — which then asked to save
-    labels on close after a metadata-only edit.
+    An unguarded ``Ctrl+C`` would eat the copy out of a metadata cell and run
+    the action behind it (curate the trial) — which then asks to save labels
+    on close after a metadata-only edit.
     """
     shell = EthographMainWindow()
     qtbot.addWidget(shell)
@@ -125,5 +125,5 @@ def test_text_editing_shortcuts_are_guarded(qtbot):
     bind_global_shortcuts(meta)
 
     guarded = {s.key().toString() for s in shell._guarded_shortcuts}
-    assert {"Ctrl+V", "Ctrl+A", "Ctrl+C", "Ctrl+Left", "Ctrl+Right"} <= guarded
+    assert {"Ctrl+C", "Ctrl+A", "Ctrl+Z", "Ctrl+Left", "Ctrl+Right"} <= guarded
     assert "Ctrl+S" not in guarded  # saving stays available while typing

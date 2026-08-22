@@ -76,6 +76,8 @@ class _Labels:
         self.old_labels = None
         self.ready_for_label_click = False
         self.highlight_spaceplot = _Signal()
+        # Every mutation tells the curation panel the trial's verdict may have moved.
+        self.curation_panel = type("_Panel", (), {"note_labels_edited": lambda self: None})()
 
     # Stubs for the surroundings the click path touches.
     def _to_display(self, t_rel):
