@@ -128,6 +128,9 @@ class TopBarBuilder:
         #: Refine-labels dialog, rebuilt when reopened so its label list and
         #: individuals always reflect the currently loaded labels.
         self._refine_dialog = None
+        #: GradBoost onset-model dialogs, rebuilt when reopened for the same reason.
+        self._onset_train_dialog = None
+        self._onset_predict_dialog = None
 
     # ------------------------------------------------------------------
     # Public entry point
@@ -139,6 +142,7 @@ class TopBarBuilder:
         self._build_file_menu(menu_bar)
         self._build_changepoints_menu(menu_bar)
         self._build_tools_menu(menu_bar)
+        self._build_model_menu(menu_bar)
         self._build_docs_menu(menu_bar)
         self._build_help_menu(menu_bar)
         self._add_sidebar_toggle_button(menu_bar)
@@ -182,6 +186,37 @@ class TopBarBuilder:
         if psth_open is None:
             act.setEnabled(False)
         menu.addAction("Neural: Compute firing rates…", lambda: self._popup_section("firing", "Firing rates", ephys))
+
+    def _build_model_menu(self, menu_bar):
+        """Model menu — supervised point-event onset detection (GradBoost).
+
+        Train collects the session's existing point events as training data
+        for a ``HistGradientBoostingClassifier``; Predict fills the target
+        event into trials that don't carry it yet.
+        """
+        menu = menu_bar.addMenu("&Model")
+        menu.addAction("Train onset detector (GradBoost)…", self._open_onset_train)
+        menu.addAction("Predict onsets (GradBoost)…", self._open_onset_predict)
+
+    def _open_onset_train(self):
+        from .dialog_onset_model import TrainOnsetDialog
+
+        # Rebuilt when reopened so the feature tree and point-event classes
+        # always reflect the currently loaded session.
+        if self._onset_train_dialog is None or not self._onset_train_dialog.isVisible():
+            self._onset_train_dialog = TrainOnsetDialog(self.meta, parent=self.shell)
+        self._onset_train_dialog.show()
+        self._onset_train_dialog.raise_()
+        self._onset_train_dialog.activateWindow()
+
+    def _open_onset_predict(self):
+        from .dialog_onset_model import PredictOnsetDialog
+
+        if self._onset_predict_dialog is None or not self._onset_predict_dialog.isVisible():
+            self._onset_predict_dialog = PredictOnsetDialog(self.meta, parent=self.shell)
+        self._onset_predict_dialog.show()
+        self._onset_predict_dialog.raise_()
+        self._onset_predict_dialog.activateWindow()
 
     def _open_keypoint_labelling(self):
         """Open the keypoint labelling dialog (owned by the DataWidget, so the

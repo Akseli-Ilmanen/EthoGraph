@@ -549,6 +549,12 @@ class PynappleLoader(_CatalogMixin):
     def backend(self) -> str:
         return "pynapple"
 
+    @property
+    def data(self) -> dict:
+        """The raw pynapple objects — lets callers build a second loader over
+        the same session (e.g. an offset-free one for whole-session sweeps)."""
+        return self._data
+
     def _keypoint_names(self) -> list[str]:
         """The keypoints backing the synthetic ``pose_estimation`` feature."""
         kp_spec = self._catalog.combos.get("keypoint") if self._catalog else None
