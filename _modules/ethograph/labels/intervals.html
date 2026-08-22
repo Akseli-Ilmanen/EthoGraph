@@ -414,6 +414,8 @@
 <span class="sd">    individual     (str)     - the individual performing the behaviour (actor)</span>
 <span class="sd">    individual_rec (str)     - the recipient of a dyadic behaviour, "" if none</span>
 <span class="sd">    event_type     (str)     - "state" (interval) or "point" (instantaneous)</span>
+<span class="sd">    confidence     (float64) - how sure the label is: 1.0 for a human label,</span>
+<span class="sd">                               the model's own score for a predicted one</span>
 
 <span class="sd">``individual`` and ``individual_rec`` together are the **subject** of a label:</span>
 <span class="sd">each (actor, recipient) pair is its own independent track, exactly as each</span>
@@ -443,7 +445,19 @@
 <span class="c1">#: Value of ``individual_rec`` for a behaviour with no recipient.</span>
 <span class="n">NO_RECIPIENT</span> <span class="o">=</span> <span class="s2">""</span>
 
-<span class="n">INTERVAL_COLUMNS</span> <span class="o">=</span> <span class="p">[</span><span class="s2">"onset_s"</span><span class="p">,</span> <span class="s2">"offset_s"</span><span class="p">,</span> <span class="s2">"labels"</span><span class="p">,</span> <span class="s2">"individual"</span><span class="p">,</span> <span class="s2">"individual_rec"</span><span class="p">,</span> <span class="s2">"event_type"</span><span class="p">]</span>
+<span class="c1">#: Confidence of a label placed by a human — certain by definition. Every</span>
+<span class="c1">#: other producer (a model) writes its own score in ``[0, 1]``.</span>
+<span class="n">HUMAN_CONFIDENCE</span> <span class="o">=</span> <span class="mf">1.0</span>
+
+<span class="n">INTERVAL_COLUMNS</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="s2">"onset_s"</span><span class="p">,</span>
+    <span class="s2">"offset_s"</span><span class="p">,</span>
+    <span class="s2">"labels"</span><span class="p">,</span>
+    <span class="s2">"individual"</span><span class="p">,</span>
+    <span class="s2">"individual_rec"</span><span class="p">,</span>
+    <span class="s2">"event_type"</span><span class="p">,</span>
+    <span class="s2">"confidence"</span><span class="p">,</span>
+<span class="p">]</span>
 
 <span class="n">INTERVAL_DTYPES</span> <span class="o">=</span> <span class="p">{</span>
     <span class="s2">"onset_s"</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">,</span>
@@ -452,6 +466,7 @@
     <span class="s2">"individual"</span><span class="p">:</span> <span class="nb">object</span><span class="p">,</span>
     <span class="s2">"individual_rec"</span><span class="p">:</span> <span class="nb">object</span><span class="p">,</span>
     <span class="s2">"event_type"</span><span class="p">:</span> <span class="nb">object</span><span class="p">,</span>
+    <span class="s2">"confidence"</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">,</span>
 <span class="p">}</span>
 
 <span class="c1">#: The columns identifying whose label a row is — the actor and the recipient.</span>
@@ -477,7 +492,7 @@
 <span class="sd">    &gt;&gt;&gt; from ethograph.labels.intervals import empty_intervals</span>
 <span class="sd">    &gt;&gt;&gt; df = empty_intervals()</span>
 <span class="sd">    &gt;&gt;&gt; df.columns.tolist()</span>
-<span class="sd">    ['onset_s', 'offset_s', 'labels', 'individual', 'individual_rec', 'event_type']</span>
+<span class="sd">    ['onset_s', 'offset_s', 'labels', 'individual', 'individual_rec', 'event_type', 'confidence']</span>
 <span class="sd">    &gt;&gt;&gt; len(df)</span>
 <span class="sd">    0</span>
 <span class="sd">    """</span>
@@ -511,6 +526,20 @@
         <span class="n">df</span><span class="p">[</span><span class="s2">"individual_rec"</span><span class="p">]</span> <span class="o">=</span> <span class="n">NO_RECIPIENT</span>
     <span class="k">else</span><span class="p">:</span>
         <span class="n">df</span><span class="p">[</span><span class="s2">"individual_rec"</span><span class="p">]</span> <span class="o">=</span> <span class="n">df</span><span class="p">[</span><span class="s2">"individual_rec"</span><span class="p">]</span><span class="o">.</span><span class="n">fillna</span><span class="p">(</span><span class="n">NO_RECIPIENT</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">object</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">df</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">ensure_confidence</span><span class="p">(</span><span class="n">df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Add a ``confidence`` column defaulting to :data:`HUMAN_CONFIDENCE`.</span>
+
+<span class="sd">    Mutates and returns *df*.  A row with no confidence is a row nobody</span>
+<span class="sd">    expressed a doubt about — every label file written before models scored</span>
+<span class="sd">    their own output reads back as fully confident, which is what it is.</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="s2">"confidence"</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
+        <span class="n">df</span><span class="p">[</span><span class="s2">"confidence"</span><span class="p">]</span> <span class="o">=</span> <span class="n">HUMAN_CONFIDENCE</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">df</span><span class="p">[</span><span class="s2">"confidence"</span><span class="p">]</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">to_numeric</span><span class="p">(</span><span class="n">df</span><span class="p">[</span><span class="s2">"confidence"</span><span class="p">],</span> <span class="n">errors</span><span class="o">=</span><span class="s2">"coerce"</span><span class="p">)</span><span class="o">.</span><span class="n">fillna</span><span class="p">(</span><span class="n">HUMAN_CONFIDENCE</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">df</span>
 
 
@@ -810,6 +839,7 @@
     <span class="n">labels</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
     <span class="n">individual</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
     <span class="n">individual_rec</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">NO_RECIPIENT</span><span class="p">,</span>
+    <span class="n">confidence</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="n">HUMAN_CONFIDENCE</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Add a point event (instantaneous label) at *time_s*.</span>
 
@@ -817,6 +847,9 @@
 <span class="sd">    ``event_type = "point"``.  They are never trimmed, split, or merged by</span>
 <span class="sd">    :func:`add_interval`, :func:`purge_short_intervals`,</span>
 <span class="sd">    :func:`stitch_intervals`, or :func:`snap_boundaries`.</span>
+
+<span class="sd">    *confidence* defaults to :data:`HUMAN_CONFIDENCE`; a model passes its own</span>
+<span class="sd">    score so a later review pass can rank what to check first.</span>
 
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
@@ -830,6 +863,7 @@
         <span class="s2">"individual"</span><span class="p">:</span> <span class="n">individual</span><span class="p">,</span>
         <span class="s2">"individual_rec"</span><span class="p">:</span> <span class="n">individual_rec</span><span class="p">,</span>
         <span class="s2">"event_type"</span><span class="p">:</span> <span class="n">EVENT_TYPE_POINT</span><span class="p">,</span>
+        <span class="s2">"confidence"</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">confidence</span><span class="p">),</span>
     <span class="p">}</span>
     <span class="n">new_df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">([</span><span class="n">new_row</span><span class="p">])</span>
     <span class="n">df</span> <span class="o">=</span> <span class="n">ensure_individual_rec</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">copy</span><span class="p">())</span>
@@ -851,6 +885,7 @@
     <span class="n">individual</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
     <span class="n">protected_label_ids</span><span class="p">:</span> <span class="nb">set</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
     <span class="n">individual_rec</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">NO_RECIPIENT</span><span class="p">,</span>
+    <span class="n">confidence</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="n">HUMAN_CONFIDENCE</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Add an interval, resolving overlaps for the same subject.</span>
 
@@ -875,6 +910,8 @@
 <span class="sd">        to inactive branches).  ``None`` means no protection.</span>
 <span class="sd">    individual_rec : str</span>
 <span class="sd">        Recipient of the behaviour; :data:`NO_RECIPIENT` for a solo one.</span>
+<span class="sd">    confidence : float</span>
+<span class="sd">        How sure this label is; :data:`HUMAN_CONFIDENCE` for a hand-placed one.</span>
 
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
@@ -914,6 +951,9 @@
             <span class="k">continue</span>
 
         <span class="n">eps</span> <span class="o">=</span> <span class="mf">1e-3</span>
+        <span class="c1"># A trimmed remnant is the same label as before — it keeps the</span>
+        <span class="c1"># confidence of the row it was cut from, not the new label's.</span>
+        <span class="n">row_conf</span> <span class="o">=</span> <span class="n">row</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"confidence"</span><span class="p">,</span> <span class="n">HUMAN_CONFIDENCE</span><span class="p">)</span>
         <span class="k">if</span> <span class="n">ro</span> <span class="o">&lt;</span> <span class="n">onset_s</span><span class="p">:</span>
             <span class="n">kept</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
                 <span class="p">{</span>
@@ -922,6 +962,7 @@
                     <span class="s2">"labels"</span><span class="p">:</span> <span class="n">rid</span><span class="p">,</span>
                     <span class="s2">"individual"</span><span class="p">:</span> <span class="n">individual</span><span class="p">,</span>
                     <span class="s2">"individual_rec"</span><span class="p">:</span> <span class="n">individual_rec</span><span class="p">,</span>
+                    <span class="s2">"confidence"</span><span class="p">:</span> <span class="n">row_conf</span><span class="p">,</span>
                 <span class="p">}</span>
             <span class="p">)</span>
         <span class="k">if</span> <span class="n">rf</span> <span class="o">&gt;</span> <span class="n">offset_s</span><span class="p">:</span>
@@ -932,6 +973,7 @@
                     <span class="s2">"labels"</span><span class="p">:</span> <span class="n">rid</span><span class="p">,</span>
                     <span class="s2">"individual"</span><span class="p">:</span> <span class="n">individual</span><span class="p">,</span>
                     <span class="s2">"individual_rec"</span><span class="p">:</span> <span class="n">individual_rec</span><span class="p">,</span>
+                    <span class="s2">"confidence"</span><span class="p">:</span> <span class="n">row_conf</span><span class="p">,</span>
                 <span class="p">}</span>
             <span class="p">)</span>
 
@@ -942,6 +984,7 @@
             <span class="s2">"labels"</span><span class="p">:</span> <span class="n">labels</span><span class="p">,</span>
             <span class="s2">"individual"</span><span class="p">:</span> <span class="n">individual</span><span class="p">,</span>
             <span class="s2">"individual_rec"</span><span class="p">:</span> <span class="n">individual_rec</span><span class="p">,</span>
+            <span class="s2">"confidence"</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">confidence</span><span class="p">),</span>
         <span class="p">}</span>
     <span class="p">)</span>
 
@@ -1140,6 +1183,11 @@
                 <span class="ow">and</span> <span class="p">(</span><span class="n">nxt</span><span class="p">[</span><span class="s2">"onset_s"</span><span class="p">]</span> <span class="o">-</span> <span class="n">current</span><span class="p">[</span><span class="s2">"offset_s"</span><span class="p">])</span> <span class="o">&lt;</span> <span class="n">max_gap_s</span>
             <span class="p">):</span>
                 <span class="n">current</span><span class="p">[</span><span class="s2">"offset_s"</span><span class="p">]</span> <span class="o">=</span> <span class="n">nxt</span><span class="p">[</span><span class="s2">"offset_s"</span><span class="p">]</span>
+                <span class="c1"># A merged interval is only as trustworthy as its weakest part.</span>
+                <span class="n">current</span><span class="p">[</span><span class="s2">"confidence"</span><span class="p">]</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span>
+                    <span class="nb">float</span><span class="p">(</span><span class="n">current</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"confidence"</span><span class="p">,</span> <span class="n">HUMAN_CONFIDENCE</span><span class="p">)),</span>
+                    <span class="nb">float</span><span class="p">(</span><span class="n">nxt</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"confidence"</span><span class="p">,</span> <span class="n">HUMAN_CONFIDENCE</span><span class="p">)),</span>
+                <span class="p">)</span>
                 <span class="n">j</span> <span class="o">+=</span> <span class="mi">1</span>
             <span class="k">else</span><span class="p">:</span>
                 <span class="k">break</span>
@@ -1268,6 +1316,7 @@
         <span class="n">df</span><span class="p">[</span><span class="s2">"event_type"</span><span class="p">]</span> <span class="o">=</span> <span class="n">df</span><span class="p">[</span><span class="s2">"event_type"</span><span class="p">]</span><span class="o">.</span><span class="n">fillna</span><span class="p">(</span><span class="n">EVENT_TYPE_STATE</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">object</span><span class="p">)</span>
     <span class="n">df</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">reindex</span><span class="p">(</span><span class="n">columns</span><span class="o">=</span><span class="n">INTERVAL_COLUMNS</span><span class="p">)</span>
     <span class="n">ensure_individual_rec</span><span class="p">(</span><span class="n">df</span><span class="p">)</span>
+    <span class="n">ensure_confidence</span><span class="p">(</span><span class="n">df</span><span class="p">)</span>
     <span class="k">for</span> <span class="n">col</span><span class="p">,</span> <span class="n">dtype</span> <span class="ow">in</span> <span class="n">INTERVAL_DTYPES</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
         <span class="n">df</span><span class="p">[</span><span class="n">col</span><span class="p">]</span> <span class="o">=</span> <span class="n">df</span><span class="p">[</span><span class="n">col</span><span class="p">]</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">dtype</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">df</span>

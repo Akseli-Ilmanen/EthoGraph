@@ -49,6 +49,7 @@ the GUI; computed columns are derived on each save from the data file.
 | `individual` | str | The individual performing the behaviour, i.e. the actor (e.g. `"mouse1"`) |
 | `individual_rec` | str | The recipient of a dyadic behaviour (e.g. the bird being mounted); empty for a solo behaviour |
 | `trial` | int/str | Trial identifier, matches the TrialTree |
+| `confidence` | float | How sure the label is: `1.0` for a hand-placed label, the model's own score for a predicted one (see {ref}`target-onset-model-confidence`) |
 
 `individual` and `individual_rec` together are the **subject** of a label. Each
 (actor, recipient) pair is an independent track: labels are shown, selected and

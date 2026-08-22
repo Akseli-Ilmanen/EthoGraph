@@ -426,7 +426,7 @@
 <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
 
-<span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.labels.intervals</span><span class="w"> </span><span class="kn">import</span> <span class="n">empty_intervals</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.labels.intervals</span><span class="w"> </span><span class="kn">import</span> <span class="n">HUMAN_CONFIDENCE</span><span class="p">,</span> <span class="n">empty_intervals</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.labels.ml</span><span class="w"> </span><span class="kn">import</span> <span class="n">dense_to_intervals</span>
 
 <span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span>
@@ -620,6 +620,13 @@
             <span class="p">)</span>
 
             <span class="n">intervals</span> <span class="o">=</span> <span class="n">dense_to_intervals</span><span class="p">(</span><span class="n">labels</span><span class="p">,</span> <span class="p">[</span><span class="n">individual</span><span class="p">],</span> <span class="n">time_coord</span><span class="o">=</span><span class="n">time_coord</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">confidence</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">intervals</span><span class="o">.</span><span class="n">empty</span><span class="p">:</span>
+                <span class="c1"># Each segment carries the mean frame confidence over its own</span>
+                <span class="c1"># span — the per-label number the review tools read.</span>
+                <span class="n">intervals</span><span class="p">[</span><span class="s2">"confidence"</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span>
+                    <span class="n">_segment_confidence</span><span class="p">(</span><span class="n">confidence</span><span class="p">,</span> <span class="n">time_coord</span><span class="p">,</span> <span class="n">seg</span><span class="p">[</span><span class="s2">"onset_s"</span><span class="p">],</span> <span class="n">seg</span><span class="p">[</span><span class="s2">"offset_s"</span><span class="p">])</span>
+                    <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">seg</span> <span class="ow">in</span> <span class="n">intervals</span><span class="o">.</span><span class="n">iterrows</span><span class="p">()</span>
+                <span class="p">]</span>
             <span class="k">if</span> <span class="ow">not</span> <span class="n">intervals</span><span class="o">.</span><span class="n">empty</span><span class="p">:</span>
                 <span class="n">intervals</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="s2">"trial"</span><span class="p">,</span> <span class="n">trial</span><span class="p">)</span>
                 <span class="n">intervals</span><span class="p">[</span><span class="s2">"prediction_source"</span><span class="p">]</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">pred_file</span><span class="p">)</span>
@@ -630,12 +637,8 @@
             <span class="k">if</span> <span class="n">confidence</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
                 <span class="n">mean_conf</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">confidence</span><span class="p">))</span>
                 <span class="n">has_low_segment</span> <span class="o">=</span> <span class="kc">False</span>
-                <span class="k">if</span> <span class="ow">not</span> <span class="n">intervals</span><span class="o">.</span><span class="n">empty</span> <span class="ow">and</span> <span class="s2">"onset_s"</span> <span class="ow">in</span> <span class="n">intervals</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
-                    <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">seg</span> <span class="ow">in</span> <span class="n">intervals</span><span class="o">.</span><span class="n">iterrows</span><span class="p">():</span>
-                        <span class="n">seg_mask</span> <span class="o">=</span> <span class="p">(</span><span class="n">time_coord</span> <span class="o">&gt;=</span> <span class="n">seg</span><span class="p">[</span><span class="s2">"onset_s"</span><span class="p">])</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">time_coord</span> <span class="o">&lt;=</span> <span class="n">seg</span><span class="p">[</span><span class="s2">"offset_s"</span><span class="p">])</span>
-                        <span class="k">if</span> <span class="n">seg_mask</span><span class="o">.</span><span class="n">any</span><span class="p">()</span> <span class="ow">and</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">confidence</span><span class="p">[</span><span class="n">seg_mask</span><span class="p">]))</span> <span class="o">&lt;</span> <span class="n">segment_confidence_threshold</span><span class="p">:</span>
-                            <span class="n">has_low_segment</span> <span class="o">=</span> <span class="kc">True</span>
-                            <span class="k">break</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">intervals</span><span class="o">.</span><span class="n">empty</span> <span class="ow">and</span> <span class="s2">"confidence"</span> <span class="ow">in</span> <span class="n">intervals</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
+                    <span class="n">has_low_segment</span> <span class="o">=</span> <span class="nb">bool</span><span class="p">((</span><span class="n">intervals</span><span class="p">[</span><span class="s2">"confidence"</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">segment_confidence_threshold</span><span class="p">)</span><span class="o">.</span><span class="n">any</span><span class="p">())</span>
                 <span class="n">low</span> <span class="o">=</span> <span class="n">mean_conf</span> <span class="o">&lt;</span> <span class="n">confidence_threshold</span> <span class="ow">or</span> <span class="n">has_low_segment</span>
                 <span class="n">confidence_levels</span><span class="p">[</span><span class="n">trial</span><span class="p">]</span> <span class="o">=</span> <span class="s2">"low"</span> <span class="k">if</span> <span class="n">low</span> <span class="k">else</span> <span class="s2">"high"</span>
 
@@ -648,6 +651,20 @@
         <span class="k">return</span> <span class="n">all_df</span><span class="p">,</span> <span class="n">confidence_levels</span></div>
 </div>
 
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_segment_confidence</span><span class="p">(</span>
+    <span class="n">confidence</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">time_coord</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">onset_s</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+    <span class="n">offset_s</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Mean frame confidence over one segment; :data:`HUMAN_CONFIDENCE` if it</span>
+<span class="sd">    spans no frame (a point event's NaN offset makes the mask empty)."""</span>
+    <span class="n">mask</span> <span class="o">=</span> <span class="p">(</span><span class="n">time_coord</span> <span class="o">&gt;=</span> <span class="n">onset_s</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">time_coord</span> <span class="o">&lt;=</span> <span class="n">offset_s</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">mask</span><span class="o">.</span><span class="n">any</span><span class="p">():</span>
+        <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="n">HUMAN_CONFIDENCE</span><span class="p">)</span>
+    <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">confidence</span><span class="p">[</span><span class="n">mask</span><span class="p">]))</span>
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">_extract_trial_from_filename</span><span class="p">(</span><span class="n">path</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span> <span class="n">trial_list</span><span class="p">:</span> <span class="nb">list</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span> <span class="o">|</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>

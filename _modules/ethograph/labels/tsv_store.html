@@ -414,6 +414,8 @@
 <span class="sd">    labels                  - integer label class ID</span>
 <span class="sd">    onset_s                 - start time in seconds (trial-relative)</span>
 <span class="sd">    offset_s                - end time in seconds (trial-relative)</span>
+<span class="sd">    confidence              - 1.0 for a human label, the model's own score for</span>
+<span class="sd">                              a predicted one</span>
 <span class="sd">    n_samples               - per-trial sample count for dense conversion (int, 0 if unknown)</span>
 <span class="sd">    human_verified          - per-trial flag (0/1), repeated per row</span>
 <span class="sd">    changepoint_corrected   - per-trial flag (0/1), repeated per row</span>
@@ -426,6 +428,8 @@
 <span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">collections</span><span class="w"> </span><span class="kn">import</span> <span class="n">deque</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">dataclasses</span><span class="w"> </span><span class="kn">import</span> <span class="n">dataclass</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
@@ -435,6 +439,7 @@
     <span class="n">INTERVAL_COLUMNS</span><span class="p">,</span>
     <span class="n">INTERVAL_DTYPES</span><span class="p">,</span>
     <span class="n">empty_intervals</span><span class="p">,</span>
+    <span class="n">ensure_confidence</span><span class="p">,</span>
     <span class="n">ensure_event_type</span><span class="p">,</span>
     <span class="n">ensure_individual_rec</span><span class="p">,</span>
 <span class="p">)</span>
@@ -449,6 +454,7 @@
     <span class="s2">"onset_s"</span><span class="p">,</span>
     <span class="s2">"offset_s"</span><span class="p">,</span>
     <span class="s2">"event_type"</span><span class="p">,</span>
+    <span class="s2">"confidence"</span><span class="p">,</span>
     <span class="s2">"human_verified"</span><span class="p">,</span>
     <span class="s2">"changepoint_corrected"</span><span class="p">,</span>
     <span class="s2">"prediction_source"</span><span class="p">,</span>
@@ -558,6 +564,7 @@
 
     <span class="n">ensure_event_type</span><span class="p">(</span><span class="n">df</span><span class="p">)</span>
     <span class="n">ensure_individual_rec</span><span class="p">(</span><span class="n">df</span><span class="p">)</span>
+    <span class="n">ensure_confidence</span><span class="p">(</span><span class="n">df</span><span class="p">)</span>
     <span class="k">for</span> <span class="n">col</span> <span class="ow">in</span> <span class="n">INTERVAL_COLUMNS</span><span class="p">:</span>
         <span class="k">if</span> <span class="n">col</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">columns</span> <span class="ow">and</span> <span class="n">col</span> <span class="ow">in</span> <span class="n">INTERVAL_DTYPES</span><span class="p">:</span>
             <span class="n">df</span><span class="p">[</span><span class="n">col</span><span class="p">]</span> <span class="o">=</span> <span class="n">df</span><span class="p">[</span><span class="n">col</span><span class="p">]</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">INTERVAL_DTYPES</span><span class="p">[</span><span class="n">col</span><span class="p">])</span>
@@ -602,6 +609,7 @@
         <span class="s2">"onset_s"</span><span class="p">,</span>
         <span class="s2">"offset_s"</span><span class="p">,</span>
         <span class="s2">"event_type"</span><span class="p">,</span>
+        <span class="s2">"confidence"</span><span class="p">,</span>
         <span class="s2">"trial_onset"</span><span class="p">,</span>
         <span class="s2">"trial_offset"</span><span class="p">,</span>
         <span class="s2">"onset_global"</span><span class="p">,</span>
@@ -659,6 +667,7 @@
     <span class="n">out</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
     <span class="n">ensure_event_type</span><span class="p">(</span><span class="n">out</span><span class="p">)</span>
     <span class="n">ensure_individual_rec</span><span class="p">(</span><span class="n">out</span><span class="p">)</span>
+    <span class="n">ensure_confidence</span><span class="p">(</span><span class="n">out</span><span class="p">)</span>
     <span class="k">for</span> <span class="n">col</span> <span class="ow">in</span> <span class="n">TSV_COLUMNS</span><span class="p">:</span>
         <span class="k">if</span> <span class="n">col</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">out</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
             <span class="n">out</span><span class="p">[</span><span class="n">col</span><span class="p">]</span> <span class="o">=</span> <span class="n">TRIAL_META_DEFAULTS</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">col</span><span class="p">,</span> <span class="s2">""</span><span class="p">)</span>
@@ -709,16 +718,21 @@
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Replace all rows for a trial in the all-labels DataFrame.</span>
 
-<span class="sd">    Preserves per-trial metadata columns from the existing rows.</span>
+<span class="sd">    Preserves per-trial metadata columns from the existing rows.  The columns</span>
+<span class="sd">    added to files written before they existed (``event_type``,</span>
+<span class="sd">    ``individual_rec``, ``confidence``) are filled in on the *whole* table</span>
+<span class="sd">    first: the untouched trials must not end up with NaN where the rewritten</span>
+<span class="sd">    trial has a value.</span>
 <span class="sd">    """</span>
     <span class="k">if</span> <span class="n">all_df</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
         <span class="n">all_df</span> <span class="o">=</span> <span class="n">_empty_all_labels</span><span class="p">()</span>
+    <span class="n">all_df</span> <span class="o">=</span> <span class="n">ensure_confidence</span><span class="p">(</span><span class="n">ensure_individual_rec</span><span class="p">(</span><span class="n">ensure_event_type</span><span class="p">(</span><span class="n">all_df</span><span class="o">.</span><span class="n">copy</span><span class="p">())))</span>
 
     <span class="c1"># Preserve existing meta values for this trial</span>
     <span class="n">old_meta</span> <span class="o">=</span> <span class="n">get_trial_meta</span><span class="p">(</span><span class="n">all_df</span><span class="p">,</span> <span class="n">trial</span><span class="p">)</span>
     <span class="n">other</span> <span class="o">=</span> <span class="n">all_df</span><span class="p">[</span><span class="n">all_df</span><span class="p">[</span><span class="s2">"trial"</span><span class="p">]</span> <span class="o">!=</span> <span class="n">trial</span><span class="p">]</span>
 
-    <span class="n">trial_df</span> <span class="o">=</span> <span class="n">ensure_individual_rec</span><span class="p">(</span><span class="n">ensure_event_type</span><span class="p">(</span><span class="n">trial_df</span><span class="o">.</span><span class="n">copy</span><span class="p">()))</span>
+    <span class="n">trial_df</span> <span class="o">=</span> <span class="n">ensure_confidence</span><span class="p">(</span><span class="n">ensure_individual_rec</span><span class="p">(</span><span class="n">ensure_event_type</span><span class="p">(</span><span class="n">trial_df</span><span class="o">.</span><span class="n">copy</span><span class="p">())))</span>
     <span class="n">new_rows</span> <span class="o">=</span> <span class="n">trial_df</span><span class="p">[</span><span class="n">INTERVAL_COLUMNS</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
     <span class="n">new_rows</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="s2">"trial"</span><span class="p">,</span> <span class="n">trial</span><span class="p">)</span>
     <span class="k">for</span> <span class="n">col</span><span class="p">,</span> <span class="n">default</span> <span class="ow">in</span> <span class="n">TRIAL_META_DEFAULTS</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
@@ -775,6 +789,80 @@
 <span class="w">    </span><span class="sd">"""Create empty labels DataFrame."""</span>
     <span class="k">return</span> <span class="n">_empty_all_labels</span><span class="p">()</span></div>
 
+
+
+<span class="c1"># ---------------------------------------------------------------------------</span>
+<span class="c1"># Undo history</span>
+<span class="c1"># ---------------------------------------------------------------------------</span>
+
+
+<span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">LabelEdit</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""One trial's labels as they stood *before* a single edit.</span>
+
+<span class="sd">    ``rows`` carries :data:`~ethograph.labels.intervals.INTERVAL_COLUMNS` only;</span>
+<span class="sd">    ``meta`` the per-trial flags, so undoing a placement also takes back the</span>
+<span class="sd">    ``human_verified`` it set.</span>
+<span class="sd">    """</span>
+
+    <span class="n">trial</span><span class="p">:</span> <span class="nb">object</span>
+    <span class="n">description</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">rows</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span>
+    <span class="n">meta</span><span class="p">:</span> <span class="nb">dict</span>
+
+
+<span class="k">class</span><span class="w"> </span><span class="nc">LabelHistory</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Bounded undo stack over the label table.</span>
+
+<span class="sd">    A snapshot holds **one trial's rows**, never the whole table: every trial's</span>
+<span class="sd">    labels share one DataFrame, so copying all of them per click would cost</span>
+<span class="sd">    with the size of the dataset instead of the size of the edit. Depth is</span>
+<span class="sd">    bounded, so a long labelling session cannot grow without limit.</span>
+
+<span class="sd">    One entry is one *user action*: the caller records once, before the action,</span>
+<span class="sd">    and everything that action goes on to do (interval trimming, sliver purge,</span>
+<span class="sd">    changepoint correction) is inside that single step.</span>
+<span class="sd">    """</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">max_depth</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">200</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_stack</span><span class="p">:</span> <span class="n">deque</span><span class="p">[</span><span class="n">LabelEdit</span><span class="p">]</span> <span class="o">=</span> <span class="n">deque</span><span class="p">(</span><span class="n">maxlen</span><span class="o">=</span><span class="n">max_depth</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__len__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+        <span class="k">return</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_stack</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">clear</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_stack</span><span class="o">.</span><span class="n">clear</span><span class="p">()</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">peek</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">LabelEdit</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""What the next :meth:`undo` would take back, without taking it back."""</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_stack</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_stack</span> <span class="k">else</span> <span class="kc">None</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">record</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">all_df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span> <span class="n">trial</span><span class="p">,</span> <span class="n">description</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""Snapshot *trial*'s rows as they are now, before an edit changes them."""</span>
+        <span class="n">rows</span> <span class="o">=</span> <span class="n">get_trial_from_tsv</span><span class="p">(</span><span class="n">all_df</span><span class="p">,</span> <span class="n">trial</span><span class="p">)</span>
+        <span class="n">cols</span> <span class="o">=</span> <span class="p">[</span><span class="n">c</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">INTERVAL_COLUMNS</span> <span class="k">if</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">rows</span><span class="o">.</span><span class="n">columns</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_stack</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+            <span class="n">LabelEdit</span><span class="p">(</span>
+                <span class="n">trial</span><span class="o">=</span><span class="n">trial</span><span class="p">,</span>
+                <span class="n">description</span><span class="o">=</span><span class="n">description</span><span class="p">,</span>
+                <span class="n">rows</span><span class="o">=</span><span class="n">rows</span><span class="p">[</span><span class="n">cols</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">(),</span>
+                <span class="n">meta</span><span class="o">=</span><span class="n">get_trial_meta</span><span class="p">(</span><span class="n">all_df</span><span class="p">,</span> <span class="n">trial</span><span class="p">),</span>
+            <span class="p">)</span>
+        <span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">undo</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">all_df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span> <span class="o">|</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">LabelEdit</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""Put the newest snapshot back.</span>
+
+<span class="sd">        Returns the restored table and the edit it took back, or ``None`` when</span>
+<span class="sd">        there is nothing left to undo.</span>
+<span class="sd">        """</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_stack</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">None</span>
+        <span class="n">edit</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_stack</span><span class="o">.</span><span class="n">pop</span><span class="p">()</span>
+        <span class="n">restored</span> <span class="o">=</span> <span class="n">set_trial_in_tsv</span><span class="p">(</span><span class="n">all_df</span><span class="p">,</span> <span class="n">edit</span><span class="o">.</span><span class="n">trial</span><span class="p">,</span> <span class="n">edit</span><span class="o">.</span><span class="n">rows</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">edit</span><span class="o">.</span><span class="n">meta</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="n">restored</span> <span class="o">=</span> <span class="n">set_trial_meta_attr</span><span class="p">(</span><span class="n">restored</span><span class="p">,</span> <span class="n">edit</span><span class="o">.</span><span class="n">trial</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">restored</span><span class="p">,</span> <span class="n">edit</span>
 </pre></div>
 
                 </article>

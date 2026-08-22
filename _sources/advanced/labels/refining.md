@@ -24,6 +24,39 @@ already placed into *seeds* and walks you through them:
 3. Nudge the video with `Left` / `Right`, press `Enter` — the frame on screen
    becomes the new boundary and the dialog jumps to the next seed. **Skip**
    and **Back** move without committing.
+4. If the event should not be there at all — a prediction of something that
+   never happened in this trial — press `Backspace` instead. The label is
+   deleted (both boundaries of a state event go together) and the queue moves
+   straight on. Nothing reaches disk until you save with `Ctrl+S`.
+
+A boundary you confirm becomes a **hand-made label**: its `confidence` is set
+to `1.0`, whatever produced it first (see
+{ref}`confidence <target-onset-model-confidence>`). Reviewing a model's output
+this way is how predictions turn into ground truth.
+
+## Refining only the events you picked
+
+Walking every instance of a class is the right pass for a first careful
+labelling round, but a review pass is usually about the handful that look
+wrong. **Tools ▸ Labels: Show frames as Grid/PDF…** is where you spot them:
+each tile shows the video frame at a label's time and its confidence.
+
+1. Pick the labels on the **Setup** tab and press **Generate**: the grid fills
+   the **Frames** tab of the same window. Set **Flag confidence below** so the
+   doubtful tiles are outlined in red, and scan the sheet — maximise the window
+   to spread the tiles over the whole screen, they refit to the new width.
+2. Tick the tiles that need work. **Tick flagged** ticks every outlined one at
+   once; **Tick their whole trials** widens that to every event of every trial
+   holding a flagged one — a trial the model got one event wrong in is worth
+   reading end to end, because its other events may score high and still sit on
+   the wrong frame. Then press **Refine ticked frame-by-frame…**.
+3. The refinement dialog opens with a queue holding exactly those boundaries
+   and nothing else. Walk it with `Enter` / `Backspace` as above.
+
+Two cameras showing the same label are two tiles but one boundary: the queue
+stops at it once. When the queue runs out, EthoGraph suggests saving and then
+regenerating the grid — the tiles you just corrected still show the old frames,
+and a fresh grid is the check that the pass worked.
 
 For corrections that belong far from the current label, untick **Locked around
 initial label**: you can then pan and zoom the whole trial freely and `Enter`

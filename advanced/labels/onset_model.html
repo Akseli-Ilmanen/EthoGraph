@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>Changepoints &#8212; ethograph</title>
+    <title>Predicting point events (LightGBM) &#8212; ethograph</title>
   
   
   
@@ -45,13 +45,13 @@
     <script src="../../_static/doctools.js?v=9bcbadda"></script>
     <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../../_static/design-tabs.js?v=f930bc37"></script>
-    <script>DOCUMENTATION_OPTIONS.pagename = 'advanced/changepoints/index';</script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'advanced/labels/onset_model';</script>
     <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
-    <link rel="canonical" href="https://Akseli-Ilmanen.github.io/ethograph/advanced/changepoints/index.html" />
+    <link rel="canonical" href="https://Akseli-Ilmanen.github.io/ethograph/advanced/labels/onset_model.html" />
     <link rel="index" title="Index" href="../../genindex.html" />
     <link rel="search" title="Search" href="../../search.html" />
-    <link rel="next" title="Overview" href="overview.html" />
-    <link rel="prev" title="Exporting labels" href="../labels/exporting.html" />
+    <link rel="next" title="Label mapping (mapping.txt)" href="mapping.html" />
+    <link rel="prev" title="Refining labels frame-by-frame" href="refining.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="" />
@@ -367,22 +367,22 @@
   <div class="bd-toc-item navbar-nav"><ul class="current nav bd-sidenav">
 <li class="toctree-l1"><a class="reference internal" href="../metadata.html">Trial metadata</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../time_slider_trial_session.html">Time slider &amp; trial/session</a></li>
-<li class="toctree-l1 has-children"><a class="reference internal" href="../labels/index.html">Labels</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
-<li class="toctree-l2"><a class="reference internal" href="../labels/labelling_gui.html">Labelling in the GUI</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../labels/refining.html">Refining labels frame-by-frame</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../labels/onset_model.html">Predicting point events (LightGBM)</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../labels/mapping.html">Label mapping (<code class="docutils literal notranslate"><span class="pre">mapping.txt</span></code>)</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../labels/branches.html">Label branches</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../labels/importing.html">Importing labels</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../labels/exporting.html">Exporting labels</a></li>
+<li class="toctree-l1 current active has-children"><a class="reference internal" href="index.html">Labels</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="labelling_gui.html">Labelling in the GUI</a></li>
+<li class="toctree-l2"><a class="reference internal" href="refining.html">Refining labels frame-by-frame</a></li>
+<li class="toctree-l2 current active"><a class="current reference internal" href="#">Predicting point events (LightGBM)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="mapping.html">Label mapping (<code class="docutils literal notranslate"><span class="pre">mapping.txt</span></code>)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="branches.html">Label branches</a></li>
+<li class="toctree-l2"><a class="reference internal" href="importing.html">Importing labels</a></li>
+<li class="toctree-l2"><a class="reference internal" href="exporting.html">Exporting labels</a></li>
 </ul>
 </details></li>
-<li class="toctree-l1 current active has-children"><a class="current reference internal" href="#">Changepoints</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
-<li class="toctree-l2"><a class="reference internal" href="overview.html">Overview</a></li>
-<li class="toctree-l2"><a class="reference internal" href="kinematic.html">Kinematic changepoints</a></li>
-<li class="toctree-l2"><a class="reference internal" href="audio.html">Audio changepoints</a></li>
-<li class="toctree-l2"><a class="reference internal" href="ruptures.html">Ruptures</a></li>
-<li class="toctree-l2"><a class="reference internal" href="correction.html">Changepoint correction</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../changepoints/index.html">Changepoints</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="../changepoints/overview.html">Overview</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../changepoints/kinematic.html">Kinematic changepoints</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../changepoints/audio.html">Audio changepoints</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../changepoints/ruptures.html">Ruptures</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../changepoints/correction.html">Changepoint correction</a></li>
 </ul>
 </details></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="../keypoint_labelling/index.html">Keypoint labelling</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
@@ -441,7 +441,10 @@
     
     <li class="breadcrumb-item"><a href="../index.html" class="nav-link">Advanced</a></li>
     
-    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Changepoints</span></li>
+    
+    <li class="breadcrumb-item"><a href="index.html" class="nav-link">Labels</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Predicting point events (LightGBM)</span></li>
   </ul>
 </nav>
 </div>
@@ -458,20 +461,190 @@
 <div id="searchbox"></div>
                 <article class="bd-article">
                   
-  <section class="tex2jax_ignore mathjax_ignore" id="changepoints">
-<h1>Changepoints<a class="headerlink" href="#changepoints" title="Link to this heading">#</a></h1>
-<p>Changepoint detection methods for finding candidate behavioural boundaries in
-kinematic, audio, and general time-series data, plus how detected
-changepoints refine human labels.</p>
-<div class="toctree-wrapper compound">
-<ul>
-<li class="toctree-l1"><a class="reference internal" href="overview.html">Overview</a></li>
-<li class="toctree-l1"><a class="reference internal" href="kinematic.html">Kinematic changepoints</a></li>
-<li class="toctree-l1"><a class="reference internal" href="audio.html">Audio changepoints</a></li>
-<li class="toctree-l1"><a class="reference internal" href="ruptures.html">Ruptures</a></li>
-<li class="toctree-l1"><a class="reference internal" href="correction.html">Changepoint correction</a></li>
-</ul>
+  <section class="tex2jax_ignore mathjax_ignore" id="predicting-point-events-lightgbm">
+<span id="target-onset-model"></span><h1>Predicting point events (LightGBM)<a class="headerlink" href="#predicting-point-events-lightgbm" title="Link to this heading">#</a></h1>
+<p>EthoGraph includes a lightweight model for predicting <strong>point events</strong>, built
+on scikit-learn’s histogram-based gradient boosting — its implementation of
+Microsoft’s LightGBM. It is a small classifier that detects the onset of an
+event from a local window of hand-crafted features: the first time a mouse
+touches a lever, the frame a bird lands, the moment a beak opens. You label
+the moment in a handful of trials, tick the features it should look at, and it
+fills in the rest.</p>
+<p><strong>Model ▸ LightGBM: Train…</strong> and <strong>Model ▸ LightGBM: Predict…</strong></p>
+<div class="important admonition">
+<p class="admonition-title">Scope — read this first</p>
+<p><strong>Point events only</strong>, and <strong>at most one event per class per trial</strong>.
+Inference is an <code class="docutils literal notranslate"><span class="pre">argmax</span></code> over the trial’s smoothed probability curve, so it
+returns exactly one time per class per trial and cannot return two.</p>
+<p><strong>State events are out of scope</strong>: a state event has two boundaries (“start” and “stop”) whose
+order and non-overlap have to be respected, which is a different problem from
+“when did this happen?”. Use an external action-segmentation model for those.</p>
 </div>
+<hr class="docutils" />
+<section id="how-it-works">
+<h2>How it works<a class="headerlink" href="#how-it-works" title="Link to this heading">#</a></h2>
+<p>For each frame, the model sees a <strong>window</strong> of your chosen features centred on
+that frame and answers one question: <em>is the event here?</em></p>
+<ul class="simple">
+<li><p><strong>Targets.</strong> Frames within <code class="docutils literal notranslate"><span class="pre">tolerance_s</span></code> of your labelled event count as
+positive, weighted by a Gaussian bump peaking at the event, so a frame one
+tick off counts less than the exact frame. Far negatives are subsampled.</p></li>
+<li><p><strong>Inference</strong> smooths the per-frame probability with the same tolerance — a
+plateau of near-hits beats one spurious spike — and takes the argmax.</p></li>
+</ul>
+<p>Each class gets <strong>its own binary classifier</strong> over the same features, window
+and tolerance. The design matrix is built once per trial and reused, so
+predicting five classes costs barely more than predicting one.</p>
+</section>
+<hr class="docutils" />
+<section id="training">
+<h2>Training<a class="headerlink" href="#training" title="Link to this heading">#</a></h2>
+<ol class="arabic simple">
+<li><p><strong>Name the model</strong> — leave the combo on <em>New model…</em> and type a name, or
+pick an existing model to add more training data to it.</p></li>
+<li><p><strong>Tick the point events to predict.</strong> Only classes marked as point events
+in <a class="reference internal" href="mapping.html"><span class="doc">mapping.txt</span></a> are listed; tick as many as you like.</p></li>
+<li><p><strong>Tick the features.</strong> Ticking <code class="docutils literal notranslate"><span class="pre">speed</span> <span class="pre">▸</span> <span class="pre">keypoints</span> <span class="pre">▸</span> <span class="pre">beak,</span> <span class="pre">head</span></code> gives two
+input columns. <strong>Every dim has to be pinned to explicit values</strong> — that
+frozen list <em>is</em> the model’s input layout, which is what lets the model run
+on another session.</p></li>
+<li><p><strong>Set the parameters.</strong> <code class="docutils literal notranslate"><span class="pre">Window</span> <span class="pre">size</span></code> is how much context the classifier
+sees around each frame; <code class="docutils literal notranslate"><span class="pre">Tolerance</span></code> is how precisely you believe your own
+labels.</p></li>
+<li><p><strong>Add current session’s events</strong>, then <strong>Train</strong>.</p></li>
+</ol>
+<p>Only trials <strong>visible in the trials table</strong> contribute, so the table’s filters
+double as a training-set selector. A trial carrying none of the ticked events
+is skipped, and one carrying only some contributes only to those — an
+unlabelled trial is not evidence that the event never happened, so it is never
+used as a negative example for that class.</p>
+<p>Once a model exists its targets, features, window and tolerance are
+<strong>read-only</strong>: they define the classifier’s input columns, so editing them
+would invalidate every training trial already stored. To change them, make a
+new model. To add more sessions, open the dialog there, pick the model, and
+press <strong>Add current session’s events</strong>.</p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p><strong>Every chosen feature must share one sampling rate.</strong> Windows are
+index-based, so mixing a 30 Hz pose feature with a 44.1 kHz audio feature
+would silently misalign them. EthoGraph refuses instead — resample first, or
+pick features from one stream.</p>
+</div>
+<section id="on-disk">
+<h3>On disk<a class="headerlink" href="#on-disk" title="Link to this heading">#</a></h3>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>~/.ethograph/models/{name}/
+├── config.yaml                 # frozen: targets, features, window, tolerance
+├── model.joblib                # one trained classifier per target (+ CRF)
+└── train_data/
+    └── {session}-{hash}/
+        ├── meta.yaml           # source path, columns, trial count
+        └── trial_7.npz         # time, features, the events' times
+</pre></div>
+</div>
+<p>The features are stored, not the source data — training data from a session
+survives that session moving or going offline.</p>
+<hr class="docutils" />
+</section>
+</section>
+<section id="modelling-the-order-of-the-events">
+<span id="target-onset-model-sequence"></span><h2>Modelling the order of the events<a class="headerlink" href="#modelling-the-order-of-the-events" title="Link to this heading">#</a></h2>
+<p>When the classes always run in the same order, tick <strong>Model the order of the
+events (CRF)</strong> and EthoGraph fits a linear-chain CRF
+(<a class="reference external" href="https://sklearn-crfsuite.readthedocs.io">sklearn-crfsuite</a>) over the
+per-class probabilities. Every frame is tagged with the class of the most
+recent event, so the CRF’s transitions <em>are</em> the sequence dependencies, and
+only orders seen in training can be decoded — a class whose signal has a decoy
+early in the trial can no longer be predicted before the class it always
+follows. The whole trial is decoded at once, which also means a class the
+decoded order leaves out gets no prediction there.</p>
+<p>Needs at least 2 training trials; training reports the orders it saw
+(<code class="docutils literal notranslate"><span class="pre">peck→land</span> <span class="pre">×18</span></code>) and takes minutes rather than seconds, since each class is
+refitted once per cross-fitting fold. Untick <strong>Use the sequence model</strong> when
+predicting to fall back to independent per-class argmaxes.</p>
+</section>
+<hr class="docutils" />
+<section id="predicting">
+<h2>Predicting<a class="headerlink" href="#predicting" title="Link to this heading">#</a></h2>
+<p>Pick a trained model, choose which <strong>individual</strong> the predicted labels belong
+to, and press <strong>Predict missing onsets</strong>. Two things are never touched:</p>
+<ul class="simple">
+<li><p><strong>Trials that already carry a class</strong> keep what they have — the model fills
+gaps, it never overrides. A trial that already has <em>one</em> class can still
+receive the others.</p></li>
+<li><p><strong>Trials excluded by the filters.</strong> The trials table’s filters apply as
+always, and the dialog adds one filter per metadata column of its own. Those
+<strong>combine</strong>: setting <code class="docutils literal notranslate"><span class="pre">genotype</span> <span class="pre">=</span> <span class="pre">wt</span></code> and <code class="docutils literal notranslate"><span class="pre">stimulus</span> <span class="pre">=</span> <span class="pre">tone</span></code> predicts only the
+trials that are both. A column left on <em>All</em> constrains nothing, and the
+dialog says how many trials survive before you run anything.</p></li>
+</ul>
+<p>Predictions land in memory like any other label — review them, correct them,
+and save with <code class="docutils literal notranslate"><span class="pre">Ctrl+S</span></code>. <strong>Review predictions…</strong> at the bottom of the dialog
+opens the <a class="reference internal" href="#target-onset-model-confidence"><span class="std std-ref">label-frames grid</span></a> on exactly
+what the run just wrote — those classes, those trials — so you can check the
+video frame at each one and click through to fix the doubtful ones.</p>
+<hr class="docutils" />
+</section>
+<section id="confidence">
+<span id="target-onset-model-confidence"></span><h2>Confidence<a class="headerlink" href="#confidence" title="Link to this heading">#</a></h2>
+<p>Every label row carries a <strong><code class="docutils literal notranslate"><span class="pre">confidence</span></code></strong> column in the
+<a class="reference internal" href="exporting.html#target-exporting-labels"><span class="std std-ref">labels TSV</span></a>: a label you placed by hand is
+<strong>1.0</strong>, and a predicted label carries the model’s own score in <code class="docutils literal notranslate"><span class="pre">[0,</span> <span class="pre">1]</span></code>.</p>
+<p>The score combines two readings of the probability curve:</p>
+<div class="pst-scrollable-table-container"><table class="table">
+<thead>
+<tr class="row-odd"><th class="head"><p></p></th>
+<th class="head"><p>Question</p></th>
+<th class="head"><p>Low when</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><strong>peak</strong></p></td>
+<td><p>How strongly does the model believe?</p></td>
+<td><p>the best frame still only scores 0.2</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>sharpness</strong></p></td>
+<td><p>How localised is that belief?</p></td>
+<td><p>the curve is a broad smear over the trial</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p><em>Sharpness</em> is one minus the normalised entropy of the curve read as a
+distribution over the trial’s frames — a single-frame spike scores 1, a flat
+curve scores 0. It is the point-event counterpart of the frame-wise
+<code class="docutils literal notranslate"><span class="pre">1</span> <span class="pre">-</span> <span class="pre">normalised</span> <span class="pre">entropy</span></code> used for <a class="reference internal" href="importing.html"><span class="doc">imported dense predictions</span></a>: there the distribution is over classes, here over time. The
+reported <code class="docutils literal notranslate"><span class="pre">confidence</span></code> is their <strong>geometric mean</strong>, so a prediction has to hold
+up on both counts. With the sequence model the same two readings are taken on
+the CRF’s marginals instead.</p>
+<p><strong>Min confidence</strong> in the Predict dialog is a floor on what gets written: a
+prediction below it produces <strong>no label at all</strong>, leaving the trial unlabelled
+for that class rather than giving it a doubtful label. Leave it at 0 to write
+everything and triage afterwards — the confidence is on every label either
+way, so nothing is lost by writing first and filtering later.</p>
+<section id="reviewing-by-confidence">
+<h3>Reviewing by confidence<a class="headerlink" href="#reviewing-by-confidence" title="Link to this heading">#</a></h3>
+<p><strong>Tools ▸ Labels: Show frames as Grid/PDF…</strong> puts each label’s confidence on
+its tile and takes a <strong>Flag confidence below</strong> threshold: every tile under it
+gets a red outline, in the grid and in the exported PDF. Set it to <code class="docutils literal notranslate"><span class="pre">0.6</span></code>, scan
+the sheet, and click straight through to the ones worth fixing.</p>
+<p><strong>Histogram…</strong> next to the threshold shows where the scores actually sit
+before you commit to a number: one histogram per label class — split per
+individual as well, when more than one animal is labelled — with everything
+below the threshold drawn in the same red. A class whose scores pile up near
+1.0 with a thin low tail wants a high threshold; one spread across the range
+is a class the model has not learnt, and the whole class is worth reviewing.
+Its threshold spin is the grid’s, so dragging it there recolours the tiles
+behind it.</p>
+<p><strong>Tick flagged</strong> ticks exactly the outlined tiles, <strong>Tick their whole trials</strong>
+every event of every trial holding one — the second is the honest default for a
+model review, since a trial with one bad event rarely has only one.</p>
+<p>Ticking tiles and pressing <strong>Refine ticked frame-by-frame…</strong> hands them
+to <a class="reference internal" href="refining.html#target-refining-labels"><span class="std std-ref">frame-by-frame refinement</span></a> as a queue of just
+those boundaries: <code class="docutils literal notranslate"><span class="pre">Enter</span></code> moves an event onto the right frame, <code class="docutils literal notranslate"><span class="pre">Backspace</span></code>
+deletes one that never happened. Either way the row stops being a prediction —
+a corrected event is stamped back to <code class="docutils literal notranslate"><span class="pre">confidence</span> <span class="pre">=</span> <span class="pre">1.0</span></code>.</p>
+</section>
+</section>
 </section>
 
 
@@ -485,20 +658,20 @@ changepoints refine human labels.</p>
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="../labels/exporting.html"
+       href="refining.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">Exporting labels</p>
+        <p class="prev-next-title">Refining labels frame-by-frame</p>
       </div>
     </a>
     <a class="right-next"
-       href="overview.html"
+       href="mapping.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">Overview</p>
+        <p class="prev-next-title">Label mapping (<code class="docutils literal notranslate"><span class="pre">mapping.txt</span></code>)</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -514,10 +687,32 @@ changepoints refine human labels.</p>
 
 
   <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="pst-show_toc_level nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#how-it-works">How it works</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#training">Training</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#on-disk">On disk</a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#modelling-the-order-of-the-events">Modelling the order of the events</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#predicting">Predicting</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#confidence">Confidence</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#reviewing-by-confidence">Reviewing by confidence</a></li>
+</ul>
+</li>
+</ul>
+  </nav></div>
+
+  <div class="sidebar-secondary-item">
 
   
   <div class="tocsection sourcelink">
-    <a href="../../_sources/advanced/changepoints/index.md">
+    <a href="../../_sources/advanced/labels/onset_model.md">
       
         <i class="fa-solid fa-file-lines"></i> Show Source
       

@@ -370,6 +370,7 @@
 <li class="toctree-l1 has-children"><a class="reference internal" href="labels/index.html">Labels</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l2"><a class="reference internal" href="labels/labelling_gui.html">Labelling in the GUI</a></li>
 <li class="toctree-l2"><a class="reference internal" href="labels/refining.html">Refining labels frame-by-frame</a></li>
+<li class="toctree-l2"><a class="reference internal" href="labels/onset_model.html">Predicting point events (LightGBM)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="labels/mapping.html">Label mapping (<code class="docutils literal notranslate"><span class="pre">mapping.txt</span></code>)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="labels/branches.html">Label branches</a></li>
 <li class="toctree-l2"><a class="reference internal" href="labels/importing.html">Importing labels</a></li>
@@ -461,6 +462,11 @@
 <span id="target-shortcuts"></span><h1>Keyboard Shortcuts<a class="headerlink" href="#keyboard-shortcuts" title="Link to this heading">#</a></h1>
 <p>Plain-letter shortcuts (<code class="docutils literal notranslate"><span class="pre">Space</span></code>, <code class="docutils literal notranslate"><span class="pre">V</span></code>, label keys, arrow keys) are suppressed
 while you are typing in a text field, spin box or editable combo box.</p>
+<p>There’s a rough convention to the modifier: labelling actions are usually a
+single key (e.g. <code class="docutils literal notranslate"><span class="pre">E</span></code> to activate label 5), opening/switching/hiding panels is
+usually <code class="docutils literal notranslate"><span class="pre">Shift+</span></code>, and everything else (miscellaneous plot/navigation/data
+actions) is usually <code class="docutils literal notranslate"><span class="pre">Ctrl+</span></code>. Not every shortcut fits perfectly, but it’s a
+useful guide when guessing a binding.</p>
 <section id="video-audio-control">
 <h2>Video/Audio Control<a class="headerlink" href="#video-audio-control" title="Link to this heading">#</a></h2>
 <div class="pst-scrollable-table-container"><table class="table">
@@ -506,9 +512,6 @@ while you are typing in a text field, spin box or editable combo box.</p>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">Ctrl+Up</span></code> / <code class="docutils literal notranslate"><span class="pre">Ctrl+Down</span></code></p></td>
 <td><p>Previous / next channel (ephys or audio mic)</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">Ctrl+P</span></code></p></td>
-<td><p>Cycle the sync mode combo</p></td>
 </tr>
 </tbody>
 </table>
@@ -560,20 +563,26 @@ while you are typing in a text field, spin box or editable combo box.</p>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">Q</span> <span class="pre">W</span> <span class="pre">E</span> <span class="pre">R</span> <span class="pre">T</span> <span class="pre">Z</span> <span class="pre">U</span> <span class="pre">I</span> <span class="pre">O</span> <span class="pre">P</span></code></p></td>
 <td><p>Activate label 11-20</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">A</span> <span class="pre">S</span> <span class="pre">D</span> <span class="pre">F</span> <span class="pre">G</span> <span class="pre">H</span> <span class="pre">J</span> <span class="pre">K</span> <span class="pre">L</span></code></p></td>
-<td><p>Activate label 21-29</p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">A</span> <span class="pre">S</span> <span class="pre">D</span> <span class="pre">F</span> <span class="pre">G</span> <span class="pre">H</span> <span class="pre">J</span> <span class="pre">K</span> <span class="pre">L</span> <span class="pre">Y</span></code></p></td>
+<td><p>Activate label 21-30</p></td>
 </tr>
-<tr class="row-odd"><td><p>Click twice on line plot</p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">F1-F10</span></code></p></td>
+<td><p>Activate label 31-40</p></td>
+</tr>
+<tr class="row-even"><td><p>Click twice on line plot</p></td>
 <td><p>Define label boundaries (set start/end)</p></td>
 </tr>
-<tr class="row-even"><td><p>Left-click on label</p></td>
+<tr class="row-odd"><td><p>Left-click on label</p></td>
 <td><p>Select existing label</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">Ctrl+E</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">Ctrl+E</span></code></p></td>
 <td><p>Edit selected label boundaries (after selecting label, click twice for new boundaries)</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">Ctrl+D</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">Ctrl+D</span></code></p></td>
 <td><p>Delete selected label (after selecting label)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">Ctrl+Z</span></code></p></td>
+<td><p>Undo the last label placed, moved or deleted (cancels a half-placed label first)</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">Ctrl+S</span></code></p></td>
 <td><p>Save <code class="docutils literal notranslate"><span class="pre">labels.tsv</span></code> file</p></td>
@@ -647,23 +656,17 @@ work even with no labelling mode armed; the rest need one.</p>
 </tr>
 </thead>
 <tbody>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">Ctrl+F</span></code></p></td>
-<td><p>Toggle to last-visited feature, or cycle to next</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">Ctrl+I</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">Ctrl+I</span></code></p></td>
 <td><p>Toggle to last-visited individual, or cycle to next</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">Ctrl+K</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">Ctrl+K</span></code></p></td>
 <td><p>Toggle to last-visited keypoint, or cycle to next</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">Ctrl+C</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">Shift+C</span></code></p></td>
 <td><p>Cycle to next camera</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">Ctrl+M</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">Shift+M</span></code></p></td>
 <td><p>Toggle to last-visited microphone, or cycle to next</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">Shift+K</span></code></p></td>
-<td><p>Toggle the active space plot’s keypoint dim to its previous value</p></td>
 </tr>
 </tbody>
 </table>
@@ -678,7 +681,7 @@ work even with no labelling mode armed; the rest need one.</p>
 </tr>
 </thead>
 <tbody>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">Ctrl+N</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">Shift+N</span></code></p></td>
 <td><p>Open the “Add panel” popup</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">Ctrl+R</span></code></p></td>
@@ -693,12 +696,6 @@ work even with no labelling mode armed; the rest need one.</p>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">Ctrl+L</span></code></p></td>
 <td><p>Toggle lock axes</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">Ctrl+Enter</span></code></p></td>
-<td><p>Apply current plot settings</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">Ctrl+G</span></code></p></td>
-<td><p>Cycle the feature view mode combo</p></td>
-</tr>
 </tbody>
 </table>
 </div>
@@ -712,10 +709,7 @@ work even with no labelling mode armed; the rest need one.</p>
 </tr>
 </thead>
 <tbody>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">Ctrl+0</span></code></p></td>
-<td><p>Show / hide the control sidebar</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">Shift+Z</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">Shift+Z</span></code></p></td>
 <td><p>Zen mode — slide the sidebar out / back in and skip its refreshes</p></td>
 </tr>
 </tbody>

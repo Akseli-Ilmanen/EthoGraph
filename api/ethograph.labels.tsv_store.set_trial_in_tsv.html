@@ -424,7 +424,11 @@
 <dt class="sig sig-object py" id="ethograph.labels.tsv_store.set_trial_in_tsv">
 <span class="sig-prename descclassname"><span class="pre">ethograph.labels.tsv_store.</span></span><span class="sig-name descname"><span class="pre">set_trial_in_tsv</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">all_df</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">trial</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">trial_df</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/labels/tsv_store.html#set_trial_in_tsv"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.labels.tsv_store.set_trial_in_tsv" title="Link to this definition">#</a></dt>
 <dd><p>Replace all rows for a trial in the all-labels DataFrame.</p>
-<p>Preserves per-trial metadata columns from the existing rows.</p>
+<p>Preserves per-trial metadata columns from the existing rows.  The columns
+added to files written before they existed (<code class="docutils literal notranslate"><span class="pre">event_type</span></code>,
+<code class="docutils literal notranslate"><span class="pre">individual_rec</span></code>, <code class="docutils literal notranslate"><span class="pre">confidence</span></code>) are filled in on the <em>whole</em> table
+first: the untouched trials must not end up with NaN where the rewritten
+trial has a value.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html#pandas.DataFrame" title="(in pandas v3.0.5)"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code></a></span></p>

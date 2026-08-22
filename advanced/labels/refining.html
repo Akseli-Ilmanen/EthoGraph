@@ -50,7 +50,7 @@
     <link rel="canonical" href="https://Akseli-Ilmanen.github.io/ethograph/advanced/labels/refining.html" />
     <link rel="index" title="Index" href="../../genindex.html" />
     <link rel="search" title="Search" href="../../search.html" />
-    <link rel="next" title="Label mapping (mapping.txt)" href="mapping.html" />
+    <link rel="next" title="Predicting point events (LightGBM)" href="onset_model.html" />
     <link rel="prev" title="Labelling in the GUI" href="labelling_gui.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
@@ -370,6 +370,7 @@
 <li class="toctree-l1 current active has-children"><a class="reference internal" href="index.html">Labels</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
 <li class="toctree-l2"><a class="reference internal" href="labelling_gui.html">Labelling in the GUI</a></li>
 <li class="toctree-l2 current active"><a class="current reference internal" href="#">Refining labels frame-by-frame</a></li>
+<li class="toctree-l2"><a class="reference internal" href="onset_model.html">Predicting point events (LightGBM)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="mapping.html">Label mapping (<code class="docutils literal notranslate"><span class="pre">mapping.txt</span></code>)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="branches.html">Label branches</a></li>
 <li class="toctree-l2"><a class="reference internal" href="importing.html">Importing labels</a></li>
@@ -483,7 +484,38 @@ trial by trial, so every trial is visited once.</p></li>
 <li><p>Nudge the video with <code class="docutils literal notranslate"><span class="pre">Left</span></code> / <code class="docutils literal notranslate"><span class="pre">Right</span></code>, press <code class="docutils literal notranslate"><span class="pre">Enter</span></code> — the frame on screen
 becomes the new boundary and the dialog jumps to the next seed. <strong>Skip</strong>
 and <strong>Back</strong> move without committing.</p></li>
+<li><p>If the event should not be there at all — a prediction of something that
+never happened in this trial — press <code class="docutils literal notranslate"><span class="pre">Backspace</span></code> instead. The label is
+deleted (both boundaries of a state event go together) and the queue moves
+straight on. Nothing reaches disk until you save with <code class="docutils literal notranslate"><span class="pre">Ctrl+S</span></code>.</p></li>
 </ol>
+<p>A boundary you confirm becomes a <strong>hand-made label</strong>: its <code class="docutils literal notranslate"><span class="pre">confidence</span></code> is set
+to <code class="docutils literal notranslate"><span class="pre">1.0</span></code>, whatever produced it first (see
+<a class="reference internal" href="onset_model.html#target-onset-model-confidence"><span class="std std-ref">confidence</span></a>). Reviewing a model’s output
+this way is how predictions turn into ground truth.</p>
+<section id="refining-only-the-events-you-picked">
+<h2>Refining only the events you picked<a class="headerlink" href="#refining-only-the-events-you-picked" title="Link to this heading">#</a></h2>
+<p>Walking every instance of a class is the right pass for a first careful
+labelling round, but a review pass is usually about the handful that look
+wrong. <strong>Tools ▸ Labels: Show frames as Grid/PDF…</strong> is where you spot them:
+each tile shows the video frame at a label’s time and its confidence.</p>
+<ol class="arabic simple">
+<li><p>Pick the labels on the <strong>Setup</strong> tab and press <strong>Generate</strong>: the grid fills
+the <strong>Frames</strong> tab of the same window. Set <strong>Flag confidence below</strong> so the
+doubtful tiles are outlined in red, and scan the sheet — maximise the window
+to spread the tiles over the whole screen, they refit to the new width.</p></li>
+<li><p>Tick the tiles that need work. <strong>Tick flagged</strong> ticks every outlined one at
+once; <strong>Tick their whole trials</strong> widens that to every event of every trial
+holding a flagged one — a trial the model got one event wrong in is worth
+reading end to end, because its other events may score high and still sit on
+the wrong frame. Then press <strong>Refine ticked frame-by-frame…</strong>.</p></li>
+<li><p>The refinement dialog opens with a queue holding exactly those boundaries
+and nothing else. Walk it with <code class="docutils literal notranslate"><span class="pre">Enter</span></code> / <code class="docutils literal notranslate"><span class="pre">Backspace</span></code> as above.</p></li>
+</ol>
+<p>Two cameras showing the same label are two tiles but one boundary: the queue
+stops at it once. When the queue runs out, EthoGraph suggests saving and then
+regenerating the grid — the tiles you just corrected still show the old frames,
+and a fresh grid is the check that the pass worked.</p>
 <p>For corrections that belong far from the current label, untick <strong>Locked around
 initial label</strong>: you can then pan and zoom the whole trial freely and <code class="docutils literal notranslate"><span class="pre">Enter</span></code>
 still commits whatever frame is on screen. Navigating trials the normal way
@@ -501,6 +533,7 @@ exact seed you stopped at, and <strong>History…</strong> lists every refined b
 (filterable by trial/label/individual/boundary) with an export that writes
 <code class="docutils literal notranslate"><span class="pre">_prerefined.tsv</span></code> / <code class="docutils literal notranslate"><span class="pre">_postrefined.tsv</span></code> — the original and refined values, row
 for row.</p>
+</section>
 </section>
 
 
@@ -523,11 +556,11 @@ for row.</p>
       </div>
     </a>
     <a class="right-next"
-       href="mapping.html"
+       href="onset_model.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">Label mapping (<code class="docutils literal notranslate"><span class="pre">mapping.txt</span></code>)</p>
+        <p class="prev-next-title">Predicting point events (LightGBM)</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -541,6 +574,18 @@ for row.</p>
                 <dialog id="pst-secondary-sidebar-modal"></dialog>
                 <div id="pst-secondary-sidebar" class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
 
+
+  <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="pst-show_toc_level nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#refining-only-the-events-you-picked">Refining only the events you picked</a></li>
+</ul>
+  </nav></div>
 
   <div class="sidebar-secondary-item">
 

@@ -406,13 +406,17 @@
   <section id="module-ethograph.labels.intervals">
 <span id="ethograph-labels-intervals"></span><h1>ethograph.labels.intervals<a class="headerlink" href="#module-ethograph.labels.intervals" title="Link to this heading">#</a></h1>
 <p>Interval-based label representation and core primitives for EthoGraph.</p>
-<dl class="simple">
+<dl>
 <dt>Labels are stored as a pandas DataFrame with columns:</dt><dd><p>onset_s        (float64) - start time in seconds
 offset_s       (float64) - end time in seconds (NaN for point events)
 labels         (int32)   - label class ID (nonzero)
 individual     (str)     - the individual performing the behaviour (actor)
 individual_rec (str)     - the recipient of a dyadic behaviour, “” if none
-event_type     (str)     - “state” (interval) or “point” (instantaneous)</p>
+event_type     (str)     - “state” (interval) or “point” (instantaneous)
+confidence     (float64) - how sure the label is: 1.0 for a human label,</p>
+<blockquote>
+<div><p>the model’s own score for a predicted one</p>
+</div></blockquote>
 </dd>
 </dl>
 <p><code class="docutils literal notranslate"><span class="pre">individual</span></code> and <code class="docutils literal notranslate"><span class="pre">individual_rec</span></code> together are the <strong>subject</strong> of a label:
