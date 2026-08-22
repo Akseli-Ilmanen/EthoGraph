@@ -6,6 +6,7 @@ from typing import Optional
 import matplotlib
 import numpy as np
 import pyqtgraph as pg
+from qtpy.QtCore import Qt
 
 import ethograph as eto
 from ethograph.io.catalog import PlotData
@@ -14,7 +15,13 @@ logger = logging.getLogger(__name__)
 
 from ethograph.io.plot_sources import WindowedBuffer, XarraySource  # noqa: E402
 
-from .app_constants import DEFAULT_BUFFER_MULTIPLIER, LINEPLOT_DEBOUNCE_MS, MULTIDIM_COLORS  # noqa: E402
+from .app_constants import (  # noqa: E402
+    DEFAULT_BUFFER_MULTIPLIER,
+    HLINE_COLOR,
+    HLINE_WIDTH,
+    LINEPLOT_DEBOUNCE_MS,
+    MULTIDIM_COLORS,
+)
 from .make_pretty import clean_display_labels  # noqa: E402
 from .plots_base import BasePlot, PanelStateMixin, ThrottleDebounce  # noqa: E402
 
@@ -28,6 +35,10 @@ class LinePlot(PanelStateMixin, BasePlot):
 
         self.plot_items = []
         self.label_items = []
+        #: User-drawn horizontal reference lines. Kept apart from
+        #: ``plot_items`` (which every re-render clears), so a line outlives
+        #: trial changes and feature switches for as long as the panel lives.
+        self.hline_items: list[pg.InfiniteLine] = []
 
         self._buffer = WindowedBuffer(buffer_multiplier=DEFAULT_BUFFER_MULTIPLIER)
         self._current_feature = None
@@ -150,6 +161,31 @@ class LinePlot(PanelStateMixin, BasePlot):
                 # forward-filled data + a `connect` mask (_nan_safe_curve_args);
                 # raw NaNs would blank every bin containing one when zoomed out.
                 item.setDownsampling(auto=True, method="peak")
+
+    def add_hline(self, value: float) -> pg.InfiniteLine:
+        """Draw a horizontal reference line at *value* on this panel."""
+        line = pg.InfiniteLine(
+            pos=value,
+            angle=0,
+            movable=False,
+            pen=pg.mkPen(color=HLINE_COLOR, width=HLINE_WIDTH, style=Qt.DashLine),
+            label=f"{value:g}",
+            labelOpts={"position": 0.04, "color": HLINE_COLOR, "fill": (255, 255, 255, 180)},
+        )
+        # ignoreBounds: a reference line is not data, so it must not stretch
+        # the autoranged y-view towards itself.
+        self.plot_item.addItem(line, ignoreBounds=True)
+        self.hline_items.append(line)
+        return line
+
+    def hline_values(self) -> list[float]:
+        """Values of this panel's horizontal reference lines, in draw order."""
+        return [float(line.value()) for line in self.hline_items]
+
+    def clear_hlines(self) -> None:
+        for line in self.hline_items:
+            self.plot_item.removeItem(line)
+        self.hline_items.clear()
 
     def apply_y_range(self, ymin: Optional[float], ymax: Optional[float]):
         if ymin is None and ymax is None:

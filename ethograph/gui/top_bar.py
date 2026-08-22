@@ -128,9 +128,9 @@ class TopBarBuilder:
         #: Refine-labels dialog, rebuilt when reopened so its label list and
         #: individuals always reflect the currently loaded labels.
         self._refine_dialog = None
-        #: GradBoost onset-model dialogs, rebuilt when reopened for the same reason.
-        self._onset_train_dialog = None
-        self._onset_predict_dialog = None
+        #: Label-frames dialog, rebuilt when reopened so its label list,
+        #: metadata columns and cameras reflect the currently loaded dataset.
+        self._label_frames_dialog = None
 
     # ------------------------------------------------------------------
     # Public entry point
@@ -165,6 +165,7 @@ class TopBarBuilder:
         # Boundary refinement: existing labels become seeds the user nudges
         # frame-by-frame — the exception to ethograph's plot-first labelling.
         menu.addAction("Labels: Refine via frame-by-frame labelling…", self._open_refine_labels)
+        menu.addAction("Labels: Show frames as Grid/PDF…", self._open_label_frames)
 
         menu.addSeparator()
         menu.addAction("Pose tracking (from scratch)…", self._open_keypoint_labelling)
@@ -240,6 +241,17 @@ class TopBarBuilder:
         self._refine_dialog.show()
         self._refine_dialog.raise_()
         self._refine_dialog.activateWindow()
+
+    def _open_label_frames(self):
+        """Open the label-frames config dialog (label/metadata/camera picks →
+        a clickable, PDF-exportable grid of video frames at label times)."""
+        from .dialog_label_frames import LabelFramesConfigDialog
+
+        if self._label_frames_dialog is None or not self._label_frames_dialog.isVisible():
+            self._label_frames_dialog = LabelFramesConfigDialog(self.meta, parent=self.shell)
+        self._label_frames_dialog.show()
+        self._label_frames_dialog.raise_()
+        self._label_frames_dialog.activateWindow()
 
     def _reset_video_view(self):
         """Rebuild the primary video panel — recovery for a frozen image."""

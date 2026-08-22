@@ -59,6 +59,7 @@ ethograph/gui/
     pose_edit_mixin.py        # KeypointLabelMode (canvas anchor editing)
     dialog_pose_labelling.py, dialog_skeleton_editor.py
     dialog_refine.py          # Refine labels frame-by-frame: seed queue over existing labels
+    dialog_label_frames.py    # Labels: Show frames as PDF — clickable grid of frames at label times
     dialog_pose_refinement.py # Refine imported poses: correct DLC/SLEAP files, _refined copies
     plots_base.py             # BasePlot, PanelStateMixin
     plots_container.py        # UnifiedPanelContainer

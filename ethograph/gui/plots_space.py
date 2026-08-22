@@ -182,6 +182,7 @@ def _render_reference_2d(plot_item, ref: ReferenceGeometry):
             y=np.array([verts[i0, 1], verts[i1, 1]]),
             pen=pg.mkPen(color=ref.color, width=2),
         )
+        line._is_reference = True
         plot_item.addItem(line)
 
 
@@ -208,6 +209,7 @@ def _render_reference_3d(gl_widget, ref: ReferenceGeometry):
         mode="lines",
         glOptions="opaque",
     )
+    wireframe._is_reference = True
     gl_widget.addItem(wireframe)
 
 
@@ -992,12 +994,13 @@ class SpacePlot(QWidget):
                 self._restore_ranges(saved_ranges)
             else:
                 self._apply_percentile_limits(data_x, data_y, data_z)
-            self._draw_references()
         elif self._fetch_range is None and not locked:
             # Non-windowed refresh (settings/axis change): re-fit as before.
             # A sliding window keeps the current view — re-fitting every
             # slide would make the axes jump with the animal.
             self._apply_percentile_limits(data_x, data_y, data_z)
+
+        self._draw_references()
 
         self._trajectory_pos = (data_x, data_y, data_z)
         self._trajectory_times = times
@@ -1148,7 +1151,13 @@ class SpacePlot(QWidget):
         return refs
 
     def _draw_references(self):
-        """Draw all reference geometry items."""
+        """(Re)draw all reference geometry items.
+
+        Idempotent: old reference items are removed first, so this runs on
+        every render — a library-geometry / show-references change re-renders
+        every open space plot without a widget rebuild.
+        """
+        self._clear_reference_items()
         if not getattr(self.app_state, "space_show_references", True):
             return
         refs = self._load_references()
@@ -1165,6 +1174,20 @@ class SpacePlot(QWidget):
                     _render_reference_2d(plot_item, ref)
             except Exception:
                 logger.exception("Failed to draw reference %s", ref.name)
+
+    def _clear_reference_items(self):
+        """Remove previously drawn reference geometry items."""
+        if self.space_widget is None:
+            return
+        if isinstance(self.space_widget, gl.GLViewWidget):
+            for item in list(self.space_widget.items):
+                if getattr(item, "_is_reference", False):
+                    self.space_widget.removeItem(item)
+        else:
+            plot_item = self.space_widget.getPlotItem()
+            for item in list(plot_item.items):
+                if getattr(item, "_is_reference", False):
+                    plot_item.removeItem(item)
 
     # --- Percentile axis limits (zoom constraints) --------------------------
 

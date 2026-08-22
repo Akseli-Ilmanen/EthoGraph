@@ -175,6 +175,29 @@ class PlotSettingsWidget(QWidget):
         group_layout.addWidget(self.apply_button, row, 2)
         group_layout.addWidget(self.reset_button, row, 3)
 
+        row += 1
+        self.hline_value_edit = QLineEdit()
+        self.hline_value_edit.setPlaceholderText("y value")
+        self.hline_value_edit.setToolTip("Y value for a new horizontal reference line on the active line plot")
+        self.add_hline_button = QPushButton("Add h-line")
+        self.add_hline_button.setToolTip("Draw a horizontal line at this value; it stays across trial changes")
+        self.clear_hlines_button = QPushButton("Clear h-lines")
+        self.clear_hlines_button.setToolTip("Remove every horizontal line from the active line plot")
+
+        group_layout.addWidget(QLabel("Horizontal line:"), row, 0)
+        group_layout.addWidget(self.hline_value_edit, row, 1)
+        group_layout.addWidget(self.add_hline_button, row, 2)
+        group_layout.addWidget(self.clear_hlines_button, row, 3)
+
+        row += 1
+        self.hline_list_label = QLabel("")
+        self.hline_list_label.setWordWrap(True)
+        group_layout.addWidget(self.hline_list_label, row, 0, 1, 4)
+
+        self.hline_value_edit.returnPressed.connect(self._on_add_hline)
+        self.add_hline_button.clicked.connect(self._on_add_hline)
+        self.clear_hlines_button.clicked.connect(self._on_clear_hlines)
+
         self.ymin_edit.editingFinished.connect(self._on_axes_edited)
         self.ymax_edit.editingFinished.connect(self._on_axes_edited)
         self.percentile_ylim_edit.editingFinished.connect(self._on_axes_edited)
@@ -203,6 +226,8 @@ class PlotSettingsWidget(QWidget):
 
         lock_axes = self.app_state.get_with_default("lock_axes")
         self.lock_axes_checkbox.setChecked(lock_axes)
+
+        self._sync_hlines_to_active_plot()
 
     def _autoscale_y_toggle(self, checked: bool):
         if not self.plot_container:
@@ -248,6 +273,45 @@ class PlotSettingsWidget(QWidget):
             edit.blockSignals(True)
             edit.setText(_fmt(val))
             edit.blockSignals(False)
+
+        self._sync_hlines_to_active_plot()
+
+    # ------------------------------------------------------------------
+    # Horizontal reference lines (per line-plot panel, session-lived)
+    # ------------------------------------------------------------------
+
+    def _active_line_plot(self):
+        """The active feature panel when it is a line plot (the heatmap has no
+        h-lines), else ``None``."""
+        pc = self.plot_container
+        if pc is None:
+            return None
+        plot = getattr(pc, "active_feature_plot", None)
+        return plot if plot in pc.line_plots else None
+
+    def _on_add_hline(self):
+        plot = self._active_line_plot()
+        value = self._parse_float(self.hline_value_edit.text())
+        if plot is None or value is None:
+            return
+        plot.add_hline(value)
+        self.hline_value_edit.clear()
+        self._sync_hlines_to_active_plot()
+
+    def _on_clear_hlines(self):
+        plot = self._active_line_plot()
+        if plot is None:
+            return
+        plot.clear_hlines()
+        self._sync_hlines_to_active_plot()
+
+    def _sync_hlines_to_active_plot(self):
+        """Mirror the active line plot's h-lines into the sidebar."""
+        plot = self._active_line_plot()
+        values = plot.hline_values() if plot is not None else []
+        joined = ", ".join(f"{v:g}" for v in values)
+        self.hline_list_label.setText(f"Lines at: {joined}" if values else "")
+        self.clear_hlines_button.setEnabled(bool(values))
 
     def _on_axes_edited(self):
         if not self.plot_container:
