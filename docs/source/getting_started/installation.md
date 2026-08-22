@@ -287,11 +287,11 @@ Model training is **in development and not well documented**.
 ```
 
 Install PyTorch with the correct CUDA version for your system, then install
-the model extra along with `omegaconf`:
+the model extra:
 
 ```bash
 conda install pytorch=2.5.1 torchvision=0.20.1 torchaudio=2.5.1 pytorch-cuda=12.1 -c pytorch -c nvidia
-uv pip install "ethograph[model]" omegaconf
+uv pip install "ethograph[model]"
 ```
 
 ```{tip}

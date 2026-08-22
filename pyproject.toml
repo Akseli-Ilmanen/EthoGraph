@@ -113,8 +113,6 @@ proxy = [
 # torch/torchvision are deliberately excluded — install a CUDA-matched build
 # first (see docs), otherwise pip may replace it with a CPU-only wheel.
 model = [
-    "omegaconf",
-    "pillow",
     "tqdm",
 ]
 

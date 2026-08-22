@@ -1,51 +1,67 @@
-import os
-from contextlib import redirect_stdout
+"""Extract S3D video features: one ``{stem}_s3d.nc`` per video.
 
-from omegaconf import OmegaConf
+    python scripts/model/s3d_features.py VIDEO [VIDEO ...] --out DIR
+        [--analysis-fps 25] [--stack-s 0.1] [--mode windows|dense]
+        [--truncate-at Mixed_3c] [--device cuda] [--overwrite] [--legacy-npy]
+
+Settings are in seconds; frames are derived from each video's own rate. The
+output DataArray carries ``time_s3d`` at the effective rate — interpolate it
+onto a trial's time axis when building the dataset. ``--legacy-npy`` also
+writes the bare ``(T, 1024)`` array the older notebooks load.
+"""
+
+from __future__ import annotations
+
+import argparse
+from pathlib import Path
+
+import numpy as np
 from tqdm import tqdm
 
-import ethograph as eto
-from ethograph.video_features.extract_s3d import ExtractS3D as Extractor
-from ethograph.video_features.utils import form_list_from_user_input, sanity_check
+from ethograph.video_features import S3D_STAGES, S3DConfig, extract_s3d, plan_s3d
+from ethograph.video_features.frames import probe_video
 
 
-def s3d_features(args_cli):
-    args_cli.feature_type = "s3d"  # hard-coded
-    yaml_path = eto.get_project_root() / "ethograph" / "video_features" / "s3d.yml"
-    print(f"config yaml path {yaml_path}")
-    args_yml = OmegaConf.load(yaml_path)
-    args = OmegaConf.merge(args_yml, args_cli)  # the latter arguments are prioritized
-    # OmegaConf.set_readonly(args, True)
-    sanity_check(args)
+def main(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("videos", nargs="+", type=Path)
+    parser.add_argument("--out", type=Path, required=True, help="output folder")
+    parser.add_argument("--analysis-fps", type=float, default=None, help="rate S3D sees (default: every frame)")
+    parser.add_argument("--stack-s", type=float, default=0.1, help="window length in seconds")
+    parser.add_argument("--mode", choices=("windows", "dense"), default="windows")
+    parser.add_argument("--truncate-at", choices=sorted(S3D_STAGES), default=None, help="dense mode only")
+    parser.add_argument("--batch", type=int, default=16)
+    parser.add_argument("--chunk", type=int, default=128)
+    parser.add_argument("--precision", choices=("fp16", "fp32"), default="fp16")
+    parser.add_argument("--device", default=None, help="torch device; default picks CUDA → MPS → CPU")
+    parser.add_argument("--overwrite", action="store_true")
+    parser.add_argument("--legacy-npy", action="store_true", help="also write {stem}_s3d.npy")
+    args = parser.parse_args(argv)
 
-    print(OmegaConf.to_yaml(args))
-    print(f"Saving features to {args.output_path}")
-    print("Device:", args.device)
-    print("stack size: ", args.stack_size)
-
-    extractor = Extractor(args)
-
-    # unifies whatever a user specified as paths into a list of paths
-    video_paths = form_list_from_user_input(args.video_paths, args.file_with_video_paths, to_shuffle=True)
-
-    print(f"The number of specified videos: {len(video_paths)}")
-
-    for video_path in tqdm(video_paths):
-        extractor._extract(video_path)  # note the `_` in the method name
+    cfg = S3DConfig(
+        analysis_fps=args.analysis_fps,
+        stack_s=args.stack_s,
+        mode=args.mode,
+        truncate_at=args.truncate_at,
+        batch=args.batch,
+        chunk=args.chunk,
+        precision=args.precision,
+    )
+    args.out.mkdir(parents=True, exist_ok=True)
+    for video in args.videos:
+        target = args.out / f"{video.stem}_s3d.nc"
+        if target.exists() and not args.overwrite:
+            print(f"{target} exists — skipping (use --overwrite)")
+            continue
+        info = probe_video(str(video))
+        print(f"{video.name}: {plan_s3d(info.fps, cfg).describe()}, mode={cfg.mode}")
+        with tqdm(total=info.nframes or None, unit="frames", desc=video.stem) as bar:
+            da = extract_s3d(video, cfg, device=args.device, progress=lambda n: bar.update(n - bar.n))
+        da.to_netcdf(target)
+        if args.legacy_npy:
+            np.save(args.out / f"{video.stem}_s3d.npy", da.values)
+        print(f"  → {target}  {tuple(da.shape)}")
 
 
 if __name__ == "__main__":
-    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    log_file_path = os.path.join(project_root, "ethograph", "model", "logging", "s3d_logs.txt")
-    os.makedirs(os.path.dirname(log_file_path), exist_ok=True)
-
-    # Redirect stdout to the log file
-    with open(log_file_path, "a", encoding="utf-8") as log_file:
-        with redirect_stdout(log_file):
-            args_cli = OmegaConf.from_cli()
-            s3d_features(args_cli)
-
-
-# """
-# python ethograph/scripts/s3d_features.py file_with_video_paths=path/to/video_list.txt output_path=path/to/output_dir
-# """
+    main()

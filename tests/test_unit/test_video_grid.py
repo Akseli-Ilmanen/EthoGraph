@@ -269,16 +269,14 @@ class TestPlayer:
         player.seek(0.95)
         player.step_frame(+1)
         assert player.time == pytest.approx(1.0)  # clamped to the longest clip
-        # The keys reach the player through a shortcut scoped to it.
+        # The keys reach the player itself (keyPressEvent) and, through a
+        # shortcut scoped to it, any child that has focus.
         player.seek(0.0)
-        player.show()
-        player.setFocus()
         QTest.keyClick(player, Qt.Key_Right)
         QTest.keyClick(player, Qt.Key_Right)
         assert player.time == pytest.approx(0.2)
         QTest.keyClick(player, Qt.Key_Left)
         assert player.time == pytest.approx(0.1)
-        player.hide()
 
     def test_speed_stretches_the_tick_and_stays_in_the_grid(self, player):
         assert player.speed_spin.value() == 100

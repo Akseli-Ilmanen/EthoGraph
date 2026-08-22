@@ -94,6 +94,8 @@ ethograph/io/
     audio_extract.py          # Container audio (AAC/MP4) → cached WAV, resolve_audio_path
     dataset.py, validation.py, pynapple.py, metadata_table.py, ephys_loader.py
 
+ethograph/video_features/     # S3D video features: plan.py (seconds → frames per video rate), frames.py (streaming PyAV), extract.py (windows | dense)
+
 ethograph/utils/              # io.py, xr_utils.py (sel_valid, get_time_coord), sequences.py
 ethograph/skeleton/           # PrecomputedRenderer, SkeletonState, config.py, shapes.py
 ```
@@ -249,6 +251,10 @@ All plots inherit `BasePlot` (pyqtgraph `PlotWidget`): time marker, x-range mana
 Two paths → `nap.TsGroup` + cluster table: **Kilosort folder** (`.npy` + `cluster_info.tsv` + raw `.dat`; full features) and **Pynapple file** (`.npz`/`.nwb`, `data["units"]`; raster only). State: `app_state.neurons_path`, `app_state.has_neurons`, `EphysWidget._neurons_source`.
 
 **Kilosort has two index spaces**: site index (0..n_sites-1, indexes `channel_positions.npy`) vs hardware channel (`channel_map.npy`, the `ch` column of `cluster_info.tsv`). **Always index `channel_positions` by site index.**
+
+### Video features (S3D)
+
+`ethograph/video_features/`: **configured in seconds, resolved per video** — `S3DConfig` (`analysis_fps`, `stack_s`, `mode`, `truncate_at`) → `plan_s3d(video_fps, cfg)` → `S3DPlan` (`step`, odd `stack_frames` ≥ `MIN_STACK`, refused loudly when the rate cannot carry the window). The rate comes from `io/video_probe.py: probe_video` (shared with the GUI), never a setting. `extract_s3d()` streams frames (`frames.py`, never the whole file) and returns a DataArray on its own `time_s3d` axis at the effective rate; the dataset builder interpolates it onto the trial grid. *windows* (default) = the sliding-stack scheme, batched via `unfold` with a rolling carry; *dense* = the trunk once over the video with `S3D_STAGES` geometry (stride/offset/receptive field), an ablation. Covered by `tests/test_unit/test_s3d_plan.py` + `tests/test_unit/test_s3d_extract.py`.
 
 ### Changepoint correction
 

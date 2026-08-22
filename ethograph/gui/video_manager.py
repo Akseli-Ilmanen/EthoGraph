@@ -12,7 +12,6 @@ is ever labelled generically ("Video") while its neighbours name a camera.
 """
 
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
 from pathlib import Path
 
 import av
@@ -21,6 +20,7 @@ from qtpy.QtWidgets import QSplitter, QVBoxLayout, QWidget
 
 from ethograph.io.time_model import trial_frame_window
 from ethograph.io.validation import IMAGE_EXTENSIONS
+from ethograph.io.video_probe import VideoProbe, probe_video  # noqa: F401  (re-exported for GUI callers)
 from ethograph.io.video_proxy import proxy_cache_path
 from ethograph.utils.paths import ethograph_home
 
@@ -60,30 +60,6 @@ def proxy_cache_dir(video_path: str | None = None) -> Path:
     *video_path* argument is accepted for call-site compatibility but ignored.
     """
     return ethograph_home() / "proxies"
-
-
-@dataclass
-class VideoProbe:
-    """Cheap av-based metadata probe (replaces pre-opened FastVideoReaders)."""
-
-    path: str
-    fps: float
-    nframes: int
-
-
-def probe_video(video_path: str) -> VideoProbe:
-    with av.open(video_path) as container:
-        stream = container.streams.video[0]
-        rate = stream.average_rate or stream.guessed_rate
-        if rate is None:
-            raise ValueError(f"Cannot determine frame rate of {video_path}")
-        fps = float(rate)
-        nframes = stream.frames
-        if not nframes and stream.duration and stream.time_base:
-            nframes = int(float(stream.duration * stream.time_base) * fps)
-        if not nframes and container.duration:
-            nframes = int(container.duration / av.time_base * fps)
-    return VideoProbe(path=str(video_path), fps=fps, nframes=int(nframes))
 
 
 class VideoArea(QWidget):

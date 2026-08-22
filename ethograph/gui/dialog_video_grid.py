@@ -593,9 +593,10 @@ class VideoGridPlayer(QWidget):
         controls.addWidget(self.next_label_btn)
         layout.addLayout(controls)
 
-        # ←/→ step one frame while the player (or anything in it) has focus.
-        # A text field in it keeps the arrows for its cursor — the line edit
-        # claims them before the shortcut sees them.
+        # ←/→ step one frame while anything in the player has focus (the
+        # shortcut); the player itself handles them in keyPressEvent. A text
+        # field keeps the arrows for its cursor — the line edit claims them
+        # before the shortcut sees them.
         self.setFocusPolicy(Qt.StrongFocus)
         for key, direction in ((Qt.Key_Left, -1), (Qt.Key_Right, +1)):
             shortcut = QShortcut(QKeySequence(key), self)
@@ -723,6 +724,14 @@ class VideoGridPlayer(QWidget):
         super().resizeEvent(event)
         self._fit_tiles()
         self._render()
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key_Left:
+            self.step_frame(-1)
+        elif event.key() == Qt.Key_Right:
+            self.step_frame(+1)
+        else:
+            super().keyPressEvent(event)
 
     def _fit_tiles(self) -> None:
         if not self._tiles:

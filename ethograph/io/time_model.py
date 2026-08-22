@@ -196,7 +196,7 @@ def _resolve_trial_end(
     # 1. Video length
     if video_path:
         try:
-            from ethograph.gui.video_manager import probe_video
+            from ethograph.io.video_probe import probe_video
 
             probe = probe_video(video_path)
             if probe.nframes > 0 and probe.fps > 0:

@@ -1,8 +1,50 @@
-"""adapted from https://github.com/kylemin/S3D"""
+"""S3D network (adapted from https://github.com/kylemin/S3D) plus the
+geometry of its trunk, which dense inference relies on."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
 
 import torch
 import torch.nn.functional as F
 from torch import nn
+
+
+@dataclass(frozen=True)
+class S3DStage:
+    """Where ``S3D.base`` can be cut, and what its output there looks like in time.
+
+    ``modules``: how many of ``base``'s modules to keep. ``stride``: input
+    frames per output position. ``offset``: the frame position 0 is centred on.
+    ``receptive_field``: frames one position sees. ``channels``: feature width.
+    """
+
+    modules: int
+    stride: int
+    offset: int
+    receptive_field: int
+    channels: int
+
+
+#: The trunk's temporal arithmetic, stage by stage (kernel k, stride s, pad p
+#: on the time axis): SepConv k7 s2 p3 → positions 2m, RF 7; SepConv k3 → 11;
+#: Mixed_3b/3c k3 → 15, 19; MaxPool k3 s2 p1 → positions 4m, RF 23;
+#: Mixed_4b..4f → 31…63; MaxPool k2 s2 (no pad) → positions 8m + 2, RF 67;
+#: Mixed_5b/5c → 83, 99.
+S3D_STAGES: dict[str, S3DStage] = {
+    "Mixed_3c": S3DStage(modules=7, stride=2, offset=0, receptive_field=19, channels=480),
+    "Mixed_4f": S3DStage(modules=13, stride=4, offset=0, receptive_field=63, channels=832),
+    "Mixed_5c": S3DStage(modules=16, stride=8, offset=2, receptive_field=99, channels=1024),
+}
+#: The whole trunk.
+FULL_STAGE = "Mixed_5c"
+
+
+def truncated_base(model: S3D, stage: str) -> nn.Sequential:
+    """``model.base`` cut after *stage* (a key of :data:`S3D_STAGES`)."""
+    if stage not in S3D_STAGES:
+        raise ValueError(f"Unknown S3D stage {stage!r}; choose from {sorted(S3D_STAGES)}")
+    return model.base[: S3D_STAGES[stage].modules]
 
 
 class S3D(nn.Module):

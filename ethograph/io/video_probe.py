@@ -1,0 +1,35 @@
+"""Cheap metadata probe of a video file: frame rate and frame count.
+
+Qt-free, so both the GUI and the feature extractors read a video's rate from
+the same place — and nothing ever hardcodes one.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+import av
+
+
+@dataclass
+class VideoProbe:
+    """What a video reports about itself (PyAV), before any frame is decoded."""
+
+    path: str
+    fps: float
+    nframes: int
+
+
+def probe_video(video_path: str) -> VideoProbe:
+    with av.open(str(video_path)) as container:
+        stream = container.streams.video[0]
+        rate = stream.average_rate or stream.guessed_rate
+        if rate is None:
+            raise ValueError(f"Cannot determine frame rate of {video_path}")
+        fps = float(rate)
+        nframes = stream.frames
+        if not nframes and stream.duration and stream.time_base:
+            nframes = int(float(stream.duration * stream.time_base) * fps)
+        if not nframes and container.duration:
+            nframes = int(container.duration / av.time_base * fps)
+    return VideoProbe(path=str(video_path), fps=fps, nframes=int(nframes))
