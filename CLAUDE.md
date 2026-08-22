@@ -61,6 +61,7 @@ ethograph/gui/
     dialog_refine.py          # Refine labels frame-by-frame: seed queue over existing labels
     dialog_label_frames.py    # Labels: Show frames as PDF — clickable grid of frames at label times
     dialog_pose_refinement.py # Refine imported poses: correct DLC/SLEAP files, _refined copies
+    dialog_onset_model.py     # Model menu: GradBoost onset-detector train/predict dialogs
     plots_base.py             # BasePlot, PanelStateMixin
     plots_container.py        # UnifiedPanelContainer
     plots_{audiotrace,spectrogram,ephystrace,lineplot,heatmap,raster,space}.py
@@ -79,6 +80,7 @@ ethograph/gui/
 ethograph/labels/
     intervals.py              # Interval ops, mapping loaders, find_blocks
     ml.py                     # Dense↔interval, stitch_gaps/purge_small_blocks/fix_endings
+    onset_model.py            # GradBoost point-event onset detection (train/predict core)
     tsv_store.py, predictions.py, crowsetta_format.py, converters.py, export.py
 
 ethograph/io/
@@ -217,6 +219,7 @@ All plots inherit `BasePlot` (pyqtgraph `PlotWidget`): time marker, x-range mana
 - **A label's subject is a pair: `individual` (actor) + `individual_rec` (recipient).** `NO_RECIPIENT` (`""`) means a solo behaviour. Each (actor, recipient) is an independent track: `add_interval`/`add_point`, overlap resolution and stitching group on `SUBJECT_COLUMNS`, and `select_subject`/`subject_mask` (`None` = "any") is the one place the filter is expressed. The GUI reads the pair from `app_state.selected_individual()` + `selected_recipient()`, never from `ds_kwargs`. A naming disjoint from the dataset's own skips the actor filter (`app_state.labels_name_our_individuals`). Covered by `tests/test_unit/test_label_intervals.py` (`TestRecipient`) + `tests/test_integration/test_individual_recipient.py`.
 - **A visible label is a selectable label.** Click-selection (`_check_labels_click`) gates on `app_state.active_label_ids` (shown branches). Branch scope lives on mutation: `_delete_label`/`_edit_label` refuse a selection outside the active branch (`_refuse_foreign_branch`). Covered by `tests/test_unit/test_label_click_branches.py`.
 - **Frame-by-frame refinement treats existing labels as seeds** (`dialog_refine.py`, Tools ▸ Refine labels frame-by-frame…). The dialog walks a queue of boundary seeds sorted (trial, onset); each is reached via `NavigationWidget.jump_to_label_instance(...)`; Enter commits `video.frame_to_time(current_frame)` → `from_display`. Enter is an ApplicationShortcut installed on `_start`, removed on `_stop`; no button is default/autoDefault. Remembered per dataset (`refine_log` + `refine_resume`, SCOPE_LOCAL), exportable as `_prerefined.tsv`/`_postrefined.tsv`. The refine view is `refine_window_s` (SCOPE_GLOBAL). Covered by `tests/test_unit/test_refine_labels.py`.
+- **GradBoost onset models predict point events only, at most one per trial** (`labels/onset_model.py` + `dialog_onset_model.py`, Model menu). A model lives in `~/.ethograph/models/{name}`: `config.yaml` (frozen at creation — it defines the classifier's input columns), `train_data/{session_id}/trial_*.npz`, `model.joblib`. Feature columns come from the catalog's `select()` path with every dim pinned (explicit values, never "all"); all columns must share one sampling rate. Inference never overrides an existing target event and respects the trials-table filter + a metadata-column filter. Covered by `tests/test_unit/test_onset_model.py`.
 - **The close prompt asks the file, not the flag.** `MetaWidget._check_unsaved_changes` calls `app_state.labels_dirty()`, comparing `_all_labels_df` against `labels_file_path()` via `labels_equal` (canonical `TSV_COLUMNS`, order-insensitive). Covered by `tests/test_unit/test_labels_dirty.py`.
 - **Per-plot-type rendering:** `app_state.label_overlay_modes` maps plot type key → `"full"|"bottom"|"none"`, applied to every instance of that type. Defaults in `DEFAULT_LABEL_OVERLAY_MODES`; edited via `LabelsPerPlotDialog`.
 - **Labels on new panels:** any path creating/showing a panel ends with `plot_container.schedule_labels_redraw()` (deferred — it must run after content render). Never emit `labels_redraw_needed` synchronously from a panel-creation path.

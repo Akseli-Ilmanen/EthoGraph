@@ -131,6 +131,10 @@ class TopBarBuilder:
         #: Label-frames dialog, rebuilt when reopened so its label list,
         #: metadata columns and cameras reflect the currently loaded dataset.
         self._label_frames_dialog = None
+        #: GradBoost onset-model dialogs, rebuilt when reopened so the feature
+        #: tree and point-event classes reflect the currently loaded session.
+        self._onset_train_dialog = None
+        self._onset_predict_dialog = None
 
     # ------------------------------------------------------------------
     # Public entry point
