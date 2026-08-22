@@ -25,6 +25,9 @@ it degrades gracefully (guarded with ``getattr``) if a widget is missing.
 from __future__ import annotations
 
 import logging
+import os
+import subprocess
+import sys
 import webbrowser
 
 from qtpy.QtCore import Qt
@@ -38,6 +41,7 @@ from qtpy.QtWidgets import (
 )
 
 from ethograph.gui.notify import notify
+from ethograph.utils.paths import ethograph_home
 
 logger = logging.getLogger(__name__)
 
@@ -284,6 +288,9 @@ class TopBarBuilder:
         menu = menu_bar.addMenu("&File")
         io = getattr(self.meta, "io_widget", None)
 
+        menu.addAction("Open settings folder (.ethograph)…", self._open_ethograph_home)
+        menu.addSeparator()
+
         # Each I/O sub-panel pops up on its own (no unrelated sections):
         # labels import (mapping.txt + tsv/crowsetta) is separate from
         # predictions import and from label export. Data loading itself
@@ -311,6 +318,21 @@ class TopBarBuilder:
             menu.addAction("Save labels (Ctrl+S)", save_labels)
         menu.addSeparator()
         menu.addAction("Exit", self.shell.close)
+
+    def _open_ethograph_home(self):
+        """Open the global ``.ethograph`` settings/cache folder in the OS file browser."""
+        home = ethograph_home()
+        home.mkdir(parents=True, exist_ok=True)
+        try:
+            if sys.platform == "win32":
+                os.startfile(str(home))
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open", str(home)])
+            else:
+                subprocess.Popen(["xdg-open", str(home)])
+        except OSError:
+            logger.warning("Could not open %s in the file browser", home)
+            notify(f"Could not open {home} in the file browser.", severity="warning")
 
     # ------------------------------------------------------------------
     # Changepoints menu
