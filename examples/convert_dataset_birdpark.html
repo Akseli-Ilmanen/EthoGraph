@@ -497,8 +497,9 @@
 <span class="n">fps</span> <span class="o">=</span> <span class="mf">47.6837158203125</span>
 <span class="n">audio_sr</span> <span class="o">=</span> <span class="mf">24414.0625</span>  <span class="c1"># audio and accelerometer sampling rate (from dataset metadata)</span>
 
-<span class="n">h5_path</span> <span class="o">=</span> <span class="n">data_folder</span> <span class="o">/</span> <span class="s2">"copExpBP08"</span> <span class="o">/</span> <span class="s2">"BP_2021-05-25_08-12-51_655154_0380000.h5"</span>
-<span class="n">video_path</span> <span class="o">=</span> <span class="n">data_folder</span> <span class="o">/</span> <span class="s2">"copExpBP08"</span> <span class="o">/</span> <span class="s2">"BP_2021-05-25_08-12-51_655154_0380000.mp4"</span>
+<span class="n">recording_folder</span> <span class="o">=</span> <span class="n">data_folder</span> <span class="o">/</span> <span class="s2">"copExpBP08"</span>
+<span class="n">h5_path</span> <span class="o">=</span> <span class="n">recording_folder</span> <span class="o">/</span> <span class="s2">"BP_2021-05-25_08-12-51_655154_0380000.h5"</span>
+<span class="n">video_path</span> <span class="o">=</span> <span class="n">recording_folder</span> <span class="o">/</span> <span class="s2">"BP_2021-05-25_08-12-51_655154_0380000.mp4"</span>
 <span class="n">audio_path</span> <span class="o">=</span> <span class="n">video_path</span><span class="o">.</span><span class="n">with_suffix</span><span class="p">(</span><span class="s2">".wav"</span><span class="p">)</span>
 <span class="n">nc_path</span> <span class="o">=</span> <span class="n">video_path</span><span class="o">.</span><span class="n">with_suffix</span><span class="p">(</span><span class="s2">".nc"</span><span class="p">)</span>
 
@@ -512,19 +513,22 @@
 
 <span class="c1"># ─── Build session table ───</span>
 <span class="c1"># trial=1 matches the ID assigned when loading a plain Dataset as a single-trial TrialTree</span>
+<span class="c1"># NWB alignment stores bare filenames (resolved against video_folder /</span>
+<span class="c1"># audio_folder at GUI-load time) — never the absolute paths on this machine.</span>
 <span class="n">session_table</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span>
     <span class="p">{</span>
         <span class="s2">"trial"</span><span class="p">:</span> <span class="p">[</span><span class="mi">1</span><span class="p">],</span>
-        <span class="s2">"video_0"</span><span class="p">:</span> <span class="p">[</span><span class="nb">str</span><span class="p">(</span><span class="n">video_path</span><span class="p">)],</span>
-        <span class="s2">"audio_0"</span><span class="p">:</span> <span class="p">[</span><span class="nb">str</span><span class="p">(</span><span class="n">audio_path</span><span class="p">)],</span>
+        <span class="s2">"video_0"</span><span class="p">:</span> <span class="p">[</span><span class="n">video_path</span><span class="o">.</span><span class="n">name</span><span class="p">],</span>
+        <span class="s2">"audio_0"</span><span class="p">:</span> <span class="p">[</span><span class="n">audio_path</span><span class="o">.</span><span class="n">name</span><span class="p">],</span>
     <span class="p">}</span>
 <span class="p">)</span>
 
-<span class="n">nwb_path</span> <span class="o">=</span> <span class="n">data_folder</span> <span class="o">/</span> <span class="s2">"copExpBP08"</span> <span class="o">/</span> <span class="s2">".ethograph"</span> <span class="o">/</span> <span class="s2">"alignment.nwb"</span>
+<span class="n">nwb_path</span> <span class="o">=</span> <span class="n">recording_folder</span> <span class="o">/</span> <span class="s2">".ethograph"</span> <span class="o">/</span> <span class="s2">"alignment.nwb"</span>
 <span class="n">align_media_per_trial</span><span class="p">(</span>
     <span class="n">trial_table</span><span class="o">=</span><span class="n">session_table</span><span class="p">,</span>
     <span class="n">stream_rates</span><span class="o">=</span><span class="p">{</span><span class="s2">"video"</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">fps</span><span class="p">),</span> <span class="s2">"audio"</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">audio_sr</span><span class="p">)},</span>
     <span class="n">output_path</span><span class="o">=</span><span class="n">nwb_path</span><span class="p">,</span>
+    <span class="n">media_root</span><span class="o">=</span><span class="n">recording_folder</span><span class="p">,</span>
 <span class="p">)</span>
 
 <span class="c1"># ─── Build xarray dataset ───</span>

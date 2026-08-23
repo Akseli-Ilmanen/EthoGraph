@@ -588,7 +588,9 @@
 
         <span class="n">row</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"trial"</span><span class="p">:</span> <span class="n">i</span><span class="p">}</span>
         <span class="k">for</span> <span class="n">cam</span> <span class="ow">in</span> <span class="n">cameras</span><span class="p">:</span>
-            <span class="n">row</span><span class="p">[</span><span class="sa">f</span><span class="s2">"video_</span><span class="si">{</span><span class="n">cam</span><span class="si">}</span><span class="s2">"</span><span class="p">]</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">VIDEO_DIR</span> <span class="o">/</span> <span class="n">cam</span> <span class="o">/</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">start_frame</span><span class="si">}</span><span class="s2">.mp4"</span><span class="p">)</span>
+            <span class="c1"># Relative to VIDEO_DIR (passed as media_root below) — never bake</span>
+            <span class="c1"># this machine's absolute path into the alignment NWB.</span>
+            <span class="n">row</span><span class="p">[</span><span class="sa">f</span><span class="s2">"video_</span><span class="si">{</span><span class="n">cam</span><span class="si">}</span><span class="s2">"</span><span class="p">]</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">Path</span><span class="p">(</span><span class="n">cam</span><span class="p">)</span> <span class="o">/</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">start_frame</span><span class="si">}</span><span class="s2">.mp4"</span><span class="p">)</span>
         <span class="n">rows</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">row</span><span class="p">)</span>
 
     <span class="n">remaining</span> <span class="o">=</span> <span class="n">n_frames</span> <span class="o">%</span> <span class="n">chunk_size</span>
@@ -627,6 +629,7 @@
     <span class="n">trial_table</span><span class="o">=</span><span class="n">session_table</span><span class="p">,</span>
     <span class="n">stream_rates</span><span class="o">=</span><span class="p">{</span><span class="s2">"video"</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">FPS</span><span class="p">)},</span>
     <span class="n">output_path</span><span class="o">=</span><span class="n">nwb_path</span><span class="p">,</span>
+    <span class="n">media_root</span><span class="o">=</span><span class="n">VIDEO_DIR</span><span class="p">,</span>
 <span class="p">)</span>
 
 <span class="c1"># Build and save TrialTree</span>
