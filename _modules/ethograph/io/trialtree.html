@@ -455,6 +455,15 @@
         <span class="c1"># Always initialize nwb_alignment to a null-object (empty EmpytAlignment)</span>
         <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">"nwb_alignment"</span><span class="p">):</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">nwb_alignment</span> <span class="o">=</span> <span class="n">EmpytAlignment</span><span class="p">()</span>
+        <span class="c1"># Dirty-tracking for incremental saves (see `_try_incremental_save`).</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">"_dirty_trials"</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_dirty_trials</span><span class="p">:</span> <span class="nb">set</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">"_saved_node_names"</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_saved_node_names</span><span class="p">:</span> <span class="nb">frozenset</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">"_saved_var_shapes"</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_saved_var_shapes</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="o">...</span><span class="p">]]]</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">"_extra_file_handle"</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_extra_file_handle</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataTree</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
 
     <span class="c1"># ------------------------------------------------------------------</span>
     <span class="c1"># Node name resolution</span>
@@ -583,13 +592,30 @@
 <span class="w">        </span><span class="sd">"""Read-modify-write a single trial's dataset.</span>
 
 <span class="sd">        Not supported for continuous trees — call :meth:`materialise`</span>
-<span class="sd">        first if you need per-trial mutation.</span>
+<span class="sd">        first if you need per-trial mutation. Marks *trial* dirty so</span>
+<span class="sd">        :meth:`save` can write just this trial back instead of the whole tree.</span>
 <span class="sd">        """</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_is_continuous</span><span class="p">:</span>
             <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">"Cannot update trials in a continuous TrialTree. "</span><span class="p">)</span>
         <span class="n">node_name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_trial_node_name</span><span class="p">(</span><span class="n">trial</span><span class="p">)</span>
-        <span class="bp">self</span><span class="p">[</span><span class="n">node_name</span><span class="p">]</span> <span class="o">=</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataTree</span><span class="p">(</span><span class="n">func</span><span class="p">(</span><span class="bp">self</span><span class="p">[</span><span class="n">node_name</span><span class="p">]</span><span class="o">.</span><span class="n">ds</span><span class="p">))</span></div>
+        <span class="bp">self</span><span class="p">[</span><span class="n">node_name</span><span class="p">]</span> <span class="o">=</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataTree</span><span class="p">(</span><span class="n">func</span><span class="p">(</span><span class="bp">self</span><span class="p">[</span><span class="n">node_name</span><span class="p">]</span><span class="o">.</span><span class="n">ds</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_dirty_trials</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">node_name</span><span class="p">)</span></div>
 
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">set_trial_attr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">trial</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">value</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""Set a single attr on *trial*'s dataset, tracked for incremental save.</span>
+
+<span class="sd">        Equivalent to mutating ``dt.trial(trial).attrs[key]`` directly, except</span>
+<span class="sd">        that direct mutation bypasses dirty-tracking and forces a full rewrite</span>
+<span class="sd">        on the next :meth:`save`.</span>
+<span class="sd">        """</span>
+
+        <span class="k">def</span><span class="w"> </span><span class="nf">_set</span><span class="p">(</span><span class="n">ds</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">Dataset</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">xr</span><span class="o">.</span><span class="n">Dataset</span><span class="p">:</span>
+            <span class="n">ds</span> <span class="o">=</span> <span class="n">ds</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+            <span class="n">ds</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">value</span>
+            <span class="k">return</span> <span class="n">ds</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">update_trial</span><span class="p">(</span><span class="n">trial</span><span class="p">,</span> <span class="n">_set</span><span class="p">)</span>
 
     <span class="c1"># ------------------------------------------------------------------</span>
     <span class="c1"># Trial data access</span>
@@ -752,6 +778,9 @@
         <span class="n">tree</span><span class="o">.</span><span class="n">_source_path</span> <span class="o">=</span> <span class="n">path</span>
         <span class="n">nwb</span> <span class="o">=</span> <span class="n">discover_nwb</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
         <span class="n">tree</span><span class="o">.</span><span class="n">nwb_alignment</span> <span class="o">=</span> <span class="n">make_nwb_alignment</span><span class="p">(</span><span class="n">nwb</span><span class="p">)</span>
+        <span class="n">tree</span><span class="o">.</span><span class="n">_dirty_trials</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+        <span class="n">tree</span><span class="o">.</span><span class="n">_extra_file_handle</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="n">tree</span><span class="o">.</span><span class="n">_record_saved_state</span><span class="p">()</span>
         <span class="k">return</span> <span class="n">tree</span></div>
 
 
@@ -911,7 +940,13 @@
 <span class="sd">        Continuous trees are materialised into per-trial nodes before</span>
 <span class="sd">        saving so the file can be re-opened with :meth:`open`.</span>
 
-<span class="sd">        Uses an atomic write (temp file then rename) to avoid partial writes.</span>
+<span class="sd">        When *path* is the file this tree was opened from (or last saved to)</span>
+<span class="sd">        and only some trials were touched via :meth:`update_trial` /</span>
+<span class="sd">        :meth:`set_trial_attr` since then, only those trials are written back</span>
+<span class="sd">        in place (see :meth:`_try_incremental_save`) — a one-attr edit on one</span>
+<span class="sd">        trial does not rewrite the whole file. Anything else (a new path, an</span>
+<span class="sd">        added/removed trial, a variable whose shape changed) falls back to a</span>
+<span class="sd">        full atomic write (temp file then rename) to avoid partial writes.</span>
 <span class="sd">        If an alignment NWB exists and the save directory differs from where</span>
 <span class="sd">        the NWB lives, a copy is placed in ``&lt;save_dir&gt;/.ethograph/`` so that</span>
 <span class="sd">        :meth:`open` can discover it.</span>
@@ -925,18 +960,101 @@
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"No path provided and no source path stored."</span><span class="p">)</span>
 
         <span class="n">path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">path</span><span class="p">)</span> <span class="k">if</span> <span class="n">path</span> <span class="k">else</span> <span class="n">Path</span><span class="p">(</span><span class="n">source_path</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_try_incremental_save</span><span class="p">(</span><span class="n">path</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_source_path</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_ensure_alignment_nwb</span><span class="p">(</span><span class="n">path</span><span class="o">.</span><span class="n">parent</span><span class="p">)</span>
+            <span class="k">return</span>
+
         <span class="n">temp_path</span> <span class="o">=</span> <span class="n">path</span><span class="o">.</span><span class="n">with_suffix</span><span class="p">(</span><span class="s2">".tmp.nc"</span><span class="p">)</span>
 
         <span class="k">try</span><span class="p">:</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">load</span><span class="p">()</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">to_netcdf</span><span class="p">(</span><span class="n">temp_path</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s2">"w"</span><span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_close_all</span><span class="p">()</span>
             <span class="n">temp_path</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_source_path</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_ensure_alignment_nwb</span><span class="p">(</span><span class="n">path</span><span class="o">.</span><span class="n">parent</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_dirty_trials</span><span class="o">.</span><span class="n">clear</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_record_saved_state</span><span class="p">()</span>
         <span class="k">finally</span><span class="p">:</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">close</span><span class="p">()</span></div>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_close_all</span><span class="p">()</span></div>
 
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_close_all</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""Release every file handle this tree holds.</span>
+
+<span class="sd">        :meth:`_try_incremental_save` grafts subtrees from a freshly</span>
+<span class="sd">        re-opened ``DataTree`` onto this one; closing ``self`` alone doesn't</span>
+<span class="sd">        reach the close hook that lives on that other tree's root, so it's</span>
+<span class="sd">        tracked separately (``_extra_file_handle``) and closed here too.</span>
+<span class="sd">        """</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_extra_file_handle</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_extra_file_handle</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_extra_file_handle</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_current_trial_node_names</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+        <span class="k">return</span> <span class="p">[</span><span class="n">name</span> <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">node</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">children</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">node</span><span class="o">.</span><span class="n">ds</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="s2">"trial"</span> <span class="ow">in</span> <span class="n">node</span><span class="o">.</span><span class="n">ds</span><span class="o">.</span><span class="n">attrs</span><span class="p">]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_record_saved_state</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""Snapshot the trial/variable layout as "known to be on disk"."""</span>
+        <span class="n">names</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_current_trial_node_names</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_saved_node_names</span> <span class="o">=</span> <span class="nb">frozenset</span><span class="p">(</span><span class="n">names</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_saved_var_shapes</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="n">name</span><span class="p">:</span> <span class="p">{</span><span class="n">var</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">da</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span> <span class="k">for</span> <span class="n">var</span><span class="p">,</span> <span class="n">da</span> <span class="ow">in</span> <span class="bp">self</span><span class="p">[</span><span class="n">name</span><span class="p">]</span><span class="o">.</span><span class="n">ds</span><span class="o">.</span><span class="n">variables</span><span class="o">.</span><span class="n">items</span><span class="p">()}</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">names</span>
+        <span class="p">}</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_try_incremental_save</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""Write only dirty trials back into an existing file, in place.</span>
+
+<span class="sd">        Returns ``True`` once *path* reflects every pending change (including</span>
+<span class="sd">        the case where nothing changed and no I/O was needed at all).</span>
+<span class="sd">        Returns ``False`` when an in-place write isn't safe and the caller</span>
+<span class="sd">        should do a full rewrite instead: no prior save/open to diff against,</span>
+<span class="sd">        *path* isn't the file this tree was last synced with, a trial was</span>
+<span class="sd">        added/removed, or a dirty trial's variable shape no longer matches</span>
+<span class="sd">        what's on disk (HDF5 can't resize a dimension in place).</span>
+
+<span class="sd">        HDF5/netCDF4 won't open a file for writing while this tree still</span>
+<span class="sd">        holds it open for reading, so a successful in-place write closes the</span>
+<span class="sd">        tree first, writes the dirty groups, then re-opens the file and</span>
+<span class="sd">        re-points every untouched trial at the fresh handle — the dirty</span>
+<span class="sd">        trials keep the in-memory dataset that was just verified on disk.</span>
+<span class="sd">        """</span>
+        <span class="n">source_path</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">"_source_path"</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_saved_node_names</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">source_path</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">False</span>
+        <span class="k">if</span> <span class="n">Path</span><span class="p">(</span><span class="n">source_path</span><span class="p">)</span><span class="o">.</span><span class="n">resolve</span><span class="p">()</span> <span class="o">!=</span> <span class="n">path</span><span class="o">.</span><span class="n">resolve</span><span class="p">()</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+            <span class="k">return</span> <span class="kc">False</span>
+
+        <span class="n">current_names</span> <span class="o">=</span> <span class="nb">frozenset</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_current_trial_node_names</span><span class="p">())</span>
+        <span class="k">if</span> <span class="n">current_names</span> <span class="o">!=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_saved_node_names</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">False</span>  <span class="c1"># a trial was added/removed since the last save</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_dirty_trials</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">True</span>  <span class="c1"># nothing changed — skip all I/O</span>
+
+        <span class="n">dirty</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_dirty_trials</span> <span class="o">&amp;</span> <span class="n">current_names</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">dirty</span><span class="p">:</span>
+            <span class="n">ds</span> <span class="o">=</span> <span class="bp">self</span><span class="p">[</span><span class="n">name</span><span class="p">]</span><span class="o">.</span><span class="n">ds</span>
+            <span class="k">for</span> <span class="n">var_name</span><span class="p">,</span> <span class="n">shape</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_saved_var_shapes</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="p">{})</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                <span class="k">if</span> <span class="n">var_name</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">ds</span><span class="o">.</span><span class="n">variables</span> <span class="ow">or</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">ds</span><span class="o">.</span><span class="n">variables</span><span class="p">[</span><span class="n">var_name</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span> <span class="o">!=</span> <span class="n">shape</span><span class="p">:</span>
+                    <span class="k">return</span> <span class="kc">False</span>  <span class="c1"># variable removed, or its shape changed in place</span>
+
+        <span class="n">loaded</span> <span class="o">=</span> <span class="p">{</span><span class="n">name</span><span class="p">:</span> <span class="bp">self</span><span class="p">[</span><span class="n">name</span><span class="p">]</span><span class="o">.</span><span class="n">ds</span><span class="o">.</span><span class="n">load</span><span class="p">()</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">dirty</span><span class="p">}</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_close_all</span><span class="p">()</span>
+        <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">ds</span> <span class="ow">in</span> <span class="n">loaded</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="n">ds</span><span class="o">.</span><span class="n">to_netcdf</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s2">"a"</span><span class="p">,</span> <span class="n">group</span><span class="o">=</span><span class="sa">f</span><span class="s2">"/</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+
+        <span class="n">fresh</span> <span class="o">=</span> <span class="n">xr</span><span class="o">.</span><span class="n">open_datatree</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">path</span><span class="p">),</span> <span class="n">engine</span><span class="o">=</span><span class="s2">"netcdf4"</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">current_names</span><span class="p">:</span>
+            <span class="bp">self</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataTree</span><span class="p">(</span><span class="n">loaded</span><span class="p">[</span><span class="n">name</span><span class="p">])</span> <span class="k">if</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">loaded</span> <span class="k">else</span> <span class="n">fresh</span><span class="p">[</span><span class="n">name</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_extra_file_handle</span> <span class="o">=</span> <span class="n">fresh</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_dirty_trials</span><span class="o">.</span><span class="n">clear</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_record_saved_state</span><span class="p">()</span>
+        <span class="k">return</span> <span class="kc">True</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">_ensure_alignment_nwb</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">save_dir</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">"""Copy alignment NWB next to the save location if needed."""</span>

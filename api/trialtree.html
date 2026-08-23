@@ -720,7 +720,8 @@ the returned dataset shares its underlying data with the tree:</p>
 <span class="sig-prename descclassname"><span class="pre">TrialTree.</span></span><span class="sig-name descname"><span class="pre">update_trial</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">trial</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">func</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/io/trialtree.html#TrialTree.update_trial"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.io.trialtree.TrialTree.update_trial" title="Link to this definition">#</a></dt>
 <dd><p>Read-modify-write a single trial’s dataset.</p>
 <p>Not supported for continuous trees — call <code class="xref py py-meth docutils literal notranslate"><span class="pre">materialise()</span></code>
-first if you need per-trial mutation.</p>
+first if you need per-trial mutation. Marks <em>trial</em> dirty so
+<a class="reference internal" href="#ethograph.io.trialtree.TrialTree.save" title="ethograph.io.trialtree.TrialTree.save"><code class="xref py py-meth docutils literal notranslate"><span class="pre">save()</span></code></a> can write just this trial back instead of the whole tree.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></a></span></p>
@@ -763,7 +764,13 @@ copied alongside the <code class="docutils literal notranslate"><span class="pre
 <dd><p>Write the TrialTree to a NetCDF file.</p>
 <p>Continuous trees are materialised into per-trial nodes before
 saving so the file can be re-opened with <a class="reference internal" href="#ethograph.io.trialtree.TrialTree.open" title="ethograph.io.trialtree.TrialTree.open"><code class="xref py py-meth docutils literal notranslate"><span class="pre">open()</span></code></a>.</p>
-<p>Uses an atomic write (temp file then rename) to avoid partial writes.
+<p>When <em>path</em> is the file this tree was opened from (or last saved to)
+and only some trials were touched via <a class="reference internal" href="#ethograph.io.trialtree.TrialTree.update_trial" title="ethograph.io.trialtree.TrialTree.update_trial"><code class="xref py py-meth docutils literal notranslate"><span class="pre">update_trial()</span></code></a> /
+<code class="xref py py-meth docutils literal notranslate"><span class="pre">set_trial_attr()</span></code> since then, only those trials are written back
+in place (see <code class="xref py py-meth docutils literal notranslate"><span class="pre">_try_incremental_save()</span></code>) — a one-attr edit on one
+trial does not rewrite the whole file. Anything else (a new path, an
+added/removed trial, a variable whose shape changed) falls back to a
+full atomic write (temp file then rename) to avoid partial writes.
 If an alignment NWB exists and the save directory differs from where
 the NWB lives, a copy is placed in <code class="docutils literal notranslate"><span class="pre">&lt;save_dir&gt;/.ethograph/</span></code> so that
 <a class="reference internal" href="#ethograph.io.trialtree.TrialTree.open" title="ethograph.io.trialtree.TrialTree.open"><code class="xref py py-meth docutils literal notranslate"><span class="pre">open()</span></code></a> can discover it.</p>
