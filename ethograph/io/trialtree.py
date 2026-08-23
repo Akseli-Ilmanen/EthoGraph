@@ -46,6 +46,15 @@ class TrialTree(xr.DataTree):
         # Always initialize nwb_alignment to a null-object (empty EmpytAlignment)
         if not hasattr(self, "nwb_alignment"):
             self.nwb_alignment = EmpytAlignment()
+        # Dirty-tracking for incremental saves (see `_try_incremental_save`).
+        if not hasattr(self, "_dirty_trials"):
+            self._dirty_trials: set[str] = set()
+        if not hasattr(self, "_saved_node_names"):
+            self._saved_node_names: frozenset[str] | None = None
+        if not hasattr(self, "_saved_var_shapes"):
+            self._saved_var_shapes: dict[str, dict[str, tuple[int, ...]]] = {}
+        if not hasattr(self, "_extra_file_handle"):
+            self._extra_file_handle: xr.DataTree | None = None
 
     # ------------------------------------------------------------------
     # Node name resolution
@@ -166,12 +175,29 @@ class TrialTree(xr.DataTree):
         """Read-modify-write a single trial's dataset.
 
         Not supported for continuous trees — call :meth:`materialise`
-        first if you need per-trial mutation.
+        first if you need per-trial mutation. Marks *trial* dirty so
+        :meth:`save` can write just this trial back instead of the whole tree.
         """
         if self._is_continuous:
             raise TypeError("Cannot update trials in a continuous TrialTree. ")
         node_name = self._trial_node_name(trial)
         self[node_name] = xr.DataTree(func(self[node_name].ds))
+        self._dirty_trials.add(node_name)
+
+    def set_trial_attr(self, trial, key: str, value: Any) -> None:
+        """Set a single attr on *trial*'s dataset, tracked for incremental save.
+
+        Equivalent to mutating ``dt.trial(trial).attrs[key]`` directly, except
+        that direct mutation bypasses dirty-tracking and forces a full rewrite
+        on the next :meth:`save`.
+        """
+
+        def _set(ds: xr.Dataset) -> xr.Dataset:
+            ds = ds.copy()
+            ds.attrs[key] = value
+            return ds
+
+        self.update_trial(trial, _set)
 
     # ------------------------------------------------------------------
     # Trial data access
@@ -317,6 +343,9 @@ class TrialTree(xr.DataTree):
         tree._source_path = path
         nwb = discover_nwb(path)
         tree.nwb_alignment = make_nwb_alignment(nwb)
+        tree._dirty_trials = set()
+        tree._extra_file_handle = None
+        tree._record_saved_state()
         return tree
 
     @classmethod
@@ -464,7 +493,13 @@ class TrialTree(xr.DataTree):
         Continuous trees are materialised into per-trial nodes before
         saving so the file can be re-opened with :meth:`open`.
 
-        Uses an atomic write (temp file then rename) to avoid partial writes.
+        When *path* is the file this tree was opened from (or last saved to)
+        and only some trials were touched via :meth:`update_trial` /
+        :meth:`set_trial_attr` since then, only those trials are written back
+        in place (see :meth:`_try_incremental_save`) — a one-attr edit on one
+        trial does not rewrite the whole file. Anything else (a new path, an
+        added/removed trial, a variable whose shape changed) falls back to a
+        full atomic write (temp file then rename) to avoid partial writes.
         If an alignment NWB exists and the save directory differs from where
         the NWB lives, a copy is placed in ``<save_dir>/.ethograph/`` so that
         :meth:`open` can discover it.
@@ -478,17 +513,100 @@ class TrialTree(xr.DataTree):
             raise ValueError("No path provided and no source path stored.")
 
         path = Path(path) if path else Path(source_path)
+
+        if self._try_incremental_save(path):
+            self._source_path = str(path)
+            self._ensure_alignment_nwb(path.parent)
+            return
+
         temp_path = path.with_suffix(".tmp.nc")
 
         try:
             self.load()
             self.to_netcdf(temp_path, mode="w")
-            self.close()
+            self._close_all()
             temp_path.replace(path)
             self._source_path = str(path)
             self._ensure_alignment_nwb(path.parent)
+            self._dirty_trials.clear()
+            self._record_saved_state()
         finally:
-            self.close()
+            self._close_all()
+
+    def _close_all(self) -> None:
+        """Release every file handle this tree holds.
+
+        :meth:`_try_incremental_save` grafts subtrees from a freshly
+        re-opened ``DataTree`` onto this one; closing ``self`` alone doesn't
+        reach the close hook that lives on that other tree's root, so it's
+        tracked separately (``_extra_file_handle``) and closed here too.
+        """
+        self.close()
+        if self._extra_file_handle is not None:
+            self._extra_file_handle.close()
+            self._extra_file_handle = None
+
+    def _current_trial_node_names(self) -> list[str]:
+        return [name for name, node in self.children.items() if node.ds is not None and "trial" in node.ds.attrs]
+
+    def _record_saved_state(self) -> None:
+        """Snapshot the trial/variable layout as "known to be on disk"."""
+        names = self._current_trial_node_names()
+        self._saved_node_names = frozenset(names)
+        self._saved_var_shapes = {
+            name: {var: tuple(da.shape) for var, da in self[name].ds.variables.items()} for name in names
+        }
+
+    def _try_incremental_save(self, path: Path) -> bool:
+        """Write only dirty trials back into an existing file, in place.
+
+        Returns ``True`` once *path* reflects every pending change (including
+        the case where nothing changed and no I/O was needed at all).
+        Returns ``False`` when an in-place write isn't safe and the caller
+        should do a full rewrite instead: no prior save/open to diff against,
+        *path* isn't the file this tree was last synced with, a trial was
+        added/removed, or a dirty trial's variable shape no longer matches
+        what's on disk (HDF5 can't resize a dimension in place).
+
+        HDF5/netCDF4 won't open a file for writing while this tree still
+        holds it open for reading, so a successful in-place write closes the
+        tree first, writes the dirty groups, then re-opens the file and
+        re-points every untouched trial at the fresh handle — the dirty
+        trials keep the in-memory dataset that was just verified on disk.
+        """
+        source_path = getattr(self, "_source_path", None)
+        if self._saved_node_names is None or source_path is None:
+            return False
+        if Path(source_path).resolve() != path.resolve() or not path.exists():
+            return False
+
+        current_names = frozenset(self._current_trial_node_names())
+        if current_names != self._saved_node_names:
+            return False  # a trial was added/removed since the last save
+
+        if not self._dirty_trials:
+            return True  # nothing changed — skip all I/O
+
+        dirty = sorted(self._dirty_trials & current_names)
+        for name in dirty:
+            ds = self[name].ds
+            for var_name, shape in self._saved_var_shapes.get(name, {}).items():
+                if var_name not in ds.variables or tuple(ds.variables[var_name].shape) != shape:
+                    return False  # variable removed, or its shape changed in place
+
+        loaded = {name: self[name].ds.load() for name in dirty}
+        self._close_all()
+        for name, ds in loaded.items():
+            ds.to_netcdf(path, mode="a", group=f"/{name}")
+
+        fresh = xr.open_datatree(str(path), engine="netcdf4")
+        for name in current_names:
+            self[name] = xr.DataTree(loaded[name]) if name in loaded else fresh[name]
+        self._extra_file_handle = fresh
+
+        self._dirty_trials.clear()
+        self._record_saved_state()
+        return True
 
     def _ensure_alignment_nwb(self, save_dir: Path) -> None:
         """Copy alignment NWB next to the save location if needed."""
