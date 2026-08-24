@@ -9,6 +9,7 @@ annotation tools, and exporting to TSV / Crowsetta formats.
 
 labelling_gui
 curation
+workflows
 onset_model
 mapping
 branches

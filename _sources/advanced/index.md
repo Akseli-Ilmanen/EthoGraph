@@ -38,6 +38,22 @@ flow, PosePAL), and when to train a detector instead.
 
 
 
+:::{grid-item-card} {fas}`tags` Variable schema
+:link: variable_schema
+:link-type: doc
+
+What a variable is — the `kind` / `is_egocentric` / `normalise` attrs, and
+the ablation they enable.
+:::
+
+:::{grid-item-card} {fas}`diagram-project` Segmentation pipeline
+:link: segment/index
+:link-type: doc
+
+Learn state labels from your sessions: feature engineering, training,
+inference — one config, three commands, predictions back in the GUI.
+:::
+
 :::{grid-item-card} {fas}`play` Video & Audio playback
 :link: playback
 :link-type: doc
@@ -70,6 +86,8 @@ time_slider_trial_session
 labels/index
 changepoints/index
 keypoint_labelling/index
+variable_schema
+segment/index
 playback
 shortcuts
 troubleshooting

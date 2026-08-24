@@ -51,7 +51,7 @@
     <link rel="index" title="Index" href="../../genindex.html" />
     <link rel="search" title="Search" href="../../search.html" />
     <link rel="next" title="Label mapping (mapping.txt)" href="mapping.html" />
-    <link rel="prev" title="Curating labels" href="curation.html" />
+    <link rel="prev" title="Curation workflows" href="workflows.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="" />
@@ -370,6 +370,7 @@
 <li class="toctree-l1 current active has-children"><a class="reference internal" href="index.html">Labels</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
 <li class="toctree-l2"><a class="reference internal" href="labelling_gui.html">Labelling in the GUI</a></li>
 <li class="toctree-l2"><a class="reference internal" href="curation.html">Curating labels</a></li>
+<li class="toctree-l2"><a class="reference internal" href="workflows.html">Curation workflows</a></li>
 <li class="toctree-l2 current active"><a class="current reference internal" href="#">Predicting point events (LightGBM)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="mapping.html">Label mapping (<code class="docutils literal notranslate"><span class="pre">mapping.txt</span></code>)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="branches.html">Label branches</a></li>
@@ -393,6 +394,14 @@
 <li class="toctree-l2"><a class="reference internal" href="../keypoint_labelling/correction.html">6. The correction loop</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../keypoint_labelling/export.html">7. Visualizing &amp; exporting</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../keypoint_labelling/refine_imported.html">Refining imported poses</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1"><a class="reference internal" href="../variable_schema.html">Variable schema</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../segment/index.html">Segmentation pipeline</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="../segment/config.html">Config reference</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../segment/boundaries.html">Boundaries: heads that predict <em>where</em>, not just <em>what</em></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../segment/video_features.html">S3D video features</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../segment/later.html">Decisions to revisit</a></li>
 </ul>
 </details></li>
 <li class="toctree-l1"><a class="reference internal" href="../playback.html">Video &amp; Audio playback</a></li>
@@ -474,8 +483,8 @@ fills in the rest.</p>
 <div class="important admonition">
 <p class="admonition-title">Scope — read this first</p>
 <p><strong>Point events only</strong>, and <strong>at most one event per class per trial</strong>.
-Inference is an <code class="docutils literal notranslate"><span class="pre">argmax</span></code> over the trial’s smoothed probability curve, so it
-returns exactly one time per class per trial and cannot return two.</p>
+Inference takes the tallest peak of the trial’s smoothed probability curve, so
+it returns exactly one time per class per trial and cannot return two.</p>
 <p><strong>State events are out of scope</strong>: a state event has two boundaries (“start” and “stop”) whose
 order and non-overlap have to be respected, which is a different problem from
 “when did this happen?”. Use an external action-segmentation model for those.</p>
@@ -490,7 +499,7 @@ that frame and answers one question: <em>is the event here?</em></p>
 positive, weighted by a Gaussian bump peaking at the event, so a frame one
 tick off counts less than the exact frame. Far negatives are subsampled.</p></li>
 <li><p><strong>Inference</strong> smooths the per-frame probability with the same tolerance — a
-plateau of near-hits beats one spurious spike — and takes the argmax.</p></li>
+plateau of near-hits beats one spurious spike — and takes the tallest peak.</p></li>
 </ul>
 <p>Each class gets <strong>its own binary classifier</strong> over the same features, window
 and tolerance. The design matrix is built once per trial and reused, so
@@ -499,7 +508,7 @@ predicting five classes costs barely more than predicting one.</p>
 <hr class="docutils" />
 <section id="training">
 <h2>Training<a class="headerlink" href="#training" title="Link to this heading">#</a></h2>
-<ol class="arabic simple">
+<ol class="arabic">
 <li><p><strong>Name the model</strong> — leave the combo on <em>New model…</em> and type a name, or
 pick an existing model to add more training data to it.</p></li>
 <li><p><strong>Tick the point events to predict.</strong> Only classes marked as point events
@@ -507,7 +516,14 @@ in <a class="reference internal" href="mapping.html"><span class="doc">mapping.t
 <li><p><strong>Tick the features.</strong> Ticking <code class="docutils literal notranslate"><span class="pre">speed</span> <span class="pre">▸</span> <span class="pre">keypoints</span> <span class="pre">▸</span> <span class="pre">beak,</span> <span class="pre">head</span></code> gives two
 input columns. <strong>Every dim has to be pinned to explicit values</strong> — that
 frozen list <em>is</em> the model’s input layout, which is what lets the model run
-on another session.</p></li>
+on another session.</p>
+<p>Ticking a feature’s <strong>d/dt</strong> box adds its rate of change beside every column
+it produces (<code class="docutils literal notranslate"><span class="pre">np.gradient</span></code>: central differences, centred on the frame, so a
+turn in the signal shows up at the frame it happened). The classifier sees
+each tap of the window on its own and cannot difference them, so <em>how fast
+is this changing</em> has to be handed to it as its own input — worth a tick
+when the event is a change of speed or direction rather than a level.</p>
+</li>
 <li><p><strong>Set the parameters.</strong> <code class="docutils literal notranslate"><span class="pre">Window</span> <span class="pre">size</span></code> is how much context the classifier
 sees around each frame; <code class="docutils literal notranslate"><span class="pre">Tolerance</span></code> is how precisely you believe your own
 labels.</p></li>
@@ -533,8 +549,8 @@ pick features from one stream.</p>
 <section id="on-disk">
 <h3>On disk<a class="headerlink" href="#on-disk" title="Link to this heading">#</a></h3>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span>~/.ethograph/models/{name}/
-├── config.yaml                 # frozen: targets, features, window, tolerance
-├── model.joblib                # one trained classifier per target (+ CRF)
+├── config.yaml                 # frozen: targets, features (+ d/dt), window, tolerance
+├── model.joblib                # one trained classifier per target
 └── train_data/
     └── {session}-{hash}/
         ├── meta.yaml           # source path, columns, trial count
@@ -546,21 +562,39 @@ survives that session moving or going offline.</p>
 <hr class="docutils" />
 </section>
 </section>
-<section id="modelling-the-order-of-the-events">
-<span id="target-onset-model-sequence"></span><h2>Modelling the order of the events<a class="headerlink" href="#modelling-the-order-of-the-events" title="Link to this heading">#</a></h2>
-<p>When the classes always run in the same order, tick <strong>Model the order of the
-events (CRF)</strong> and EthoGraph fits a linear-chain CRF
-(<a class="reference external" href="https://sklearn-crfsuite.readthedocs.io">sklearn-crfsuite</a>) over the
-per-class probabilities. Every frame is tagged with the class of the most
-recent event, so the CRF’s transitions <em>are</em> the sequence dependencies, and
-only orders seen in training can be decoded — a class whose signal has a decoy
-early in the trial can no longer be predicted before the class it always
-follows. The whole trial is decoded at once, which also means a class the
-decoded order leaves out gets no prediction there.</p>
-<p>Needs at least 2 training trials; training reports the orders it saw
-(<code class="docutils literal notranslate"><span class="pre">peck→land</span> <span class="pre">×18</span></code>) and takes minutes rather than seconds, since each class is
-refitted once per cross-fitting fold. Untick <strong>Use the sequence model</strong> when
-predicting to fall back to independent per-class argmaxes.</p>
+<section id="saying-what-you-expect">
+<span id="target-onset-model-sequence"></span><h2>Saying what you expect<a class="headerlink" href="#saying-what-you-expect" title="Link to this heading">#</a></h2>
+<p>You usually know things about your classes that the model does not: that the
+bird pecks <em>before</em> it lands, that a trial with one has the other. Say so when
+you create the model, and EthoGraph will tell you which trials disagreed.</p>
+<p>In the Train dialog, <strong>drag the ticked classes into the order you expect</strong> —
+the list is the declaration — then tick:</p>
+<div class="pst-scrollable-table-container"><table class="table">
+<thead>
+<tr class="row-odd"><th class="head"><p></p></th>
+<th class="head"><p></p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><strong>Expect them in the order they are listed above</strong></p></td>
+<td><p>flags a trial whose predicted events came out in another order</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>…and if a trial has one of them, expect the rest</strong></p></td>
+<td><p>flags a trial that got only <em>part</em> of the set, because the rest fell below the confidence floor. A trial with <strong>none</strong> of them is not flagged — the behaviour did not happen there, which is no surprise</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="admonition important">
+<p class="admonition-title">Important</p>
+<p>A declaration <strong>never changes a prediction</strong> — every event still lands on its
+own curve’s tallest peak. A model that moved an event to satisfy a sequence
+would be putting the label somewhere the curve never suggested, invisibly.</p>
+</div>
+<p>Training reports the orders the trials actually ran in (<code class="docutils literal notranslate"><span class="pre">peck</span> <span class="pre">→</span> <span class="pre">land</span> <span class="pre">×18,</span> <span class="pre">land</span> <span class="pre">→</span> <span class="pre">peck</span> <span class="pre">×2</span></code>), so you can check a declaration against your own data.
+Predictions then write a <strong><code class="docutils literal notranslate"><span class="pre">prediction_check</span></code></strong> column into the <a class="reference internal" href="../metadata.html"><span class="doc">trials table</span></a> — <code class="docutils literal notranslate"><span class="pre">ok</span></code>, <code class="docutils literal notranslate"><span class="pre">order</span></code>, <code class="docutils literal notranslate"><span class="pre">missing</span></code> or <code class="docutils literal notranslate"><span class="pre">order+missing</span></code> per trial.
+Filter it to the flagged values and every downstream operation narrows to
+those trials: review queue, grids, navigation.</p>
 </section>
 <hr class="docutils" />
 <section id="predicting">
@@ -589,65 +623,32 @@ each one and either click through to fix it or mark it curated.</p>
 </section>
 <section id="confidence">
 <span id="target-onset-model-confidence"></span><h2>Confidence<a class="headerlink" href="#confidence" title="Link to this heading">#</a></h2>
-<p>Every label row carries a <strong><code class="docutils literal notranslate"><span class="pre">confidence</span></code></strong> column in the
-<a class="reference internal" href="exporting.html#target-exporting-labels"><span class="std std-ref">labels TSV</span></a>: a label you placed by hand is
-<strong>1.0</strong>, and a predicted label carries the model’s own score in <code class="docutils literal notranslate"><span class="pre">[0,</span> <span class="pre">1]</span></code>.</p>
-<p>The score combines two readings of the probability curve:</p>
-<div class="pst-scrollable-table-container"><table class="table">
-<thead>
-<tr class="row-odd"><th class="head"><p></p></th>
-<th class="head"><p>Question</p></th>
-<th class="head"><p>Low when</p></th>
-</tr>
-</thead>
-<tbody>
-<tr class="row-even"><td><p><strong>peak</strong></p></td>
-<td><p>How strongly does the model believe?</p></td>
-<td><p>the best frame still only scores 0.2</p></td>
-</tr>
-<tr class="row-odd"><td><p><strong>sharpness</strong></p></td>
-<td><p>How localised is that belief?</p></td>
-<td><p>the curve is a broad smear over the trial</p></td>
-</tr>
-</tbody>
-</table>
-</div>
-<p><em>Sharpness</em> is one minus the normalised entropy of the curve read as a
-distribution over the trial’s frames — a single-frame spike scores 1, a flat
-curve scores 0. It is the point-event counterpart of the frame-wise
-<code class="docutils literal notranslate"><span class="pre">1</span> <span class="pre">-</span> <span class="pre">normalised</span> <span class="pre">entropy</span></code> used for <a class="reference internal" href="importing.html"><span class="doc">imported dense predictions</span></a>: there the distribution is over classes, here over time. The
-reported <code class="docutils literal notranslate"><span class="pre">confidence</span></code> is their <strong>geometric mean</strong>, so a prediction has to hold
-up on both counts. With the sequence model the same two readings are taken on
-the CRF’s marginals instead.</p>
-<p><strong>Min confidence</strong> in the Predict dialog is a floor on what gets written: a
-prediction below it produces <strong>no label at all</strong>, leaving the trial unlabelled
-for that class rather than giving it a doubtful label. Leave it at 0 to write
-everything and triage afterwards — the confidence is on every label either
-way, so nothing is lost by writing first and filtering later.</p>
+<p>A predicted label’s <strong><code class="docutils literal notranslate"><span class="pre">confidence</span></code></strong> is the height of the tallest peak of that
+class’s probability curve — the model’s per-frame belief that the event is
+here (a label you placed by hand is <code class="docutils literal notranslate"><span class="pre">1.0</span></code>). That curve is the <strong>dotted line</strong>
+<a class="reference internal" href="curation.html#target-curation-frame"><span class="std std-ref">frame-by-frame review</span></a> draws under the label it
+is on, one per class in the class’s own colour, against a fixed 0–1 right-hand
+axis. The peak’s frame is where the label sits, so the number and the label
+point at the same place on the same curve.</p>
+<p>Set a threshold by looking: open a few reviews, see what a good curve peaks at
+and what a bad one peaks at, and put the threshold between them. Training
+separately reports what the model scored on trials it did not see (<em>peck: 6/8
+within 0.05 s</em>) — a verdict on the model, not on any one label, and folded
+into no confidence.</p>
 <section id="reviewing-by-confidence">
 <h3>Reviewing by confidence<a class="headerlink" href="#reviewing-by-confidence" title="Link to this heading">#</a></h3>
-<p>The <strong>Label grid view…</strong> (Labels tab ▸ Curation) puts each label’s confidence
-and <code class="docutils literal notranslate"><span class="pre">labeling_method</span></code> on its tile and takes a <strong>Flag confidence below</strong>
-threshold: every tile under it gets a red outline, in the grid and in the
-exported PDF. Set it to <code class="docutils literal notranslate"><span class="pre">0.6</span></code>, scan the sheet, and click straight through to
-the ones worth fixing.</p>
-<p><strong>Histogram…</strong> next to the threshold shows where the scores actually sit
-before you commit to a number: one histogram per label class — split per
-individual as well, when more than one animal is labelled — with everything
-below the threshold drawn in the same red. A class whose scores pile up near
-1.0 with a thin low tail wants a high threshold; one spread across the range
-is a class the model has not learnt, and the whole class is worth reviewing.
-Its threshold spin is the grid’s, so dragging it there recolours the tiles
-behind it.</p>
-<p>The grid’s mode then decides what a click means. In <em>Click = uncurated, rest =
-curated</em> — the honest default for a model review — <strong>Mark low-confidence as
-uncurated</strong> pre-clicks exactly the outlined tiles; click any other tile that
-looks wrong, and <strong>Done</strong>
-curates everything else in one go. Switch the Curation section to
-<a class="reference internal" href="curation.html#target-curation-frame"><span class="std std-ref">frame-by-frame review</span></a> and a tile click drops
-straight into that boundary: <code class="docutils literal notranslate"><span class="pre">Enter</span></code> moves an event onto the right frame
-(the label becomes manual, <code class="docutils literal notranslate"><span class="pre">confidence</span> <span class="pre">=</span> <span class="pre">1.0</span></code>), <code class="docutils literal notranslate"><span class="pre">Backspace</span></code> deletes one that
-never happened, <code class="docutils literal notranslate"><span class="pre">N</span></code> leaves it as it is and marks it curated.</p>
+<p><strong>Label grid view…</strong> (Labels tab ▸ Curation) puts each label’s confidence and
+<code class="docutils literal notranslate"><span class="pre">labeling_method</span></code> on its tile and outlines everything below <strong>Flag confidence
+below</strong> in red, in the grid and in the exported PDF. The threshold is typed in
+full rather than stepped, so a model whose scores sit at the bottom of the
+range can be flagged at <code class="docutils literal notranslate"><span class="pre">0.0002</span></code> as easily as at <code class="docutils literal notranslate"><span class="pre">0.6</span></code>; <strong>Histogram…</strong> beside
+it shows where the scores actually sit, per class, before you commit.</p>
+<p>In the default <em>Click = uncurated, rest = curated</em> mode, <strong>Mark low-confidence
+as uncurated</strong> pre-clicks exactly the outlined tiles; click any other tile that
+looks wrong, and <strong>Done</strong> curates everything else in one go. With the Curation
+section in <a class="reference internal" href="curation.html#target-curation-frame"><span class="std std-ref">frame-by-frame review</span></a>, a tile click
+drops straight into that boundary instead: <code class="docutils literal notranslate"><span class="pre">Enter</span></code> moves the event onto the
+right frame, <code class="docutils literal notranslate"><span class="pre">Backspace</span></code> deletes one that never happened, <code class="docutils literal notranslate"><span class="pre">N</span></code> marks it curated.</p>
 </section>
 </section>
 </section>
@@ -663,12 +664,12 @@ never happened, <code class="docutils literal notranslate"><span class="pre">N</
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="curation.html"
+       href="workflows.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">Curating labels</p>
+        <p class="prev-next-title">Curation workflows</p>
       </div>
     </a>
     <a class="right-next"
@@ -704,7 +705,7 @@ never happened, <code class="docutils literal notranslate"><span class="pre">N</
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#on-disk">On disk</a></li>
 </ul>
 </li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#modelling-the-order-of-the-events">Modelling the order of the events</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#saying-what-you-expect">Saying what you expect</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#predicting">Predicting</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#confidence">Confidence</a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#reviewing-by-confidence">Reviewing by confidence</a></li>

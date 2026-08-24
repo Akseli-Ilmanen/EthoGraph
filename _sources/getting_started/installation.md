@@ -280,19 +280,26 @@ labelling loop works, what the PosePAL fit costs and when to train a DeepLabCut
 detector instead are covered in {doc}`../advanced/keypoint_labelling/index`.
 ```
 
-## Model training (experimental)
+## Segmentation pipeline (model training)
 
-```{warning}
-Model training is **in development and not well documented**.
-```
-
-Install PyTorch with the correct CUDA version for your system, then install
-the model extra:
+The {doc}`segmentation pipeline <../advanced/segment/index>` learns your
+curated state labels and predicts them back into the GUI. It is scripted,
+not a command line: one config becomes a `Project` with a method per stage.
+It needs PyTorch; install a build matching your GPU first, then the extra:
 
 ```bash
-conda install pytorch=2.5.1 torchvision=0.20.1 torchaudio=2.5.1 pytorch-cuda=12.1 -c pytorch -c nvidia
+uv pip install --torch-backend=auto torch torchvision
 uv pip install "ethograph[model]"
 ```
+
+```python
+import ethograph as eto
+
+eto.segment.architectures()         # lists the available models
+```
+
+`--torch-backend=auto` matters on Windows, where PyPI's default torch wheels
+are CPU-only. Training runs on CPU too, just slowly.
 
 ```{tip}
 Using `conda-forge` (`conda create -y -n ethograph -c conda-forge python=3.12`)

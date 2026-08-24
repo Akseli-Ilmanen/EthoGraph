@@ -631,6 +631,22 @@ known media types (e.g. <code class="docutils literal notranslate"><span class="
 </dd></dl>
 
 <dl class="py method">
+<dt class="sig sig-object py" id="ethograph.io.nwb_alignment.NWBAlignment.get_media">
+<span class="sig-name descname"><span class="pre">get_media</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">trial</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">stream</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/io/nwb_alignment.html#NWBAlignment.get_media"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.io.nwb_alignment.NWBAlignment.get_media" title="Link to this definition">#</a></dt>
+<dd><p>Return the trial table’s media filename for <em>stream</em>/<em>device</em>.</p>
+<p>A stored value that is an absolute local path (e.g. baked in by a
+template authored on a different machine) is reduced to its
+basename, so callers can always safely join it onto their own
+video/audio/pose folder instead of resolving to a path that only
+existed on the authoring machine.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></a> | <a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></a></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
 <dt class="sig sig-object py" id="ethograph.io.nwb_alignment.NWBAlignment.get_stream_rate">
 <span class="sig-name descname"><span class="pre">get_stream_rate</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">stream</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/io/nwb_alignment.html#NWBAlignment.get_stream_rate"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.io.nwb_alignment.NWBAlignment.get_stream_rate" title="Link to this definition">#</a></dt>
 <dd><p>Read the sampling rate for a stream from its acquisition ImageSeries.</p>
@@ -797,6 +813,7 @@ When no NWB file is available, the base class is used directly.</p>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.io.nwb_alignment.NWBAlignment"><code class="docutils literal notranslate"><span class="pre">NWBAlignment</span></code></a><ul class="nav section-nav flex-column">
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.io.nwb_alignment.NWBAlignment.devices"><code class="docutils literal notranslate"><span class="pre">NWBAlignment.devices()</span></code></a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.io.nwb_alignment.NWBAlignment.electrical_series"><code class="docutils literal notranslate"><span class="pre">NWBAlignment.electrical_series()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.io.nwb_alignment.NWBAlignment.get_media"><code class="docutils literal notranslate"><span class="pre">NWBAlignment.get_media()</span></code></a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.io.nwb_alignment.NWBAlignment.get_stream_rate"><code class="docutils literal notranslate"><span class="pre">NWBAlignment.get_stream_rate()</span></code></a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.io.nwb_alignment.NWBAlignment.has_real_timing"><code class="docutils literal notranslate"><span class="pre">NWBAlignment.has_real_timing</span></code></a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.io.nwb_alignment.NWBAlignment.resolve_media_path"><code class="docutils literal notranslate"><span class="pre">NWBAlignment.resolve_media_path()</span></code></a></li>

@@ -418,9 +418,11 @@ to model predictions before evaluation or storage.</p>
 <li><p><strong>Convert to dense</strong> → <code class="docutils literal notranslate"><span class="pre">intervals_to_dense(df,</span> <span class="pre">sample_rate,</span> <span class="pre">individuals,</span> <span class="pre">n_samples)</span></code>
 gives an <code class="docutils literal notranslate"><span class="pre">(n_samples,</span> <span class="pre">n_individuals)</span></code> int8 array ready for training.</p></li>
 <li><p><strong>Run model</strong> → get a dense prediction array of shape <code class="docutils literal notranslate"><span class="pre">(T,)</span></code> or <code class="docutils literal notranslate"><span class="pre">(T,</span> <span class="pre">n_classes)</span></code>.</p></li>
-<li><p><strong>Post-process</strong> → <code class="docutils literal notranslate"><span class="pre">purge_small_blocks</span></code> → <code class="docutils literal notranslate"><span class="pre">stitch_gaps</span></code> → <code class="docutils literal notranslate"><span class="pre">fix_endings</span></code>.</p></li>
 <li><p><strong>Convert back</strong> → <code class="docutils literal notranslate"><span class="pre">dense_to_intervals(pred,</span> <span class="pre">individuals,</span> <span class="pre">sample_rate=sr)</span></code>
 gives an intervals DataFrame for storage or evaluation.</p></li>
+<li><p><strong>Post-process</strong> on the intervals — purge, stitch, snap — through
+<a class="reference internal" href="ethograph.features.changepoints.correct_changepoints.html#ethograph.features.changepoints.correct_changepoints" title="ethograph.features.changepoints.correct_changepoints"><code class="xref py py-func docutils literal notranslate"><span class="pre">ethograph.features.changepoints.correct_changepoints()</span></code></a>; there is no
+dense post-processing.</p></li>
 </ol>
 <p>The <code class="docutils literal notranslate"><span class="pre">n_samples</span></code> value stored in the TSV file (per-trial metadata) tells you
 exactly how long the dense array should be — you only need to additionally
@@ -437,18 +439,6 @@ know the <code class="docutils literal notranslate"><span class="pre">sample_rat
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="labels.html#ethograph.labels.ml.get_labels_start_end_indices" title="ethograph.labels.ml.get_labels_start_end_indices"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_labels_start_end_indices</span></code></a></p></td>
 <td><p>Return segment boundaries as sample indices (exclusive end).</p></td>
-</tr>
-<tr class="row-even"><td><p><a class="reference internal" href="labels.html#ethograph.labels.ml.find_blocks" title="ethograph.labels.ml.find_blocks"><code class="xref py py-obj docutils literal notranslate"><span class="pre">find_blocks</span></code></a></p></td>
-<td><p>Find contiguous True blocks in a boolean array.</p></td>
-</tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="labels.html#ethograph.labels.ml.stitch_gaps" title="ethograph.labels.ml.stitch_gaps"><code class="xref py py-obj docutils literal notranslate"><span class="pre">stitch_gaps</span></code></a></p></td>
-<td><p>Fill small background gaps between same-label segments.</p></td>
-</tr>
-<tr class="row-even"><td><p><a class="reference internal" href="labels.html#ethograph.labels.ml.purge_small_blocks" title="ethograph.labels.ml.purge_small_blocks"><code class="xref py py-obj docutils literal notranslate"><span class="pre">purge_small_blocks</span></code></a></p></td>
-<td><p>Remove label blocks shorter than a threshold (set to background).</p></td>
-</tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="labels.html#ethograph.labels.ml.fix_endings" title="ethograph.labels.ml.fix_endings"><code class="xref py py-obj docutils literal notranslate"><span class="pre">fix_endings</span></code></a></p></td>
-<td><p>Extend label endings by one sample at changepoint boundaries.</p></td>
 </tr>
 </tbody>
 </table>

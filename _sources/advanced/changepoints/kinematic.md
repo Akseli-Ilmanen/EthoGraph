@@ -76,17 +76,19 @@ The changepoints are stored in the dataset as `{feature}_{method}` (e.g.
 Changepoint arrays are binary (`0` or `1`) integer arrays that share the
 same time dimension as their target feature. They require:
 
-- `attrs["type"] = "changepoints"`
+- `attrs["kind"] = "changepoint_feature"` and `attrs["changepoint_mask"] = 1` —
+  the label and the marker, both written by
+  {func}`~ethograph.io.schema.changepoint_attrs` (see {doc}`../variable_schema`).
+  A file predating this needs {func}`~ethograph.io.schema.migrate_legacy_attrs`.
 - `attrs["target_feature"]` — name of the feature variable they annotate
 
 ```python
+from ethograph.io import schema
+
 ds["speed_troughs"] = xr.DataArray(
     cp_binary,                           # shape: (time, keypoint, individual), values 0 or 1
     dims=["time", "keypoint", "individual"],
-    attrs={
-        "type": "changepoints",
-        "target_feature": "speed",
-    },
+    attrs=schema.changepoint_attrs(target_feature="speed"),
 )
 ```
 
@@ -138,7 +140,8 @@ cps = add_changepoints_to_nap(
 # cps is a TsGroup — one Ts per column with:
 #   metadata.source_label = column name (e.g. "nose")
 #   metadata.target_feature = "speed"
-#   metadata.type = "changepoints"
+#   metadata.kind = "changepoint_feature"   # the same names the xarray side
+#   metadata.changepoint_mask = 1           # writes as attrs
 ```
 
 Accepts {class}`~pynapple.Tsd`, {class}`~pynapple.TsdFrame`, or

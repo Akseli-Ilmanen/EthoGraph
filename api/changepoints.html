@@ -600,56 +600,40 @@ binary indicator of the same length).</p></li>
 <hr class="docutils" />
 <section id="merging-and-time-extraction">
 <h2>Merging and time extraction<a class="headerlink" href="#merging-and-time-extraction" title="Link to this heading">#</a></h2>
-<p>Changepoints stored as multiple <code class="docutils literal notranslate"><span class="pre">attrs[&quot;type&quot;]</span> <span class="pre">==</span> <span class="pre">&quot;changepoints&quot;</span></code>
+<p>Changepoints stored as multiple <code class="docutils literal notranslate"><span class="pre">kind=&quot;changepoint_feature&quot;</span></code> (legacy: <code class="docutils literal notranslate"><span class="pre">attrs[&quot;type&quot;]</span> <span class="pre">==</span> <span class="pre">&quot;changepoints&quot;</span></code>)
 DataArrays can be merged into a single boolean mask, or converted directly
 to absolute times (seconds) for use by the GUI and correction pipeline.</p>
 <dl class="py function">
 <dt class="sig sig-object py" id="ethograph.features.changepoints.merge_changepoints">
-<span class="sig-prename descclassname"><span class="pre">ethograph.features.changepoints.</span></span><span class="sig-name descname"><span class="pre">merge_changepoints</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ds</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/features/changepoints.html#merge_changepoints"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.features.changepoints.merge_changepoints" title="Link to this definition">#</a></dt>
-<dd><p>Merge all changepoint variables in a dataset into a single boolean mask.</p>
-<p>Combines every variable with <code class="docutils literal notranslate"><span class="pre">attrs[&quot;type&quot;]</span> <span class="pre">==</span> <span class="pre">&quot;changepoints&quot;</span></code> using
-logical OR across all non-time dimensions.  All changepoint variables
-must share the same <code class="docutils literal notranslate"><span class="pre">target_feature</span></code> attribute.</p>
+<span class="sig-prename descclassname"><span class="pre">ethograph.features.changepoints.</span></span><span class="sig-name descname"><span class="pre">merge_changepoints</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ds</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">vars</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">keep_dims</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/features/changepoints.html#merge_changepoints"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.features.changepoints.merge_changepoints" title="Link to this definition">#</a></dt>
+<dd><p>Merge changepoint variables in a dataset into a single boolean mask.</p>
+<p>Combines every raw changepoint mask (<code class="docutils literal notranslate"><span class="pre">attrs[&quot;changepoint_mask&quot;]</span></code>; see
+<code class="xref py py-func docutils literal notranslate"><span class="pre">ethograph.io.schema.is_changepoint()</span></code>) using logical OR across all
+non-time dimensions — the smooth expansions of a mask are ordinary
+features and are not merged. All masks must share the same
+<code class="docutils literal notranslate"><span class="pre">target_feature</span></code> attribute.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>ds</strong> (<em>xr.Dataset</em>) – Dataset containing one or more changepoint variables.</p>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ds</strong> (<em>xr.Dataset</em>) – Dataset containing one or more changepoint variables.</p></li>
+<li><p><strong>vars</strong> (<em>sequence</em><em> of </em><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><em>optional</em>) – Which changepoint masks to merge; default merges every one
+<code class="xref py py-func docutils literal notranslate"><span class="pre">changepoint_vars()</span></code> finds. Naming a
+variable that is not a changepoint mask is an error.</p></li>
+<li><p><strong>keep_dims</strong> (<em>sequence</em><em> of </em><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><em>optional</em>) – Dims to leave standing instead of ORing across — typically the
+individual dim, so one animal’s changepoints do not leak into
+another’s. Default collapses every non-time dim.</p></li>
+</ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p><ul class="simple">
 <li><p><strong>ds</strong> (<em>xr.Dataset</em>) – Copy of the input with a new <code class="docutils literal notranslate"><span class="pre">&quot;changepoints&quot;</span></code> DataArray
-(float 0/1) replacing the individual changepoint variables.</p></li>
+(float 0/1) replacing the merged changepoint variables.</p></li>
 <li><p><strong>target_feature</strong> (<em>str</em>) – The shared <code class="docutils literal notranslate"><span class="pre">target_feature</span></code> attribute from the input variables.</p></li>
 </ul>
 </p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If changepoint variables reference different target features.</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="ethograph.features.changepoints.extract_cp_times">
-<span class="sig-prename descclassname"><span class="pre">ethograph.features.changepoints.</span></span><span class="sig-name descname"><span class="pre">extract_cp_times</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ds</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">time</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">cp_kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/features/changepoints.html#extract_cp_times"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.features.changepoints.extract_cp_times" title="Link to this definition">#</a></dt>
-<dd><p>Extract merged changepoint times from dataset.</p>
-<p>Replaces the inline pattern: merge_changepoints -&gt; binary -&gt; np.where -&gt; times.
-Returns empty array if no CP variables exist.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code></a></span></p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="ethograph.features.changepoints.snap_to_nearest_changepoint_time">
-<span class="sig-prename descclassname"><span class="pre">ethograph.features.changepoints.</span></span><span class="sig-name descname"><span class="pre">snap_to_nearest_changepoint_time</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">t_clicked</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ds</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">feature_sel</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">time</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">ds_kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/features/changepoints.html#snap_to_nearest_changepoint_time"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.features.changepoints.snap_to_nearest_changepoint_time" title="Link to this definition">#</a></dt>
-<dd><p>Snap a clicked time (seconds) to the nearest changepoint time.</p>
-<p>Works entirely in the time domain — no index conversion needed.
-Combines kinematic, audio, and oscillation changepoints.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></a></span></p>
 </dd>
 </dl>
 </dd></dl>
@@ -688,39 +672,6 @@ Combines kinematic, audio, and oscillation changepoints.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html#pandas.DataFrame" title="(in pandas v3.0.5)"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code></a></span></p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="ethograph.features.changepoints.correct_changepoints_dense">
-<span class="sig-prename descclassname"><span class="pre">ethograph.features.changepoints.</span></span><span class="sig-name descname"><span class="pre">correct_changepoints_dense</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">labels</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ds</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">all_params</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/features/changepoints.html#correct_changepoints_dense"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.features.changepoints.correct_changepoints_dense" title="Link to this definition">#</a></dt>
-<dd><p>Correct dense label arrays using changepoints (legacy ML pipeline).</p>
-<p>Operates on integer label arrays, not interval DataFrames.
-Use <a class="reference internal" href="ethograph.features.changepoints.correct_changepoints.html#ethograph.features.changepoints.correct_changepoints" title="ethograph.features.changepoints.correct_changepoints"><code class="xref py py-func docutils literal notranslate"><span class="pre">correct_changepoints()</span></code></a> for the modern interval-native pipeline.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>labels</strong> (<em>array-like</em>) – Dense integer label array of shape (T,).</p></li>
-<li><p><strong>ds</strong> (<em>xr.Dataset</em>) – Trial dataset containing changepoint variables.</p></li>
-<li><p><strong>all_params</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a>) – <p>Keys:</p>
-<ul>
-<li><p><code class="docutils literal notranslate"><span class="pre">cp_kwargs</span></code>: Selection kwargs forwarded to <code class="docutils literal notranslate"><span class="pre">ds.sel()</span></code>.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">min_label_length_s</span></code>: Minimum label duration in seconds.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">stitch_gap_len_s</span></code>: Maximum gap to stitch in seconds.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">label_thresholds_s</span></code>: Per-label minimum durations (dict).</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">changepoint_params</span></code>: Dict with <code class="docutils literal notranslate"><span class="pre">max_expansion_s</span></code> and
-<code class="docutils literal notranslate"><span class="pre">max_shrink_s</span></code>.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">fps</span></code>: Frame rate used to convert seconds to sample counts.</p></li>
-</ul>
-</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Corrected integer label array of the same shape as <code class="docutils literal notranslate"><span class="pre">labels</span></code>.</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>np.ndarray</p>
 </dd>
 </dl>
 </dd></dl>
@@ -823,7 +774,7 @@ IDs.</p>
 <section id="storage-format">
 <h2>Storage format<a class="headerlink" href="#storage-format" title="Link to this heading">#</a></h2>
 <p>Kinematic changepoints are stored as binary (<code class="docutils literal notranslate"><span class="pre">int8</span></code>) DataArrays sharing
-their feature’s time axis, tagged with <code class="docutils literal notranslate"><span class="pre">attrs[&quot;type&quot;]</span> <span class="pre">=</span> <span class="pre">&quot;changepoints&quot;</span></code>
+their feature’s time axis, tagged with <code class="docutils literal notranslate"><span class="pre">kind</span> <span class="pre">=</span> <span class="pre">&quot;changepoint_feature&quot;</span></code> (plus the legacy <code class="docutils literal notranslate"><span class="pre">attrs[&quot;type&quot;]</span> <span class="pre">=</span> <span class="pre">&quot;changepoints&quot;</span></code>)
 and <code class="docutils literal notranslate"><span class="pre">attrs[&quot;target_feature&quot;]</span></code>. Audio changepoints, which would be
 prohibitively large at audio sample rates, are stored instead as
 <code class="docutils literal notranslate"><span class="pre">audio_cp_onsets</span></code> / <code class="docutils literal notranslate"><span class="pre">audio_cp_offsets</span></code> float pairs. See
@@ -890,14 +841,11 @@ prohibitively large at audio sample rates, are stored instead as
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#merging-and-time-extraction">Merging and time extraction</a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.features.changepoints.merge_changepoints"><code class="docutils literal notranslate"><span class="pre">merge_changepoints()</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.features.changepoints.extract_cp_times"><code class="docutils literal notranslate"><span class="pre">extract_cp_times()</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.features.changepoints.snap_to_nearest_changepoint_time"><code class="docutils literal notranslate"><span class="pre">snap_to_nearest_changepoint_time()</span></code></a></li>
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#label-correction">Label correction</a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.features.changepoints.correct_changepoints"><code class="docutils literal notranslate"><span class="pre">correct_changepoints()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.features.changepoints.correct_changepoints_automatic"><code class="docutils literal notranslate"><span class="pre">correct_changepoints_automatic()</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.features.changepoints.correct_changepoints_dense"><code class="docutils literal notranslate"><span class="pre">correct_changepoints_dense()</span></code></a></li>
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#changepoint-features">Changepoint features</a><ul class="nav section-nav flex-column">

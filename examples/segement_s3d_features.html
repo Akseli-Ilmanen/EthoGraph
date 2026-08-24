@@ -1,0 +1,852 @@
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>S3D video features: extract, rank, inspect &#8212; ethograph</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../_static/styles/theme.css?digest=90905a2f556bf617f1a9" rel="stylesheet" />
+<link href="../_static/styles/pydata-sphinx-theme.css?digest=90905a2f556bf617f1a9" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/sphinx-design.min.css?v=95c83b7e" />
+    <link rel="stylesheet" type="text/css" href="../_static/css/custom.css?v=17f663f2" />
+  
+  <!-- So that users can add custom icons -->
+  <script defer src="../_static/scripts/fontawesome.js?digest=90905a2f556bf617f1a9"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=90905a2f556bf617f1a9" />
+<link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=90905a2f556bf617f1a9" />
+
+    <script src="../_static/documentation_options.js?v=9eb32ce0"></script>
+    <script src="../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../_static/design-tabs.js?v=f930bc37"></script>
+    <script>window.MathJax = {"options": {"processHtmlClass": "tex2jax_process|mathjax_process|math|output_area"}}</script>
+    <script defer="defer" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'examples/segement_s3d_features';</script>
+    <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
+    <link rel="canonical" href="https://Akseli-Ilmanen.github.io/ethograph/examples/segement_s3d_features.html" />
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="" />
+  
+    
+    <script src="../_static/searchtools.js"></script>
+    <script src="../_static/language_data.js"></script>
+    <script src="../searchindex.js"></script>
+  
+  </head>
+  <body data-default-mode="">
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+  
+  
+  
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header id="pst-header" class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class=" navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../_static/icon.png" class="logo__image only-light" alt=""/>
+    <img src="../_static/icon.png" class="logo__image only-dark pst-js-only" alt=""/>
+  
+  
+    <p class="title logo__title">ethograph</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class=" navbar-header-items">
+    
+    <div class="me-auto navbar-header-items__center">
+      
+        <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../getting_started/index.html">
+    Getting started
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../advanced/index.html">
+    Advanced
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="index.html">
+    Examples
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../api_index.html">
+    API reference
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../community/index.html">
+    Community
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+      
+    </div>
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<div class="theme-switch-container dropdown pst-js-only" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Color mode">
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button dropdown-toggle" aria-label="Color mode" data-bs-toggle="dropdown">
+    <i class="theme-switch fa-solid fa-sun fa-lg fa-fw" data-mode="light" title="Light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg fa-fw" data-mode="dark" title="Dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg fa-fw" data-mode="auto" title="System Settings"></i>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg fa-fw me-1"></i>System Settings</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="light"><i class="fa-solid fa-sun fa-lg fa-fw me-1"></i>Light</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="dark"><i class="fa-solid fa-moon fa-lg fa-fw me-1"></i>Dark</button></li>
+  </ul>
+</div></div>
+      
+        <div class="navbar-item"><ul class="navbar-icon-links"
+    aria-label="Icon Links">
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://github.com/Akseli-Ilmanen/ethograph" title="GitHub" class="nav-link pst-navbar-icon" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><i class="fa-brands fa-github fa-lg" aria-hidden="true"></i><span class="visually-hidden">GitHub</span></a>
+        </li>
+</ul></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+    <button class="pst-navbar-icon sidebar-toggle secondary-toggle" aria-label="On this page">
+      <span class="fa-solid fa-outdent"></span>
+    </button>
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+        
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar hide-on-wide">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+      <div class="sidebar-header-items__center">
+        
+          
+          
+            <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../getting_started/index.html">
+    Getting started
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../advanced/index.html">
+    Advanced
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="index.html">
+    Examples
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../api_index.html">
+    API reference
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../community/index.html">
+    Community
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+          
+        
+      </div>
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<div class="theme-switch-container dropdown pst-js-only" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Color mode">
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button dropdown-toggle" aria-label="Color mode" data-bs-toggle="dropdown">
+    <i class="theme-switch fa-solid fa-sun fa-lg fa-fw" data-mode="light" title="Light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg fa-fw" data-mode="dark" title="Dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg fa-fw" data-mode="auto" title="System Settings"></i>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg fa-fw me-1"></i>System Settings</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="light"><i class="fa-solid fa-sun fa-lg fa-fw me-1"></i>Light</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="dark"><i class="fa-solid fa-moon fa-lg fa-fw me-1"></i>Dark</button></li>
+  </ul>
+</div></div>
+        
+          <div class="navbar-item"><ul class="navbar-icon-links"
+    aria-label="Icon Links">
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://github.com/Akseli-Ilmanen/ethograph" title="GitHub" class="nav-link pst-navbar-icon" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><i class="fa-brands fa-github fa-lg" aria-hidden="true"></i><span class="visually-hidden">GitHub</span></a>
+        </li>
+</ul></div>
+        
+      </div>
+    
+  </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+      <div class="sidebar-primary-item">
+<div id="ethical-ad-placement"
+      class="flat"
+      data-ea-publisher="readthedocs"
+      data-ea-type="readthedocs-sidebar"
+      data-ea-manual="true">
+</div></div>
+  </div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">S3D video features: extract, rank, inspect</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section class="tex2jax_ignore mathjax_ignore" id="s3d-video-features-extract-rank-inspect">
+<h1>S3D video features: extract, rank, inspect<a class="headerlink" href="#s3d-video-features-extract-rank-inspect" title="Link to this heading">#</a></h1>
+<p>A pretrained video network (S3D, Kinetics-400) turns each frame’s surroundings into a
+<strong>1024-d vector</strong> — what the animal <em>looks like it is doing</em>, which pose keypoints alone
+do not capture. This notebook goes from a session <code class="docutils literal notranslate"><span class="pre">.nc</span></code> plus its labels TSV to a session
+file carrying both the full 1024 dimensions and a ranked subset, ready to plot in the
+GUI and to name in a segmentation config.</p>
+<ol class="arabic simple">
+<li><p>Extract S3D and merge it into the session — <strong>one call</strong></p></li>
+<li><p>Rank the dimensions against your labels by Cohen’s d</p></li>
+<li><p>Plot the classes × top-k heatmap</p></li>
+<li><p>Write <code class="docutils literal notranslate"><span class="pre">s3d</span></code> (all 1024) <strong>and</strong> <code class="docutils literal notranslate"><span class="pre">s3d_top</span></code> (the subset) into one file</p></li>
+</ol>
+<section id="you-need-an-alignment-nwb">
+<h2>You need an <code class="docutils literal notranslate"><span class="pre">alignment.nwb</span></code><a class="headerlink" href="#you-need-an-alignment-nwb" title="Link to this heading">#</a></h2>
+<p>There is no filename guessing here. Which video belongs to which trial, and <strong>where in
+that video the trial starts</strong>, both come from <code class="docutils literal notranslate"><span class="pre">.ethograph/alignment.nwb</span></code> beside your
+<code class="docutils literal notranslate"><span class="pre">.nc</span></code> — the same file the GUI reads.</p>
+<p>That second part is the whole reason the alignment is involved: a trial generally does
+<em>not</em> begin where its video file begins. S3D features are written on the <strong>video’s</strong>
+clock (frame 0 at t = 0), the session lives on the <strong>trial</strong> clock, and
+<code class="docutils literal notranslate"><span class="pre">stream_offset_for_trial</span></code> is the bridge between them. If you have no alignment yet,
+build one in the GUI: <strong>cover page ▸ media wizard</strong>.</p>
+<div class="admonition important">
+<p class="admonition-title">Important</p>
+<p><code class="docutils literal notranslate"><span class="pre">CAMERA</span></code> must name a device the alignment actually has (<code class="docutils literal notranslate"><span class="pre">cam-1</span></code>, <code class="docutils literal notranslate"><span class="pre">cam-2</span></code>, …), spelled
+exactly. It is <strong>not</strong> optional and has no default: the lookup builds the trials-table
+column name as <code class="docutils literal notranslate"><span class="pre">video_{CAMERA}</span></code>, so <code class="docutils literal notranslate"><span class="pre">None</span></code> asks for a column called plain <code class="docutils literal notranslate"><span class="pre">video</span></code>,
+finds nothing, and reports “no video found” for <em>every</em> trial. The cell below prints
+the alignment’s camera list and refuses to continue if <code class="docutils literal notranslate"><span class="pre">CAMERA</span></code> is not in it.</p>
+</div>
+</section>
+<section id="cut-your-footage-to-trials-if-you-can">
+<h2>Cut your footage to trials if you can<a class="headerlink" href="#cut-your-footage-to-trials-if-you-can" title="Link to this heading">#</a></h2>
+<p>Not for correctness — the offset handles either layout — but for <strong>cost</strong>. S3D is a
+forward pass per frame and a sidecar covers the whole video file, so one long session
+recording means paying for every inter-trial second you will never label. Splitting is
+usually the biggest saving available:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="c1"># Frame-accurate: re-encodes, slower, exact cut</span>
+ffmpeg<span class="w"> </span>-ss<span class="w"> </span><span class="m">12</span>.40<span class="w"> </span>-to<span class="w"> </span><span class="m">47</span>.85<span class="w"> </span>-i<span class="w"> </span>session.mp4<span class="w"> </span>-c:v<span class="w"> </span>libx264<span class="w"> </span>-crf<span class="w"> </span><span class="m">18</span><span class="w"> </span>-preset<span class="w"> </span>fast<span class="w"> </span>-an<span class="w"> </span>trial001.mp4
+
+<span class="c1"># Fast: stream copy, but cuts snap to the nearest keyframe (can be seconds off)</span>
+ffmpeg<span class="w"> </span>-ss<span class="w"> </span><span class="m">12</span>.40<span class="w"> </span>-to<span class="w"> </span><span class="m">47</span>.85<span class="w"> </span>-i<span class="w"> </span>session.mp4<span class="w"> </span>-c<span class="w"> </span>copy<span class="w"> </span>-an<span class="w"> </span>trial001.mp4
+</pre></div>
+</div>
+<p>Use the re-encoding form unless you know your GOP is short — a keyframe-snapped cut
+shifts a trial’s features in time and nothing downstream can detect it. Re-run the media
+wizard afterwards so the alignment names the new clips; its offsets then become <code class="docutils literal notranslate"><span class="pre">0.0</span></code>
+and <strong>nothing in this notebook changes</strong>.</p>
+</section>
+<section id="settings">
+<h2>Settings<a class="headerlink" href="#settings" title="Link to this heading">#</a></h2>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+
+<span class="n">NC_PATH</span> <span class="o">=</span> <span class="sa">r</span><span class="s2">"C:\Users\aksel\Documents\AK_data\derivatives\sub-03_id-Freddy\ses-000_date-20250526_02\behav\Trial_data3.nc"</span>
+<span class="n">LABELS_PATH</span> <span class="o">=</span> <span class="sa">r</span><span class="s2">"C:\Users\aksel\Documents\AK_data\derivatives\sub-03_id-Freddy\ses-000_date-20250526_02\behav\Trial_data_labels.tsv"</span>
+
+<span class="n">VIDEO_DIR</span> <span class="o">=</span> <span class="sa">r</span><span class="s2">"C:\Users\aksel\Documents\VidData\20250526_02_Freddy"</span>
+<span class="n">CAMERA</span> <span class="o">=</span> <span class="s2">"cam-1"</span>         
+<span class="n">INDIVIDUAL</span> <span class="o">=</span> <span class="kc">None</span>        <span class="c1"># If None -&gt; first in the TSV</span>
+
+<span class="n">STACK_S</span> <span class="o">=</span> <span class="mf">0.5</span>            <span class="c1"># S3D window in seconds; &gt;= 13 frames at the effective rate</span>
+<span class="n">ANALYSIS_FPS</span> <span class="o">=</span> <span class="mi">50</span>        <span class="c1"># rate S3D sees; None = every frame. Halving ~halves the compute time.</span>
+<span class="n">TOP_K</span> <span class="o">=</span> <span class="mi">20</span>               <span class="c1"># how many dimensions to keep in `s3d_top`</span>
+
+<span class="n">ROOT</span> <span class="o">=</span> <span class="n">Path</span><span class="o">.</span><span class="n">cwd</span><span class="p">()</span>        <span class="c1"># sidecars land in ROOT/video_features/</span>
+</pre></div>
+</div>
+</div>
+</div>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">matplotlib.pyplot</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">plt</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">ethograph</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">eto</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.io.schema</span><span class="w"> </span><span class="kn">import</span> <span class="n">VIDEO_FEATURE</span><span class="p">,</span> <span class="n">describe</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.io.trialtree</span><span class="w"> </span><span class="kn">import</span> <span class="n">TrialTree</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.labels.intervals</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_mapping</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.labels.ml</span><span class="w"> </span><span class="kn">import</span> <span class="n">intervals_to_dense</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.labels.tsv_store</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_labels_tsv</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.segment.config</span><span class="w"> </span><span class="kn">import</span> <span class="n">SegmentConfig</span><span class="p">,</span> <span class="n">SessionSpec</span><span class="p">,</span> <span class="n">VideoFeaturesConfig</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.utils.xr_utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_time_coord</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.video_features</span><span class="w"> </span><span class="kn">import</span> <span class="n">rank_features</span>
+
+<span class="c1"># A project needs no YAML file — a SegmentConfig built here does just as well.</span>
+<span class="n">config</span> <span class="o">=</span> <span class="n">SegmentConfig</span><span class="p">(</span>
+    <span class="n">sessions</span><span class="o">=</span><span class="p">[</span><span class="n">SessionSpec</span><span class="p">(</span><span class="n">source</span><span class="o">=</span><span class="n">Path</span><span class="p">(</span><span class="n">NC_PATH</span><span class="p">),</span> <span class="n">labels_path</span><span class="o">=</span><span class="n">Path</span><span class="p">(</span><span class="n">LABELS_PATH</span><span class="p">),</span> <span class="n">video_dir</span><span class="o">=</span><span class="n">Path</span><span class="p">(</span><span class="n">VIDEO_DIR</span><span class="p">))],</span>
+    <span class="n">root</span><span class="o">=</span><span class="n">ROOT</span><span class="p">,</span>
+    <span class="n">video_features</span><span class="o">=</span><span class="n">VideoFeaturesConfig</span><span class="p">(</span><span class="n">stack_s</span><span class="o">=</span><span class="n">STACK_S</span><span class="p">,</span> <span class="n">analysis_fps</span><span class="o">=</span><span class="n">ANALYSIS_FPS</span><span class="p">,</span> <span class="n">camera</span><span class="o">=</span><span class="n">CAMERA</span><span class="p">),</span>
+<span class="p">)</span>
+<span class="n">project</span> <span class="o">=</span> <span class="n">eto</span><span class="o">.</span><span class="n">segment</span><span class="o">.</span><span class="n">Project</span><span class="p">(</span><span class="n">config</span><span class="p">)</span>
+
+<span class="n">session</span> <span class="o">=</span> <span class="n">project</span><span class="o">.</span><span class="n">sessions</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span>
+<span class="n">cameras</span> <span class="o">=</span> <span class="n">session</span><span class="o">.</span><span class="n">result</span><span class="o">.</span><span class="n">nwb_alignment</span><span class="o">.</span><span class="n">cameras</span>
+<span class="k">if</span> <span class="n">CAMERA</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">cameras</span><span class="p">:</span>
+    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+        <span class="sa">f</span><span class="s2">"CAMERA=</span><span class="si">{</span><span class="n">CAMERA</span><span class="si">!r}</span><span class="s2"> is not in this alignment, which has </span><span class="si">{</span><span class="n">cameras</span><span class="si">}</span><span class="s2">. "</span>
+        <span class="s2">"Set CAMERA to one of those. Leaving it None does NOT pick a default - "</span>
+        <span class="s2">"it looks for an un-suffixed 'video' column and finds nothing."</span>
+    <span class="p">)</span>
+
+<span class="n">alignment</span> <span class="o">=</span> <span class="n">session</span><span class="o">.</span><span class="n">result</span><span class="o">.</span><span class="n">nwb_alignment</span>
+
+
+<span class="n">first</span> <span class="o">=</span> <span class="n">session</span><span class="o">.</span><span class="n">trial_ids</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+<span class="n">offsets</span> <span class="o">=</span> <span class="p">[</span><span class="n">alignment</span><span class="o">.</span><span class="n">stream_offset_for_trial</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="s2">"video"</span><span class="p">,</span> <span class="n">CAMERA</span><span class="p">)</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">session</span><span class="o">.</span><span class="n">trial_ids</span><span class="p">]</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">session</span><span class="o">.</span><span class="n">trial_ids</span><span class="p">)</span><span class="si">}</span><span class="s2"> trials | cameras </span><span class="si">{</span><span class="n">cameras</span><span class="si">}</span><span class="s2"> | using </span><span class="si">{</span><span class="n">CAMERA</span><span class="si">!r}</span><span class="s2">"</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"trial </span><span class="si">{</span><span class="n">first</span><span class="si">}</span><span class="s2"> video: </span><span class="si">{</span><span class="n">session</span><span class="o">.</span><span class="n">media_path</span><span class="p">(</span><span class="n">first</span><span class="p">,</span><span class="w"> </span><span class="s1">'video'</span><span class="p">,</span><span class="w"> </span><span class="n">CAMERA</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+</div>
+</section>
+<section id="extract-and-merge">
+<h2>1. Extract and merge<a class="headerlink" href="#extract-and-merge" title="Link to this heading">#</a></h2>
+<p>One call does all of it: resolve each trial’s video from the alignment, run S3D once per
+<strong>video file</strong> (ten trials cut from one recording extract once, not ten times), then
+sample each sidecar onto its trial’s own time axis applying that trial’s offset.</p>
+<p>Sidecars go to <code class="docutils literal notranslate"><span class="pre">ROOT/video_features/</span></code> and are skipped if they already exist — pass
+<code class="docutils literal notranslate"><span class="pre">overwrite=True</span></code> after changing <code class="docutils literal notranslate"><span class="pre">STACK_S</span></code> or <code class="docutils literal notranslate"><span class="pre">ANALYSIS_FPS</span></code>. The merge never touches
+your source file; it writes the sibling <code class="docutils literal notranslate"><span class="pre">{stem}_s3d.nc</span></code>.</p>
+<div class="admonition important">
+<p class="admonition-title">Important</p>
+<p>S3D needs at least <strong>13 frames</strong> per window. <code class="docutils literal notranslate"><span class="pre">STACK_S</span> <span class="pre">=</span> <span class="pre">0.5</span></code> works down to 26 fps; below
+that the call raises and names the shortest window that does work.</p>
+</div>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">sidecars</span> <span class="o">=</span> <span class="n">project</span><span class="o">.</span><span class="n">video_features</span><span class="p">(</span><span class="n">merge</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+<span class="n">MERGED_NC</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">NC_PATH</span><span class="p">)</span><span class="o">.</span><span class="n">with_name</span><span class="p">(</span><span class="n">Path</span><span class="p">(</span><span class="n">NC_PATH</span><span class="p">)</span><span class="o">.</span><span class="n">stem</span> <span class="o">+</span> <span class="s2">"_s3d.nc"</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">sidecars</span><span class="p">)</span><span class="si">}</span><span class="s2"> sidecar(s) newly extracted in </span><span class="si">{</span><span class="n">config</span><span class="o">.</span><span class="n">video_features_dir</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"merged session -&gt; </span><span class="si">{</span><span class="n">MERGED_NC</span><span class="si">}</span><span class="s2">  (</span><span class="si">{</span><span class="n">MERGED_NC</span><span class="o">.</span><span class="n">stat</span><span class="p">()</span><span class="o">.</span><span class="n">st_size</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mf">1e6</span><span class="si">:</span><span class="s2">.0f</span><span class="si">}</span><span class="s2"> MB)"</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>Warning: Feature 'labels_confidence' listed in catalog but not found in dataset. Skipping validation for this feature.
+Extracting S3D video features into c:\Users\aksel\Documents\Code\ethograph\examples\video_features\91830111 (overwrite=False)
+</pre></div>
+</div>
+</div>
+</div>
+</section>
+<section id="dense-per-frame-labels">
+<h2>2. Dense per-frame labels<a class="headerlink" href="#dense-per-frame-labels" title="Link to this heading">#</a></h2>
+<p>The ranking is supervised, so it needs one class id per frame. Two rules, both
+deliberate:</p>
+<ul class="simple">
+<li><p><strong>Only <code class="docutils literal notranslate"><span class="pre">manual</span></code> and <code class="docutils literal notranslate"><span class="pre">curated</span></code> rows count</strong> — ranking on another model’s <code class="docutils literal notranslate"><span class="pre">automated</span></code>
+output would select the dimensions that reproduce that model, not the ones that
+describe the behaviour.</p></li>
+<li><p><strong>Background (0) is the contrast, not a class</strong> — an unlabelled frame is what every
+class is measured <em>against</em>.</p></li>
+</ul>
+<p>A trial with no curated labels, or one entirely background, carries no contrast and is
+left out; the cell reports how many.</p>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">dt</span> <span class="o">=</span> <span class="n">eto</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">MERGED_NC</span><span class="p">))</span>
+
+<span class="n">curated</span> <span class="o">=</span> <span class="n">load_labels_tsv</span><span class="p">(</span><span class="n">LABELS_PATH</span><span class="p">)</span>
+<span class="n">curated</span> <span class="o">=</span> <span class="n">curated</span><span class="p">[</span><span class="n">curated</span><span class="p">[</span><span class="s2">"labeling_method"</span><span class="p">]</span><span class="o">.</span><span class="n">isin</span><span class="p">([</span><span class="s2">"manual"</span><span class="p">,</span> <span class="s2">"curated"</span><span class="p">])]</span>
+<span class="k">if</span> <span class="n">curated</span><span class="o">.</span><span class="n">empty</span><span class="p">:</span>
+    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">LABELS_PATH</span><span class="si">}</span><span class="s2"> holds no manual/curated rows — nothing to rank against."</span><span class="p">)</span>
+
+<span class="n">individual</span> <span class="o">=</span> <span class="n">INDIVIDUAL</span> <span class="ow">or</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">curated</span><span class="p">[</span><span class="s2">"individual"</span><span class="p">]</span><span class="o">.</span><span class="n">dropna</span><span class="p">()</span><span class="o">.</span><span class="n">unique</span><span class="p">())[</span><span class="mi">0</span><span class="p">]</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Ranking against individual </span><span class="si">{</span><span class="n">individual</span><span class="si">!r}</span><span class="s2">"</span><span class="p">)</span>
+
+<span class="n">collected</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[]</span>
+<span class="n">skipped_unlabelled</span> <span class="o">=</span> <span class="n">skipped_background</span> <span class="o">=</span> <span class="mi">0</span>
+<span class="k">for</span> <span class="n">trial</span> <span class="ow">in</span> <span class="n">dt</span><span class="o">.</span><span class="n">trials</span><span class="p">:</span>
+    <span class="n">rows</span> <span class="o">=</span> <span class="n">curated</span><span class="p">[</span><span class="n">curated</span><span class="p">[</span><span class="s2">"trial"</span><span class="p">]</span> <span class="o">==</span> <span class="n">trial</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">rows</span><span class="o">.</span><span class="n">empty</span><span class="p">:</span>
+        <span class="n">skipped_unlabelled</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="k">continue</span>
+    <span class="n">s3d</span> <span class="o">=</span> <span class="n">dt</span><span class="o">.</span><span class="n">trial</span><span class="p">(</span><span class="n">trial</span><span class="p">)[</span><span class="s2">"s3d"</span><span class="p">]</span>
+    <span class="n">time</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">get_time_coord</span><span class="p">(</span><span class="n">s3d</span><span class="p">)</span><span class="o">.</span><span class="n">values</span><span class="p">)</span>
+    <span class="n">fs</span> <span class="o">=</span> <span class="mf">1.0</span> <span class="o">/</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">median</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">diff</span><span class="p">(</span><span class="n">time</span><span class="p">)))</span>
+    <span class="n">y</span> <span class="o">=</span> <span class="n">intervals_to_dense</span><span class="p">(</span><span class="n">rows</span><span class="p">,</span> <span class="n">fs</span><span class="p">,</span> <span class="p">[</span><span class="n">individual</span><span class="p">],</span> <span class="nb">len</span><span class="p">(</span><span class="n">time</span><span class="p">))[:,</span> <span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">y</span><span class="p">):</span>
+        <span class="n">skipped_background</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="k">continue</span>
+    <span class="n">collected</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">s3d</span><span class="o">.</span><span class="n">values</span><span class="p">),</span> <span class="n">y</span><span class="p">))</span>
+
+<span class="nb">print</span><span class="p">(</span>
+    <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">collected</span><span class="p">)</span><span class="si">}</span><span class="s2"> trial(s) usable; skipped </span><span class="si">{</span><span class="n">skipped_unlabelled</span><span class="si">}</span><span class="s2"> unlabelled "</span>
+    <span class="sa">f</span><span class="s2">"and </span><span class="si">{</span><span class="n">skipped_background</span><span class="si">}</span><span class="s2"> all-background."</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+</div>
+</div>
+</section>
+<section id="rank-by-cohens-d">
+<h2>3. Rank by Cohen’s d<a class="headerlink" href="#rank-by-cohens-d" title="Link to this heading">#</a></h2>
+<p>For each dimension <em>f</em> and class label <em>c</em>: how far apart is <em>f</em>’s distribution <strong>during</strong> label vs outside. How much is the activation function of this artificial unit (in S3D network) different during vs rest?</p>
+<div class="math notranslate nohighlight">
+\[d_{f,c} = \frac{|\bar{x}_{f,c} - \bar{x}_{f,\lnot c}|}{\sqrt{(s^2_{f,c} + s^2_{f,\lnot c})/2}}\]</div>
+<p>A dimension’s score is its <strong>best class</strong>, averaged over trials. So if a feature is meaningful for at least one label, it gets a high rank.</p>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">ranking</span> <span class="o">=</span> <span class="n">rank_features</span><span class="p">(</span><span class="n">collected</span><span class="p">)</span>
+<span class="n">top_indices</span> <span class="o">=</span> <span class="n">ranking</span><span class="o">.</span><span class="n">top</span><span class="p">(</span><span class="n">TOP_K</span><span class="p">)</span>
+
+<span class="n">label_names</span> <span class="o">=</span> <span class="p">[</span><span class="sa">f</span><span class="s2">"label </span><span class="si">{</span><span class="nb">int</span><span class="p">(</span><span class="n">c</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">ranking</span><span class="o">.</span><span class="n">class_ids</span><span class="p">]</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Ranked </span><span class="si">{</span><span class="n">ranking</span><span class="o">.</span><span class="n">n_features</span><span class="si">}</span><span class="s2"> dimensions over </span><span class="si">{</span><span class="n">ranking</span><span class="o">.</span><span class="n">n_trials</span><span class="si">}</span><span class="s2"> trial(s) "</span>
+      <span class="sa">f</span><span class="s2">"and </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">ranking</span><span class="o">.</span><span class="n">class_ids</span><span class="p">)</span><span class="si">}</span><span class="s2"> class(es).</span><span class="se">\n</span><span class="s2">"</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span>
+    <span class="s2">"dim"</span><span class="p">:</span> <span class="n">top_indices</span><span class="p">,</span>
+    <span class="s2">"cohens_d"</span><span class="p">:</span> <span class="n">ranking</span><span class="o">.</span><span class="n">scores</span><span class="p">[</span><span class="n">top_indices</span><span class="p">]</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">),</span>
+    <span class="s2">"best_class"</span><span class="p">:</span> <span class="p">[</span><span class="n">label_names</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">ranking</span><span class="o">.</span><span class="n">per_class</span><span class="p">[</span><span class="n">top_indices</span><span class="p">]</span><span class="o">.</span><span class="n">argmax</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)],</span>
+<span class="p">})</span><span class="o">.</span><span class="n">to_string</span><span class="p">(</span><span class="n">index</span><span class="o">=</span><span class="kc">False</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+</div>
+</section>
+<section id="classes-top-k-heatmap">
+<h2>4. Classes × top-k heatmap<a class="headerlink" href="#classes-top-k-heatmap" title="Link to this heading">#</a></h2>
+<p>The ranking collapses each dimension to its best class; the heatmap does not. It shows
+which behaviours each dimension actually separates — how you spot one that is mediocre
+on average but the <em>only</em> one catching a rare class.</p>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">subplots</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">14</span><span class="p">,</span> <span class="mi">8</span><span class="p">))</span>
+
+<span class="n">heatmap_data</span> <span class="o">=</span> <span class="n">ranking</span><span class="o">.</span><span class="n">per_class</span><span class="p">[</span><span class="n">top_indices</span><span class="p">,</span> <span class="p">:]</span><span class="o">.</span><span class="n">T</span>   <span class="c1"># (classes, top_k)</span>
+<span class="n">im</span> <span class="o">=</span> <span class="n">ax</span><span class="o">.</span><span class="n">imshow</span><span class="p">(</span><span class="n">heatmap_data</span><span class="p">,</span> <span class="n">aspect</span><span class="o">=</span><span class="s2">"auto"</span><span class="p">,</span> <span class="n">cmap</span><span class="o">=</span><span class="s2">"YlOrRd"</span><span class="p">,</span> <span class="n">interpolation</span><span class="o">=</span><span class="s2">"nearest"</span><span class="p">)</span>
+
+<span class="n">ax</span><span class="o">.</span><span class="n">set_xlabel</span><span class="p">(</span><span class="s2">"S3D feature"</span><span class="p">,</span> <span class="n">fontsize</span><span class="o">=</span><span class="mi">24</span><span class="p">)</span>
+<span class="n">ax</span><span class="o">.</span><span class="n">set_ylabel</span><span class="p">(</span><span class="s2">"Motifs"</span><span class="p">,</span> <span class="n">fontsize</span><span class="o">=</span><span class="mi">24</span><span class="p">)</span>
+
+<span class="n">ax</span><span class="o">.</span><span class="n">set_yticks</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">label_names</span><span class="p">)))</span>
+<span class="n">ax</span><span class="o">.</span><span class="n">set_yticklabels</span><span class="p">(</span><span class="n">label_names</span><span class="p">,</span> <span class="n">fontsize</span><span class="o">=</span><span class="mi">14</span><span class="p">)</span>
+
+<span class="n">ax</span><span class="o">.</span><span class="n">set_xticks</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">top_indices</span><span class="p">)))</span>
+<span class="n">ax</span><span class="o">.</span><span class="n">set_xticklabels</span><span class="p">(</span><span class="n">top_indices</span><span class="p">,</span> <span class="n">rotation</span><span class="o">=</span><span class="mi">45</span><span class="p">,</span> <span class="n">ha</span><span class="o">=</span><span class="s2">"right"</span><span class="p">,</span> <span class="n">fontsize</span><span class="o">=</span><span class="mi">12</span><span class="p">)</span>
+
+<span class="n">cbar</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">colorbar</span><span class="p">(</span><span class="n">im</span><span class="p">,</span> <span class="n">ax</span><span class="o">=</span><span class="n">ax</span><span class="p">,</span> <span class="n">fraction</span><span class="o">=</span><span class="mf">0.046</span><span class="p">,</span> <span class="n">pad</span><span class="o">=</span><span class="mf">0.04</span><span class="p">)</span>
+<span class="n">cbar</span><span class="o">.</span><span class="n">set_label</span><span class="p">(</span><span class="s2">"Cohen's d"</span><span class="p">,</span> <span class="n">fontsize</span><span class="o">=</span><span class="mi">24</span><span class="p">)</span>
+<span class="n">cbar</span><span class="o">.</span><span class="n">ax</span><span class="o">.</span><span class="n">tick_params</span><span class="p">(</span><span class="n">labelsize</span><span class="o">=</span><span class="mi">12</span><span class="p">)</span>
+
+<span class="n">plt</span><span class="o">.</span><span class="n">tight_layout</span><span class="p">()</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+</div>
+</section>
+<section id="write-the-subset-alongside-the-full-set">
+<h2>5. Write the subset alongside the full set<a class="headerlink" href="#write-the-subset-alongside-the-full-set" title="Link to this heading">#</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">s3d</span></code> is already in the merged file. This adds <code class="docutils literal notranslate"><span class="pre">s3d_top</span></code> next to it, so you can switch
+between them in the GUI and in a config without re-running anything.</p>
+<div class="admonition important">
+<p class="admonition-title">Important</p>
+<p><code class="docutils literal notranslate"><span class="pre">s3d_top</span></code> needs its <strong>own dim name</strong> — two variables cannot share a dim at two different
+lengths in one xarray Dataset. Its coord values are the <strong>original</strong> 1024-space ids
+(492, 734, …), not 0…k, so every column keeps its provenance.</p>
+</div>
+<p>The trials are pulled into memory and the file handle closed before writing, so this
+saves back over the same path rather than leaving you with a third file.</p>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">TOP_DIM</span> <span class="o">=</span> <span class="s2">"s3d_top_dims"</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">with_top</span><span class="p">(</span><span class="n">ds</span><span class="p">):</span>
+    <span class="n">subset</span> <span class="o">=</span> <span class="n">ds</span><span class="p">[</span><span class="s2">"s3d"</span><span class="p">]</span><span class="o">.</span><span class="n">isel</span><span class="p">(</span><span class="n">s3d_dims</span><span class="o">=</span><span class="n">top_indices</span><span class="p">)</span><span class="o">.</span><span class="n">rename</span><span class="p">({</span><span class="s2">"s3d_dims"</span><span class="p">:</span> <span class="n">TOP_DIM</span><span class="p">})</span>
+    <span class="n">subset</span> <span class="o">=</span> <span class="n">subset</span><span class="o">.</span><span class="n">assign_coords</span><span class="p">({</span><span class="n">TOP_DIM</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">top_indices</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">int</span><span class="p">)})</span>
+    <span class="n">subset</span><span class="o">.</span><span class="n">attrs</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="o">**</span><span class="n">ds</span><span class="p">[</span><span class="s2">"s3d"</span><span class="p">]</span><span class="o">.</span><span class="n">attrs</span><span class="p">,</span>
+        <span class="s2">"description"</span><span class="p">:</span> <span class="sa">f</span><span class="s2">"Top </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">top_indices</span><span class="p">)</span><span class="si">}</span><span class="s2"> S3D dims by Cohen's d (ids in the 1024-d space)"</span><span class="p">,</span>
+        <span class="s2">"selected_from"</span><span class="p">:</span> <span class="s2">"s3d_dims"</span><span class="p">,</span>
+        <span class="s2">"selection"</span><span class="p">:</span> <span class="s2">"cohens_d"</span><span class="p">,</span>
+    <span class="p">}</span>
+    <span class="n">describe</span><span class="p">(</span><span class="n">subset</span><span class="p">,</span> <span class="n">VIDEO_FEATURE</span><span class="p">,</span> <span class="n">is_egocentric</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">ds</span><span class="o">.</span><span class="n">assign</span><span class="p">({</span><span class="s2">"s3d_top"</span><span class="p">:</span> <span class="n">subset</span><span class="p">})</span>
+
+
+<span class="n">trials_out</span> <span class="o">=</span> <span class="p">[</span><span class="n">with_top</span><span class="p">(</span><span class="n">dt</span><span class="o">.</span><span class="n">trial</span><span class="p">(</span><span class="n">t</span><span class="p">)</span><span class="o">.</span><span class="n">load</span><span class="p">())</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">dt</span><span class="o">.</span><span class="n">trials</span><span class="p">]</span>
+<span class="n">dt</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+<span class="n">TrialTree</span><span class="o">.</span><span class="n">from_datasets</span><span class="p">(</span><span class="n">trials_out</span><span class="p">)</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">MERGED_NC</span><span class="p">))</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"wrote </span><span class="si">{</span><span class="n">MERGED_NC</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"  s3d      </span><span class="si">{</span><span class="n">trials_out</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="s1">'s3d'</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"  s3d_top  </span><span class="si">{</span><span class="n">trials_out</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="s1">'s3d_top'</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span><span class="si">}</span><span class="s2">  dims </span><span class="si">{</span><span class="nb">list</span><span class="p">(</span><span class="n">top_indices</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+</div>
+</section>
+<section id="inspect-in-the-gui-then-use-it">
+<h2>6. Inspect in the GUI, then use it<a class="headerlink" href="#inspect-in-the-gui-then-use-it" title="Link to this heading">#</a></h2>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>ethograph<span class="w"> </span>launch
+</pre></div>
+</div>
+<p>Drop <code class="docutils literal notranslate"><span class="pre">{stem}_s3d.nc</span></code> on the cover page with your video folder. <code class="docutils literal notranslate"><span class="pre">s3d</span></code> and <code class="docutils literal notranslate"><span class="pre">s3d_top</span></code> are
+ordinary features — both appear in the add-panel popup (➕ / Shift+N), so you can open a
+heatmap panel for one and a line plot for the other and step through trials against the
+video. Pin a single column (<code class="docutils literal notranslate"><span class="pre">s3d_top_dims</span> <span class="pre">=</span> <span class="pre">492</span></code>) to get a line plot of one dimension.</p>
+<p>Naming them in a segmentation config — dim <strong>values</strong>, not positions, so the same list
+means the same thing against either variable:</p>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">dims</span> <span class="o">=</span> <span class="s2">", "</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">i</span><span class="p">))</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">top_indices</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"""features:</span>
+<span class="s2">  columns:</span>
+<span class="s2">    s3d_top: </span><span class="se">{{</span><span class="si">{</span><span class="n">TOP_DIM</span><span class="si">}</span><span class="s2">: [</span><span class="si">{</span><span class="n">dims</span><span class="si">}</span><span class="s2">]</span><span class="se">}}</span>
+<span class="s2">    # or, equivalently, straight out of the full set:</span>
+<span class="s2">    # s3d: </span><span class="se">{{</span><span class="s2">s3d_dims: [</span><span class="si">{</span><span class="n">dims</span><span class="si">}</span><span class="s2">]</span><span class="se">}}</span>
+<span class="s2">"""</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+</div>
+<div class="admonition important">
+<p class="admonition-title">Important</p>
+<p>The ranking read your curated labels, so it is only as good as the trials you labelled —
+and selecting on a session you later report on <strong>leaks the test set</strong>. Rank on your
+training sessions only.</p>
+</div>
+<p>Keeping all 1024 is ~4 KB/frame (≈720 MB per video-hour at 50 fps). Once you have
+settled on the subset, <code class="docutils literal notranslate"><span class="pre">ds.drop_vars(&quot;s3d&quot;)</span></code> makes the file a hundredth of that. To
+check the subset was worth it, fit twice on the same materialised dataset and compare —
+see the <code class="docutils literal notranslate"><span class="pre">train.drop_kinds=[video_feature]</span></code> ablation in
+<code class="docutils literal notranslate"><span class="pre">docs/source/advanced/segment/video_features.md</span></code>.</p>
+</section>
+</section>
+
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+                <dialog id="pst-secondary-sidebar-modal"></dialog>
+                <div id="pst-secondary-sidebar" class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="pst-show_toc_level nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#you-need-an-alignment-nwb">You need an <code class="docutils literal notranslate"><span class="pre">alignment.nwb</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#cut-your-footage-to-trials-if-you-can">Cut your footage to trials if you can</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#settings">Settings</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#extract-and-merge">1. Extract and merge</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#dense-per-frame-labels">2. Dense per-frame labels</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#rank-by-cohens-d">3. Rank by Cohen’s d</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#classes-top-k-heatmap">4. Classes × top-k heatmap</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#write-the-subset-alongside-the-full-set">5. Write the subset alongside the full set</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#inspect-in-the-gui-then-use-it">6. Inspect in the GUI, then use it</a></li>
+</ul>
+  </nav></div>
+
+  <div class="sidebar-secondary-item">
+
+  
+  <div class="tocsection sourcelink">
+    <a href="../_sources/examples/segement_s3d_features.ipynb" download>
+      
+        <i class="fa-solid fa-download"></i> Download notebook
+      
+    </a>
+  </div>
+</div>
+
+</div></div>
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../_static/scripts/bootstrap.js?digest=90905a2f556bf617f1a9"></script>
+<script defer src="../_static/scripts/pydata-sphinx-theme.js?digest=90905a2f556bf617f1a9"></script>
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+
+  <p class="copyright">
+    
+      © Copyright 2026, Akseli Ilmanen.
+      <br/>
+    
+  </p>
+</div>
+      
+        <div class="footer-item">
+
+  <p class="sphinx-version">
+    Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 8.2.3.
+    <br/>
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+    <div class="footer-items__end">
+      
+        <div class="footer-item">
+<p class="theme-version">
+  <!-- # L10n: Setting the PST URL as an argument as this does not need to be localized -->
+  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.20.0.
+</p></div>
+      
+    </div>
+  
+</div>
+
+  </footer>
+  </body>
+</html>

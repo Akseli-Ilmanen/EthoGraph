@@ -1295,15 +1295,9 @@
             <span class="n">snap_onset</span> <span class="o">=</span> <span class="n">onset</span>
             <span class="n">snap_offset</span> <span class="o">=</span> <span class="n">offset</span>
 
-        <span class="n">rows</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
-            <span class="p">{</span>
-                <span class="s2">"onset_s"</span><span class="p">:</span> <span class="n">snap_onset</span><span class="p">,</span>
-                <span class="s2">"offset_s"</span><span class="p">:</span> <span class="n">snap_offset</span><span class="p">,</span>
-                <span class="s2">"labels"</span><span class="p">:</span> <span class="n">row</span><span class="p">[</span><span class="s2">"labels"</span><span class="p">],</span>
-                <span class="s2">"individual"</span><span class="p">:</span> <span class="n">row</span><span class="p">[</span><span class="s2">"individual"</span><span class="p">],</span>
-                <span class="s2">"individual_rec"</span><span class="p">:</span> <span class="n">row</span><span class="p">[</span><span class="s2">"individual_rec"</span><span class="p">],</span>
-            <span class="p">}</span>
-        <span class="p">)</span>
+        <span class="c1"># Only the boundaries move: confidence, labeling_method and the rest</span>
+        <span class="c1"># of the row are the label's provenance and survive the snap.</span>
+        <span class="n">rows</span><span class="o">.</span><span class="n">append</span><span class="p">({</span><span class="o">**</span><span class="n">row</span><span class="o">.</span><span class="n">to_dict</span><span class="p">(),</span> <span class="s2">"onset_s"</span><span class="p">:</span> <span class="n">snap_onset</span><span class="p">,</span> <span class="s2">"offset_s"</span><span class="p">:</span> <span class="n">snap_offset</span><span class="p">})</span>
 
     <span class="n">transformed</span> <span class="o">=</span> <span class="n">_rows_to_df</span><span class="p">(</span><span class="n">rows</span><span class="p">)</span>
     <span class="n">transformed</span><span class="o">.</span><span class="n">sort_values</span><span class="p">([</span><span class="o">*</span><span class="n">SUBJECT_COLUMNS</span><span class="p">,</span> <span class="s2">"onset_s"</span><span class="p">],</span> <span class="n">inplace</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
@@ -1338,7 +1332,14 @@
     <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="n">candidates</span><span class="p">[</span><span class="n">nearest_idx</span><span class="p">])</span>
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">_resolve_overlaps</span><span class="p">(</span><span class="n">df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">eps</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1e-3</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_resolve_overlaps</span><span class="p">(</span><span class="n">df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Clip a label that runs into the next label of another class on the same subject.</span>
+
+<span class="sd">    Two labels that *meet* — offset equal to the next onset, which is what</span>
+<span class="sd">    both snapping to the same changepoint produces — are left exactly where</span>
+<span class="sd">    they are; only a true overlap is clipped, and the clipped edge lands on</span>
+<span class="sd">    the next onset itself, never a millisecond short of it.</span>
+<span class="sd">    """</span>
     <span class="k">if</span> <span class="n">df</span><span class="o">.</span><span class="n">empty</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">df</span>
     <span class="n">df</span> <span class="o">=</span> <span class="n">ensure_individual_rec</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">copy</span><span class="p">())</span>
@@ -1347,9 +1348,9 @@
     <span class="k">for</span> <span class="n">_subject</span><span class="p">,</span> <span class="n">group</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="n">SUBJECT_COLUMNS</span><span class="p">,</span> <span class="n">sort</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
         <span class="n">group</span> <span class="o">=</span> <span class="n">group</span><span class="o">.</span><span class="n">sort_values</span><span class="p">(</span><span class="s2">"onset_s"</span><span class="p">)</span><span class="o">.</span><span class="n">reset_index</span><span class="p">(</span><span class="n">drop</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
         <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">group</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">):</span>
-            <span class="k">if</span> <span class="n">group</span><span class="o">.</span><span class="n">at</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="s2">"offset_s"</span><span class="p">]</span> <span class="o">&gt;</span> <span class="n">group</span><span class="o">.</span><span class="n">at</span><span class="p">[</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">"onset_s"</span><span class="p">]</span> <span class="o">-</span> <span class="n">eps</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">group</span><span class="o">.</span><span class="n">at</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="s2">"offset_s"</span><span class="p">]</span> <span class="o">&gt;</span> <span class="n">group</span><span class="o">.</span><span class="n">at</span><span class="p">[</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">"onset_s"</span><span class="p">]:</span>
                 <span class="k">if</span> <span class="n">group</span><span class="o">.</span><span class="n">at</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="s2">"labels"</span><span class="p">]</span> <span class="o">!=</span> <span class="n">group</span><span class="o">.</span><span class="n">at</span><span class="p">[</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">"labels"</span><span class="p">]:</span>
-                    <span class="n">group</span><span class="o">.</span><span class="n">at</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="s2">"offset_s"</span><span class="p">]</span> <span class="o">=</span> <span class="n">group</span><span class="o">.</span><span class="n">at</span><span class="p">[</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">"onset_s"</span><span class="p">]</span> <span class="o">-</span> <span class="n">eps</span>
+                    <span class="n">group</span><span class="o">.</span><span class="n">at</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="s2">"offset_s"</span><span class="p">]</span> <span class="o">=</span> <span class="n">group</span><span class="o">.</span><span class="n">at</span><span class="p">[</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">"onset_s"</span><span class="p">]</span>
         <span class="n">groups</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">group</span><span class="p">)</span>
 
     <span class="n">result</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">concat</span><span class="p">(</span><span class="n">groups</span><span class="p">,</span> <span class="n">ignore_index</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>

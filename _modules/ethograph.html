@@ -442,6 +442,15 @@
 <span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.utils.xr_utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_ds_duration</span><span class="p">,</span> <span class="n">get_time_coord</span><span class="p">,</span> <span class="n">sel_valid</span>
 
 
+<span class="k">def</span><span class="w"> </span><span class="fm">__getattr__</span><span class="p">(</span><span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Expose ``eto.segment`` lazily — it imports torch, which the base install lacks."""</span>
+    <span class="k">if</span> <span class="n">name</span> <span class="o">==</span> <span class="s2">"segment"</span><span class="p">:</span>
+        <span class="kn">import</span><span class="w"> </span><span class="nn">ethograph.segment</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">segment</span>
+
+        <span class="k">return</span> <span class="n">segment</span>
+    <span class="k">raise</span> <span class="ne">AttributeError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"module </span><span class="si">{</span><span class="vm">__name__</span><span class="si">!r}</span><span class="s2"> has no attribute </span><span class="si">{</span><span class="n">name</span><span class="si">!r}</span><span class="s2">"</span><span class="p">)</span>
+
+
 <div class="viewcode-block" id="open">
 <a class="viewcode-back" href="../api/ethograph.open.html#ethograph.open">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">open</span><span class="p">(</span><span class="n">path</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">TrialTree</span><span class="p">:</span>

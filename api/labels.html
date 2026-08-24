@@ -839,37 +839,6 @@ individual are resolved by last-write-wins.</p>
 </dd></dl>
 
 <dl class="py function">
-<dt class="sig sig-object py" id="ethograph.labels.ml.find_blocks">
-<span class="sig-prename descclassname"><span class="pre">ethograph.labels.ml.</span></span><span class="sig-name descname"><span class="pre">find_blocks</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mask</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/labels/ml.html#find_blocks"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.labels.ml.find_blocks" title="Link to this definition">#</a></dt>
-<dd><p>Find contiguous True blocks in a boolean array.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>mask</strong> (<em>np.ndarray</em>) – Boolean array.</p>
-</dd>
-<dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">tuple</span></code></a>[<a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code></a>, <a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code></a>]</span></p>
-</dd>
-<dt class="field-odd">Returns<span class="colon">:</span></dt>
-<dd class="field-odd"><p><ul class="simple">
-<li><p><strong>starts</strong> (<em>np.ndarray</em>) – Start indices of True blocks.</p></li>
-<li><p><strong>ends</strong> (<em>np.ndarray</em>) – End indices (inclusive) of True blocks.</p></li>
-</ul>
-</p>
-</dd>
-</dl>
-<p class="rubric">Examples</p>
-<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">mask</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="kc">False</span><span class="p">,</span> <span class="kc">True</span><span class="p">,</span> <span class="kc">True</span><span class="p">,</span> <span class="kc">False</span><span class="p">,</span> <span class="kc">True</span><span class="p">])</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">starts</span><span class="p">,</span> <span class="n">ends</span> <span class="o">=</span> <span class="n">find_blocks</span><span class="p">(</span><span class="n">mask</span><span class="p">)</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">starts</span>
-<span class="go">array([1, 4])</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">ends</span>
-<span class="go">array([2, 4])</span>
-</pre></div>
-</div>
-</dd></dl>
-
-<dl class="py function">
 <dt class="sig sig-object py" id="ethograph.labels.ml.get_labels_start_end_indices">
 <span class="sig-prename descclassname"><span class="pre">ethograph.labels.ml.</span></span><span class="sig-name descname"><span class="pre">get_labels_start_end_indices</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">col</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bg_class</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/labels/ml.html#get_labels_start_end_indices"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.labels.ml.get_labels_start_end_indices" title="Link to this definition">#</a></dt>
 <dd><p>Return segment boundaries as sample indices (exclusive end).</p>
@@ -903,142 +872,6 @@ individual are resolved by last-write-wins.</p>
 <span class="gp">&gt;&gt;&gt; </span><span class="c1"># segment_features = features[starts[0]:ends[0], :]</span>
 </pre></div>
 </div>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="ethograph.labels.ml.purge_small_blocks">
-<span class="sig-prename descclassname"><span class="pre">ethograph.labels.ml.</span></span><span class="sig-name descname"><span class="pre">purge_small_blocks</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">labels</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_length</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">label_thresholds</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/labels/ml.html#purge_small_blocks"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.labels.ml.purge_small_blocks" title="Link to this definition">#</a></dt>
-<dd><p>Remove label blocks shorter than a threshold (set to background).</p>
-<p>Scans the dense label array for contiguous runs of the same non-zero
-label.  If a run is shorter than its threshold, every sample in it is
-set to 0 (background).</p>
-<p>This is the dense-array counterpart of
-<a class="reference internal" href="#ethograph.labels.intervals.purge_short_intervals" title="ethograph.labels.intervals.purge_short_intervals"><code class="xref py py-func docutils literal notranslate"><span class="pre">purge_short_intervals()</span></code></a> (which works
-in seconds on interval DataFrames).</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>labels</strong> (<em>np.ndarray</em>) – 1-D dense label array (int), where 0 = background.</p></li>
-<li><p><strong>min_length</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><em>int</em></a>) – Default minimum block length <strong>in samples</strong>.  Blocks shorter than
-this are zeroed out.  Convert from seconds:
-<code class="docutils literal notranslate"><span class="pre">int(min_duration_s</span> <span class="pre">*</span> <span class="pre">sample_rate)</span></code>.</p></li>
-<li><p><strong>label_thresholds</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em>]</em><em>, </em><em>optional</em>) – Per-label minimum lengths that override <em>min_length</em>.  For example,
-<code class="docutils literal notranslate"><span class="pre">{1:</span> <span class="pre">10,</span> <span class="pre">3:</span> <span class="pre">30}</span></code> means label 1 needs ≥10 samples and label 3
-needs ≥30 samples; all other labels use <em>min_length</em>.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Copy of <em>labels</em> with short blocks zeroed out.</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>np.ndarray</p>
-</dd>
-</dl>
-<p class="rubric">Examples</p>
-<p>Remove any block shorter than 3 samples:</p>
-<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.labels.ml</span><span class="w"> </span><span class="kn">import</span> <span class="n">purge_small_blocks</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">pred</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">0</span><span class="p">])</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">purge_small_blocks</span><span class="p">(</span><span class="n">pred</span><span class="p">,</span> <span class="n">min_length</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span><span class="o">.</span><span class="n">tolist</span><span class="p">()</span>
-<span class="go">[0, 0, 0, 2, 2, 2, 2, 0]</span>
-</pre></div>
-</div>
-<p>With per-label thresholds (label 2 needs ≥5 samples):</p>
-<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">purge_small_blocks</span><span class="p">(</span><span class="n">pred</span><span class="p">,</span> <span class="n">min_length</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">label_thresholds</span><span class="o">=</span><span class="p">{</span><span class="mi">2</span><span class="p">:</span> <span class="mi">5</span><span class="p">})</span><span class="o">.</span><span class="n">tolist</span><span class="p">()</span>
-<span class="go">[0, 1, 0, 0, 0, 0, 0, 0]</span>
-</pre></div>
-</div>
-<p>Typical pipeline — purge then stitch:</p>
-<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">pred</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">])</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">cleaned</span> <span class="o">=</span> <span class="n">purge_small_blocks</span><span class="p">(</span><span class="n">pred</span><span class="p">,</span> <span class="n">min_length</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>  <span class="c1"># remove isolated 1-sample</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">cleaned</span><span class="o">.</span><span class="n">tolist</span><span class="p">()</span>
-<span class="go">[1, 1, 1, 0, 0, 0, 1, 1, 1]</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">stitch_gaps</span><span class="p">(</span><span class="n">cleaned</span><span class="p">,</span> <span class="n">max_gap_len</span><span class="o">=</span><span class="mi">4</span><span class="p">)</span><span class="o">.</span><span class="n">tolist</span><span class="p">()</span>
-<span class="go">[1, 1, 1, 1, 1, 1, 1, 1, 1]</span>
-</pre></div>
-</div>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="ethograph.labels.ml.stitch_gaps">
-<span class="sig-prename descclassname"><span class="pre">ethograph.labels.ml.</span></span><span class="sig-name descname"><span class="pre">stitch_gaps</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">labels</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_gap_len</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">skip_labels</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/labels/ml.html#stitch_gaps"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.labels.ml.stitch_gaps" title="Link to this definition">#</a></dt>
-<dd><p>Fill small background gaps between same-label segments.</p>
-<p>Scans the dense label array for short runs of zeros (background) flanked
-by the same non-zero label on both sides.  When the gap is at most
-<em>max_gap_len</em> samples, it is filled with that label.</p>
-<p>This is typically used <strong>after</strong> model prediction to clean up fragmented
-outputs where a behaviour is briefly interrupted by a few background frames.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>labels</strong> (<em>np.ndarray</em>) – 1-D dense label array (int), where 0 = background.</p></li>
-<li><p><strong>max_gap_len</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><em>int</em></a>) – Maximum gap length <strong>in samples</strong> to fill.  Gaps longer than this are
-left untouched.  Convert from seconds: <code class="docutils literal notranslate"><span class="pre">int(gap_s</span> <span class="pre">*</span> <span class="pre">sample_rate)</span></code>.</p></li>
-<li><p><strong>skip_labels</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#set" title="(in Python v3.14)"><em>set</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em>]</em><em>, </em><em>optional</em>) – Labels whose trailing gaps should <strong>never</strong> be filled.  For example,
-<code class="docutils literal notranslate"><span class="pre">skip_labels={3}</span></code> means that a gap preceded by label 3 is always kept
-even if the same label follows.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Copy of <em>labels</em> with qualifying gaps filled.</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>np.ndarray</p>
-</dd>
-</dl>
-<p class="rubric">Examples</p>
-<p>Basic gap stitching at 30 Hz (fill gaps up to 5 frames):</p>
-<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.labels.ml</span><span class="w"> </span><span class="kn">import</span> <span class="n">stitch_gaps</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">pred</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">])</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">stitch_gaps</span><span class="p">(</span><span class="n">pred</span><span class="p">,</span> <span class="n">max_gap_len</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span><span class="o">.</span><span class="n">tolist</span><span class="p">()</span>
-<span class="go">[1, 1, 1, 1, 1, 0, 0, 0, 2, 2]</span>
-</pre></div>
-</div>
-<p>The single-frame gap (index 2) is filled because label 1 appears on both
-sides.  The 3-frame gap (indices 5–7) is left alone because it exceeds
-<code class="docutils literal notranslate"><span class="pre">max_gap_len=2</span></code>.</p>
-<p>Using <code class="docutils literal notranslate"><span class="pre">skip_labels</span></code> to protect specific transitions:</p>
-<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">pred</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">])</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">stitch_gaps</span><span class="p">(</span><span class="n">pred</span><span class="p">,</span> <span class="n">max_gap_len</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">skip_labels</span><span class="o">=</span><span class="p">{</span><span class="mi">3</span><span class="p">})</span><span class="o">.</span><span class="n">tolist</span><span class="p">()</span>
-<span class="go">[3, 3, 0, 3, 3]</span>
-</pre></div>
-</div>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="ethograph.labels.ml.fix_endings">
-<span class="sig-prename descclassname"><span class="pre">ethograph.labels.ml.</span></span><span class="sig-name descname"><span class="pre">fix_endings</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">labels</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">changepoints</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/labels/ml.html#fix_endings"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.labels.ml.fix_endings" title="Link to this definition">#</a></dt>
-<dd><p>Extend label endings by one sample at changepoint boundaries.</p>
-<p>When a labelled segment ends and the very next sample is a changepoint,
-the segment is extended by one sample.  This accounts for the common
-off-by-one between predicted segment boundaries and detected changepoints.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>labels</strong> (<em>np.ndarray</em>) – 1-D dense label array (int).</p></li>
-<li><p><strong>changepoints</strong> (<em>array-like</em>) – Either a boolean mask of the same length (True = changepoint), or an
-array of integer changepoint indices.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Copy of <em>labels</em> with qualifying endings extended by one sample.</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>np.ndarray</p>
-</dd>
-</dl>
-<p class="rubric">Examples</p>
-<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.labels.ml</span><span class="w"> </span><span class="kn">import</span> <span class="n">fix_endings</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">labels</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">0</span><span class="p">])</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">cps</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">bool</span><span class="p">)</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">fix_endings</span><span class="p">(</span><span class="n">labels</span><span class="p">,</span> <span class="n">cps</span><span class="p">)</span><span class="o">.</span><span class="n">tolist</span><span class="p">()</span>
-<span class="go">[0, 1, 1, 1, 0, 2, 2, 2]</span>
-</pre></div>
-</div>
-<p>The segment of label 1 ended at index 2, and index 3 is a changepoint,
-so label 1 is extended to index 3.  Same for label 2 at index 7.</p>
 </dd></dl>
 
 </section>
@@ -1628,11 +1461,7 @@ placing each on a different row.</p>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#dense-interval-conversion-ml">Dense ↔ interval conversion (ML)</a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.labels.ml.dense_to_intervals"><code class="docutils literal notranslate"><span class="pre">dense_to_intervals()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.labels.ml.intervals_to_dense"><code class="docutils literal notranslate"><span class="pre">intervals_to_dense()</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.labels.ml.find_blocks"><code class="docutils literal notranslate"><span class="pre">find_blocks()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.labels.ml.get_labels_start_end_indices"><code class="docutils literal notranslate"><span class="pre">get_labels_start_end_indices()</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.labels.ml.purge_small_blocks"><code class="docutils literal notranslate"><span class="pre">purge_small_blocks()</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.labels.ml.stitch_gaps"><code class="docutils literal notranslate"><span class="pre">stitch_gaps()</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.labels.ml.fix_endings"><code class="docutils literal notranslate"><span class="pre">fix_endings()</span></code></a></li>
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#tsv-storage">TSV storage</a><ul class="nav section-nav flex-column">

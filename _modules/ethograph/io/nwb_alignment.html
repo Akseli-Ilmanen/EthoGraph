@@ -817,7 +817,17 @@
 
     <span class="c1"># ── Media access ──</span>
 
+<div class="viewcode-block" id="NWBAlignment.get_media">
+<a class="viewcode-back" href="../../../api/nwb_alignment.html#ethograph.NWBAlignment.get_media">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">get_media</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">trial</span><span class="p">,</span> <span class="n">stream</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">device</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""Return the trial table's media filename for *stream*/*device*.</span>
+
+<span class="sd">        A stored value that is an absolute local path (e.g. baked in by a</span>
+<span class="sd">        template authored on a different machine) is reduced to its</span>
+<span class="sd">        basename, so callers can always safely join it onto their own</span>
+<span class="sd">        video/audio/pose folder instead of resolving to a path that only</span>
+<span class="sd">        existed on the authoring machine.</span>
+<span class="sd">        """</span>
         <span class="n">row</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_trial_row</span><span class="p">(</span><span class="n">trial</span><span class="p">)</span>
         <span class="k">if</span> <span class="n">row</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
             <span class="k">return</span> <span class="kc">None</span>
@@ -825,8 +835,12 @@
         <span class="k">if</span> <span class="n">col</span> <span class="ow">in</span> <span class="n">row</span><span class="o">.</span><span class="n">index</span><span class="p">:</span>
             <span class="n">val</span> <span class="o">=</span> <span class="n">row</span><span class="p">[</span><span class="n">col</span><span class="p">]</span>
             <span class="k">if</span> <span class="n">pd</span><span class="o">.</span><span class="n">notna</span><span class="p">(</span><span class="n">val</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">str</span><span class="p">(</span><span class="n">val</span><span class="p">):</span>
-                <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">val</span><span class="p">)</span>
-        <span class="k">return</span> <span class="kc">None</span>
+                <span class="n">val</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">val</span><span class="p">)</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">_is_url</span><span class="p">(</span><span class="n">val</span><span class="p">)</span> <span class="ow">and</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isabs</span><span class="p">(</span><span class="n">val</span><span class="p">):</span>
+                    <span class="k">return</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">basename</span><span class="p">(</span><span class="n">val</span><span class="p">)</span>
+                <span class="k">return</span> <span class="n">val</span>
+        <span class="k">return</span> <span class="kc">None</span></div>
+
 
 <div class="viewcode-block" id="NWBAlignment.devices">
 <a class="viewcode-back" href="../../../api/nwb_alignment.html#ethograph.NWBAlignment.devices">[docs]</a>

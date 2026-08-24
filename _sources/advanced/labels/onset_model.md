@@ -15,8 +15,8 @@ fills in the rest.
 :class: important
 
 **Point events only**, and **at most one event per class per trial**.
-Inference is an `argmax` over the trial's smoothed probability curve, so it
-returns exactly one time per class per trial and cannot return two.
+Inference takes the tallest peak of the trial's smoothed probability curve, so
+it returns exactly one time per class per trial and cannot return two.
 
 **State events are out of scope**: a state event has two boundaries ("start" and "stop") whose
 order and non-overlap have to be respected, which is a different problem from
@@ -34,7 +34,7 @@ that frame and answers one question: *is the event here?*
   positive, weighted by a Gaussian bump peaking at the event, so a frame one
   tick off counts less than the exact frame. Far negatives are subsampled.
 * **Inference** smooths the per-frame probability with the same tolerance — a
-  plateau of near-hits beats one spurious spike — and takes the argmax.
+  plateau of near-hits beats one spurious spike — and takes the tallest peak.
 
 Each class gets **its own binary classifier** over the same features, window
 and tolerance. The design matrix is built once per trial and reused, so
@@ -52,6 +52,13 @@ predicting five classes costs barely more than predicting one.
    input columns. **Every dim has to be pinned to explicit values** — that
    frozen list *is* the model's input layout, which is what lets the model run
    on another session.
+
+   Ticking a feature's **d/dt** box adds its rate of change beside every column
+   it produces (`np.gradient`: central differences, centred on the frame, so a
+   turn in the signal shows up at the frame it happened). The classifier sees
+   each tap of the window on its own and cannot difference them, so *how fast
+   is this changing* has to be handed to it as its own input — worth a tick
+   when the event is a change of speed or direction rather than a level.
 4. **Set the parameters.** `Window size` is how much context the classifier
    sees around each frame; `Tolerance` is how precisely you believe your own
    labels.
@@ -80,8 +87,8 @@ pick features from one stream.
 
 ```
 ~/.ethograph/models/{name}/
-├── config.yaml                 # frozen: targets, features, window, tolerance
-├── model.joblib                # one trained classifier per target (+ CRF)
+├── config.yaml                 # frozen: targets, features (+ d/dt), window, tolerance
+├── model.joblib                # one trained classifier per target
 └── train_data/
     └── {session}-{hash}/
         ├── meta.yaml           # source path, columns, trial count
@@ -94,22 +101,32 @@ survives that session moving or going offline.
 ---
 
 (target-onset-model-sequence)=
-## Modelling the order of the events
+## Saying what you expect
 
-When the classes always run in the same order, tick **Model the order of the
-events (CRF)** and EthoGraph fits a linear-chain CRF
-([sklearn-crfsuite](https://sklearn-crfsuite.readthedocs.io)) over the
-per-class probabilities. Every frame is tagged with the class of the most
-recent event, so the CRF's transitions *are* the sequence dependencies, and
-only orders seen in training can be decoded — a class whose signal has a decoy
-early in the trial can no longer be predicted before the class it always
-follows. The whole trial is decoded at once, which also means a class the
-decoded order leaves out gets no prediction there.
+You usually know things about your classes that the model does not: that the
+bird pecks *before* it lands, that a trial with one has the other. Say so when
+you create the model, and EthoGraph will tell you which trials disagreed.
 
-Needs at least 2 training trials; training reports the orders it saw
-(`peck→land ×18`) and takes minutes rather than seconds, since each class is
-refitted once per cross-fitting fold. Untick **Use the sequence model** when
-predicting to fall back to independent per-class argmaxes.
+In the Train dialog, **drag the ticked classes into the order you expect** —
+the list is the declaration — then tick:
+
+| | |
+|---|---|
+| **Expect them in the order they are listed above** | flags a trial whose predicted events came out in another order |
+| **…and if a trial has one of them, expect the rest** | flags a trial that got only *part* of the set, because the rest fell below the confidence floor. A trial with **none** of them is not flagged — the behaviour did not happen there, which is no surprise |
+
+```{important}
+A declaration **never changes a prediction** — every event still lands on its
+own curve's tallest peak. A model that moved an event to satisfy a sequence
+would be putting the label somewhere the curve never suggested, invisibly.
+```
+
+Training reports the orders the trials actually ran in (`peck → land ×18,
+land → peck ×2`), so you can check a declaration against your own data.
+Predictions then write a **`prediction_check`** column into the {doc}`trials
+table <../metadata>` — `ok`, `order`, `missing` or `order+missing` per trial.
+Filter it to the flagged values and every downstream operation narrows to
+those trials: review queue, grids, navigation.
 
 ---
 
@@ -141,55 +158,32 @@ each one and either click through to fix it or mark it curated.
 (target-onset-model-confidence)=
 ## Confidence
 
-Every label row carries a **`confidence`** column in the
-{ref}`labels TSV <target-exporting-labels>`: a label you placed by hand is
-**1.0**, and a predicted label carries the model's own score in `[0, 1]`.
+A predicted label's **`confidence`** is the height of the tallest peak of that
+class's probability curve — the model's per-frame belief that the event is
+here (a label you placed by hand is `1.0`). That curve is the **dotted line**
+{ref}`frame-by-frame review <target-curation-frame>` draws under the label it
+is on, one per class in the class's own colour, against a fixed 0–1 right-hand
+axis. The peak's frame is where the label sits, so the number and the label
+point at the same place on the same curve.
 
-The score combines two readings of the probability curve:
-
-| | Question | Low when |
-|---|---|---|
-| **peak** | How strongly does the model believe? | the best frame still only scores 0.2 |
-| **sharpness** | How localised is that belief? | the curve is a broad smear over the trial |
-
-*Sharpness* is one minus the normalised entropy of the curve read as a
-distribution over the trial's frames — a single-frame spike scores 1, a flat
-curve scores 0. It is the point-event counterpart of the frame-wise
-`1 - normalised entropy` used for {doc}`imported dense predictions
-<importing>`: there the distribution is over classes, here over time. The
-reported `confidence` is their **geometric mean**, so a prediction has to hold
-up on both counts. With the sequence model the same two readings are taken on
-the CRF's marginals instead.
-
-**Min confidence** in the Predict dialog is a floor on what gets written: a
-prediction below it produces **no label at all**, leaving the trial unlabelled
-for that class rather than giving it a doubtful label. Leave it at 0 to write
-everything and triage afterwards — the confidence is on every label either
-way, so nothing is lost by writing first and filtering later.
+Set a threshold by looking: open a few reviews, see what a good curve peaks at
+and what a bad one peaks at, and put the threshold between them. Training
+separately reports what the model scored on trials it did not see (*peck: 6/8
+within 0.05 s*) — a verdict on the model, not on any one label, and folded
+into no confidence.
 
 ### Reviewing by confidence
 
-The **Label grid view…** (Labels tab ▸ Curation) puts each label's confidence
-and `labeling_method` on its tile and takes a **Flag confidence below**
-threshold: every tile under it gets a red outline, in the grid and in the
-exported PDF. Set it to `0.6`, scan the sheet, and click straight through to
-the ones worth fixing.
+**Label grid view…** (Labels tab ▸ Curation) puts each label's confidence and
+`labeling_method` on its tile and outlines everything below **Flag confidence
+below** in red, in the grid and in the exported PDF. The threshold is typed in
+full rather than stepped, so a model whose scores sit at the bottom of the
+range can be flagged at `0.0002` as easily as at `0.6`; **Histogram…** beside
+it shows where the scores actually sit, per class, before you commit.
 
-**Histogram…** next to the threshold shows where the scores actually sit
-before you commit to a number: one histogram per label class — split per
-individual as well, when more than one animal is labelled — with everything
-below the threshold drawn in the same red. A class whose scores pile up near
-1.0 with a thin low tail wants a high threshold; one spread across the range
-is a class the model has not learnt, and the whole class is worth reviewing.
-Its threshold spin is the grid's, so dragging it there recolours the tiles
-behind it.
-
-The grid's mode then decides what a click means. In *Click = uncurated, rest =
-curated* — the honest default for a model review — **Mark low-confidence as
-uncurated** pre-clicks exactly the outlined tiles; click any other tile that
-looks wrong, and **Done**
-curates everything else in one go. Switch the Curation section to
-{ref}`frame-by-frame review <target-curation-frame>` and a tile click drops
-straight into that boundary: `Enter` moves an event onto the right frame
-(the label becomes manual, `confidence = 1.0`), `Backspace` deletes one that
-never happened, `N` leaves it as it is and marks it curated.
+In the default *Click = uncurated, rest = curated* mode, **Mark low-confidence
+as uncurated** pre-clicks exactly the outlined tiles; click any other tile that
+looks wrong, and **Done** curates everything else in one go. With the Curation
+section in {ref}`frame-by-frame review <target-curation-frame>`, a tile click
+drops straight into that boundary instead: `Enter` moves the event onto the
+right frame, `Backspace` deletes one that never happened, `N` marks it curated.

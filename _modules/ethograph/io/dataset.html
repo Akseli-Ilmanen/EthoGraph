@@ -414,6 +414,7 @@
 <span class="kn">from</span><span class="w"> </span><span class="nn">scipy.ndimage</span><span class="w"> </span><span class="kn">import</span> <span class="n">gaussian_filter1d</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.features.movement</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_angle_rgb</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.io</span><span class="w"> </span><span class="kn">import</span> <span class="n">schema</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.io.trialtree</span><span class="w"> </span><span class="kn">import</span> <span class="n">TrialTree</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.utils.xr_utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_time_coord</span>
 
@@ -605,12 +606,7 @@
         <span class="n">output_dtypes</span><span class="o">=</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">int8</span><span class="p">],</span>
     <span class="p">)</span>
 
-    <span class="n">changepoints</span><span class="o">.</span><span class="n">attrs</span><span class="o">.</span><span class="n">update</span><span class="p">(</span>
-        <span class="p">{</span>
-            <span class="s2">"type"</span><span class="p">:</span> <span class="s2">"changepoints"</span><span class="p">,</span>
-            <span class="s2">"target_feature"</span><span class="p">:</span> <span class="n">target_feature</span><span class="p">,</span>
-        <span class="p">}</span>
-    <span class="p">)</span>
+    <span class="n">changepoints</span><span class="o">.</span><span class="n">attrs</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">schema</span><span class="o">.</span><span class="n">changepoint_attrs</span><span class="p">(</span><span class="n">target_feature</span><span class="o">=</span><span class="n">target_feature</span><span class="p">))</span>
 
     <span class="n">ds</span><span class="p">[</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">target_feature</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">changepoint_name</span><span class="si">}</span><span class="s2">"</span><span class="p">]</span> <span class="o">=</span> <span class="n">changepoints</span>
     <span class="k">return</span> <span class="n">ds</span></div>
@@ -629,7 +625,7 @@
 
 <span class="sd">    Adds two variables to *ds*:</span>
 
-<span class="sd">    * ``angles`` -- heading angle in radians.</span>
+<span class="sd">    * ``angles`` -- heading angle in degrees.</span>
 <span class="sd">    * ``angle_rgb`` -- ``(R, G, B)`` triplet per time-step</span>
 
 <span class="sd">    Parameters</span>
@@ -663,6 +659,8 @@
         <span class="n">output_dtypes</span><span class="o">=</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">],</span>
     <span class="p">)</span>
     <span class="n">ds</span><span class="p">[</span><span class="s2">"angles"</span><span class="p">]</span> <span class="o">=</span> <span class="n">angles</span>
+    <span class="n">ds</span><span class="p">[</span><span class="s2">"angles_sin"</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sin</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">deg2rad</span><span class="p">(</span><span class="n">angles</span><span class="p">))</span>
+    <span class="n">ds</span><span class="p">[</span><span class="s2">"angles_cos"</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">cos</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">deg2rad</span><span class="p">(</span><span class="n">angles</span><span class="p">))</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">process_rgb</span><span class="p">(</span><span class="n">xy</span><span class="p">):</span>
         <span class="n">rgb</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">get_angle_rgb</span><span class="p">(</span><span class="n">xy</span><span class="p">,</span> <span class="n">smooth_func</span><span class="o">=</span><span class="n">gaussian_filter1d</span><span class="p">,</span> <span class="n">smoothing_params</span><span class="o">=</span><span class="n">smoothing_params</span><span class="p">)</span>

@@ -1,0 +1,738 @@
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Changepoint features: what add_changepoint_features does &#8212; ethograph</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../_static/styles/theme.css?digest=90905a2f556bf617f1a9" rel="stylesheet" />
+<link href="../_static/styles/pydata-sphinx-theme.css?digest=90905a2f556bf617f1a9" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/sphinx-design.min.css?v=95c83b7e" />
+    <link rel="stylesheet" type="text/css" href="../_static/css/custom.css?v=17f663f2" />
+  
+  <!-- So that users can add custom icons -->
+  <script defer src="../_static/scripts/fontawesome.js?digest=90905a2f556bf617f1a9"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=90905a2f556bf617f1a9" />
+<link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=90905a2f556bf617f1a9" />
+
+    <script src="../_static/documentation_options.js?v=9eb32ce0"></script>
+    <script src="../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../_static/design-tabs.js?v=f930bc37"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'examples/segment_changepoint_features';</script>
+    <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
+    <link rel="canonical" href="https://Akseli-Ilmanen.github.io/ethograph/examples/segment_changepoint_features.html" />
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="" />
+  
+    
+    <script src="../_static/searchtools.js"></script>
+    <script src="../_static/language_data.js"></script>
+    <script src="../searchindex.js"></script>
+  
+  </head>
+  <body data-default-mode="">
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+  
+  
+  
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header id="pst-header" class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class=" navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../_static/icon.png" class="logo__image only-light" alt=""/>
+    <img src="../_static/icon.png" class="logo__image only-dark pst-js-only" alt=""/>
+  
+  
+    <p class="title logo__title">ethograph</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class=" navbar-header-items">
+    
+    <div class="me-auto navbar-header-items__center">
+      
+        <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../getting_started/index.html">
+    Getting started
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../advanced/index.html">
+    Advanced
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="index.html">
+    Examples
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../api_index.html">
+    API reference
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../community/index.html">
+    Community
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+      
+    </div>
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<div class="theme-switch-container dropdown pst-js-only" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Color mode">
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button dropdown-toggle" aria-label="Color mode" data-bs-toggle="dropdown">
+    <i class="theme-switch fa-solid fa-sun fa-lg fa-fw" data-mode="light" title="Light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg fa-fw" data-mode="dark" title="Dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg fa-fw" data-mode="auto" title="System Settings"></i>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg fa-fw me-1"></i>System Settings</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="light"><i class="fa-solid fa-sun fa-lg fa-fw me-1"></i>Light</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="dark"><i class="fa-solid fa-moon fa-lg fa-fw me-1"></i>Dark</button></li>
+  </ul>
+</div></div>
+      
+        <div class="navbar-item"><ul class="navbar-icon-links"
+    aria-label="Icon Links">
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://github.com/Akseli-Ilmanen/ethograph" title="GitHub" class="nav-link pst-navbar-icon" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><i class="fa-brands fa-github fa-lg" aria-hidden="true"></i><span class="visually-hidden">GitHub</span></a>
+        </li>
+</ul></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+    <button class="pst-navbar-icon sidebar-toggle secondary-toggle" aria-label="On this page">
+      <span class="fa-solid fa-outdent"></span>
+    </button>
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+        
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar hide-on-wide">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+      <div class="sidebar-header-items__center">
+        
+          
+          
+            <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../getting_started/index.html">
+    Getting started
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../advanced/index.html">
+    Advanced
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="index.html">
+    Examples
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../api_index.html">
+    API reference
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../community/index.html">
+    Community
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+          
+        
+      </div>
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<div class="theme-switch-container dropdown pst-js-only" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Color mode">
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button dropdown-toggle" aria-label="Color mode" data-bs-toggle="dropdown">
+    <i class="theme-switch fa-solid fa-sun fa-lg fa-fw" data-mode="light" title="Light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg fa-fw" data-mode="dark" title="Dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg fa-fw" data-mode="auto" title="System Settings"></i>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg fa-fw me-1"></i>System Settings</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="light"><i class="fa-solid fa-sun fa-lg fa-fw me-1"></i>Light</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="dark"><i class="fa-solid fa-moon fa-lg fa-fw me-1"></i>Dark</button></li>
+  </ul>
+</div></div>
+        
+          <div class="navbar-item"><ul class="navbar-icon-links"
+    aria-label="Icon Links">
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://github.com/Akseli-Ilmanen/ethograph" title="GitHub" class="nav-link pst-navbar-icon" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><i class="fa-brands fa-github fa-lg" aria-hidden="true"></i><span class="visually-hidden">GitHub</span></a>
+        </li>
+</ul></div>
+        
+      </div>
+    
+  </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+      <div class="sidebar-primary-item">
+<div id="ethical-ad-placement"
+      class="flat"
+      data-ea-publisher="readthedocs"
+      data-ea-type="readthedocs-sidebar"
+      data-ea-manual="true">
+</div></div>
+  </div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Changepoint features: what <code class="docutils literal notranslate"><span class="pre">add_changepoint_features</span></code> does</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section class="tex2jax_ignore mathjax_ignore" id="changepoint-features-what-add-changepoint-features-does">
+<h1>Changepoint features: what <code class="docutils literal notranslate"><span class="pre">add_changepoint_features</span></code> does<a class="headerlink" href="#changepoint-features-what-add-changepoint-features-does" title="Link to this heading">#</a></h1>
+<p>A raw changepoint mask is 0/1 — “here is a trough” — and on its own that is a poor model
+input: only a handful of frames are ever 1. <code class="docutils literal notranslate"><span class="pre">ethograph.features.changepoints.add_changepoint_features</span></code>
+expands one mask into the richer representation <code class="docutils literal notranslate"><span class="pre">more_changepoint_features</span></code> was built for:</p>
+<ul class="simple">
+<li><p>a multi-scale <strong>Laplacian proximity</strong> curve, one per sigma — “how close is the nearest changepoint”</p></li>
+<li><p>a <strong>speed-weighted</strong> variant of each — emphasises changepoints where the target feature (e.g. speed) is low</p></li>
+<li><p>a normalised <strong>segment ID</strong> — which contiguous stretch between changepoints a frame falls in</p></li>
+</ul>
+<p>This notebook is pure visualisation: it runs the function on one trial of the public
+<a class="reference external" href="https://doi.org/10.1016/j.cub.2025.08.033">Moll et al., 2025</a> crow dataset so you can see
+what each output column looks like before deciding whether to use it. Two ways to turn it
+on for real (see <code class="docutils literal notranslate"><span class="pre">CLAUDE.md</span></code>’s segmentation-pipeline section):</p>
+<ol class="arabic simple">
+<li><p><strong>On your own <code class="docutils literal notranslate"><span class="pre">TrialTree</span></code></strong> — call <code class="docutils literal notranslate"><span class="pre">add_changepoint_features</span></code> yourself, same as any
+other feature-engineering step (<code class="docutils literal notranslate"><span class="pre">add_changepoints_to_ds</span></code>, <code class="docutils literal notranslate"><span class="pre">features/geometry.py</span></code>), then save.
+See the last cell.</p></li>
+<li><p><strong>In <code class="docutils literal notranslate"><span class="pre">project.yaml</span></code></strong> — set <code class="docutils literal notranslate"><span class="pre">features.changepoint_features</span></code> (sigmas + distribution) and
+the segmentation pipeline expands every changepoint mask once per session, at
+<code class="docutils literal notranslate"><span class="pre">materialise</span></code>/<code class="docutils literal notranslate"><span class="pre">infer</span></code> time, without touching the source file.</p></li>
+</ol>
+<section id="download-example-data">
+<h2>Download example data<a class="headerlink" href="#download-example-data" title="Link to this heading">#</a></h2>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.utils.download</span><span class="w"> </span><span class="kn">import</span> <span class="n">download_example_dataset</span>
+
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">_here</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">__vsc_ipynb_file__</span><span class="p">)</span><span class="o">.</span><span class="n">parent</span>  <span class="c1"># VS Code</span>
+<span class="k">except</span> <span class="ne">NameError</span><span class="p">:</span>
+    <span class="n">_here</span> <span class="o">=</span> <span class="n">Path</span><span class="p">()</span><span class="o">.</span><span class="n">resolve</span><span class="p">()</span>  <span class="c1"># Jupyter Lab / Notebook (CWD = notebook dir)</span>
+
+<span class="n">data_folder</span> <span class="o">=</span> <span class="n">_here</span><span class="o">.</span><span class="n">parent</span> <span class="o">/</span> <span class="s2">"data"</span> <span class="o">/</span> <span class="s2">"Moll2025"</span>
+<span class="n">download_example_dataset</span><span class="p">(</span><span class="s2">"moll2025"</span><span class="p">,</span> <span class="n">data_folder</span><span class="p">)</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="se">\n</span><span class="s2">data_folder: </span><span class="si">{</span><span class="n">data_folder</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>Downloading Trial_data.nc... (1/11)
+Downloading 2024-12-17_115_Crow1-cam-1.mp4... (2/11)
+Downloading 2024-12-17_115_Crow1-cam-1DLC.csv... (3/11)
+Downloading 2024-12-17_115_Crow1-cam-2DLC.csv... (4/11)
+Downloading 2024-12-17_115_Crow1_DLC_3D.csv... (5/11)
+Downloading 2024-12-17_115_Crow1-cam-1_s3d.npy... (6/11)
+Downloading 2024-12-18_041_Crow1-cam-1.mp4... (7/11)
+Downloading 2024-12-18_041_Crow1-cam-1DLC.csv... (8/11)
+Downloading 2024-12-18_041_Crow1-cam-2DLC.csv... (9/11)
+Downloading 2024-12-18_041_Crow1_DLC_3D.csv... (10/11)
+  2024-12-18_041_Crow1-cam-1_s3d.npy (11/11)
+  mapping: c:\Users\aksel\Documents\Code\ethograph\data\Moll2025\.ethograph\mapping.txt
+
+data_folder: c:\Users\aksel\Documents\Code\ethograph\data\Moll2025
+</pre></div>
+</div>
+</div>
+</div>
+</section>
+<section id="load-one-trials-speed-its-changepoint-mask">
+<h2>Load one trial’s speed + its changepoint mask<a class="headerlink" href="#load-one-trials-speed-its-changepoint-mask" title="Link to this heading">#</a></h2>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">matplotlib.pyplot</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">plt</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">ethograph</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">eto</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.features.changepoints</span><span class="w"> </span><span class="kn">import</span> <span class="n">add_changepoint_features</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.io</span><span class="w"> </span><span class="kn">import</span> <span class="n">schema</span>
+
+<span class="n">TRIAL</span> <span class="o">=</span> <span class="kc">None</span>          <span class="c1"># None -&gt; first trial</span>
+<span class="n">KEYPOINT</span> <span class="o">=</span> <span class="s2">"beakTip"</span>
+<span class="n">SIGMAS</span> <span class="o">=</span> <span class="p">[</span><span class="mf">2.0</span><span class="p">,</span> <span class="mf">3.0</span><span class="p">,</span> <span class="mf">5.0</span><span class="p">]</span>  <span class="c1"># kernel widths, in samples</span>
+
+<span class="n">dt</span> <span class="o">=</span> <span class="n">eto</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">data_folder</span> <span class="o">/</span> <span class="s2">"Trial_data.nc"</span><span class="p">))</span>
+<span class="n">trial</span> <span class="o">=</span> <span class="n">TRIAL</span> <span class="k">if</span> <span class="n">TRIAL</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">dt</span><span class="o">.</span><span class="n">trials</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+<span class="n">ds</span> <span class="o">=</span> <span class="n">dt</span><span class="o">.</span><span class="n">trial</span><span class="p">(</span><span class="n">trial</span><span class="p">)</span>
+
+<span class="n">individual</span> <span class="o">=</span> <span class="n">ds</span><span class="o">.</span><span class="n">individual</span><span class="o">.</span><span class="n">values</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+<span class="n">pinned</span> <span class="o">=</span> <span class="n">ds</span><span class="p">[[</span><span class="s2">"speed"</span><span class="p">,</span> <span class="s2">"speed_troughs"</span><span class="p">]]</span><span class="o">.</span><span class="n">sel</span><span class="p">(</span><span class="n">keypoint</span><span class="o">=</span><span class="n">KEYPOINT</span><span class="p">,</span> <span class="n">individual</span><span class="o">=</span><span class="n">individual</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span>
+    <span class="sa">f</span><span class="s2">"trial </span><span class="si">{</span><span class="n">trial</span><span class="si">}</span><span class="s2"> | keypoint </span><span class="si">{</span><span class="n">KEYPOINT</span><span class="si">!r}</span><span class="s2"> | individual </span><span class="si">{</span><span class="n">individual</span><span class="si">!r}</span><span class="s2"> | "</span>
+    <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">pinned</span><span class="o">.</span><span class="n">sizes</span><span class="p">[</span><span class="s1">'time'</span><span class="p">]</span><span class="si">}</span><span class="s2"> frames @ </span><span class="si">{</span><span class="n">ds</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">'fps'</span><span class="p">]</span><span class="si">:</span><span class="s2">.0f</span><span class="si">}</span><span class="s2"> fps"</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>trial 41 | keypoint 'beakTip' | individual np.str_('Crow1') | 1077 frames @ 200 fps
+</pre></div>
+</div>
+</div>
+</div>
+</section>
+<section id="expand-the-mask">
+<h2>Expand the mask<a class="headerlink" href="#expand-the-mask" title="Link to this heading">#</a></h2>
+<p>This dataset predates the variable-schema convention
+(<code class="docutils literal notranslate"><span class="pre">docs/source/advanced/variable_schema.md</span></code>) and still carries the legacy
+<code class="docutils literal notranslate"><span class="pre">attrs[&quot;type&quot;]</span> <span class="pre">=</span> <span class="pre">&quot;changepoints&quot;</span></code> spelling. Nothing migrates that
+automatically on load — <code class="docutils literal notranslate"><span class="pre">schema.migrate_legacy_attrs</span></code> is a one-time,
+explicit conversion you run yourself (a fresh file written with <code class="docutils literal notranslate"><span class="pre">describe</span></code>/
+<code class="docutils literal notranslate"><span class="pre">add_changepoints_to_ds</span></code> never carried the legacy spelling, so it needs no
+such call). The <code class="docutils literal notranslate"><span class="pre">project.yaml</span></code> route in the last cell below does this
+migration for you automatically, once per session — only calling
+<code class="docutils literal notranslate"><span class="pre">add_changepoint_features</span></code> directly, as here, needs the explicit step.</p>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">pinned</span> <span class="o">=</span> <span class="n">schema</span><span class="o">.</span><span class="n">migrate_legacy_attrs</span><span class="p">(</span><span class="n">pinned</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"speed_troughs attrs:"</span><span class="p">,</span> <span class="nb">dict</span><span class="p">(</span><span class="n">pinned</span><span class="p">[</span><span class="s2">"speed_troughs"</span><span class="p">]</span><span class="o">.</span><span class="n">attrs</span><span class="p">))</span>
+
+<span class="n">expanded</span> <span class="o">=</span> <span class="n">add_changepoint_features</span><span class="p">(</span><span class="n">pinned</span><span class="p">,</span> <span class="n">sigmas</span><span class="o">=</span><span class="n">SIGMAS</span><span class="p">)</span>
+<span class="n">new_cols</span> <span class="o">=</span> <span class="p">[</span><span class="n">name</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">expanded</span><span class="o">.</span><span class="n">data_vars</span> <span class="k">if</span> <span class="n">name</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">pinned</span><span class="o">.</span><span class="n">data_vars</span><span class="p">]</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="se">\n</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">new_cols</span><span class="p">)</span><span class="si">}</span><span class="s2"> new columns:"</span><span class="p">)</span>
+<span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">new_cols</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">" "</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>speed_troughs attrs: {'kind': 'changepoint_feature', 'changepoint_mask': np.int64(1), 'target_feature': 'speed'}
+
+9 new columns:
+  speed_troughs_cp_binary
+  speed_troughs_cp_sigma2
+  speed_troughs_cp_sigma3
+  speed_troughs_cp_sigma5
+  speed_troughs_cp_binary_weighted
+  speed_troughs_cp_sigma2_weighted
+  speed_troughs_cp_sigma3_weighted
+  speed_troughs_cp_sigma5_weighted
+  speed_troughs_cp_segment_id
+</pre></div>
+</div>
+</div>
+</div>
+</section>
+<section id="plot-every-representation">
+<h2>Plot every representation<a class="headerlink" href="#plot-every-representation" title="Link to this heading">#</a></h2>
+<p>Zoomed into a few seconds for a clearer picture than the whole (busy) trial.</p>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">WINDOW_S</span> <span class="o">=</span> <span class="p">(</span><span class="mf">1.5</span><span class="p">,</span> <span class="mf">3.5</span><span class="p">)</span>
+
+<span class="n">time_full</span> <span class="o">=</span> <span class="n">expanded</span><span class="p">[</span><span class="s2">"time"</span><span class="p">]</span><span class="o">.</span><span class="n">values</span>
+<span class="n">in_window</span> <span class="o">=</span> <span class="p">(</span><span class="n">time_full</span> <span class="o">&gt;=</span> <span class="n">WINDOW_S</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">time_full</span> <span class="o">&lt;=</span> <span class="n">WINDOW_S</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+<span class="n">expanded_win</span> <span class="o">=</span> <span class="n">expanded</span><span class="o">.</span><span class="n">isel</span><span class="p">(</span><span class="n">time</span><span class="o">=</span><span class="n">in_window</span><span class="p">)</span>
+
+<span class="n">time</span> <span class="o">=</span> <span class="n">expanded_win</span><span class="p">[</span><span class="s2">"time"</span><span class="p">]</span><span class="o">.</span><span class="n">values</span>
+<span class="n">speed</span> <span class="o">=</span> <span class="n">expanded_win</span><span class="p">[</span><span class="s2">"speed"</span><span class="p">]</span><span class="o">.</span><span class="n">values</span>
+<span class="n">mask</span> <span class="o">=</span> <span class="n">expanded_win</span><span class="p">[</span><span class="s2">"speed_troughs"</span><span class="p">]</span><span class="o">.</span><span class="n">values</span>
+<span class="n">trough_times</span> <span class="o">=</span> <span class="n">time</span><span class="p">[</span><span class="n">mask</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">bool</span><span class="p">)]</span>
+
+<span class="n">sigma_cols</span> <span class="o">=</span> <span class="p">[</span><span class="sa">f</span><span class="s2">"speed_troughs_cp_sigma</span><span class="si">{</span><span class="n">s</span><span class="si">:</span><span class="s2">g</span><span class="si">}</span><span class="s2">"</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">SIGMAS</span><span class="p">]</span>
+<span class="n">weighted_cols</span> <span class="o">=</span> <span class="p">[</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">c</span><span class="si">}</span><span class="s2">_weighted"</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">sigma_cols</span><span class="p">]</span>
+
+<span class="n">fig</span><span class="p">,</span> <span class="n">axes</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">subplots</span><span class="p">(</span><span class="mi">4</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">11</span><span class="p">,</span> <span class="mi">9</span><span class="p">),</span> <span class="n">sharex</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+<span class="n">ax</span> <span class="o">=</span> <span class="n">axes</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+<span class="n">ax</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">time</span><span class="p">,</span> <span class="n">speed</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s2">"black"</span><span class="p">,</span> <span class="n">lw</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+<span class="k">for</span> <span class="n">t0</span> <span class="ow">in</span> <span class="n">trough_times</span><span class="p">:</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">axvline</span><span class="p">(</span><span class="n">t0</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s2">"crimson"</span><span class="p">,</span> <span class="n">lw</span><span class="o">=</span><span class="mf">0.6</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="mf">0.5</span><span class="p">)</span>
+<span class="n">ax</span><span class="o">.</span><span class="n">set_ylabel</span><span class="p">(</span><span class="s2">"speed"</span><span class="p">)</span>
+<span class="n">ax</span><span class="o">.</span><span class="n">set_title</span><span class="p">(</span><span class="sa">f</span><span class="s2">"raw speed (target feature) + </span><span class="si">{</span><span class="nb">int</span><span class="p">(</span><span class="n">mask</span><span class="o">.</span><span class="n">sum</span><span class="p">())</span><span class="si">}</span><span class="s2"> troughs in this window"</span><span class="p">)</span>
+
+<span class="n">ax</span> <span class="o">=</span> <span class="n">axes</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+<span class="n">ax</span><span class="o">.</span><span class="n">step</span><span class="p">(</span><span class="n">time</span><span class="p">,</span> <span class="n">mask</span><span class="p">,</span> <span class="n">where</span><span class="o">=</span><span class="s2">"mid"</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s2">"crimson"</span><span class="p">)</span>
+<span class="n">ax</span><span class="o">.</span><span class="n">set_ylabel</span><span class="p">(</span><span class="s2">"cp_binary"</span><span class="p">)</span>
+<span class="n">ax</span><span class="o">.</span><span class="n">set_title</span><span class="p">(</span><span class="s2">"binary mask — the input to more_changepoint_features"</span><span class="p">)</span>
+
+<span class="n">ax</span> <span class="o">=</span> <span class="n">axes</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span>
+<span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">sigma_cols</span><span class="p">:</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">time</span><span class="p">,</span> <span class="n">expanded_win</span><span class="p">[</span><span class="n">name</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="n">name</span><span class="o">.</span><span class="n">rsplit</span><span class="p">(</span><span class="s2">"_"</span><span class="p">,</span> <span class="mi">1</span><span class="p">)[</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>
+<span class="n">ax</span><span class="o">.</span><span class="n">set_ylabel</span><span class="p">(</span><span class="s2">"proximity"</span><span class="p">)</span>
+<span class="n">ax</span><span class="o">.</span><span class="n">legend</span><span class="p">(</span><span class="n">loc</span><span class="o">=</span><span class="s2">"upper right"</span><span class="p">,</span> <span class="n">fontsize</span><span class="o">=</span><span class="mi">8</span><span class="p">)</span>
+<span class="n">ax</span><span class="o">.</span><span class="n">set_title</span><span class="p">(</span><span class="s2">"Laplacian proximity — one curve per sigma, wider sigma = broader peak"</span><span class="p">)</span>
+
+<span class="n">ax</span> <span class="o">=</span> <span class="n">axes</span><span class="p">[</span><span class="mi">3</span><span class="p">]</span>
+<span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">weighted_cols</span><span class="p">:</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">time</span><span class="p">,</span> <span class="n">expanded_win</span><span class="p">[</span><span class="n">name</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="n">name</span><span class="o">.</span><span class="n">rsplit</span><span class="p">(</span><span class="s2">"_cp_"</span><span class="p">,</span> <span class="mi">1</span><span class="p">)[</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>
+<span class="n">ax</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">time</span><span class="p">,</span> <span class="n">expanded_win</span><span class="p">[</span><span class="s2">"speed_troughs_cp_segment_id"</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s2">"gray"</span><span class="p">,</span> <span class="n">ls</span><span class="o">=</span><span class="s2">"--"</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="s2">"segment_id"</span><span class="p">)</span>
+<span class="n">ax</span><span class="o">.</span><span class="n">set_ylabel</span><span class="p">(</span><span class="s2">"weighted / segment id"</span><span class="p">)</span>
+<span class="n">ax</span><span class="o">.</span><span class="n">set_xlabel</span><span class="p">(</span><span class="s2">"time (s)"</span><span class="p">)</span>
+<span class="n">ax</span><span class="o">.</span><span class="n">legend</span><span class="p">(</span><span class="n">loc</span><span class="o">=</span><span class="s2">"upper right"</span><span class="p">,</span> <span class="n">fontsize</span><span class="o">=</span><span class="mi">8</span><span class="p">)</span>
+<span class="n">ax</span><span class="o">.</span><span class="n">set_title</span><span class="p">(</span><span class="s2">"speed-weighted proximity (z-normalised) + normalised segment id"</span><span class="p">)</span>
+
+<span class="n">plt</span><span class="o">.</span><span class="n">tight_layout</span><span class="p">()</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<img alt="../_images/59fb561b1b957e77deb5ff3e0c906c457eec81ee53fbbbd033d226fef5b52db1.png" src="../_images/59fb561b1b957e77deb5ff3e0c906c457eec81ee53fbbbd033d226fef5b52db1.png" />
+</div>
+</div>
+</section>
+<section id="turning-it-on-for-real">
+<h2>Turning it on for real<a class="headerlink" href="#turning-it-on-for-real" title="Link to this heading">#</a></h2>
+<p><strong>Directly on your <code class="docutils literal notranslate"><span class="pre">TrialTree</span></code></strong> — same pattern as any other feature-engineering step,
+just done once and saved:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">dt</span> <span class="o">=</span> <span class="n">dt</span><span class="o">.</span><span class="n">map_trials</span><span class="p">(</span><span class="k">lambda</span> <span class="n">ds</span><span class="p">:</span> <span class="n">add_changepoint_features</span><span class="p">(</span><span class="n">ds</span><span class="p">,</span> <span class="n">sigmas</span><span class="o">=</span><span class="p">[</span><span class="mf">2.0</span><span class="p">,</span> <span class="mf">3.0</span><span class="p">,</span> <span class="mf">5.0</span><span class="p">]))</span>
+<span class="n">dt</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">nc_path</span><span class="p">))</span>
+</pre></div>
+</div>
+<p><strong>In <code class="docutils literal notranslate"><span class="pre">project.yaml</span></code></strong>, so it runs once per session at <code class="docutils literal notranslate"><span class="pre">materialise</span></code>/<code class="docutils literal notranslate"><span class="pre">infer</span></code> time instead
+of being baked into the file — name the raw masks under <code class="docutils literal notranslate"><span class="pre">inputs</span></code> (dims pinned the same
+way as <code class="docutils literal notranslate"><span class="pre">features.columns</span></code>) and which column groups you want under <code class="docutils literal notranslate"><span class="pre">transforms</span></code>; the
+generated columns are merged into <code class="docutils literal notranslate"><span class="pre">features.columns</span></code> for you, so you never spell out a
+name like <code class="docutils literal notranslate"><span class="pre">speed_troughs_cp_sigma2_weighted</span></code> by hand:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">features</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">changepoint_features</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">sigmas</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">2.0</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">3.0</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">5.0</span><span class="p p-Indicator">]</span>
+<span class="w">    </span><span class="nt">transforms</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">proximity</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">proximity_weighted</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">segment_id</span><span class="p p-Indicator">]</span>
+<span class="w">    </span><span class="nt">inputs</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">speed_troughs</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">keypoint</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">beakTip</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">stickTip</span><span class="p p-Indicator">]}</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">transforms</span></code> is a subset of <code class="docutils literal notranslate"><span class="pre">binary</span></code>, <code class="docutils literal notranslate"><span class="pre">proximity</span></code>, <code class="docutils literal notranslate"><span class="pre">proximity_weighted</span></code>, <code class="docutils literal notranslate"><span class="pre">segment_id</span></code> —
+<code class="docutils literal notranslate"><span class="pre">binary</span></code> is left out above because it just duplicates the raw mask (only marked
+<code class="docutils literal notranslate"><span class="pre">normalise=0</span></code>), and this config already doesn’t select <code class="docutils literal notranslate"><span class="pre">speed_troughs</span></code> directly. Every
+generated column already carries <code class="docutils literal notranslate"><span class="pre">attrs[&quot;normalise&quot;]</span> <span class="pre">=</span> <span class="pre">0</span></code>, so none of them need a
+<code class="docutils literal notranslate"><span class="pre">preprocess.zscore_exclude</span></code> entry either.</p>
+</section>
+</section>
+
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+                <dialog id="pst-secondary-sidebar-modal"></dialog>
+                <div id="pst-secondary-sidebar" class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="pst-show_toc_level nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#download-example-data">Download example data</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#load-one-trials-speed-its-changepoint-mask">Load one trial’s speed + its changepoint mask</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#expand-the-mask">Expand the mask</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#plot-every-representation">Plot every representation</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#turning-it-on-for-real">Turning it on for real</a></li>
+</ul>
+  </nav></div>
+
+  <div class="sidebar-secondary-item">
+
+  
+  <div class="tocsection sourcelink">
+    <a href="../_sources/examples/segment_changepoint_features.ipynb" download>
+      
+        <i class="fa-solid fa-download"></i> Download notebook
+      
+    </a>
+  </div>
+</div>
+
+</div></div>
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../_static/scripts/bootstrap.js?digest=90905a2f556bf617f1a9"></script>
+<script defer src="../_static/scripts/pydata-sphinx-theme.js?digest=90905a2f556bf617f1a9"></script>
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+
+  <p class="copyright">
+    
+      © Copyright 2026, Akseli Ilmanen.
+      <br/>
+    
+  </p>
+</div>
+      
+        <div class="footer-item">
+
+  <p class="sphinx-version">
+    Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 8.2.3.
+    <br/>
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+    <div class="footer-items__end">
+      
+        <div class="footer-item">
+<p class="theme-version">
+  <!-- # L10n: Setting the PST URL as an argument as this does not need to be localized -->
+  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.20.0.
+</p></div>
+      
+    </div>
+  
+</div>
+
+  </footer>
+  </body>
+</html>

@@ -370,6 +370,7 @@
 <li class="toctree-l1 has-children"><a class="reference internal" href="../labels/index.html">Labels</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l2"><a class="reference internal" href="../labels/labelling_gui.html">Labelling in the GUI</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../labels/curation.html">Curating labels</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../labels/workflows.html">Curation workflows</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../labels/onset_model.html">Predicting point events (LightGBM)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../labels/mapping.html">Label mapping (<code class="docutils literal notranslate"><span class="pre">mapping.txt</span></code>)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../labels/branches.html">Label branches</a></li>
@@ -393,6 +394,14 @@
 <li class="toctree-l2"><a class="reference internal" href="../keypoint_labelling/correction.html">6. The correction loop</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../keypoint_labelling/export.html">7. Visualizing &amp; exporting</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../keypoint_labelling/refine_imported.html">Refining imported poses</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1"><a class="reference internal" href="../variable_schema.html">Variable schema</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../segment/index.html">Segmentation pipeline</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="../segment/config.html">Config reference</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../segment/boundaries.html">Boundaries: heads that predict <em>where</em>, not just <em>what</em></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../segment/video_features.html">S3D video features</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../segment/later.html">Decisions to revisit</a></li>
 </ul>
 </details></li>
 <li class="toctree-l1"><a class="reference internal" href="../playback.html">Video &amp; Audio playback</a></li>
@@ -544,16 +553,18 @@ Xarray</label><div class="sd-tab-content docutils">
 <p>Changepoint arrays are binary (<code class="docutils literal notranslate"><span class="pre">0</span></code> or <code class="docutils literal notranslate"><span class="pre">1</span></code>) integer arrays that share the
 same time dimension as their target feature. They require:</p>
 <ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">attrs[&quot;type&quot;]</span> <span class="pre">=</span> <span class="pre">&quot;changepoints&quot;</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">attrs[&quot;kind&quot;]</span> <span class="pre">=</span> <span class="pre">&quot;changepoint_feature&quot;</span></code> and <code class="docutils literal notranslate"><span class="pre">attrs[&quot;changepoint_mask&quot;]</span> <span class="pre">=</span> <span class="pre">1</span></code> —
+the label and the marker, both written by
+<code class="xref py py-func docutils literal notranslate"><span class="pre">changepoint_attrs()</span></code> (see <a class="reference internal" href="../variable_schema.html"><span class="doc">Variable schema</span></a>).
+A file predating this needs <code class="xref py py-func docutils literal notranslate"><span class="pre">migrate_legacy_attrs()</span></code>.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">attrs[&quot;target_feature&quot;]</span></code> — name of the feature variable they annotate</p></li>
 </ul>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">ds</span><span class="p">[</span><span class="s2">"speed_troughs"</span><span class="p">]</span> <span class="o">=</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">(</span>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.io</span><span class="w"> </span><span class="kn">import</span> <span class="n">schema</span>
+
+<span class="n">ds</span><span class="p">[</span><span class="s2">"speed_troughs"</span><span class="p">]</span> <span class="o">=</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">(</span>
     <span class="n">cp_binary</span><span class="p">,</span>                           <span class="c1"># shape: (time, keypoint, individual), values 0 or 1</span>
     <span class="n">dims</span><span class="o">=</span><span class="p">[</span><span class="s2">"time"</span><span class="p">,</span> <span class="s2">"keypoint"</span><span class="p">,</span> <span class="s2">"individual"</span><span class="p">],</span>
-    <span class="n">attrs</span><span class="o">=</span><span class="p">{</span>
-        <span class="s2">"type"</span><span class="p">:</span> <span class="s2">"changepoints"</span><span class="p">,</span>
-        <span class="s2">"target_feature"</span><span class="p">:</span> <span class="s2">"speed"</span><span class="p">,</span>
-    <span class="p">},</span>
+    <span class="n">attrs</span><span class="o">=</span><span class="n">schema</span><span class="o">.</span><span class="n">changepoint_attrs</span><span class="p">(</span><span class="n">target_feature</span><span class="o">=</span><span class="s2">"speed"</span><span class="p">),</span>
 <span class="p">)</span>
 </pre></div>
 </div>
@@ -600,7 +611,8 @@ channel, neuron, …) with metadata columns marking it as a changepoint set.</p>
 <span class="c1"># cps is a TsGroup — one Ts per column with:</span>
 <span class="c1">#   metadata.source_label = column name (e.g. "nose")</span>
 <span class="c1">#   metadata.target_feature = "speed"</span>
-<span class="c1">#   metadata.type = "changepoints"</span>
+<span class="c1">#   metadata.kind = "changepoint_feature"   # the same names the xarray side</span>
+<span class="c1">#   metadata.changepoint_mask = 1           # writes as attrs</span>
 </pre></div>
 </div>
 <p>Accepts <a class="reference external" href="https://pynapple.org/generated/pynapple.Tsd.html#pynapple.Tsd" title="(in pynapple v0.11.3)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tsd</span></code></a>, <a class="reference external" href="https://pynapple.org/generated/pynapple.TsdFrame.html#pynapple.TsdFrame" title="(in pynapple v0.11.3)"><code class="xref py py-class docutils literal notranslate"><span class="pre">TsdFrame</span></code></a>, or

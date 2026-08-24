@@ -370,6 +370,7 @@
 <li class="toctree-l1 has-children"><a class="reference internal" href="labels/index.html">Labels</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l2"><a class="reference internal" href="labels/labelling_gui.html">Labelling in the GUI</a></li>
 <li class="toctree-l2"><a class="reference internal" href="labels/curation.html">Curating labels</a></li>
+<li class="toctree-l2"><a class="reference internal" href="labels/workflows.html">Curation workflows</a></li>
 <li class="toctree-l2"><a class="reference internal" href="labels/onset_model.html">Predicting point events (LightGBM)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="labels/mapping.html">Label mapping (<code class="docutils literal notranslate"><span class="pre">mapping.txt</span></code>)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="labels/branches.html">Label branches</a></li>
@@ -393,6 +394,14 @@
 <li class="toctree-l2"><a class="reference internal" href="keypoint_labelling/correction.html">6. The correction loop</a></li>
 <li class="toctree-l2"><a class="reference internal" href="keypoint_labelling/export.html">7. Visualizing &amp; exporting</a></li>
 <li class="toctree-l2"><a class="reference internal" href="keypoint_labelling/refine_imported.html">Refining imported poses</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1"><a class="reference internal" href="variable_schema.html">Variable schema</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="segment/index.html">Segmentation pipeline</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="segment/config.html">Config reference</a></li>
+<li class="toctree-l2"><a class="reference internal" href="segment/boundaries.html">Boundaries: heads that predict <em>where</em>, not just <em>what</em></a></li>
+<li class="toctree-l2"><a class="reference internal" href="segment/video_features.html">S3D video features</a></li>
+<li class="toctree-l2"><a class="reference internal" href="segment/later.html">Decisions to revisit</a></li>
 </ul>
 </details></li>
 <li class="toctree-l1"><a class="reference internal" href="playback.html">Video &amp; Audio playback</a></li>
@@ -543,6 +552,47 @@ matching no trials is ignored rather than emptying the navigator.</p>
 <p>And not just the navigator: as the box at the top says, <strong>every</strong> operation —
 changepoint correction, purging short labels, curation, model training and
 inference — runs over the filtered trials only.</p>
+<hr class="docutils" />
+</section>
+<section id="filtering-by-what-the-labels-do">
+<span id="target-label-filter"></span><h3>Filtering by what the labels do<a class="headerlink" href="#filtering-by-what-the-labels-do" title="Link to this heading">#</a></h3>
+<p>The column filters ask about metadata. <strong>Tools ▸ Find label inconsistencies…</strong>
+asks about the labels themselves — which trials have an event without its
+partner, which ran the classes in an order they should not have, which are
+missing a sequence altogether. Type the label ids the way the Sequence
+navigator takes them (<code class="docutils literal notranslate"><span class="pre">1-2-6-8</span></code>) and pick the question:</p>
+<div class="pst-scrollable-table-container"><table class="table">
+<thead>
+<tr class="row-odd"><th class="head"><p></p></th>
+<th class="head"><p></p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><strong>All of them occur</strong></p></td>
+<td><p>the classes are all somewhere in the trial, any order</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Some but not all occur</strong></p></td>
+<td><p>one event without its partner — the uncoupled case</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>In this order</strong></p></td>
+<td><p>in that order, other labels allowed in between (<code class="docutils literal notranslate"><span class="pre">1-2-6-6-8</span></code> matches <code class="docutils literal notranslate"><span class="pre">1-2-6-8</span></code>)</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>In this order, one straight after another</strong></p></td>
+<td><p>the same, contiguously (<code class="docutils literal notranslate"><span class="pre">1-2-6-6-8</span></code> does <em>not</em> match)</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p><strong>Invert</strong> turns any of them into “find the trials where this is <em>not</em> true”,
+which is how you ask which trials are missing the sequence. With more than one
+animal labelled, pick whose labels to read — two animals’ events interleave,
+and an order across both means nothing.</p>
+<p>The count updates as you type. <strong>Filter trials to these</strong> puts the answer into
+the table’s own <strong>label filter</strong>, a slot that sits <em>on top of</em> the column
+filters — so “wild-type trials where the order broke” is one question, and
+asking it does not throw the genotype filter away. The status line says when
+it is on, <strong>Clear label filter</strong> takes it off, and the column filters are
+untouched either way. Nothing about the labels is ever modified.</p>
 </section>
 <hr class="docutils" />
 <section id="the-curated-column">
@@ -650,6 +700,7 @@ every label row carries its trial’s condition columns.</p>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#loading-metadata">Loading metadata</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#the-trials-table">The trials table</a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#filtering">Filtering</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#filtering-by-what-the-labels-do">Filtering by what the labels do</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#the-curated-column">The <code class="docutils literal notranslate"><span class="pre">curated</span></code> column</a></li>
 </ul>
 </li>

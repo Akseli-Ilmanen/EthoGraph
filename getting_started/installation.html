@@ -727,18 +727,23 @@ labelling loop works, what the PosePAL fit costs and when to train a DeepLabCut
 detector instead are covered in <a class="reference internal" href="../advanced/keypoint_labelling/index.html"><span class="doc">Keypoint labelling</span></a>.</p>
 </div>
 </section>
-<section id="model-training-experimental">
-<h2>Model training (experimental)<a class="headerlink" href="#model-training-experimental" title="Link to this heading">#</a></h2>
-<div class="admonition warning">
-<p class="admonition-title">Warning</p>
-<p>Model training is <strong>in development and not well documented</strong>.</p>
-</div>
-<p>Install PyTorch with the correct CUDA version for your system, then install
-the model extra:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>conda<span class="w"> </span>install<span class="w"> </span><span class="nv">pytorch</span><span class="o">=</span><span class="m">2</span>.5.1<span class="w"> </span><span class="nv">torchvision</span><span class="o">=</span><span class="m">0</span>.20.1<span class="w"> </span><span class="nv">torchaudio</span><span class="o">=</span><span class="m">2</span>.5.1<span class="w"> </span>pytorch-cuda<span class="o">=</span><span class="m">12</span>.1<span class="w"> </span>-c<span class="w"> </span>pytorch<span class="w"> </span>-c<span class="w"> </span>nvidia
+<section id="segmentation-pipeline-model-training">
+<h2>Segmentation pipeline (model training)<a class="headerlink" href="#segmentation-pipeline-model-training" title="Link to this heading">#</a></h2>
+<p>The <a class="reference internal" href="../advanced/segment/index.html"><span class="doc">segmentation pipeline</span></a> learns your
+curated state labels and predicts them back into the GUI. It is scripted,
+not a command line: one config becomes a <code class="docutils literal notranslate"><span class="pre">Project</span></code> with a method per stage.
+It needs PyTorch; install a build matching your GPU first, then the extra:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>--torch-backend<span class="o">=</span>auto<span class="w"> </span>torch<span class="w"> </span>torchvision
 uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">"ethograph[model]"</span>
 </pre></div>
 </div>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">ethograph</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">eto</span>
+
+<span class="n">eto</span><span class="o">.</span><span class="n">segment</span><span class="o">.</span><span class="n">architectures</span><span class="p">()</span>         <span class="c1"># lists the available models</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">--torch-backend=auto</span></code> matters on Windows, where PyPI’s default torch wheels
+are CPU-only. Training runs on CPU too, just slowly.</p>
 <div class="admonition tip">
 <p class="admonition-title">Tip</p>
 <p>Using <code class="docutils literal notranslate"><span class="pre">conda-forge</span></code> (<code class="docutils literal notranslate"><span class="pre">conda</span> <span class="pre">create</span> <span class="pre">-y</span> <span class="pre">-n</span> <span class="pre">ethograph</span> <span class="pre">-c</span> <span class="pre">conda-forge</span> <span class="pre">python=3.12</span></code>)
@@ -832,7 +837,7 @@ that PyTorch/CUDA packages depend on.</p>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#for-developers">For developers</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#update-the-package">Update the package</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#keypoint-labelling-backends-optional">Keypoint labelling backends (optional)</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#model-training-experimental">Model training (experimental)</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#segmentation-pipeline-model-training">Segmentation pipeline (model training)</a></li>
 </ul>
   </nav></div>
 

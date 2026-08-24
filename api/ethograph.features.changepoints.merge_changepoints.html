@@ -422,19 +422,29 @@
 <h1>merge_changepoints<a class="headerlink" href="#merge-changepoints" title="Link to this heading">#</a></h1>
 <dl class="py function">
 <dt class="sig sig-object py" id="ethograph.features.changepoints.merge_changepoints">
-<span class="sig-prename descclassname"><span class="pre">ethograph.features.changepoints.</span></span><span class="sig-name descname"><span class="pre">merge_changepoints</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ds</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/features/changepoints.html#merge_changepoints"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.features.changepoints.merge_changepoints" title="Link to this definition">#</a></dt>
-<dd><p>Merge all changepoint variables in a dataset into a single boolean mask.</p>
-<p>Combines every variable with <code class="docutils literal notranslate"><span class="pre">attrs[&quot;type&quot;]</span> <span class="pre">==</span> <span class="pre">&quot;changepoints&quot;</span></code> using
-logical OR across all non-time dimensions.  All changepoint variables
-must share the same <code class="docutils literal notranslate"><span class="pre">target_feature</span></code> attribute.</p>
+<span class="sig-prename descclassname"><span class="pre">ethograph.features.changepoints.</span></span><span class="sig-name descname"><span class="pre">merge_changepoints</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ds</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">vars</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">keep_dims</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/features/changepoints.html#merge_changepoints"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.features.changepoints.merge_changepoints" title="Link to this definition">#</a></dt>
+<dd><p>Merge changepoint variables in a dataset into a single boolean mask.</p>
+<p>Combines every raw changepoint mask (<code class="docutils literal notranslate"><span class="pre">attrs[&quot;changepoint_mask&quot;]</span></code>; see
+<code class="xref py py-func docutils literal notranslate"><span class="pre">ethograph.io.schema.is_changepoint()</span></code>) using logical OR across all
+non-time dimensions — the smooth expansions of a mask are ordinary
+features and are not merged. All masks must share the same
+<code class="docutils literal notranslate"><span class="pre">target_feature</span></code> attribute.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>ds</strong> (<em>xr.Dataset</em>) – Dataset containing one or more changepoint variables.</p>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ds</strong> (<em>xr.Dataset</em>) – Dataset containing one or more changepoint variables.</p></li>
+<li><p><strong>vars</strong> (<em>sequence</em><em> of </em><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><em>optional</em>) – Which changepoint masks to merge; default merges every one
+<code class="xref py py-func docutils literal notranslate"><span class="pre">changepoint_vars()</span></code> finds. Naming a
+variable that is not a changepoint mask is an error.</p></li>
+<li><p><strong>keep_dims</strong> (<em>sequence</em><em> of </em><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><em>optional</em>) – Dims to leave standing instead of ORing across — typically the
+individual dim, so one animal’s changepoints do not leak into
+another’s. Default collapses every non-time dim.</p></li>
+</ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p><ul class="simple">
 <li><p><strong>ds</strong> (<em>xr.Dataset</em>) – Copy of the input with a new <code class="docutils literal notranslate"><span class="pre">&quot;changepoints&quot;</span></code> DataArray
-(float 0/1) replacing the individual changepoint variables.</p></li>
+(float 0/1) replacing the merged changepoint variables.</p></li>
 <li><p><strong>target_feature</strong> (<em>str</em>) – The shared <code class="docutils literal notranslate"><span class="pre">target_feature</span></code> attribute from the input variables.</p></li>
 </ul>
 </p>
