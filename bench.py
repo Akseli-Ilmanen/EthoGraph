@@ -30,18 +30,13 @@ created with and refuses a new set ("CategoricalDistribution does not support
 dynamic value space").
 
 Both modes score the same number — ``train.select_on`` on the **val** split —
-so the variants stay comparable however each one was run.
+so the variants stay comparable however each one was run, and ``test`` stays
+untouched.
 
-**Stage 1 watches test to decide when to stop, stage 2 never does.** A fixed
-epoch guess either wastes epochs on a variant that plateaus early or cuts one
-off that is still climbing — and that trade-off is architecture-dependent
-(``mstcn`` epochs are cheap and plentiful; others train slower but need
-fewer). ``train.patience_on="test"`` (below) lets each cell stop once its own
-test curve stops moving, which is fine here: this run's test split is never
-the number that gets reported anywhere — only ``val_score`` decides the
-winner, and the number a user sees is a fresh cross-validation on
-session-held-out data. Stage 2 forces ``patience_on="val"`` — its test *is*
-the reported number, so it stays untouched.
+Every run trains its full ``train.epochs`` budget: the metrics curve in
+``metrics.tsv`` records what happened and ``best.pt`` keeps the best **val**
+epoch, but nothing cuts a run short. Architectures converge at different
+speeds, so read the curve rather than trusting one number.
 
 Stage 2 runs once, on the variant that scored best: a cross-validation costs
 one training run per session, so it is not something to spend on the variants
@@ -49,6 +44,12 @@ that already lost.
 
 Both stages resume. A swept cell already in ``bench_cells.tsv`` is skipped and
 its score read back; a search resumes its study.
+
+Every run writes its own ``test_metrics.yaml`` + ``test_eval.npz`` as it
+finishes, so an interrupted bench loses nothing already trained: point
+``eto.segment.plotting.write_comparison_pdf`` at whichever run dirs you want
+(they are in ``bench_cells.tsv`` / ``searches/{name}/trials.tsv``) to draw the
+comparison afterwards.
 
     python bench.py
 """
@@ -72,7 +73,7 @@ CELLS_FILE = CONFIG.with_name("bench_cells.tsv")
 #: Varied for every architecture — these keys mean the same thing to all of them.
 SHARED_SPACE: dict[str, dict] = {
     "train.learning_rate": {"type": "float", "low": 1.0e-5, "high": 1.0e-2, "log": True},
-    # "train.loss.alpha": {"type": "categorical", "choices": [0.0]},
+    "train.loss.alpha": {"type": "float", "low": 0.0, "high": 1.0},
     # "train.augment.noise_std": {"type": "float", "low": 0.0, "high": 0.1},
 }
 
@@ -85,16 +86,73 @@ SHARED_SPACE: dict[str, dict] = {
 #: key must come from `eto.segment.tunable_params(arch)` — anything else is
 #: refused before training starts, naming what that architecture does take.
 VARIANTS: dict[str, dict] = {
+
+    "mstcn": {
+        "architecture": "mstcn",
+        "params": {},
+        "space": {
+            "model.params.num_f_maps": {"type": "categorical", "choices": [64, 128, 256]},
+            "model.params.num_R": {"type": "int", "low": 1, "high": 3},
+            "model.params.dropout_rate": {"type": "float", "low": 0.1, "high": 0.6},
+        },
+    },
+    "c2f_tcn": {
+        "architecture": "c2f_tcn",
+        "params": {},
+        "space": {"model.params.num_f_maps": {"type": "categorical", "choices": [64, 128, 256]}},
+    },
+    "edtcn": {
+        "architecture": "edtcn",
+        "params": {},
+        "space": {"model.params.kernel_size": {"type": "int", "low": 9, "high": 33, "step": 4}},
+    },
+    "mlp": {  # the floor: no temporal context at all
+        "architecture": "mlp",
+        "params": {},
+        "space": {"model.params.dropout_rates": {"type": "float", "low": 0.1, "high": 0.7}},
+    },
+
+    # ASFormer's encoder (num_decoders=0, the same backbone `asformer_enc_alpha`
+    # below tunes) plus ASRF's boundary branch. `backbone_params` is pinned,
+    # not searched — the encoder axis is what `asformer_enc_alpha` already
+    # covers, so this variant asks only "does the branch earn its cost", not
+    # "which encoder". `train.boundary.weight` must be > 0 here or the branch
+    # is built but never trained (its default is 0.0 — off).
+    "asrf": {
+        "architecture": "asrf",
+        "params": {"backbone": "asformer", "backbone_params": {"num_decoders": 0}},
+        "space": {
+            "model.params.brb_stages": {"type": "int", "low": 1, "high": 3},
+            "train.boundary.weight": {"type": "float", "low": 0.3, "high": 2.0},
+        },
+    },
+    # The same encoder under BaFormer's query-voting head instead of ASRF's
+    # boundary branch. Encoder keys mirror `asformer_enc_alpha`'s, so this
+    # asks the same "which encoder" question through a different head; the
+    # head's own settings (`num_queries`, `nheads`, ...) are left at their
+    # defaults — `num_queries` in particular is meant to be set from the
+    # data's own segment counts (see `build_baformer`'s docstring), not
+    # searched blind, and `train.queries.*`'s defaults already train it.
+    "baformer": {
+        "architecture": "baformer",
+        "params": {},
+        "space": {
+            "model.params.num_f_maps": {"type": "categorical", "choices": [64, 128, 256]},
+            "model.params.num_layers": {"type": "int", "low": 6, "high": 12},
+        },
+    },
+
+    # ASFormer - slower, run at end
+
     # ASFormer, encoder only: no refinement decoders, one output stage.
     # An all-categorical space, so this one is swept: 3 values of tau, 3 runs.
     "asformer_enc_alpha": {
         "architecture": "asformer",
         "params": {"num_decoders": 0},
         "space": {
-            # "model.params.num_f_maps": {"type": "categorical", "choices": [64, 128, 256]},
-            # "model.params.num_layers": {"type": "int", "low": 6, "high": 12},
-            # "model.params.channel_masking_rate": {"type": "float", "low": 0.0, "high": 0.5},
-            # "train.loss.tau": {"type": "categorical", "choices": [0.1, 1.0]},
+            "model.params.num_f_maps": {"type": "categorical", "choices": [64, 128, 256]},
+            "model.params.num_layers": {"type": "int", "low": 6, "high": 12},
+            #"model.params.channel_masking_rate": {"type": "float", "low": 0.0, "high": 0.5},
         },
     },
     # # ASFormer as published: the encoder's prediction refined by `num_decoders`
@@ -102,49 +160,31 @@ VARIANTS: dict[str, dict] = {
     # # asks "does refinement earn its cost here?" — each decoder is another full
     # # pass, and this architecture already runs one sample at a time, so this is
     # # the most expensive variant in the sweep by some way.
-    # "asformer_dec": {
-    #     "architecture": "asformer",
-    #     "params": {},
-    #     "space": {
-    #         "model.params.num_decoders": {"type": "int", "low": 1, "high": 3},
-    #         "model.params.num_f_maps": {"type": "categorical", "choices": [64, 128, 256]},
-    #         "model.params.num_layers": {"type": "int", "low": 6, "high": 12},
-    #         "model.params.channel_masking_rate": {"type": "float", "low": 0.0, "high": 0.5},
-    #     },
-    # },
-    # "mstcn": {
-    #     "architecture": "mstcn",
-    #     "params": {},
-    #     "space": {
-    #         "model.params.num_f_maps": {"type": "categorical", "choices": [64, 128, 256]},
-    #         "model.params.num_R": {"type": "int", "low": 1, "high": 3},
-    #         "model.params.dropout_rate": {"type": "float", "low": 0.1, "high": 0.6},
-    #     },
-    # },
-    # "c2f_tcn": {
-    #     "architecture": "c2f_tcn",
-    #     "params": {},
-    #     "space": {"model.params.num_f_maps": {"type": "categorical", "choices": [64, 128, 256]}},
-    # },
-    # "edtcn": {
-    #     "architecture": "edtcn",
-    #     "params": {},
-    #     "space": {"model.params.kernel_size": {"type": "int", "low": 9, "high": 33, "step": 4}},
-    # },
-    # "mlp": {  # the floor: no temporal context at all
-    #     "architecture": "mlp",
-    #     "params": {},
-    #     "space": {"model.params.dropout_rates": {"type": "float", "low": 0.1, "high": 0.7}},
-    # },
+    "asformer_dec": {
+        "architecture": "asformer",
+        "params": {},
+        "space": {
+            "model.params.num_decoders": {"type": "int", "low": 1, "high": 3},
+            "model.params.num_f_maps": {"type": "categorical", "choices": [64, 128, 256]},
+            "model.params.num_layers": {"type": "int", "low": 6, "high": 12},
+            #"model.params.channel_masking_rate": {"type": "float", "low": 0.0, "high": 0.5},
+        },
+    },
+
 }
 
 #: How many configurations Optuna draws — for a *searched* variant only. A
 #: swept variant trains its whole grid, however large that is.
-N_TRIALS = 1
-
-#: Stage-1 epochs of no test-``select_on`` improvement before a cell stops.
-#: Stage 2 (cross-validation) never uses this — see the module docstring.
-PATIENCE = 10
+#:
+#: What bounds a search's cost per variant is ``search.prune``
+#: (``SearchConfig.prune``, default ``True``): a trial below the running median
+#: of *other trials in this study* at the same epoch is abandoned (Optuna's
+#: ``MedianPruner``), so a diverged ``train.learning_rate`` draw does not cost
+#: a full run. It needs something to compare against, though — ``MedianPruner``
+#: does not prune until 5 trials have completed (its ``n_startup_trials``
+#: default), so below that it never fires. 6–10 is enough for TPE to learn from
+#: and for pruning to help on the later trials.
+N_TRIALS = 8
 
 #: Appended to every variant name, so one feature set's runs stay together.
 SUFFIX = "kin_v1"
@@ -168,8 +208,6 @@ def base_overrides(variant: str, spec: dict) -> dict[str, Any]:
         "model.architecture": spec["architecture"],
         "model.params": spec["params"],
         "train.run_name": run_name(variant),
-        "train.patience": PATIENCE,
-        "train.patience_on": "test",
     }
 
 

@@ -410,27 +410,14 @@ class TrainConfig:
     batch_size: int = 1
     #: Ours: upstream does not clip gradients. ``0`` disables.
     grad_clip: float = 1.0
-    #: Validate every N epochs. ``best.pt`` is always the checkpoint with the
-    #: best **val** :attr:`select_on`, regardless of :attr:`patience_on`.
+    #: Validate every N epochs. Every run trains its full ``epochs`` budget;
+    #: validation records the metric curve and keeps the best checkpoint, it
+    #: never cuts the run short.
     eval_every: int = 5
     #: Validation metric ``best.pt`` is selected on, and the objective a
     #: hyperparameter search would read off :class:`RunResult.best_score`.
     select_on: str = "f1@50"
     f1_thresholds: list[float] = field(default_factory=lambda: [0.5, 0.75, 0.9])
-    #: Stop once :attr:`patience_on` has gone this many epochs with no
-    #: improvement on :attr:`select_on`; ``None`` (default) trains the full
-    #: :attr:`epochs` budget, since a fixed guess still under- or over-runs
-    #: architectures that converge at different speeds for a different reason
-    #: (see ``bench.py``).
-    patience: int | None = None
-    #: Which curve :attr:`patience` watches. ``"val"`` is the only choice
-    #: that never touches ``test`` and is the only one a cross-validated
-    #: report of test accuracy may use. ``"test"`` is for the exploratory
-    #: architecture comparison in ``bench.py`` only, where nothing about
-    #: *this* run's own test split is what gets reported — the winning
-    #: architecture's reported accuracy comes from a later, separate
-    #: cross-validation, so peeking here does not bias it.
-    patience_on: str = "val"
     seed: int = 0
     device: str | None = None
     #: Feature categories to leave out of this run — the ablation axis
@@ -462,12 +449,6 @@ class TrainConfig:
     circle: CircleConfig = field(default_factory=CircleConfig)
     augment: AugmentConfig = field(default_factory=AugmentConfig)
     split: SplitConfig = field(default_factory=SplitConfig)
-
-    def __post_init__(self) -> None:
-        if self.patience_on not in ("val", "test"):
-            raise ValueError(f"train.patience_on must be 'val' or 'test', got {self.patience_on!r}")
-        if self.patience is not None and self.patience < 1:
-            raise ValueError(f"train.patience must be at least 1 epoch, got {self.patience}")
 
 
 @dataclass

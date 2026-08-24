@@ -482,56 +482,6 @@ class TestSplit:
         assert redrawn != roles
 
 
-class TestPatience:
-    """``train.patience`` stops a run once its watched curve stops improving."""
-
-    def test_needs_validation_trials(self, project: Path):
-        from ethograph.segment.train import train
-
-        cfg = load_config(
-            project / "config.yaml",
-            [
-                "train.device=cpu",
-                "train.patience=1",
-                "train.split.train_fraction=0.8",
-                "train.split.val_fraction=0.0",
-                "train.split.test_fraction=0.2",
-            ],
-        )
-        with pytest.raises(ValueError, match="no validation trials"):
-            train(cfg)
-
-    def test_patience_on_test_needs_a_test_split(self, project: Path):
-        from ethograph.segment.train import train
-
-        cfg = load_config(
-            project / "config.yaml",
-            [
-                "train.device=cpu",
-                "train.patience=1",
-                "train.patience_on=test",
-                "train.split.train_fraction=0.7",
-                "train.split.val_fraction=0.3",
-                "train.split.test_fraction=0.0",
-            ],
-        )
-        with pytest.raises(ValueError, match="needs a test split"):
-            train(cfg)
-
-    def test_stops_once_the_watched_score_stops_improving(self, project: Path):
-        from ethograph.segment.train import METRICS_FILE, train
-
-        cfg = load_config(
-            project / "config.yaml",
-            ["train.device=cpu", "train.learning_rate=0", "train.epochs=6", "train.patience=1"],
-        )
-        result = train(cfg)
-        metrics = pd.read_csv(result.run_dir / METRICS_FILE, sep="\t")
-        # frozen weights (lr=0) make every epoch's val score identical, so
-        # patience=1 stops right after the second evaluation, not at epoch 6.
-        assert metrics["epoch"].tolist() == [1, 2]
-
-
 # ---------------------------------------------------------------------------
 # Stage 1: hyperparameter search.  Stage 2: cross-validation
 # ---------------------------------------------------------------------------

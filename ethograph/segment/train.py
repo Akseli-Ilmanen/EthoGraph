@@ -388,17 +388,10 @@ def _train_run(
         else:
             logger.warning("No validation samples — no metrics curve, and best.pt is the last epoch.")
     test_loader = DataLoader(_dataset(keys["test"]), batch_size=1, collate_fn=collate) if keys["test"] else None
-    if tcfg.patience is not None:
-        if val_loader is None:
-            raise ValueError("train.patience is set but train.split left no validation trials to evaluate it on.")
-        if tcfg.patience_on == "test" and test_loader is None:
-            raise ValueError("train.patience_on='test' needs a test split, but train.split left none.")
 
     metrics_rows: list[dict[str, Any]] = []
     best_score = -np.inf
     best_epoch = 0
-    patience_score = -np.inf
-    patience_epoch = 0
     select_on = tcfg.select_on
     t_start = _time.time()
     for epoch in range(1, tcfg.epochs + 1):
@@ -451,7 +444,6 @@ def _train_run(
                 torch.save(model.state_dict(), run_dir / BEST_FILE)
                 logger.info("  new best.pt (val %s = %.2f)", select_on, score)
 
-            test_processed = None
             if test_loader is not None:
                 held = _predict_dense(model, test_loader, device)
                 test_raw = evaluate(held.gt, held.pred, tcfg.f1_thresholds, store.layout.fs)
@@ -474,21 +466,6 @@ def _train_run(
             pd.DataFrame(metrics_rows).to_csv(run_dir / METRICS_FILE, sep="\t", index=False)
             if on_eval is not None:
                 on_eval(epoch, score)
-
-            if tcfg.patience is not None:
-                watch_score = score if tcfg.patience_on == "val" else float(test_processed[select_on])
-                if watch_score > patience_score:
-                    patience_score, patience_epoch = watch_score, epoch
-                elif epoch - patience_epoch >= tcfg.patience:
-                    logger.info(
-                        "  no %s-%s improvement in %d epochs (best %.2f at epoch %d) — stopping",
-                        tcfg.patience_on,
-                        select_on,
-                        tcfg.patience,
-                        patience_score,
-                        patience_epoch,
-                    )
-                    break
     torch.save(model.state_dict(), run_dir / LAST_FILE)
     if not (run_dir / BEST_FILE).is_file():
         shutil.copy(run_dir / LAST_FILE, run_dir / BEST_FILE)
