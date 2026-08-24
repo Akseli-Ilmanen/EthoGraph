@@ -37,7 +37,7 @@ from ethograph.labels.tsv_store import (
     set_trial_in_tsv,
     set_trial_meta_attr,
 )
-from ethograph.utils.paths import auto_git_commit, ethograph_home, sanitize_path_state
+from ethograph.utils.paths import auto_git_commit, ethograph_home, is_throwaway_path, sanitize_path_state
 from ethograph.utils.qt import find_combo_index
 
 logger = logging.getLogger(__name__)
@@ -188,6 +188,11 @@ class AppStateSpec:
         "video_grid_per_page": (int, 6, True),
         "video_grid_columns": (int, 3, True),
         "label_grid_columns": (int, 3, True),
+        # How the grids order what they show (see dialog_label_gridview
+        # GRID_SORT_ORDERS). Remembered like every other grid knob: an order
+        # that suits a model's output suits the next review of it too.
+        "label_grid_sort": (str, "trial", True),
+        "video_grid_sort": (str, "duration", True),
         "label_grid_window_s": (float, 1.0, True),
         # The video grid's own playback speed — deliberately decoupled from
         # playback_speed_pct (tweaking it for a slow-motion review must not
@@ -411,6 +416,10 @@ class AppStateSpec:
         "audio_cp_silence_threshold": (float, 0.1, True),
         "show_changepoints": (bool, True, True),
         "plot_has_changepoints": (bool, False, False),
+        # label_drawing_armed: a label class is selected and the next plot
+        # click places a boundary. Mirrored from LabelsWidget so the plots can
+        # tell a closing click from a double-click-to-autoscale. Never saved.
+        "label_drawing_armed": (bool, False, False),
         "apply_changepoint_correction": (bool, True, True),
         "cp_step_purge": (bool, True, True),
         "cp_step_stitch": (bool, True, True),
@@ -1237,6 +1246,8 @@ class ObservableAppState(QObject):
         state_dict = {}
         for attr in AppStateSpec.saveable_attributes(scope=scope):
             value = self._values.get(attr)
+            if attr in AppStateSpec.PATH_VARS and is_throwaway_path(value):
+                continue
             if value is not None and isinstance(value, (str, float, int, bool)):
                 state_dict[attr] = self._to_native(value)
             elif isinstance(value, dict) and value:

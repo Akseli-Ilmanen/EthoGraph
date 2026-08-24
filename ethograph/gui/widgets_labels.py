@@ -30,7 +30,6 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
-from ethograph.features.changepoints import snap_to_nearest_changepoint_time
 from ethograph.gui.notify import notify
 from ethograph.io.catalog import INDIVIDUAL_DIMS
 from ethograph.io.metadata_table import (
@@ -1085,15 +1084,29 @@ class LabelsWidget(QWidget):
         """
         return self.app_state.selected_recipient()
 
+    @property
+    def ready_for_label_click(self) -> bool:
+        """Whether the next plot click places a label boundary."""
+        return self._ready_for_label_click
+
+    @ready_for_label_click.setter
+    def ready_for_label_click(self, armed: bool) -> None:
+        # Mirrored onto app_state so BasePlot._handle_click can deliver a
+        # closing click that Qt reports as a double-click.
+        self._ready_for_label_click = bool(armed)
+        self.app_state.label_drawing_armed = bool(armed)
+
     def _on_plot_clicked(self, click_info):
         """Handle mouse clicks on the lineplot widget.
 
         Args:
-            click_info: dict with 'x' (time coordinate) and 'button' (Qt button constant)
+            click_info: dict with 'x' (time coordinate), 'button' (Qt button
+                constant) and, from a real plot, 'plot' (the panel clicked).
         """
 
         t_display = click_info["x"]
         button = click_info["button"]
+        clicked_plot = click_info.get("plot")
 
         if t_display is None or not self.app_state.ready:
             return
@@ -1131,10 +1144,10 @@ class LabelsWidget(QWidget):
         # works. Otherwise right-click seeks the video; the red cursor follows
         # automatically via the video's frame_changed signal.
         if self.ready_for_label_click:
-            # Snap to nearest changepoint if available (display clock — the
-            # changepoint times come back on the plot axis).
+            # Snap to the nearest changepoint the clicked panel draws (display
+            # clock — the changepoint times come back on the plot axis).
             if self.changepoints_widget and self.changepoints_widget.is_changepoint_correction_enabled():
-                t_display = self._snap_to_changepoint_time(t_display)
+                t_display = self._snap_to_changepoint_time(t_display, clicked_plot)
 
             # A placed label belongs to exactly ONE trial: strict resolution
             # refuses inter-trial gaps, and the two clicks of a state event
@@ -1297,36 +1310,51 @@ class LabelsWidget(QWidget):
                 pass
         return 0.05
 
-    def _snap_to_changepoint_time(self, t_clicked: float) -> float:
-        """Snap the clicked time (seconds) to the nearest changepoint time.
+    def _snap_to_changepoint_time(self, t_clicked: float, plot=None) -> float:
+        """Snap *t_clicked* (display clock) to the nearest changepoint *plot* draws.
 
-        Works entirely in the time domain. Also considers audio changepoints.
+        Unbounded: the nearest candidate wins however far away it is. The
+        candidates are :meth:`_snap_candidates` — what is on the clicked
+        panel, so a click never lands on a mark the user cannot see.
         """
-        store = getattr(self.app_state, "data_loader", None)
-        if store is not None and hasattr(store, "get_cp_times"):
-            feature = getattr(self.app_state, "features_sel", None)
-            wb = self.app_state.window_bounds
-            if wb is not None:
-                cp_times = store.get_cp_times(feature, t0=wb.start_s, t1=wb.end_s)
-            else:
-                cp_times = store.get_cp_times(feature)
-            if len(cp_times) == 0:
-                return t_clicked
-            nearest_idx = np.argmin(np.abs(cp_times - t_clicked))
-            return float(cp_times[nearest_idx])
-
-        time_coord = self.app_state.time_coord
-        if time_coord is None:
+        cp_times = self._snap_candidates(plot)
+        if len(cp_times) == 0:
+            logger.debug("snap: no changepoints drawn for the click at %.4f s", t_clicked)
             return t_clicked
-
-        ds_kwargs = self.app_state.get_ds_kwargs()
-        feature_sel = self.app_state.features_sel
-
-        snapped = snap_to_nearest_changepoint_time(
-            t_clicked, self.app_state.ds, feature_sel, time_coord.values, **ds_kwargs
-        )
-
+        snapped = float(cp_times[np.argmin(np.abs(cp_times - t_clicked))])
+        logger.debug("snap: %.4f s -> %.4f s (%d candidates)", t_clicked, snapped, len(cp_times))
         return snapped
+
+    def _snap_candidates(self, plot) -> np.ndarray:
+        """The changepoint times (display clock) drawn on *plot*.
+
+        An audio panel draws the trial's audio changepoints. A feature panel
+        draws the masks targeting **its** feature at **its** keypoint /
+        individual selections — the same reading ``XarrayLoader.select``
+        renders, so drawn and snapped are one set. A panel that draws no
+        changepoints (ephys, raster, heatmap, or a click with no panel) takes
+        the active feature panel's, as the changepoint jump keys do.
+        """
+        container = self.plot_container
+        loader = getattr(self.app_state, "data_loader", None)
+        if container is None or loader is None:
+            return np.array([], dtype=np.float64)
+
+        if plot is not None and plot in [*container.spectrogram_plots, *container.audio_trace_plots]:
+            ds = self.app_state.ds
+            if ds is None or "audio_cp_onsets" not in ds.data_vars or "audio_cp_offsets" not in ds.data_vars:
+                return np.array([], dtype=np.float64)
+            onsets = ds["audio_cp_onsets"].values.astype(np.float64)
+            offsets = ds["audio_cp_offsets"].values.astype(np.float64)
+            return np.unique(np.concatenate([onsets, offsets]))
+
+        feature_plot = plot if plot in container.line_plots else container.get_current_plot()
+        feature = feature_plot._effective_feature()
+        if not feature:
+            return np.array([], dtype=np.float64)
+        wb = self.app_state.window_bounds
+        t0, t1 = (wb.start_s, wb.end_s) if wb is not None else (None, None)
+        return loader.get_cp_times(feature, feature_plot._effective_selections(), t0=t0, t1=t1)
 
     def _post_label_cleanup(self, placed_onset: float, placed_offset: float, individual: str, recipient: str):
         """Purge only the slivers ``add_interval`` just created.

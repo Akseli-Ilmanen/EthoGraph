@@ -17,9 +17,6 @@ from .app_constants import (
     CP_LINE_WIDTH_MEDIUM,
     CP_LINE_WIDTH_THICK,
     CP_LINE_WIDTH_THIN,
-    CP_METHOD_COLORS,
-    CP_SCATTER_SIZE,
-    CP_SCATTER_Y_POSITION_RATIO,
     CP_ZOOM_MEDIUM_THRESHOLD,
     CP_ZOOM_VERY_OUT_THRESHOLD,
     DEFAULT_LABEL_OVERLAY_MODES,
@@ -80,7 +77,6 @@ class LabelDrawingMixin:
       - label_mappings: Dict[int, Dict[str, Any]]
       - audio_cp_items: list
       - osc_event_items: list
-      - dataset_cp_items: list
       - _pending_label_items, _pending_label_regions, _pending_hover_conns:
         lists, and _pending_label_anchor: float | None
       - spectrogram_plots, audio_trace_plots, heatmap_plots, neo_trace_plots
@@ -534,43 +530,6 @@ class LabelDrawingMixin:
             except (RuntimeError, AttributeError, ValueError):
                 pass
         self.audio_cp_items.clear()
-
-    def draw_dataset_changepoints(self, time_array: np.ndarray, cp_by_method: dict):
-        self.clear_dataset_changepoints()
-        line_plots = getattr(self, "line_plots", None)
-        if not line_plots or not self.is_lineplot():
-            return
-        line_plot = self.get_current_plot()
-        y_range = line_plot.plot_item.getViewBox().viewRange()[1]
-        y_pos = y_range[0] + (y_range[1] - y_range[0]) * CP_SCATTER_Y_POSITION_RATIO
-        for method_name, indices in cp_by_method.items():
-            if len(indices) == 0:
-                continue
-            times = time_array[indices]
-            y_values = np.full_like(times, y_pos)
-            color = CP_METHOD_COLORS.get(method_name, CP_METHOD_COLORS["default"])
-            scatter = pg.ScatterPlotItem(
-                x=times,
-                y=y_values,
-                size=CP_SCATTER_SIZE,
-                pen=pg.mkPen(color=color, width=1),
-                brush=pg.mkBrush(color=color),
-                symbol="o",
-                name=method_name,
-            )
-            scatter.setZValue(Z_INDEX_CHANGEPOINTS)
-            line_plot.plot_item.addItem(scatter)
-            self.dataset_cp_items.append(scatter)
-
-    def clear_dataset_changepoints(self):
-        line_plot = getattr(self, "line_plot", None)
-        for item in self.dataset_cp_items:
-            try:
-                if line_plot is not None:
-                    line_plot.plot_item.removeItem(item)
-            except (RuntimeError, AttributeError, ValueError):
-                pass
-        self.dataset_cp_items.clear()
 
     # --- Oscillatory events ---
 

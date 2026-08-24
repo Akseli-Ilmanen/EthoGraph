@@ -3,6 +3,7 @@
 import logging
 
 import numpy as np
+import pandas as pd
 import ruptures as rpt
 import xarray as xr
 from qtpy.QtCore import Qt, Signal
@@ -28,7 +29,7 @@ import ethograph as eto
 from ethograph.features.changepoints import (
     correct_changepoints,
     correct_changepoints_automatic,
-    extract_cp_times,
+    dataset_changepoint_times,
 )
 from ethograph.gui.notify import notify
 from ethograph.io import schema
@@ -191,12 +192,6 @@ class ChangepointsWidget(QWidget):
         if "audio_cp_onsets" not in ds.data_vars or "audio_cp_offsets" not in ds.data_vars:
             return None
         return ds["audio_cp_onsets"].values, ds["audio_cp_offsets"].values
-
-    def _draw_dataset_changepoints_on_plot(self):
-        if self.plot_container:
-            cp_by_method, time_array = self._get_dataset_changepoint_indices()
-            if cp_by_method is not None:
-                self.plot_container.draw_dataset_changepoints(time_array, cp_by_method)
 
     # =========================================================================
     # Shared controls / toggle buttons
@@ -544,52 +539,17 @@ class ChangepointsWidget(QWidget):
         if not show:
             self.changepoint_correction_checkbox.setChecked(False)
 
+        # Feature panels draw their own changepoints from PlotData on the
+        # plot update below; only the audio lines are drawn from here.
         if self.plot_container:
             if show:
                 result = self._get_audio_cps_from_ds()
                 if result is not None:
                     self.plot_container.draw_audio_changepoints(*result)
-
-                self._draw_dataset_changepoints_on_plot()
             else:
                 self.plot_container.clear_audio_changepoints()
-                self.plot_container.clear_dataset_changepoints()
 
         self.request_plot_update.emit()
-
-    def _get_dataset_changepoint_indices(self):
-        ds = getattr(self.app_state, "ds", None)
-        if ds is None:
-            return None, None
-
-        cp_ds = schema.filter_changepoints(ds)
-        if len(cp_ds.data_vars) == 0:
-            return None, None
-
-        cp_by_method = {}
-        time_array = None
-
-        for var_name in cp_ds.data_vars:
-            cp_da = cp_ds[var_name]
-            if time_array is None:
-                time_array = eto.get_time_coord(cp_da)
-
-            cp_data = cp_da.values
-            if cp_data.ndim > 1:
-                cp_data = cp_data.any(axis=tuple(range(1, cp_data.ndim)))
-
-            indices = np.where(cp_data > 0)[0]
-            if len(indices) > 0:
-                method_name = var_name.split("_")[-1]
-                if method_name in cp_by_method:
-                    cp_by_method[method_name] = np.unique(np.concatenate([cp_by_method[method_name], indices]))
-                else:
-                    cp_by_method[method_name] = indices
-
-        if len(cp_by_method) == 0:
-            return None, None
-
-        return cp_by_method, time_array
 
     def _clear_spectral_changepoints(self):
         ds = getattr(self.app_state, "ds", None)
@@ -744,7 +704,6 @@ class ChangepointsWidget(QWidget):
         notify(f"Added '{cp_var_name}' with {n_changepoints} changepoints")
 
         self._ensure_changepoints_visible()
-        self._draw_dataset_changepoints_on_plot()
 
     def _clear_current_feature_changepoints(self):
         ds = getattr(self.app_state, "ds", None)
@@ -766,9 +725,6 @@ class ChangepointsWidget(QWidget):
         self.ds_cp_count_label.setText("")
         self.ruptures_count_label.setText("")
         notify(f"Removed {n_removed} changepoint variable(s) for '{feature}'")
-
-        if self.plot_container:
-            self.plot_container.clear_dataset_changepoints()
 
         self.request_plot_update.emit()
 
@@ -869,7 +825,6 @@ class ChangepointsWidget(QWidget):
         notify(f"Added '{cp_var_name}' with {n_changepoints} changepoints")
 
         self._ensure_changepoints_visible()
-        self._draw_dataset_changepoints_on_plot()
 
     # =========================================================================
     # Correction Parameters Panel (unchanged)
@@ -1114,32 +1069,38 @@ class ChangepointsWidget(QWidget):
         notify("Reverted correction")
 
     def _extract_cp_times(self, ds, ds_kwargs):
-        """Extract changepoint times from either backend."""
-        store = getattr(self.app_state, "data_loader", None)
-        if store is not None and hasattr(store, "get_cp_times"):
-            feature = getattr(self.app_state, "features_sel", None)
+        """Changepoint times (trial clock) the correction snaps to, from either backend.
+
+        The current feature's masks at the sidebar's selections plus the
+        trial's audio changepoints. *ds* is the trial being corrected, so an
+        all-trials run reads each trial's own masks; a pynapple session
+        (no *ds*) asks the loader, whose changepoints are event times.
+        """
+        feature = getattr(self.app_state, "features_sel", None)
+        if ds is None:
             wb = self.app_state.window_bounds
-            if wb is not None:
-                return store.get_cp_times(feature, t0=wb.start_s, t1=wb.end_s)
-            return store.get_cp_times(feature)
+            t0, t1 = (wb.start_s, wb.end_s) if wb is not None else (None, None)
+            return self.app_state.data_loader.get_cp_times(feature, ds_kwargs, t0=t0, t1=t1)
 
-        time_coord = self.app_state.time_coord
-        cp_times = extract_cp_times(ds, time_coord.values, **ds_kwargs)
-
-        all_cp_times = [cp_times]
+        cp_times = dataset_changepoint_times(ds, feature, ds_kwargs)
         if "audio_cp_onsets" in ds.data_vars and "audio_cp_offsets" in ds.data_vars:
-            all_cp_times.append(ds["audio_cp_onsets"].values.astype(np.float64))
-            all_cp_times.append(ds["audio_cp_offsets"].values.astype(np.float64))
-        if len(all_cp_times) > 1:
-            cp_times = np.unique(np.concatenate(all_cp_times))
+            onsets = ds["audio_cp_onsets"].values.astype(np.float64)
+            offsets = ds["audio_cp_offsets"].values.astype(np.float64)
+            cp_times = np.unique(np.concatenate([cp_times, onsets, offsets]))
         return cp_times
 
-    def _correct_trial_intervals(self, trial, ds, all_params, ds_kwargs):
-        """Interval-native correction: purge -> stitch -> snap -> purge."""
+    def _correct_trial_intervals(self, trial, ds, all_params, ds_kwargs) -> tuple[pd.DataFrame, bool]:
+        """Interval-native correction: purge -> stitch -> snap -> purge.
+
+        Returns the corrected labels and whether anything was *snapped* —
+        False when the trial has no changepoints (or the snap step is off),
+        so the caller does not record a correction that never happened.
+        """
         intervals_df = self.app_state.get_trial_intervals(trial)
 
         cp_kwargs = all_params.get("cp_kwargs", ds_kwargs)
         cp_times = self._extract_cp_times(ds, cp_kwargs)
+        snapped = self.cp_step_snap_cb.isChecked() and len(cp_times) > 0
 
         min_duration_s = all_params.get("min_label_length_s", 0)
         label_thresholds_raw = all_params.get("label_thresholds", {})
@@ -1150,7 +1111,7 @@ class ChangepointsWidget(QWidget):
 
         label_thresholds_s = {int(k): v for k, v in label_thresholds_raw.items()}
 
-        return correct_changepoints(
+        corrected = correct_changepoints(
             intervals_df,
             cp_times,
             min_duration_s=min_duration_s,
@@ -1160,9 +1121,10 @@ class ChangepointsWidget(QWidget):
             label_thresholds_s=label_thresholds_s or None,
             do_purge=self.cp_step_purge_cb.isChecked(),
             do_stitch=self.cp_step_stitch_cb.isChecked(),
-            do_snap=self.cp_step_snap_cb.isChecked(),
+            do_snap=snapped,
             do_purge_after=self.cp_step_purge_after_cb.isChecked(),
         )
+        return corrected, snapped
 
     def _current_feature_has_changepoints(self) -> bool:
         return getattr(self.app_state, "plot_has_changepoints", False)
@@ -1190,13 +1152,19 @@ class ChangepointsWidget(QWidget):
         all_params["cp_kwargs"] = ds_kwargs
 
         try:
+            # A trial is stamped corrected only when something was snapped:
+            # with no changepoints (or the snap step off) purge/stitch still
+            # run, but no correction happened and the button must not go green.
             if mode == "single_trial":
                 self._save_correction_snapshot(mode)
                 trial = self.app_state.trials_sel
-                corrected_df = self._correct_trial_intervals(trial, self.app_state.ds, all_params, ds_kwargs)
+                corrected_df, snapped = self._correct_trial_intervals(trial, self.app_state.ds, all_params, ds_kwargs)
                 self.app_state.set_trial_intervals(trial, corrected_df)
                 self.app_state.label_intervals = corrected_df
-                self.app_state.set_trial_meta_attr(trial, "changepoint_corrected", 1)
+                if snapped:
+                    self.app_state.set_trial_meta_attr(trial, "changepoint_corrected", 1)
+                else:
+                    notify(f"Trial {trial}: no changepoints to snap to — labels purged/stitched only", "warning")
                 self._update_cp_status()
 
             if mode == "all_trials":
@@ -1205,12 +1173,23 @@ class ChangepointsWidget(QWidget):
 
                 # TODO: Mention in documentation, only Ctrl+Z functionality of the GUI.
                 self._save_correction_snapshot(mode)
+                unsnapped: list = []
                 for trial in self.app_state.trials:
                     ds = self.app_state.dt.trial(trial) if self.app_state.dt is not None else self.app_state.ds
-                    corrected_df = self._correct_trial_intervals(trial, ds, all_params, ds_kwargs)
+                    corrected_df, snapped = self._correct_trial_intervals(trial, ds, all_params, ds_kwargs)
                     self.app_state.set_trial_intervals(trial, corrected_df)
-                    self.app_state.set_trial_meta_attr(trial, "changepoint_corrected", 1)
-                self.app_state.set_global_meta_attr("changepoint_corrected", 1)
+                    if snapped:
+                        self.app_state.set_trial_meta_attr(trial, "changepoint_corrected", 1)
+                    else:
+                        unsnapped.append(trial)
+                if len(unsnapped) < len(self.app_state.trials):
+                    self.app_state.set_global_meta_attr("changepoint_corrected", 1)
+                if unsnapped:
+                    notify(
+                        f"{len(unsnapped)} of {len(self.app_state.trials)} trials had no changepoints to snap to "
+                        f"(e.g. trial {unsnapped[0]}) — those were purged/stitched only",
+                        "warning",
+                    )
                 self.app_state.label_intervals = self.app_state.get_trial_intervals(self.app_state.trials_sel)
                 self._update_cp_status()
 
@@ -1298,11 +1277,15 @@ class ChangepointsWidget(QWidget):
             onsets, offsets = result
             return np.unique(np.concatenate([onsets, offsets]))
         else:
-            cp_by_method, time_array = self._get_dataset_changepoint_indices()
-            if cp_by_method is None:
+            # The marks the active feature panel draws: its feature at its
+            # own selections — the set a click on it snaps to.
+            loader = getattr(self.app_state, "data_loader", None)
+            plot = self.plot_container.get_current_plot()
+            feature = plot._effective_feature()
+            if loader is None or not feature:
                 return None
-            all_indices = np.unique(np.concatenate(list(cp_by_method.values())))
-            return np.asarray(time_array)[all_indices]
+            cp_times = loader.get_cp_times(feature, plot._effective_selections())
+            return cp_times if len(cp_times) else None
 
     def _find_adjacent_cp(self, cp_times: np.ndarray, current_time: float, direction: int) -> float | None:
         if direction > 0:

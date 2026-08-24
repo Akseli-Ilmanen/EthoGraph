@@ -1,5 +1,5 @@
-from collections.abc import Sequence
-from typing import List, Literal
+from collections.abc import Mapping, Sequence
+from typing import Any, List, Literal
 
 import numpy as np
 import pandas as pd
@@ -12,12 +12,6 @@ from ethograph.labels.intervals import (
     purge_short_intervals,
     snap_boundaries,
     stitch_intervals,
-)
-from ethograph.labels.ml import (
-    find_blocks,
-    fix_endings,
-    purge_small_blocks,
-    stitch_gaps,
 )
 from ethograph.utils.xr_utils import get_time_coord
 
@@ -119,7 +113,7 @@ def find_nearest_turning_points_binary(x, threshold=1, max_value=None, prominenc
     if max_value is not None:
         turning_points = turning_points[x[turning_points] < max_value]
 
-    peaks, _ = find_peaks(x, prominence, distance, **kwargs)
+    peaks, _ = find_peaks(x, prominence=prominence, distance=distance, **kwargs)
     turning_points = np.setdiff1d(turning_points, peaks)
 
     nearest = []
@@ -139,76 +133,63 @@ def find_nearest_turning_points_binary(x, threshold=1, max_value=None, prominenc
 # ---------------------------------------------------------------------------
 
 
-def extract_cp_times(ds: xr.Dataset, time: np.ndarray, **cp_kwargs) -> np.ndarray:
-    """Extract merged changepoint times from dataset.
+def changepoint_fired(mask: xr.DataArray, selections: Mapping[str, Any] | None = None) -> np.ndarray:
+    """Where *mask* fires at *selections*: a boolean ``(T,)`` array on the mask's own time axis.
 
-    Replaces the inline pattern: merge_changepoints -> binary -> np.where -> times.
-    Returns empty array if no CP variables exist.
+    This is the one reading of a changepoint mask the GUI has. The lineplot
+    draws it (``XarrayLoader.select``) and a click snaps to it
+    (``XarrayLoader.get_cp_times``), so what is drawn and what is snapped to
+    are the same set by construction.
+
+    A selection key that is a dim of the mask pins that dim — ``.sel`` where
+    the dim has a coordinate, ``.isel`` where it does not (the rule of
+    :func:`ethograph.utils.xr_utils.sel_valid`). Every other key is ignored,
+    and every non-time dim left free is OR'd across.
     """
-    filtered = ds.sel(**cp_kwargs) if cp_kwargs else ds
-    cp_ds = schema.filter_changepoints(filtered)
-    if len(cp_ds.data_vars) == 0:
-        return np.array([], dtype=np.float64)
-
-    # TODO: Do I want merging of changepoints
-    try:
-        ds_merged, _ = merge_changepoints(filtered)
-    except (ValueError, KeyError):
-        return np.array([], dtype=np.float64)
-
-    cp_binary = ds_merged["changepoints"].values
-    cp_indices = np.where(cp_binary)[0]
-    if len(cp_indices) == 0:
-        return np.array([], dtype=np.float64)
-
-    valid = cp_indices[cp_indices < len(time)]
-    return time[valid].astype(np.float64)
+    da = mask
+    for dim, value in (selections or {}).items():
+        if dim not in da.dims:
+            continue
+        if dim in da.coords:
+            coord = da.coords[dim]
+            if isinstance(value, str) and coord.dtype.kind in "iuf":
+                value = coord.dtype.type(value)
+            da = da.sel({dim: value})
+        else:
+            da = da.isel({dim: int(value)})
+    time_dim = next(d for d in da.dims if "time" in str(d).lower())
+    free = [d for d in da.dims if d != time_dim]
+    fired = da.any(dim=free) if free else da
+    return np.asarray(fired.transpose(time_dim).values, dtype=bool)
 
 
-def snap_to_nearest_changepoint_time(
-    t_clicked: float,
+def changepoint_mask_times(mask: xr.DataArray, selections: Mapping[str, Any] | None = None) -> np.ndarray:
+    """Times at which *mask* fires at *selections*, read off the mask's own time coordinate."""
+    time = get_time_coord(mask)
+    if time is None:
+        raise ValueError(f"changepoint mask {mask.name!r} has no time coordinate")
+    fired = changepoint_fired(mask, selections)
+    return np.asarray(time.values, dtype=np.float64)[np.flatnonzero(fired)]
+
+
+def dataset_changepoint_times(
     ds: xr.Dataset,
-    feature_sel: str,
-    time: np.ndarray,
-    **ds_kwargs,
-) -> float:
-    """Snap a clicked time (seconds) to the nearest changepoint time.
+    feature: str | None = None,
+    selections: Mapping[str, Any] | None = None,
+) -> np.ndarray:
+    """Sorted, unique times of every changepoint mask in *ds* — of *feature* only when given.
 
-    Works entirely in the time domain — no index conversion needed.
-    Combines kinematic, audio, and oscillation changepoints.
+    Masks that target different features are simply unioned; there is no
+    merge step to refuse them. Empty when nothing matches.
     """
-    all_cp_times = []
-
-    # Kinematic changepoints (dense binary arrays)
-    if feature_sel:
-        filtered = ds.sel(**ds_kwargs) if ds_kwargs else ds
-        cp_ds = schema.filter_changepoints(filtered).filter_by_attrs(target_feature=feature_sel)
-        if len(cp_ds.data_vars) > 0:
-            cp_indices = np.concatenate([np.where(cp_ds[var].values)[0] for var in cp_ds.data_vars])
-            cp_indices = np.unique(cp_indices)
-            valid = cp_indices[cp_indices < len(time)]
-            if len(valid) > 0:
-                all_cp_times.append(time[valid])
-
-    # Audio changepoints (onset/offset pairs)
-    if "audio_cp_onsets" in ds.data_vars and "audio_cp_offsets" in ds.data_vars:
-        all_cp_times.append(ds["audio_cp_onsets"].values.astype(np.float64))
-        all_cp_times.append(ds["audio_cp_offsets"].values.astype(np.float64))
-
-    # Oscillation event changepoints
-    if "osc_event_onsets" in ds.data_vars and "osc_event_offsets" in ds.data_vars:
-        all_cp_times.append(ds["osc_event_onsets"].values.astype(np.float64))
-        all_cp_times.append(ds["osc_event_offsets"].values.astype(np.float64))
-
-    if not all_cp_times:
-        return t_clicked
-
-    cp_times = np.unique(np.concatenate(all_cp_times))
-    if len(cp_times) == 0:
-        return t_clicked
-
-    nearest_idx = np.argmin(np.abs(cp_times - t_clicked))
-    return float(cp_times[nearest_idx])
+    times = [
+        changepoint_mask_times(ds[name], selections)
+        for name in schema.changepoint_vars(ds)
+        if feature is None or ds[name].attrs.get("target_feature") == feature
+    ]
+    if not times:
+        return np.array([], dtype=np.float64)
+    return np.unique(np.concatenate(times))
 
 
 def correct_changepoints(
@@ -259,112 +240,6 @@ def correct_changepoints_automatic(
 
     result = purge_short_intervals(df, min_duration_s)
     return stitch_intervals(result, stitch_gap_s)
-
-
-# ---------------------------------------------------------------------------
-# Dense correction (legacy — kept for ML pipeline)
-# ---------------------------------------------------------------------------
-
-
-def correct_changepoints_dense(labels, ds, all_params):
-    """Correct dense label arrays using changepoints (legacy ML pipeline).
-
-    Operates on integer label arrays, not interval DataFrames.
-    Use :func:`correct_changepoints` for the modern interval-native pipeline.
-
-    Parameters
-    ----------
-    labels : array-like
-        Dense integer label array of shape (T,).
-    ds : xr.Dataset
-        Trial dataset containing changepoint variables.
-    all_params : dict
-        Keys:
-
-        - ``cp_kwargs``: Selection kwargs forwarded to ``ds.sel()``.
-        - ``min_label_length_s``: Minimum label duration in seconds.
-        - ``stitch_gap_len_s``: Maximum gap to stitch in seconds.
-        - ``label_thresholds_s``: Per-label minimum durations (dict).
-        - ``changepoint_params``: Dict with ``max_expansion_s`` and
-          ``max_shrink_s``.
-        - ``fps``: Frame rate used to convert seconds to sample counts.
-
-    Returns
-    -------
-    np.ndarray
-        Corrected integer label array of the same shape as ``labels``.
-    """
-    cp_kwargs = all_params["cp_kwargs"]
-
-    # FIX to work with min_label_length_
-    min_label_length = all_params.get("min_label_length_s")
-    label_thresholds_s = all_params.get("label_thresholds_s", {})
-    stitch_gap_len = all_params.get("stitch_gap_len_s")
-    max_expansion = all_params["changepoint_params"]["max_expansion_s"]
-    max_shrink = all_params["changepoint_params"]["max_shrink_s"]
-
-    min_label_length = int(min_label_length * all_params["fps"])
-    stitch_gap_len = int(stitch_gap_len * all_params["fps"])
-    max_expansion = int(max_expansion * all_params["fps"])
-    max_shrink = int(max_shrink * all_params["fps"])
-    label_thresholds = {}
-    for label, thresh in label_thresholds_s.items():
-        label_thresholds[label] = int(thresh * all_params["fps"])
-
-    ds = ds.sel(**cp_kwargs)
-    ds_merged, _ = merge_changepoints(ds)
-    changepoints_binary = ds_merged["changepoints"].values
-
-    assert changepoints_binary.ndim == 1
-
-    changepoint_idxs = np.where(changepoints_binary)[0]
-    corrected_labels = np.zeros_like(labels, dtype=np.int8)
-
-    labels = purge_small_blocks(labels, min_label_length, label_thresholds)
-    labels = stitch_gaps(labels, stitch_gap_len)
-
-    if len(changepoint_idxs) == 0:
-        return labels
-
-    for label in np.unique(labels):
-        if label == 0:
-            continue
-
-        label_mask = labels == label
-        starts, ends = find_blocks(label_mask)
-
-        for block_start, block_end in zip(starts, ends):
-            snap_start = changepoint_idxs[np.argmin(np.abs(changepoint_idxs - block_start))]
-            snap_end = changepoint_idxs[np.argmin(np.abs(changepoint_idxs - block_end))]
-
-            start_expansion = block_start - snap_start
-            start_shrink = snap_start - block_start
-
-            if start_expansion > max_expansion or start_shrink > max_shrink:
-                snap_start = block_start
-
-            end_expansion = snap_end - block_end
-            end_shrink = block_end - snap_end
-
-            if end_expansion > max_expansion or end_shrink > max_shrink:
-                snap_end = block_end
-
-            if snap_start > snap_end:
-                snap_start = block_start
-                snap_end = block_end
-
-            if snap_end < len(corrected_labels):
-                if corrected_labels[snap_end] != 0 and corrected_labels[snap_end] != label:
-                    snap_end = snap_end - 1
-
-            corrected_labels[block_start : block_end + 1] = 0
-            if snap_start < snap_end:
-                corrected_labels[snap_start : snap_end + 1] = label
-
-    corrected_labels = purge_small_blocks(corrected_labels, min_label_length)
-    corrected_labels = fix_endings(corrected_labels, changepoints_binary)
-
-    return corrected_labels
 
 
 # ---------------------------------------------------------------------------

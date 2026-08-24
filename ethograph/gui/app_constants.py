@@ -197,18 +197,6 @@ MULTIDIM_COLORS = [
     "#17becf",  # Cyan
 ]
 
-# Dataset changepoint method colors
-CP_METHOD_COLORS = {
-    "troughs": (100, 100, 255, 200),  # Blue
-    "turning_points": (100, 255, 100, 200),  # Green
-    "ruptures": (255, 165, 0, 200),  # Orange
-    "default": (200, 200, 200, 200),  # Gray fallback
-}
-
-# Scatter plot settings
-CP_SCATTER_SIZE = 8
-CP_SCATTER_Y_POSITION_RATIO = 0.05  # 5% from bottom of y-range
-
 # Envelope overlay (plot_container.py)
 ENVELOPE_OVERLAY_COLOR = "#ff8800"
 ENVELOPE_OVERLAY_WIDTH = 2

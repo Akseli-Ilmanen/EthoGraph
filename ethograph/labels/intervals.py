@@ -856,15 +856,9 @@ def snap_boundaries(
             snap_onset = onset
             snap_offset = offset
 
-        rows.append(
-            {
-                "onset_s": snap_onset,
-                "offset_s": snap_offset,
-                "labels": row["labels"],
-                "individual": row["individual"],
-                "individual_rec": row["individual_rec"],
-            }
-        )
+        # Only the boundaries move: confidence, labeling_method and the rest
+        # of the row are the label's provenance and survive the snap.
+        rows.append({**row.to_dict(), "onset_s": snap_onset, "offset_s": snap_offset})
 
     transformed = _rows_to_df(rows)
     transformed.sort_values([*SUBJECT_COLUMNS, "onset_s"], inplace=True)
@@ -898,7 +892,14 @@ def _snap_offset(boundary, cp_times, max_expansion_s, max_shrink_s):
     return float(candidates[nearest_idx])
 
 
-def _resolve_overlaps(df: pd.DataFrame, eps: float = 1e-3) -> pd.DataFrame:
+def _resolve_overlaps(df: pd.DataFrame) -> pd.DataFrame:
+    """Clip a label that runs into the next label of another class on the same subject.
+
+    Two labels that *meet* — offset equal to the next onset, which is what
+    both snapping to the same changepoint produces — are left exactly where
+    they are; only a true overlap is clipped, and the clipped edge lands on
+    the next onset itself, never a millisecond short of it.
+    """
     if df.empty:
         return df
     df = ensure_individual_rec(df.copy())
@@ -907,9 +908,9 @@ def _resolve_overlaps(df: pd.DataFrame, eps: float = 1e-3) -> pd.DataFrame:
     for _subject, group in df.groupby(SUBJECT_COLUMNS, sort=False):
         group = group.sort_values("onset_s").reset_index(drop=True)
         for i in range(len(group) - 1):
-            if group.at[i, "offset_s"] > group.at[i + 1, "onset_s"] - eps:
+            if group.at[i, "offset_s"] > group.at[i + 1, "onset_s"]:
                 if group.at[i, "labels"] != group.at[i + 1, "labels"]:
-                    group.at[i, "offset_s"] = group.at[i + 1, "onset_s"] - eps
+                    group.at[i, "offset_s"] = group.at[i + 1, "onset_s"]
         groups.append(group)
 
     result = pd.concat(groups, ignore_index=True)
