@@ -36,6 +36,8 @@ from typing import Callable, Protocol, runtime_checkable
 import numpy as np
 from scipy.interpolate import PchipInterpolator
 
+from ethograph.utils.device import resolve_device as _resolve_device
+
 #: ``progress(fraction) -> keep_going``; backends bail out when it returns False.
 Progress = Callable[[float], bool]
 
@@ -388,29 +390,8 @@ class _CoTrackerTracking(_GapBackend):
 
 
 def resolve_device(preferred: str | None = None) -> str:
-    """Pick the best available torch device: CUDA, then Apple MPS, then CPU.
-
-    CPU is the *expected* case for this feature, not the only one — a user with
-    a GPU should get it without configuring anything, so nothing here hardcodes
-    ``"cpu"``. Pass *preferred* to force a device; it is honoured only if torch
-    reports it as usable, otherwise this falls back and the caller runs on CPU
-    rather than crashing mid-fill.
-    """
-    try:
-        import torch
-    except ImportError:
-        return "cpu"
-
-    available = ["cpu"]
-    if torch.cuda.is_available():
-        available.insert(0, "cuda")
-    if getattr(torch.backends, "mps", None) is not None and torch.backends.mps.is_available():
-        available.insert(0 if "cuda" not in available else 1, "mps")
-
-    if preferred:
-        root = preferred.split(":")[0]
-        return preferred if root in available else available[0]
-    return available[0]
+    """Best available torch device (CUDA → MPS → CPU); see :mod:`ethograph.utils.device`."""
+    return _resolve_device(preferred)
 
 
 #: The *default* CoTracker3 offline weights (~97 MB). Fetched once into the

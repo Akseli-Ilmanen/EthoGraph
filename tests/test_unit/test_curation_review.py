@@ -11,6 +11,7 @@ from qtpy.QtWidgets import QApplication, QWidget
 from ethograph.gui.app_state import ObservableAppState
 from ethograph.gui.widgets_curation import CurationPanel, drag_label_ids
 from ethograph.gui.widgets_navigation import NavigationWidget
+from ethograph.labels import onset_curves
 from ethograph.labels.curation import CURATED_COLUMN
 from ethograph.labels.intervals import HUMAN_CONFIDENCE, LABELING_AUTOMATED, LABELING_CURATED, LABELING_MANUAL
 
@@ -48,9 +49,14 @@ class _TrialsStub:
     def __init__(self, metadata_df):
         self._metadata_df = metadata_df
         self.written: list[tuple[str, dict]] = []
+        self.ensured = 0
 
     def set_column_values(self, column, values):
         self.written.append((column, dict(values)))
+
+    def ensure_tabular_metadata_file(self):
+        self.ensured += 1
+        return None
 
 
 class _Meta:
@@ -102,6 +108,10 @@ def panel(qapp, tmp_path):
     state.label_intervals = state.get_trial_intervals("0")
     state.ready = True
     state.video = _FakeVideo()
+    # Most of this module exercises queue-walking mechanics across a mix of
+    # automated and manual labels — the default-on "automated only" filter
+    # (frame_review_automated_only) is covered on its own in TestAutomatedOnlyFilter.
+    state.frame_review_automated_only = False
     nav = NavigationWidget(QWidget(), state)
     labels = _LabelsStub(MAPPINGS)
     trials = _TrialsStub(pd.DataFrame({"trial": ["0", "1"], "genotype": ["wt", "ko"]}))
@@ -146,6 +156,37 @@ class TestScope:
         assert panel.scope_area.ids() == [6]
 
 
+class TestActive:
+    """Nothing is written until someone actually starts curating."""
+
+    def test_a_fresh_panel_is_inactive_and_writes_nothing(self, panel):
+        assert panel.app_state.curation_active is False
+        assert not panel._metadata_timer.isActive()
+        panel.sync_metadata()
+        assert panel._trials_stub.written == []
+        assert panel._trials_stub.ensured == 0
+
+    def test_dropping_label_classes_into_the_scope_activates(self, panel):
+        panel.scope_area.add_ids([4])
+        panel._on_scope_edited(activates=True)
+        assert panel.app_state.curation_active is True
+        assert panel._metadata_timer.isActive()
+        assert panel._trials_stub.ensured == 1
+
+    def test_curating_activates(self, panel):
+        panel.curate_current_trial()
+        assert panel.app_state.curation_active is True
+        assert panel._trials_stub.ensured == 1
+        panel.curate_labels([])  # already active — the file is ensured once
+        assert panel._trials_stub.ensured == 1
+
+    def test_a_fresh_dataset_disarms_curation(self, panel):
+        panel.activate("test")
+        panel.app_state.ready = False
+        assert panel.app_state.curation_active is False
+        assert not panel._metadata_timer.isActive()
+
+
 class TestTrialLevel:
     def test_ctrl_c_curates_the_automated_labels_of_the_trial(self, panel):
         emitted = []
@@ -164,6 +205,39 @@ class TestTrialLevel:
         assert panel.curate_current_trial() == 1
         assert _row(panel.app_state, "0", 4, 1.0)["labeling_method"] == LABELING_AUTOMATED
         assert _row(panel.app_state, "0", 6, 2.5)["labeling_method"] == LABELING_CURATED
+
+    def test_curate_visible_trials_reaches_every_visible_trial(self, panel):
+        """The workflow step's manual twin: Ctrl+C over the whole visible set."""
+        assert panel.curate_visible_trials() == 3  # 4 and 6 in trial 0, 4 in trial 1
+        assert _row(panel.app_state, "0", 4, 1.0)["labeling_method"] == LABELING_CURATED
+        assert _row(panel.app_state, "1", 4, 0.5)["labeling_method"] == LABELING_CURATED
+        assert _row(panel.app_state, "0", 8, 2.0)["labeling_method"] == LABELING_MANUAL
+
+    def test_the_button_asks_before_curating_what_nobody_looked_at(self, panel, monkeypatch):
+        """One click must not silently vouch for labels across every trial."""
+        asked = []
+        monkeypatch.setattr(panel, "_confirm_bulk_curate", lambda total, n: asked.append((total, n)) or False)
+        panel.curate_visible_btn.click()
+        assert asked == [(3, 2)]
+        # Declined: nothing moved.
+        assert _row(panel.app_state, "0", 4, 1.0)["labeling_method"] == LABELING_AUTOMATED
+
+    def test_a_workflow_step_does_not_ask(self, panel, monkeypatch):
+        """A recorded step is already a deliberate choice."""
+        monkeypatch.setattr(panel, "_confirm_bulk_curate", lambda *a: pytest.fail("must not ask"))
+        assert panel.curate_visible_trials() == 3
+
+    def test_curating_is_not_an_undoable_label_edit(self, panel):
+        """Why the bulk button warns: Ctrl+Z takes back edits, not curations.
+
+        Curation records no undo snapshot — the history is per-trial and
+        nothing runs curated → automated — so the confirmation dialog saying
+        "this cannot be undone" is a statement about the code, not caution.
+        """
+        panel.curate_current_trial()
+        assert _row(panel.app_state, "0", 4, 1.0)["labeling_method"] == LABELING_CURATED
+        assert panel.app_state.undo_label_edit() is None
+        assert _row(panel.app_state, "0", 4, 1.0)["labeling_method"] == LABELING_CURATED
 
     def test_inspect_mode_curates_a_trial_on_arrival(self, panel):
         _set_mode(panel, "inspect")
@@ -188,14 +262,15 @@ class TestTrialLevel:
         assert not panel.frame_group.isVisibleTo(panel)
 
     def test_metadata_sync_writes_the_curated_column_only_when_it_changed(self, panel):
+        panel.activate("test")
         panel.sync_metadata()
-        assert panel._trials_stub.written == [(CURATED_COLUMN, {"0": 0, "1": 0})]
-        panel._trials_stub._metadata_df[CURATED_COLUMN] = [0, 0]
+        assert panel._trials_stub.written == [(CURATED_COLUMN, {"0": "no", "1": "no"})]
+        panel._trials_stub._metadata_df[CURATED_COLUMN] = ["no", "no"]
         panel.sync_metadata()
         assert len(panel._trials_stub.written) == 1  # nothing changed
         panel.curate_current_trial()
         panel.sync_metadata()
-        assert panel._trials_stub.written[-1] == (CURATED_COLUMN, {"0": 1, "1": 0})
+        assert panel._trials_stub.written[-1] == (CURATED_COLUMN, {"0": "yes", "1": "no"})
 
 
 # ---------------------------------------------------------------------------
@@ -236,6 +311,13 @@ class TestFrameReview:
         # The END target shares the instance, so it looks the row up at 2.2.
         end = panel.targets[2]
         assert end.inst["onset_s"] == 2.2 and end.inst is target.inst
+
+    def test_info_label_shows_confidence(self, panel):
+        _set_mode(panel, "frame")
+        panel.start_review(idx=0)  # trial 0, label 4, point at 1.0 (automated, conf 0.3)
+        assert "conf 0.30" in panel.info_label.text()
+        panel.start_review(idx=1)  # trial 0, label 8 START (manual, conf 1.0)
+        assert "conf 1.00" in panel.info_label.text()
 
     def test_confirm_in_place_curates_an_automated_label(self, panel):
         _set_mode(panel, "frame")
@@ -337,6 +419,124 @@ class TestFrameReview:
         monkeypatch.setattr("ethograph.gui.widgets_curation.typing_in_text_field", lambda: False)
         panel._sync_session_shortcuts()
         assert all(s.isEnabled() for s in panel._session_shortcuts)
+
+
+class TestAutomatedOnlyFilter:
+    """Frame-by-frame review skips manual/curated boundaries by default."""
+
+    def test_checked_by_default_on_a_fresh_state(self, qapp, tmp_path):
+        state = ObservableAppState()
+        state._yaml_path = str(tmp_path / "gui_settings.yaml")
+        state._all_labels_df = _labels_df()
+        state.trials = ["0", "1"]
+        state.ready = True
+        state.video = _FakeVideo()
+        nav = NavigationWidget(QWidget(), state)
+        widget = CurationPanel(state, _LabelsStub(MAPPINGS))
+        widget.set_meta(_Meta(state, nav, _LabelsStub(MAPPINGS)))
+        try:
+            assert widget.automated_only_cb.isChecked() is True
+            queue = widget.build_queue()
+            # Label 8 (manual) is left out; only the automated point events remain.
+            got = [(t.inst["trial"], t.inst["labels"], t.field) for t in queue]
+            assert got == [("0", 4, "point"), ("0", 6, "point"), ("1", 4, "point")]
+        finally:
+            widget.close()
+            nav.close()
+
+    def test_unticking_reveals_manual_and_curated_boundaries_too(self, panel):
+        panel.automated_only_cb.setChecked(True)
+        assert panel.app_state.frame_review_automated_only is True
+        queue = panel.build_queue()
+        assert 8 not in [t.inst["labels"] for t in queue]
+        panel.automated_only_cb.setChecked(False)
+        assert panel.app_state.frame_review_automated_only is False
+        queue = panel.build_queue()
+        assert 8 in [t.inst["labels"] for t in queue]
+
+
+class _ContainerStub:
+    """Records what the review asks the plots to draw."""
+
+    def __init__(self):
+        self.shown: list[tuple] = []
+        self.hidden = 0
+
+    def show_onset_curves(self, time, curves, colors=None):
+        self.shown.append((np.asarray(time), dict(curves), dict(colors or {})))
+        return len(curves)
+
+    def hide_onset_curves(self):
+        self.hidden += 1
+
+    def schedule_labels_redraw(self):
+        pass
+
+    def restyle_label(self, *_args):
+        return 0
+
+
+def _write_curves(state, tmp_path, trials=("0",), timestamp="20260824_120000"):
+    """A session path to hang a prediction run off, plus curves for two classes."""
+    session = tmp_path / "Trial_data.nc"
+    state.nc_file_path = str(session)
+    time = np.linspace(0.0, 5.0, 51)
+    onset_curves.write_curves(
+        onset_curves.run_dir(session, timestamp) / onset_curves.CURVES_FILE,
+        {t: (time, {4: np.full_like(time, 0.8), 6: np.full_like(time, 0.2)}) for t in trials},
+    )
+    return time
+
+
+class TestOnsetCurves:
+    """The model's probability curves, drawn under the label being reviewed."""
+
+    def test_scope_decides_which_classes_are_drawn(self, panel, tmp_path):
+        _write_curves(panel.app_state, tmp_path)
+        container = _ContainerStub()
+        panel.set_plot_container(container)
+        panel.set_scope([4], reason="test")
+        _set_mode(panel, "frame")
+        assert panel.start_review()
+        time, curves, colors = container.shown[-1]
+        assert set(curves) == {4}
+        assert colors[4] == "#ff0000"  # the class's own mapping colour
+        assert len(time) == 51
+
+    def test_empty_scope_draws_every_class(self, panel, tmp_path):
+        _write_curves(panel.app_state, tmp_path)
+        container = _ContainerStub()
+        panel.set_plot_container(container)
+        _set_mode(panel, "frame")
+        assert panel.start_review()
+        assert set(container.shown[-1][1]) == {4, 6}
+
+    def test_a_trial_without_curves_draws_nothing(self, panel, tmp_path):
+        _write_curves(panel.app_state, tmp_path, trials=("9",))
+        container = _ContainerStub()
+        panel.set_plot_container(container)
+        _set_mode(panel, "frame")
+        assert panel.start_review()
+        assert container.shown == []
+        assert container.hidden > 0
+
+    def test_no_sidecar_is_not_an_error(self, panel):
+        """Labels placed by hand have no curves — review still runs."""
+        container = _ContainerStub()
+        panel.set_plot_container(container)
+        _set_mode(panel, "frame")
+        assert panel.start_review()
+        assert container.shown == []
+
+    def test_stopping_takes_the_curves_down(self, panel, tmp_path):
+        _write_curves(panel.app_state, tmp_path)
+        container = _ContainerStub()
+        panel.set_plot_container(container)
+        _set_mode(panel, "frame")
+        panel.start_review()
+        before = container.hidden
+        panel._stop()
+        assert container.hidden > before
 
 
 def test_qt_key_names(qapp):

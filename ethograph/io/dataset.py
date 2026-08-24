@@ -7,6 +7,7 @@ import xarray as xr
 from scipy.ndimage import gaussian_filter1d
 
 from ethograph.features.movement import get_angle_rgb
+from ethograph.io import schema
 from ethograph.io.trialtree import TrialTree
 from ethograph.utils.xr_utils import get_time_coord
 
@@ -193,12 +194,7 @@ def add_changepoints_to_ds(ds, target_feature, changepoint_name, changepoint_fun
         output_dtypes=[np.int8],
     )
 
-    changepoints.attrs.update(
-        {
-            "type": "changepoints",
-            "target_feature": target_feature,
-        }
-    )
+    changepoints.attrs.update(schema.changepoint_attrs(target_feature=target_feature))
 
     ds[f"{target_feature}_{changepoint_name}"] = changepoints
     return ds
@@ -214,7 +210,7 @@ def add_angle_rgb_to_ds(ds: xr.Dataset, smoothing_params: dict) -> xr.Dataset:
 
     Adds two variables to *ds*:
 
-    * ``angles`` -- heading angle in radians.
+    * ``angles`` -- heading angle in degrees.
     * ``angle_rgb`` -- ``(R, G, B)`` triplet per time-step
 
     Parameters
@@ -248,6 +244,8 @@ def add_angle_rgb_to_ds(ds: xr.Dataset, smoothing_params: dict) -> xr.Dataset:
         output_dtypes=[np.float64],
     )
     ds["angles"] = angles
+    ds["angles_sin"] = np.sin(np.deg2rad(angles))
+    ds["angles_cos"] = np.cos(np.deg2rad(angles))
 
     def process_rgb(xy):
         rgb, _ = get_angle_rgb(xy, smooth_func=gaussian_filter1d, smoothing_params=smoothing_params)

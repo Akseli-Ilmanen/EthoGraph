@@ -8,6 +8,13 @@ and how to write it, and :func:`write_metadata` writes it.
 NWB trials tables are written in append mode (``NWBHDF5IO(path, "a")``): the
 export path used by :func:`~ethograph.io.nwb_alignment.edit_nwb` copies
 already-written datasets verbatim, so a changed value never reaches the file.
+
+:data:`DERIVED_COLUMNS` — state EthoGraph works out for itself: the curation
+verdict and a prediction run's expectation check — never goes into an NWB. That write happens in place
+(there is no atomic replace to fall back on), and for a non-NWB dataset the
+alignment NWB is the sole holder of the trial timing, so a crash mid-write
+would cost far more than the column. :func:`ensure_tabular_target` hands out a
+sidecar TSV instead, and :func:`write_trials_metadata` refuses those columns.
 """
 
 from __future__ import annotations
@@ -20,14 +27,21 @@ import pandas as pd
 
 from ethograph.io.metadata_table import (
     TABULAR_METADATA_EXTS,
+    _normalise_trial_column,
     condition_columns,
+    empty_metadata_df,
     metadata_tsv_path,
 )
+from ethograph.labels.curation import CURATED_COLUMN, EXPECTATION_COLUMN
 
 logger = logging.getLogger(__name__)
 
 TARGET_TABULAR = "tabular"
 TARGET_NWB = "nwb"
+
+#: Columns EthoGraph derives rather than reads. Written to a tabular file
+#: only — see the module docstring.
+DERIVED_COLUMNS = frozenset({CURATED_COLUMN, EXPECTATION_COLUMN})
 
 
 @dataclass(frozen=True)
@@ -84,6 +98,45 @@ def resolve_metadata_target(
         return MetadataTarget(default_sidecar(source_path), TARGET_TABULAR)
 
     return None
+
+
+def ensure_tabular_target(
+    source_path: str | Path | None,
+    metadata_df: pd.DataFrame | None,
+    *,
+    metadata_path: str | Path | None = None,
+    alignment_path: str | Path | None = None,
+    trials: list | None = None,
+) -> MetadataTarget | None:
+    """A tabular metadata target for :data:`DERIVED_COLUMNS`, written if missing.
+
+    An NWB target becomes the sidecar TSV, seeded with the loaded metadata
+    table (one row per trial when there is none) — so the derived column has a
+    file to live in, and the NWB is left alone. The sidecar then becomes the
+    metadata table for this dataset: the caller sets ``app_state.metadata_path``
+    so the next load reads it first, ahead of the NWB it was copied from. An
+    existing file is never overwritten. Returns ``None`` when there is no data
+    source to hang a metadata file off.
+    """
+    target = resolve_metadata_target(
+        source_path, metadata_path=metadata_path, alignment_path=alignment_path
+    )
+    if target is None:
+        return None
+    if target.kind == TARGET_NWB:
+        if not source_path:
+            return None
+        target = MetadataTarget(default_sidecar(source_path), TARGET_TABULAR)
+
+    if not target.path.exists():
+        df = metadata_df
+        if df is None or df.empty:
+            df = empty_metadata_df(list(trials or []))
+        else:
+            df = _normalise_trial_column(df, list(trials) if trials else None)
+        save_metadata_table(target.path, df)
+        logger.info("Curation metadata lives in %s.", target.path.name)
+    return target
 
 
 def coerce_value(text: str, series: pd.Series | None):
@@ -178,6 +231,9 @@ def write_trials_metadata(
     positionally otherwise. Existing columns are updated in place; unknown ones
     are appended. Returns the column names written.
 
+    :data:`DERIVED_COLUMNS` are dropped: a curation verdict is ours, not the
+    recording's, and this write is not atomic.
+
     Raises ``ValueError`` when a value cannot be stored in an existing column's
     dtype (a word in a numeric column, say) — HDF5 datasets keep the dtype they
     were written with.
@@ -187,7 +243,14 @@ def write_trials_metadata(
     nwb_path = Path(nwb_path)
     wanted = list(columns) if columns is not None else list(df.columns)
     editable = set(condition_columns(df))
-    cols = [c for c in wanted if c in df.columns and c in editable]
+    refused = [c for c in wanted if c in DERIVED_COLUMNS]
+    if refused:
+        logger.warning(
+            "Not writing derived column(s) %s to %s — they belong in a metadata TSV",
+            ", ".join(refused),
+            nwb_path.name,
+        )
+    cols = [c for c in wanted if c in df.columns and c in editable and c not in DERIVED_COLUMNS]
     if not cols:
         return []
 

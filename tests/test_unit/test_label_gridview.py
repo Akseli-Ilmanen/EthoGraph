@@ -10,7 +10,9 @@ from qtpy.QtWidgets import QApplication, QCheckBox, QLabel, QListWidget, QListWi
 
 from ethograph.gui.app_state import ObservableAppState
 from ethograph.gui.dialog_label_gridview import (
+    DEFAULT_CONFIDENCE,
     LOW_CONFIDENCE_COLOR,
+    ConfidenceEdit,
     FrameEntry,
     LabelGridView,
     LabelGridViewDialog,
@@ -21,12 +23,17 @@ from ethograph.gui.dialog_label_gridview import (
     build_frame_entries,
     capture_panel_images,
     confidence_groups,
+    confidence_style,
+    confidence_text,
     crop_thumbnail,
     decode_entry_images,
     draw_pose_points,
+    filter_entries,
     flagged_trials,
     histogram_bar_color,
     is_low_confidence,
+    label_filter_choices,
+    methods_for_filter,
     open_gui_panels,
     seeds_from_entries,
     split_histogram,
@@ -57,6 +64,41 @@ def labels_df():
             "individual_rec": ["", "", "", ""],
         }
     )
+
+
+class TestMethodFilter:
+    """The frame grid's half of the shared labeling-method filter.
+
+    A labels frame with no ``labeling_method`` column is read off its
+    confidence, exactly as the rest of the GUI reads it — so an imported file
+    still filters instead of vanishing.
+    """
+
+    def test_each_choice_keeps_its_own_side(self, labels_df):
+        df = labels_df.copy()
+        df["labeling_method"] = [LABELING_AUTOMATED, LABELING_MANUAL, LABELING_CURATED, LABELING_AUTOMATED]
+        automated = build_frame_entries(df, MAPPINGS, [1, 2], [None], None, methods_for_filter("automated"))
+        human = build_frame_entries(df, MAPPINGS, [1, 2], [None], None, methods_for_filter("human"))
+        assert {e.labeling_method for e in automated} == {LABELING_AUTOMATED}
+        assert {e.labeling_method for e in human} == {LABELING_MANUAL, LABELING_CURATED}
+        # Between them they are the whole grid, and neither drops a boundary.
+        assert len(automated) + len(human) == len(build_frame_entries(df, MAPPINGS, [1, 2], [None]))
+
+    def test_manual_and_curated_split_out_of_human(self, labels_df):
+        df = labels_df.copy()
+        df["labeling_method"] = [LABELING_AUTOMATED, LABELING_MANUAL, LABELING_CURATED, LABELING_AUTOMATED]
+        manual = build_frame_entries(df, MAPPINGS, [1, 2], [None], None, methods_for_filter("manual"))
+        curated = build_frame_entries(df, MAPPINGS, [1, 2], [None], None, methods_for_filter("curated"))
+        human = build_frame_entries(df, MAPPINGS, [1, 2], [None], None, methods_for_filter("human"))
+        assert {e.labeling_method for e in manual} == {LABELING_MANUAL}
+        assert {e.labeling_method for e in curated} == {LABELING_CURATED}
+        assert len(manual) + len(curated) == len(human)
+
+    def test_a_file_without_the_column_reads_off_its_confidence(self, labels_df):
+        df = labels_df.copy()
+        df["confidence"] = [0.4, 1.0, 1.0, 0.7]
+        entries = build_frame_entries(df, MAPPINGS, [1, 2], [None], None, methods_for_filter("automated"))
+        assert {e.trial for e in entries} == {1, 3}
 
 
 class TestBuildFrameEntries:
@@ -139,7 +181,7 @@ class TestTitles:
             individual="a",
         )
         assert _entry_title(entry) == "peck (1)"
-        assert _entry_info(entry) == "trial 2  ·  cam-1  ·  a  ·  0.500 s  ·  conf 1.00  ·  manual"
+        assert _entry_info(entry) == "trial 2  ·  cam-1  ·  a  ·  0.500 s  ·  manual"
 
     def test_state_names_boundary(self):
         entry = FrameEntry(
@@ -154,7 +196,7 @@ class TestTitles:
             offset_s=1.8,
         )
         assert _entry_title(entry) == "hop (2) — END"
-        assert _entry_info(entry) == "trial 1  ·  1.800 s  ·  conf 1.00  ·  manual"
+        assert _entry_info(entry) == "trial 1  ·  1.800 s  ·  manual"
 
     def test_cropped_entry_says_so(self):
         entry = FrameEntry(
@@ -169,7 +211,7 @@ class TestTitles:
             offset_s=float("nan"),
             cropped=True,
         )
-        assert _entry_info(entry) == "trial 1  ·  cam-1  ·  0.500 s  ·  conf 1.00  ·  manual  ·  cropped"
+        assert _entry_info(entry) == "trial 1  ·  cam-1  ·  0.500 s  ·  manual  ·  cropped"
 
     def test_predicted_confidence_shown(self):
         entry = FrameEntry(
@@ -184,7 +226,58 @@ class TestTitles:
             offset_s=float("nan"),
             confidence=0.42,
         )
-        assert "conf 0.42" in _entry_info(entry)
+        assert confidence_text(entry) == "0.420"
+        # Red exactly when the tile is flagged — the two must not disagree.
+        assert LOW_CONFIDENCE_COLOR in confidence_style(entry, 0.5)
+        assert LOW_CONFIDENCE_COLOR not in confidence_style(entry, 0.4)
+
+
+class TestConfidenceEdit:
+    """The threshold is typed, so a score of 0.0002 is reachable."""
+
+    def test_small_thresholds_survive_the_round_trip(self, qapp):
+        edit = ConfidenceEdit(0.0002)
+        assert edit.text() == "0.0002"
+        assert edit.value() == pytest.approx(0.0002)
+
+    def test_typing_announces_the_number_typed(self, qapp):
+        edit = ConfidenceEdit(DEFAULT_CONFIDENCE)
+        seen = []
+        edit.valueChanged.connect(seen.append)
+        edit.setText("0.00025")
+        assert edit.value() == pytest.approx(0.00025)
+        assert seen == [pytest.approx(0.00025)]
+
+    def test_typing_one_key_at_a_time_lands_on_the_number(self, qapp):
+        """Every prefix of a small threshold is itself a valid number, so the
+        box follows the keystrokes and ends where the typing ended."""
+        edit = ConfidenceEdit(0.25)
+        for text in ("0", "0.", "0.0", "0.00", "0.000", "0.0002"):
+            edit.setText(text)
+        assert edit.value() == pytest.approx(0.0002)
+
+    def test_text_no_number_can_be_read_out_of_keeps_the_value(self, qapp):
+        edit = ConfidenceEdit(0.25)
+        edit.setText("half")
+        assert edit.value() == pytest.approx(0.25)
+        edit.editingFinished.emit()
+        assert edit.text() == "0.25"
+
+    def test_empty_is_off_and_out_of_range_is_clamped(self, qapp):
+        edit = ConfidenceEdit(0.25)
+        edit.setText("")
+        assert edit.value() == 0.0
+        edit.setValue(5.0)
+        assert edit.value() == 1.0
+
+    def test_two_boxes_bound_to_each_other_settle(self, qapp):
+        """The grid's box and the histogram's are bound both ways."""
+        left, right = ConfidenceEdit(0.1), ConfidenceEdit(0.1)
+        left.valueChanged.connect(right.setValue)
+        right.valueChanged.connect(left.setValue)
+        left.setValue(0.0004)
+        assert right.value() == pytest.approx(0.0004)
+        assert left.value() == pytest.approx(0.0004)
 
 
 class TestConfidenceFlagging:
@@ -247,7 +340,7 @@ class TestConfidenceFlagging:
         dlg = LabelGridView(_Meta(ObservableAppState(), None), [low, high])
         try:
             assert dlg._cells[0].styleSheet() == ""  # threshold starts off
-            dlg.threshold_spin.setValue(0.5)
+            dlg.threshold_edit.setValue(0.5)
             assert LOW_CONFIDENCE_COLOR in dlg._cells[0].styleSheet()
             assert dlg._cells[1].styleSheet() == ""
         finally:
@@ -643,12 +736,13 @@ def _entry(
     offset_s=float("nan"),
     individual="a",
     labeling_method=LABELING_MANUAL,
+    name="peck",
 ):
     return FrameEntry(
         trial=trial,
         camera=camera,
         label_id=label_id,
-        name="peck",
+        name=name,
         event_type="point" if boundary == "point" else "state",
         boundary=boundary,
         t_rel=t_rel,
@@ -736,14 +830,35 @@ class TestGridVerdicts:
         yield dlg
         dlg.close()
 
-    def test_navigate_mode_jumps(self, grid):
-        grid._on_tile_clicked(grid._entries[0])
+    def test_double_click_jumps(self, grid):
+        grid._on_tile_double_clicked(grid._entries[0])
         assert [i["trial"] for i in grid._meta.navigation_widget.jumps] == ["1"]
-        assert not grid.mode_bar.done_btn.isEnabled()
 
-    def test_navigate_mode_drops_into_the_frame_review_when_that_curation_mode_is_on(self, grid):
+    def test_double_click_jumps_in_a_verdict_mode_too(self, grid):
+        """Both functions at once: single click curates, double click navigates."""
+        _set_grid_mode(grid, "curate")
+        grid._on_tile_double_clicked(grid._entries[0])
+        assert [i["trial"] for i in grid._meta.navigation_widget.jumps] == ["1"]
+
+    def test_double_click_leaves_the_verdicts_alone(self, grid):
+        """Qt opens a double click with a plain press, which toggles the tile;
+        the double click toggles it back, so a jump curates nothing."""
+        _set_grid_mode(grid, "curate")
+        grid._on_tile_clicked(grid._entries[0])  # the press Qt delivers first
+        grid._on_tile_double_clicked(grid._entries[0])
+        assert not grid.mode_bar.verdicts.clicked
+        assert grid.mode_bar.count_label.text() == ""
+
+    def test_double_click_on_a_marked_tile_keeps_it_marked(self, grid):
+        _set_grid_mode(grid, "curate")
+        grid._on_tile_clicked(grid._entries[0])  # marked
+        grid._on_tile_clicked(grid._entries[0])  # the press: unmarks
+        grid._on_tile_double_clicked(grid._entries[0])  # the double click: back on
+        assert grid.mode_bar.verdicts.is_clicked(grid._entries[0])
+
+    def test_double_click_drops_into_the_frame_review_when_that_curation_mode_is_on(self, grid):
         grid._meta.labels_widget.curation_panel._mode = "frame"
-        grid._on_tile_clicked(grid._entries[1])
+        grid._on_tile_double_clicked(grid._entries[1])
         panel = grid._meta.labels_widget.curation_panel
         assert panel.reviews and panel.reviews[0][0]["trial"] == "2" and panel.reviews[0][1] == "point"
         assert grid._meta.navigation_widget.jumps == []
@@ -768,8 +883,7 @@ class TestGridVerdicts:
         assert [i["trial"] for i in panel.curated] == ["2"]  # not the clicked one, not the manual one
 
     def test_mark_low_confidence_exists_only_where_a_click_means_uncurated(self, grid):
-        grid.threshold_spin.setValue(0.5)
-        assert not grid.mode_bar.mark_flagged_btn.isEnabled()  # navigate
+        grid.threshold_edit.setValue(0.5)
         _set_grid_mode(grid, "curate")
         assert not grid.mode_bar.mark_flagged_btn.isEnabled()
         grid.mode_bar._mark_flagged()  # a stray call in curate mode marks nothing
@@ -779,15 +893,121 @@ class TestGridVerdicts:
 
     def test_mark_flagged_clicks_what_the_threshold_outlines(self, grid):
         _set_grid_mode(grid, "uncurate")
-        grid.threshold_spin.setValue(0.5)
+        grid.threshold_edit.setValue(0.5)
         grid.mode_bar._mark_flagged()
         assert [grid.mode_bar.verdicts.is_clicked(e) for e in grid._entries] == [True, False, False]
 
     def test_switching_mode_clears_the_clicks(self, grid):
         _set_grid_mode(grid, "curate")
         grid._on_tile_clicked(grid._entries[0])
-        _set_grid_mode(grid, "navigate")
+        _set_grid_mode(grid, "uncurate")
         assert not grid.mode_bar.verdicts.clicked
+
+
+class TestLabelFilterChoices:
+    """The filter's choices: all of them first, then one per class with its count."""
+
+    def _entries(self):
+        return [
+            _entry(label_id=2, name="hop", trial="1"),
+            _entry(label_id=1, name="peck", trial="2"),
+            _entry(label_id=1, name="peck", trial="3"),
+        ]
+
+    def test_all_comes_first_and_counts_every_tile(self):
+        assert label_filter_choices(self._entries())[0] == (None, "All labels (3)")
+
+    def test_one_choice_per_class_by_name_with_its_count(self):
+        assert label_filter_choices(self._entries())[1:] == [(2, "hop (1)"), (1, "peck (2)")]
+
+    def test_no_entries_offers_only_all(self):
+        assert label_filter_choices([]) == [(None, "All labels (0)")]
+
+    def test_filter_none_is_every_entry(self):
+        entries = self._entries()
+        assert filter_entries(entries, None) == entries
+
+    def test_filter_keeps_one_class(self):
+        assert [e.trial for e in filter_entries(self._entries(), 1)] == ["2", "3"]
+
+
+class TestLabelFilterGrid:
+    """The filter narrows the operations, not just the view."""
+
+    @pytest.fixture()
+    def grid(self, qapp, tmp_path, labels_df):
+        state = ObservableAppState()
+        state._yaml_path = str(tmp_path / "gui_settings.yaml")
+        state._all_labels_df = labels_df
+        labels = _LabelsStub(MAPPINGS)
+        labels.curation_panel = _PanelStub()
+        entries = [
+            _entry(label_id=1, name="peck", trial="1", confidence=0.2, labeling_method=LABELING_AUTOMATED),
+            _entry(label_id=2, name="hop", trial="2", confidence=0.2, labeling_method=LABELING_AUTOMATED),
+            _entry(label_id=2, name="hop", trial="3", confidence=0.9, labeling_method=LABELING_AUTOMATED),
+        ]
+        dlg = LabelGridView(_Meta(state, labels, nav=_NavStub2()), entries)
+        yield dlg
+        dlg.close()
+
+    def _select(self, grid, label_id):
+        grid.label_filter.setCurrentIndex(grid.label_filter.findData(label_id))
+
+    def test_the_filter_shows_up_only_with_more_than_one_class(self, grid):
+        assert grid._filter_row.isVisibleTo(grid)
+        one_class = LabelGridView(grid.meta, [_entry(label_id=1, name="peck", trial="1")])
+        assert not one_class._filter_row.isVisibleTo(one_class)
+        one_class.close()
+
+    def test_opens_unfiltered(self, grid):
+        assert grid.label_filter.currentData() is None
+        assert len(grid.visible_entries()) == 3
+        assert grid.count_label.text() == "3 frames"
+
+    def test_filtering_hides_the_other_classes_tiles(self, grid):
+        self._select(grid, 2)
+        assert [c.isVisibleTo(grid) for c in grid._cells] == [False, True, True]
+        assert grid.count_label.text() == "2 of 3 frames"
+
+    def test_done_curates_only_the_filtered_class(self, grid):
+        self._select(grid, 2)
+        _set_grid_mode(grid, "curate")
+        grid._on_tile_clicked(grid._entries[0])  # peck — hidden, out of reach
+        grid._on_tile_clicked(grid._entries[1])
+        grid.mode_bar.apply_done()
+        assert [i["trial"] for i in grid.meta.labels_widget.curation_panel.curated] == ["2"]
+
+    def test_uncurate_leaves_the_hidden_classes_untouched(self, grid):
+        """The dangerous one: 'rest = curated' must mean the rest *on screen*."""
+        self._select(grid, 2)
+        _set_grid_mode(grid, "uncurate")
+        grid._on_tile_clicked(grid._entries[1])
+        grid.mode_bar.apply_done()
+        assert [i["trial"] for i in grid.meta.labels_widget.curation_panel.curated] == ["3"]
+        assert grid._entries[0].labeling_method == LABELING_AUTOMATED
+
+    def test_mark_flagged_only_reaches_the_shown_tiles(self, grid):
+        self._select(grid, 2)
+        _set_grid_mode(grid, "uncurate")
+        grid.threshold_edit.setValue(0.5)
+        grid.mode_bar._mark_flagged()
+        assert [grid.mode_bar.verdicts.is_clicked(e) for e in grid._entries] == [False, True, False]
+
+    def test_the_click_count_follows_the_filter(self, grid):
+        _set_grid_mode(grid, "curate")
+        grid._on_tile_clicked(grid._entries[0])
+        grid._on_tile_clicked(grid._entries[1])
+        assert grid.mode_bar.count_label.text() == "2 clicked"
+        self._select(grid, 2)
+        assert grid.mode_bar.count_label.text() == "1 clicked"
+        self._select(grid, None)
+        assert grid.mode_bar.count_label.text() == "2 clicked"
+
+    def test_the_hint_names_the_filtered_class(self, grid):
+        _set_grid_mode(grid, "uncurate")
+        assert "Filtered to" not in grid.hint.text()
+        self._select(grid, 2)
+        assert "Filtered to 'hop'" in grid.hint.text()
 
 
 class TestTileVerdicts:
@@ -828,7 +1048,7 @@ class TestFlaggedTrials:
         state._yaml_path = str(tmp_path / "gui_settings.yaml")
         state._all_labels_df = labels_df
         grid = LabelGridView(_Meta(state, _LabelsStub(MAPPINGS)), self._entries())
-        grid.threshold_spin.setValue(0.6)
+        grid.threshold_edit.setValue(0.6)
         assert [bool(c.styleSheet()) for c in grid._cells] == [False, True, False]
 
         _set_grid_mode(grid, "uncurate")
@@ -893,6 +1113,25 @@ class TestSplitHistogram:
         assert below.sum() == 0 and above.sum() == 2
 
 
+class TestStickyThreshold:
+    """Curation runs over many trials — the flag threshold is remembered (SCOPE_GLOBAL),
+    shared with the video grid's own threshold spin."""
+
+    def test_opens_at_the_saved_value_and_writes_back(self, qapp, tmp_path, labels_df):
+        state = ObservableAppState()
+        state._yaml_path = str(tmp_path / "gui_settings.yaml")
+        state._all_labels_df = labels_df
+        state.grid_confidence_threshold = 0.3
+        entries = [_entry(trial="1", confidence=0.2)]
+        grid = LabelGridView(_Meta(state, _LabelsStub(MAPPINGS)), entries)
+        try:
+            assert grid.threshold_edit.value() == pytest.approx(0.3)
+            grid.threshold_edit.setValue(0.6)
+            assert state.grid_confidence_threshold == pytest.approx(0.6)
+        finally:
+            grid.close()
+
+
 class TestHistogramDialog:
     """The popup and the grid share one threshold, in both directions."""
 
@@ -915,22 +1154,22 @@ class TestHistogramDialog:
         grid._hist_dialog.close()
 
     def test_the_popup_opens_on_the_grids_threshold(self, grid):
-        grid.threshold_spin.setValue(0.5)
+        grid.threshold_edit.setValue(0.5)
         grid._show_histograms()
-        assert grid._hist_dialog.threshold_spin.value() == pytest.approx(0.5)
+        assert grid._hist_dialog.threshold_edit.value() == pytest.approx(0.5)
         grid._hist_dialog.close()
 
     def test_moving_it_in_the_popup_moves_the_grid(self, grid):
         grid._show_histograms()
-        grid._hist_dialog.threshold_spin.setValue(0.4)
-        assert grid.threshold_spin.value() == pytest.approx(0.4)
+        grid._hist_dialog.threshold_edit.setValue(0.4)
+        assert grid.threshold_edit.value() == pytest.approx(0.4)
         assert LOW_CONFIDENCE_COLOR in grid._cells[0].styleSheet()
         grid._hist_dialog.close()
 
     def test_moving_it_in_the_grid_moves_the_popup(self, grid):
         grid._show_histograms()
-        grid.threshold_spin.setValue(0.7)
-        assert grid._hist_dialog.threshold_spin.value() == pytest.approx(0.7)
+        grid.threshold_edit.setValue(0.7)
+        assert grid._hist_dialog.threshold_edit.value() == pytest.approx(0.7)
         grid._hist_dialog.close()
 
     def test_closing_it_lets_the_next_click_reopen(self, grid):

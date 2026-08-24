@@ -12,6 +12,8 @@ import pytest
 
 from ethograph.labels.curation import (
     CURATED_COLUMN,
+    CURATED_NO,
+    CURATED_YES,
     build_review_queue,
     curate_label,
     curate_rows,
@@ -205,19 +207,28 @@ class TestStatus:
         assert method_counts(None, 2) == {LABELING_MANUAL: 0, LABELING_AUTOMATED: 0, LABELING_CURATED: 0}
 
     def test_curated_column_is_written_per_trial(self):
+        # String-valued ("yes"/"no"), not 0/1: the trials table's funnel
+        # filter reads a numeric column as a range and a string column as a
+        # categorical checklist, and this verdict is a yes/no choice.
         mdf = pd.DataFrame({"trial": [1, 2, 3], "genotype": ["wt", "ko", "wt"]})
         status = trial_curation_status(_labels(), [1, 2, 3])
         out = curated_column(mdf, status)
-        assert out[CURATED_COLUMN].tolist() == [0, 0, 1]
+        assert out[CURATED_COLUMN].tolist() == [CURATED_NO, CURATED_NO, CURATED_YES]
         assert CURATED_COLUMN not in mdf.columns  # a copy
         assert curated_column(None, status) is None
 
     def test_differs_only_when_a_verdict_changed(self):
-        mdf = pd.DataFrame({"trial": [1, 2], CURATED_COLUMN: [0, 0]})
+        mdf = pd.DataFrame({"trial": [1, 2], CURATED_COLUMN: [CURATED_NO, CURATED_NO]})
         assert curated_column_differs(mdf, {"1": False, "2": False}) is False
         assert curated_column_differs(mdf, {"1": False, "2": True}) is True
         assert curated_column_differs(mdf.drop(columns=[CURATED_COLUMN]), {"1": False}) is True
         assert curated_column_differs(None, {"1": False}) is False
+
+    def test_differs_reads_legacy_int_valued_columns(self):
+        """A file written before the yes/no switch still compares correctly."""
+        mdf = pd.DataFrame({"trial": [1, 2], CURATED_COLUMN: [0, 1]})
+        assert curated_column_differs(mdf, {"1": False, "2": True}) is False
+        assert curated_column_differs(mdf, {"1": True, "2": True}) is True
 
 
 # ---------------------------------------------------------------------------
@@ -239,6 +250,13 @@ class TestQueue:
         ]
         start, end = queue[1], queue[2]
         assert start.inst is end.inst  # one label, two boundaries
+
+    def test_automated_only_skips_manual_and_curated(self):
+        """A human already vouched for the manual (trial 1, label 2) and
+        curated (trial 2, label 1) boundaries — only the automated ones remain."""
+        queue = build_review_queue(_labels(), None, automated_only=True)
+        got = [(t.inst["trial"], t.inst["labels"], t.field) for t in queue]
+        assert got == [(1, 1, "point"), (2, 3, "point")]
 
     def test_scope_individual_and_trials_narrow_the_queue(self):
         assert [t.inst["labels"] for t in build_review_queue(_labels(), {3})] == [3]

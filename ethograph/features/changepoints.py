@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from typing import List, Literal
 
 import numpy as np
@@ -6,6 +7,7 @@ import xarray as xr
 from scipy.signal import find_peaks
 
 from ethograph.features.preprocessing import z_normalize
+from ethograph.io import schema
 from ethograph.labels.intervals import (
     purge_short_intervals,
     snap_boundaries,
@@ -17,6 +19,7 @@ from ethograph.labels.ml import (
     purge_small_blocks,
     stitch_gaps,
 )
+from ethograph.utils.xr_utils import get_time_coord
 
 # ---------------------------------------------------------------------------
 # Internal helpers
@@ -143,7 +146,7 @@ def extract_cp_times(ds: xr.Dataset, time: np.ndarray, **cp_kwargs) -> np.ndarra
     Returns empty array if no CP variables exist.
     """
     filtered = ds.sel(**cp_kwargs) if cp_kwargs else ds
-    cp_ds = filtered.filter_by_attrs(type="changepoints")
+    cp_ds = schema.filter_changepoints(filtered)
     if len(cp_ds.data_vars) == 0:
         return np.array([], dtype=np.float64)
 
@@ -179,8 +182,7 @@ def snap_to_nearest_changepoint_time(
     # Kinematic changepoints (dense binary arrays)
     if feature_sel:
         filtered = ds.sel(**ds_kwargs) if ds_kwargs else ds
-        cp_ds = filtered.filter_by_attrs(type="changepoints")
-        cp_ds = cp_ds.filter_by_attrs(target_feature=feature_sel)
+        cp_ds = schema.filter_changepoints(filtered).filter_by_attrs(target_feature=feature_sel)
         if len(cp_ds.data_vars) > 0:
             cp_indices = np.concatenate([np.where(cp_ds[var].values)[0] for var in cp_ds.data_vars])
             cp_indices = np.unique(cp_indices)
@@ -370,23 +372,33 @@ def correct_changepoints_dense(labels, ds, all_params):
 # ---------------------------------------------------------------------------
 
 
-def merge_changepoints(ds):
-    """Merge all changepoint variables in a dataset into a single boolean mask.
+def merge_changepoints(ds, vars: Sequence[str] | None = None, keep_dims: Sequence[str] | None = None):
+    """Merge changepoint variables in a dataset into a single boolean mask.
 
-    Combines every variable with ``attrs["type"] == "changepoints"`` using
-    logical OR across all non-time dimensions.  All changepoint variables
-    must share the same ``target_feature`` attribute.
+    Combines every raw changepoint mask (``attrs["changepoint_mask"]``; see
+    :func:`ethograph.io.schema.is_changepoint`) using logical OR across all
+    non-time dimensions — the smooth expansions of a mask are ordinary
+    features and are not merged. All masks must share the same
+    ``target_feature`` attribute.
 
     Parameters
     ----------
     ds : xr.Dataset
         Dataset containing one or more changepoint variables.
+    vars : sequence of str, optional
+        Which changepoint masks to merge; default merges every one
+        :func:`~ethograph.io.schema.changepoint_vars` finds. Naming a
+        variable that is not a changepoint mask is an error.
+    keep_dims : sequence of str, optional
+        Dims to leave standing instead of ORing across — typically the
+        individual dim, so one animal's changepoints do not leak into
+        another's. Default collapses every non-time dim.
 
     Returns
     -------
     ds : xr.Dataset
         Copy of the input with a new ``"changepoints"`` DataArray
-        (float 0/1) replacing the individual changepoint variables.
+        (float 0/1) replacing the merged changepoint variables.
     target_feature : str
         The shared ``target_feature`` attribute from the input variables.
 
@@ -396,7 +408,16 @@ def merge_changepoints(ds):
         If changepoint variables reference different target features.
     """
     ds = ds.copy()
-    cp_ds = ds.filter_by_attrs(type="changepoints")
+    if vars is None:
+        cp_ds = schema.filter_changepoints(ds)
+    else:
+        unknown = [v for v in vars if v not in ds.data_vars or not schema.is_changepoint(ds[v])]
+        if unknown:
+            raise ValueError(
+                f"{unknown} are not changepoint masks in this dataset "
+                f"(available: {schema.changepoint_vars(ds)})"
+            )
+        cp_ds = ds[list(vars)]
 
     target_feature = []
     for var in cp_ds.data_vars:
@@ -407,10 +428,11 @@ def merge_changepoints(ds):
             f"Not allowed to merge changepoints for different target features: {np.unique(target_feature)}"
         )
 
-    dims = [dim for dim in cp_ds.dims if dim not in ["trials", "time"]]
+    keep = set(keep_dims or ())
+    dims = [dim for dim in cp_ds.dims if dim not in ["trials", "time"] and dim not in keep]
 
     ds["changepoints"] = cp_ds.to_array().any(dim=["variable"] + dims).astype(float)
-    ds["changepoints"].attrs["type"] = "changepoints"
+    ds["changepoints"].attrs.update(schema.changepoint_attrs(target_feature=target_feature[0]))
 
     ds = ds.drop_vars(list(cp_ds.data_vars))
 
@@ -506,3 +528,143 @@ def more_changepoint_features(
             segment_ids /= segment_ids.max()
 
     return np.column_stack([cp_binary_peak, weighted_cps, segment_ids])
+
+
+#: The four column groups ``more_changepoint_features`` produces — the
+#: vocabulary ``add_changepoint_features``'s ``transforms`` and
+#: ``segment.config.ChangepointFeaturesConfig.transforms`` both read.
+#: ``proximity``/``proximity_weighted`` name the *shape* generically because
+#: which kernel they use is a separate choice (``distribution``).
+CP_BINARY = "binary"
+CP_PROXIMITY = "proximity"
+CP_PROXIMITY_WEIGHTED = "proximity_weighted"
+CP_SEGMENT_ID = "segment_id"
+CP_TRANSFORMS: tuple[str, ...] = (CP_BINARY, CP_PROXIMITY, CP_PROXIMITY_WEIGHTED, CP_SEGMENT_ID)
+
+
+def _cp_feature_groups(var: str, sigmas: Sequence[float]) -> list[tuple[str, str]]:
+    """``(name, transform_group)`` pairs, in ``more_changepoint_features``'s column order."""
+    smooth = [f"{var}_cp_sigma{sigma:g}" for sigma in sigmas]
+    pairs = [(f"{var}_cp_binary", CP_BINARY)]
+    pairs += [(name, CP_PROXIMITY) for name in smooth]
+    pairs.append((f"{var}_cp_binary_weighted", CP_PROXIMITY_WEIGHTED))
+    pairs += [(f"{name}_weighted", CP_PROXIMITY_WEIGHTED) for name in smooth]
+    pairs.append((f"{var}_cp_segment_id", CP_SEGMENT_ID))
+    return pairs
+
+
+def cp_feature_names(var: str, sigmas: Sequence[float], transforms: Sequence[str] = CP_TRANSFORMS) -> list[str]:
+    """Column names ``add_changepoint_features(..., transforms=transforms)`` writes for *var*.
+
+    Use this to name the exact columns a ``changepoint_features`` config will
+    produce without materialising anything — e.g. to paste into
+    ``features.columns`` by hand, or to check a config's generated layout.
+    """
+    unknown = set(transforms) - set(CP_TRANSFORMS)
+    if unknown:
+        raise ValueError(f"transforms must be a subset of {CP_TRANSFORMS}, got {sorted(unknown)}")
+    wanted = set(transforms)
+    return [name for name, group in _cp_feature_groups(var, sigmas) if group in wanted]
+
+
+def add_changepoint_features(
+    ds: xr.Dataset,
+    sigmas: Sequence[float],
+    target_feature: str | None = None,
+    distribution: Literal["gaussian", "laplacian"] = "laplacian",
+    transforms: Sequence[str] = CP_TRANSFORMS,
+    vars: Sequence[str] | None = None,
+) -> xr.Dataset:
+    """Expand changepoint variables into the ML features of ``more_changepoint_features``.
+
+    For each changepoint data_var (see :func:`ethograph.io.schema.is_changepoint`; binary 0/1 over
+    ``time`` plus any subset of ``keypoint``/``individual``) the requested
+    *transforms* are computed per column and added as data_vars with the
+    changepoint var's dims — see :data:`CP_TRANSFORMS` / :func:`cp_feature_names`
+    for the exact names:
+
+    - ``binary`` → ``{var}_cp_binary`` — the mask itself
+    - ``proximity`` → ``{var}_cp_sigma{sigma}`` — one smooth proximity feature per sigma
+    - ``proximity_weighted`` → ``{var}_cp_binary_weighted`` / ``{var}_cp_sigma{sigma}_weighted``
+      — the same, weighted by low values of the target feature and z-normalised
+    - ``segment_id`` → ``{var}_cp_segment_id`` — normalised id of the segment between changepoints
+
+    All of them carry ``attrs["normalise"] = 0`` (already in ``[0, 1]`` or
+    z-normalised) and none is marked as a changepoint variable — neither the
+    ``kind`` nor the legacy ``type`` — so only the raw binary masks remain
+    changepoints: they are the only ones that can be OR-merged, snapped to or
+    drawn as lines.
+
+    Parameters
+    ----------
+    ds : xr.Dataset
+        Trial dataset holding changepoint vars and their target features.
+    sigmas : sequence of float
+        Kernel widths (samples) for the smooth features.
+    target_feature : str, optional
+        Feature whose values weight the smooth features; defaults to each
+        changepoint var's own ``attrs["target_feature"]``.
+    distribution : ``"laplacian"`` or ``"gaussian"``
+        Kernel shape, see ``more_changepoint_features``.
+    transforms : subset of :data:`CP_TRANSFORMS`
+        Which column groups to keep; default is all four.
+    vars : sequence of str, optional
+        Which changepoint variables to expand; default expands every one
+        :func:`~ethograph.io.schema.changepoint_vars` finds. Naming a
+        variable that is not a changepoint mask is an error.
+
+    Returns
+    -------
+    xr.Dataset
+        Copy of ``ds`` with the new data_vars.
+    """
+    sigmas = list(sigmas)
+    ds = ds.copy()
+    cp_vars = schema.changepoint_vars(ds) if vars is None else list(vars)
+    if not cp_vars:
+        raise ValueError("Dataset has no changepoint data_var (kind='changepoint_feature' or type='changepoints')")
+    for var in cp_vars:
+        if var not in ds.data_vars or not schema.is_changepoint(ds[var]):
+            raise ValueError(
+                f"{var!r} is not a changepoint mask in this dataset "
+                f"(available: {schema.changepoint_vars(ds)})"
+            )
+
+    for var in cp_vars:
+        cp = ds[var]
+        time = get_time_coord(cp).name
+        target_name = target_feature if target_feature is not None else cp.attrs["target_feature"]
+        target = ds[target_name]
+        extra = [d for d in target.dims if d not in cp.dims]
+        if extra:
+            raise ValueError(
+                f"Target feature {target_name!r} has dims {extra} that changepoint var {var!r} "
+                f"({cp.dims}) lacks; pin them first"
+            )
+        if time not in target.dims:
+            raise ValueError(f"Target feature {target_name!r} is not on the {time!r} axis of {var!r}")
+
+        stacked = xr.apply_ufunc(
+            lambda mask, vals: more_changepoint_features(mask, vals, sigmas, distribution),
+            cp,
+            target,
+            input_core_dims=[[time], [time]],
+            output_core_dims=[[time, "cp_feature"]],
+            vectorize=True,
+            output_dtypes=[np.float64],
+        )
+        all_pairs = _cp_feature_groups(var, sigmas)
+        assert stacked.sizes["cp_feature"] == len(all_pairs)
+        wanted = set(transforms)
+        for i, (name, group) in enumerate(all_pairs):
+            if group not in wanted:
+                continue
+            feature = stacked.isel(cp_feature=i, drop=True).transpose(*cp.dims)
+            feature.attrs = {
+                "description": f"Changepoint feature of {var} (target {target_name})",
+                schema.KIND: schema.CHANGEPOINT_FEATURE,
+                "normalise": 0,
+            }
+            ds[name] = feature
+
+    return ds

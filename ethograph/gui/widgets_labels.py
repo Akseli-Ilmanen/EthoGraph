@@ -207,6 +207,7 @@ class LabelsWidget(QWidget):
         self._branches_layout = None
         self._mapping_file_path: str | None = None
         self._previous_active_branch: int | None = None
+        self._label_table_dialog = None
 
         self._setup_ui()
 
@@ -279,14 +280,23 @@ class LabelsWidget(QWidget):
         """Add the video label-name overlay control to the video context group."""
         groupbox.layout().addWidget(self.hide_label_cb)
 
-    def attach_overlay_groupbox(self, groupbox):
-        """Add per-plot-type label controls to the "Label overlay" groupbox."""
-        self.labels_per_plot_btn = QPushButton("Show labels per plot type")
+    def attach_overlay_groupbox(self, groupbox, row_layout=None):
+        """Add the per-plot-type label control into the "Label overlay" groupbox.
+
+        Shares a row with the groupbox's existing toggles instead of taking a
+        row of its own, so the button costs no extra vertical space.
+        """
+        self.labels_per_plot_btn = QPushButton("Per-plot type…")
         self.labels_per_plot_btn.setToolTip(
             "Choose how label rectangles render on each plot type: full plot, bottom strip, or not at all"
         )
         self.labels_per_plot_btn.clicked.connect(self._show_labels_per_plot_dialog)
-        groupbox.layout().addWidget(self.labels_per_plot_btn)
+        target = row_layout if row_layout is not None else groupbox.layout()
+        # Insert before the trailing stretch (if any) rather than appending after it.
+        insert_at = target.count()
+        if insert_at > 0 and target.itemAt(insert_at - 1).spacerItem() is not None:
+            insert_at -= 1
+        target.insertWidget(insert_at, self.labels_per_plot_btn)
 
     def _show_labels_per_plot_dialog(self):
         modes = dict(DEFAULT_LABEL_OVERLAY_MODES)
@@ -296,6 +306,42 @@ class LabelsWidget(QWidget):
             self.app_state.label_overlay_modes = dialog.get_modes()
             if self.plot_container is not None:
                 self.plot_container.labels_redraw_needed.emit()
+
+    def open_label_table(self):
+        """Open (or raise) the spreadsheet view of the whole label table."""
+        from ethograph.gui.dialog_label_table import LabelTableDialog
+
+        if self._label_table_dialog is None or not self._label_table_dialog.isVisible():
+            self._label_table_dialog = LabelTableDialog(
+                self.app_state,
+                mappings=self._mappings,
+                on_changed=self._on_label_table_changed,
+                parent=self.window(),
+            )
+        else:
+            self._label_table_dialog.set_mappings(self._mappings)
+        self._label_table_dialog.show()
+        self._label_table_dialog.raise_()
+        self._label_table_dialog.activateWindow()
+        return self._label_table_dialog
+
+    def _on_label_table_changed(self):
+        """A cell edit or row deletion in the label table landed: catch up.
+
+        The click-selection is dropped: it names a row of the trial's frame,
+        and the row it named may have just moved or gone.
+        """
+        self.current_labels_pos = None
+        self.current_labels = None
+        self.current_labels_is_prediction = False
+        self._mark_changes_unsaved()
+        self.curation_panel.note_labels_edited()
+        nav = getattr(self.app_state, "navigation_widget", None)
+        if nav is not None and hasattr(nav, "on_labels_changed"):
+            nav.on_labels_changed()
+        if self.data_widget:
+            self.data_widget.update_main_plot(preserve_x_range=True)
+        self.refresh_labels_shapes_layer()
 
     def plot_all_labels(self, intervals_df, predictions_df=None):
         """Plot all labels for current trial based on interval data.
@@ -388,12 +434,20 @@ class LabelsWidget(QWidget):
         scroll.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         layout.addWidget(scroll, stretch=1)
 
-        # "+" button to add branches
+        # "+" button to add branches, and the raw table behind these classes.
+        button_row = QHBoxLayout()
         add_branch_btn = QPushButton("+")
         add_branch_btn.setToolTip("Add a new label branch")
         add_branch_btn.setFixedWidth(28)
         add_branch_btn.clicked.connect(self._add_new_branch)
-        layout.addWidget(add_branch_btn, alignment=Qt.AlignLeft)
+        button_row.addWidget(add_branch_btn)
+
+        table_btn = QPushButton("Label table…")
+        table_btn.setToolTip("Inspect every trial's labels as a spreadsheet: filter, sort, edit cells, delete rows")
+        table_btn.clicked.connect(self.open_label_table)
+        button_row.addWidget(table_btn)
+        button_row.addStretch()
+        layout.addLayout(button_row)
 
         # Curation lives under the label tables: every curation question
         # starts with "which labels", and those are the rows right above —
@@ -705,6 +759,8 @@ class LabelsWidget(QWidget):
                 self.changepoints_widget.set_motif_mappings(self._mappings)
             if self.data_widget and self.data_widget.navigation_widget:
                 self.data_widget.navigation_widget.set_mappings(self._mappings)
+            if self._label_table_dialog is not None and self._label_table_dialog.isVisible():
+                self._label_table_dialog.set_mappings(self._mappings)
             self._populate_labels_table()
             self._sync_active_label_ids()
             self.refresh_labels_shapes_layer()
@@ -1734,6 +1790,11 @@ class LabelsWidget(QWidget):
 
     def refresh_labels_shapes_layer(self):
         """Refresh: ensure overlay exists, then force an update."""
+        # Every label mutation ends here, so it is also where an open label
+        # table hears that the frame under it was replaced (its own edits leave
+        # it current, so this costs nothing on that path).
+        if self._label_table_dialog is not None and self._label_table_dialog.isVisible():
+            self._label_table_dialog.refresh_if_stale()
         if getattr(self, "_label_overlay", None) is None:
             self._add_labels_shapes_layer()
             return

@@ -13,12 +13,14 @@ from ethograph.io.metadata_edit import (
     MetadataTarget,
     blank_column,
     coerce_value,
+    ensure_tabular_target,
     fits_dtype,
     resolve_metadata_target,
     save_metadata_table,
     write_metadata,
     write_trials_metadata,
 )
+from ethograph.labels.curation import CURATED_COLUMN, EXPECTATION_COLUMN
 
 
 @pytest.fixture
@@ -217,3 +219,85 @@ def test_nwb_write_is_repeatable(trials_nwb):
     df.loc[0, "scored"] = "z"
     write_trials_metadata(trials_nwb, df, columns=["scored"])
     assert list(_read_trials(trials_nwb)["scored"]) == ["z", "b", "c"]
+
+
+# ---------------------------------------------------------------------------
+# Derived columns (the curation verdict) stay out of NWB
+# ---------------------------------------------------------------------------
+
+
+def test_nwb_write_refuses_the_curated_column(trials_nwb):
+    df = pd.DataFrame({"trial": [1, 2, 3], CURATED_COLUMN: ["yes", "yes", "no"], "condition": ["a", "b", "c"]})
+    assert write_trials_metadata(trials_nwb, df, columns=[CURATED_COLUMN]) == []
+    assert CURATED_COLUMN not in _read_trials(trials_nwb).columns
+
+    # A mixed write still carries the columns that do belong there.
+    assert write_trials_metadata(trials_nwb, df, columns=[CURATED_COLUMN, "condition"]) == ["condition"]
+    trials = _read_trials(trials_nwb)
+    assert CURATED_COLUMN not in trials.columns
+    assert list(trials["condition"]) == ["a", "b", "c"]
+
+
+def test_nwb_write_refuses_the_prediction_check_column(trials_nwb):
+    """A prediction run's expectation verdict is ours, like the curation one."""
+    df = pd.DataFrame({"trial": [1, 2, 3], EXPECTATION_COLUMN: ["ok", "order", "ok"]})
+    assert write_trials_metadata(trials_nwb, df, columns=[EXPECTATION_COLUMN]) == []
+    assert EXPECTATION_COLUMN not in _read_trials(trials_nwb).columns
+
+
+def test_ensure_tabular_target_copies_an_nwb_table_to_the_sidecar(tmp_path, trials_nwb):
+    nc = tmp_path / "session.nc"
+    nc.write_bytes(b"")
+    df = pd.DataFrame({"trial": [1, 2, 3], "condition": ["a", "b", "c"]})
+
+    target = ensure_tabular_target(nc, df, alignment_path=trials_nwb)
+
+    assert target is not None and target.kind == TARGET_TABULAR
+    assert target.path == tmp_path / "session_metadata.tsv"
+    assert list(pd.read_csv(target.path, sep="\t")["condition"]) == ["a", "b", "c"]
+    # The NWB is left exactly as it was.
+    assert list(_read_trials(trials_nwb)["condition"]) == ["ctrl", "ctrl", "ctrl"]
+
+
+def test_ensure_tabular_target_never_overwrites_an_existing_sidecar(tmp_path, trials_nwb):
+    nc = tmp_path / "session.nc"
+    nc.write_bytes(b"")
+    sidecar = tmp_path / "session_metadata.tsv"
+    save_metadata_table(sidecar, pd.DataFrame({"trial": [1], "condition": ["kept"]}))
+
+    target = ensure_tabular_target(nc, pd.DataFrame({"trial": [1], "condition": ["new"]}), alignment_path=trials_nwb)
+
+    assert target.path == sidecar
+    assert list(pd.read_csv(sidecar, sep="\t")["condition"]) == ["kept"]
+
+
+def test_ensure_tabular_target_keeps_an_explicit_tabular_target(tmp_path):
+    nc = tmp_path / "session.nc"
+    nc.write_bytes(b"")
+    explicit = tmp_path / "chosen.tsv"
+    save_metadata_table(explicit, pd.DataFrame({"trial": [1]}))
+
+    target = ensure_tabular_target(nc, pd.DataFrame({"trial": [1]}), metadata_path=explicit)
+
+    assert target == MetadataTarget(explicit, TARGET_TABULAR)
+    assert not (tmp_path / "session_metadata.tsv").exists()
+
+
+def test_ensure_tabular_target_writes_a_sidecar_that_does_not_exist_yet(tmp_path):
+    """No alignment NWB either — the derived column still needs a file."""
+    nc = tmp_path / "session.nc"
+    nc.write_bytes(b"")
+
+    target = ensure_tabular_target(nc, pd.DataFrame({"trial": [1, 2]}))
+
+    assert target.path == tmp_path / "session_metadata.tsv"
+    assert list(pd.read_csv(target.path, sep="\t")["trial"]) == [1, 2]
+
+
+def test_ensure_tabular_target_falls_back_to_one_row_per_trial(tmp_path, trials_nwb):
+    nc = tmp_path / "session.nc"
+    nc.write_bytes(b"")
+
+    target = ensure_tabular_target(nc, None, alignment_path=trials_nwb, trials=["0", "1"])
+
+    assert list(pd.read_csv(target.path, sep="\t")["trial"].astype(str)) == ["0", "1"]

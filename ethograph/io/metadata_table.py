@@ -114,12 +114,20 @@ def metadata_tsv_path(nc_path: str | Path) -> Path:
 
 
 def load_metadata_tsv(path: str | Path) -> pd.DataFrame:
-    """Load a metadata TSV, CSV, or Excel file."""
+    """Load a metadata TSV, CSV, or Excel file.
+
+    The delimiter is chosen from the extension (comma for ``.csv``, tab
+    otherwise) rather than sniffed: a single-column table has no delimiter
+    character to sniff, and ``csv.Sniffer`` then picks a letter out of the
+    header text itself (e.g. splitting ``trial`` on its own ``t``).
+    """
     path = Path(path)
-    if path.suffix.lower() in (".xlsx", ".xls"):
+    suffix = path.suffix.lower()
+    if suffix in (".xlsx", ".xls"):
         df = pd.read_excel(path)
     else:
-        df = pd.read_csv(path, sep=None, engine="python", encoding="utf-8-sig")
+        sep = "," if suffix == ".csv" else "\t"
+        df = pd.read_csv(path, sep=sep, encoding="utf-8-sig")
     if "trial" not in df.columns:
         raise ValueError(f"Metadata table {path} missing required 'trial' column")
     return df

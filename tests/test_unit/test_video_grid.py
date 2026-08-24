@@ -10,7 +10,7 @@ from qtpy.QtTest import QTest
 from qtpy.QtWidgets import QApplication, QWidget
 
 from ethograph.gui.app_state import ObservableAppState
-from ethograph.gui.dialog_label_gridview import entry_inst, entry_key
+from ethograph.gui.dialog_label_gridview import entry_inst, entry_key, methods_for_filter
 from ethograph.gui.dialog_video_grid import (
     ClipEntry,
     VideoGridDialog,
@@ -51,6 +51,33 @@ def labels_df():
             "labeling_method": [LABELING_AUTOMATED, LABELING_MANUAL, LABELING_AUTOMATED, LABELING_AUTOMATED],
         }
     )
+
+
+class TestMethodFilter:
+    """Reviewing a model's output means its labels and nothing else.
+
+    Both grids share this filter (it lives on ``LabelSetupPage``), so it is
+    tested where the entries are built: a mixed set of labels must come out
+    one side of the human/model divide at a time.
+    """
+
+    def test_automated_only_drops_the_human_labels(self, labels_df):
+        methods = methods_for_filter("automated")
+        entries = build_clip_entries(labels_df, MAPPINGS, [1, 2], [None], 0.5, None, methods)
+        assert {e.labeling_method for e in entries} == {LABELING_AUTOMATED}
+        assert len(entries) == 3
+
+    def test_human_keeps_manual_and_curated_together(self, labels_df):
+        """Which of the two a label is says only how it got there."""
+        df = labels_df.copy()
+        df.loc[0, "labeling_method"] = LABELING_CURATED
+        entries = build_clip_entries(df, MAPPINGS, [1, 2], [None], 0.5, None, methods_for_filter("human"))
+        assert {e.labeling_method for e in entries} == {LABELING_MANUAL, LABELING_CURATED}
+
+    def test_all_is_the_unfiltered_grid(self, labels_df):
+        methods = methods_for_filter("all")
+        assert methods is None
+        assert len(build_clip_entries(labels_df, MAPPINGS, [1, 2], [None], 0.5, None, methods)) == 4
 
 
 class TestBuildClipEntries:
@@ -283,6 +310,7 @@ class TestPlayer:
         assert player._timer.interval() == 100  # 10 fps, real time
         player.speed_spin.setValue(25)
         assert player.app_state.playback_speed_pct == 100.0  # the GUI's own speed is untouched
+        assert player.app_state.video_grid_speed_pct == 25.0  # but the grid's own sticky setting follows
         assert player._timer.interval() == 400  # one frame per tick, four times as long
         player.play()
         player._tick()
@@ -293,15 +321,16 @@ class TestPlayer:
         player._tick()
         assert player.time == pytest.approx(0.2)  # wall-clock × 4
 
-    def test_speed_opens_at_the_gui_playback_speed(self, qapp, tmp_path):
+    def test_speed_opens_at_the_saved_grid_speed_not_the_gui_speed(self, qapp, tmp_path):
         state = ObservableAppState()
         state._yaml_path = str(tmp_path / "gui_settings.yaml")
         state.playback_speed_pct = 50.0
+        state.video_grid_speed_pct = 75.0
         entries = [_clip(1, "1", 0, 1.0, n_frames=11, fps=10.0)]
         player = VideoGridPlayer(_Meta(state), entries, columns=1, per_page=1, decode_fn=lambda page: None)
         try:
-            assert player.speed_spin.value() == 50
-            assert player._timer.interval() == 200
+            assert player.speed_spin.value() == 75
+            assert player._timer.interval() == 133  # round(1000 / (10 fps * 0.75))
         finally:
             player.close()
 
@@ -311,11 +340,21 @@ class TestPlayer:
         player._step_label(+1)
         assert "0.00–2.00 s" in player._tiles[0].caption.text()  # state event
 
-    def test_click_navigates_in_navigate_mode(self, player):
+    def test_double_click_navigates(self, player):
         tile = player._tiles[0]
-        tile.clicked.emit(tile.entry)
+        tile.double_clicked.emit(tile.entry)
         jumps = player._meta.navigation_widget.jumps
         assert len(jumps) == 1 and jumps[0][0]["trial"] == "2"
+
+    def test_double_click_leaves_the_verdicts_alone(self, player):
+        """The press Qt delivers before a double click toggles the tile; the
+        double click toggles it back, so a jump marks nothing."""
+        player.mode_bar.mode_combo.setCurrentIndex(player.mode_bar.mode_combo.findData("curate"))
+        tile = player._tiles[0]
+        tile.clicked.emit(tile.entry)  # the press Qt delivers first
+        tile.double_clicked.emit(tile.entry)
+        assert not player.mode_bar.verdicts.clicked
+        assert player._meta.navigation_widget.jumps
 
     def test_click_marks_and_done_curates_in_curate_mode(self, player):
         player.mode_bar.mode_combo.setCurrentIndex(player.mode_bar.mode_combo.findData("curate"))
@@ -337,6 +376,60 @@ class TestPlayer:
         # Every automated clip of every group except the clicked one.
         assert sorted((i["trial"], i["labels"]) for i in panel.curated) == [("1", 1), ("1", 2)]
         assert tile.entry.labeling_method == LABELING_AUTOMATED
+
+
+class TestStickyGridSettings:
+    """Curation runs over many trials — the grid's own knobs are remembered (SCOPE_GLOBAL)."""
+
+    def test_threshold_opens_at_the_saved_value_and_writes_back(self, qapp, tmp_path):
+        state = ObservableAppState()
+        state._yaml_path = str(tmp_path / "gui_settings.yaml")
+        state.grid_confidence_threshold = 0.3
+        entries = [_clip(1, "1", 0, 1.0, n_frames=11, fps=10.0)]
+        player = VideoGridPlayer(_Meta(state), entries, columns=1, per_page=1, decode_fn=lambda page: None)
+        try:
+            assert player.threshold_edit.value() == pytest.approx(0.3)
+            player.threshold_edit.setValue(0.6)
+            assert state.grid_confidence_threshold == pytest.approx(0.6)
+        finally:
+            player.close()
+
+
+class TestHistogramDialog:
+    """The popup and the player share one threshold, in both directions — same as the frame grid's."""
+
+    def test_one_plot_per_group(self, player):
+        player._show_histograms()
+        assert len(player._hist_dialog._plots) == 2  # label 1 and label 2
+        player._hist_dialog.close()
+
+    def test_the_popup_opens_on_the_players_threshold(self, player):
+        player.threshold_edit.setValue(0.5)
+        player._show_histograms()
+        assert player._hist_dialog.threshold_edit.value() == pytest.approx(0.5)
+        player._hist_dialog.close()
+
+    def test_moving_it_in_the_popup_moves_the_player(self, player):
+        player._show_histograms()
+        player._hist_dialog.threshold_edit.setValue(0.4)
+        assert player.threshold_edit.value() == pytest.approx(0.4)
+        player._hist_dialog.close()
+
+    def test_moving_it_in_the_player_moves_the_popup(self, player):
+        player._show_histograms()
+        player.threshold_edit.setValue(0.7)
+        assert player._hist_dialog.threshold_edit.value() == pytest.approx(0.7)
+        player._hist_dialog.close()
+
+    def test_closing_it_lets_the_next_click_reopen(self, player):
+        player._show_histograms()
+        dialog = player._hist_dialog
+        dialog.close()
+        QApplication.processEvents()
+        assert player._hist_dialog is None
+        player._show_histograms()
+        assert player._hist_dialog is not None and player._hist_dialog is not dialog
+        player._hist_dialog.close()
 
 
 class TestPrefetch:
@@ -456,5 +549,28 @@ class TestDialog:
         try:
             assert again.point_window_spin.value() == 1.25
             assert (again.per_page_spin.value(), again.columns_spin.value()) == (9, 4)
+        finally:
+            again.close()
+
+    def test_the_method_filter_opens_where_it_was_left(self, qapp, tmp_path, labels_df):
+        """Which half of the labels one is reviewing outlives a dialog, and a
+        dataset — global like the rest of the grid setup."""
+        from ethograph.gui.app_state import AppStateSpec
+
+        assert AppStateSpec.get_meta("grid_method_filter")[3] == AppStateSpec.SCOPE_GLOBAL
+        state = ObservableAppState()
+        state._yaml_path = str(tmp_path / "gui_settings.yaml")
+        state._all_labels_df = labels_df
+        dialog = VideoGridDialog(_Meta(state), label_ids=[2])
+        try:
+            assert dialog.setup.selected_methods() is None  # opens on "All labels"
+            dialog.setup.method_combo.setCurrentIndex(dialog.setup.method_combo.findData("automated"))
+            assert dialog.setup.selected_methods() == frozenset({LABELING_AUTOMATED})
+        finally:
+            dialog.close()
+        assert state.grid_method_filter == "automated"
+        again = VideoGridDialog(_Meta(state), label_ids=[2])
+        try:
+            assert again.setup.method_combo.currentData() == "automated"
         finally:
             again.close()

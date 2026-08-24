@@ -28,8 +28,8 @@ first one is quick and memory stays bounded; while a page is on screen the
 **next page decodes ahead** on a worker thread (its videos are resolved on
 the GUI thread first — the alignment NWB is not thread-safe), so stepping on
 is quick. The mode bar is the label grid's
-(:class:`~ethograph.gui.dialog_label_gridview.GridModeBar`): a tile click
-navigates, or marks the label for **Done** to curate.
+(:class:`~ethograph.gui.dialog_label_gridview.GridModeBar`): a single click
+marks the label for **Done** to curate, a double click jumps the GUI there.
 """
 
 from __future__ import annotations
@@ -67,14 +67,20 @@ from ethograph.gui.dialog_label_gridview import (
     CURATE_COLOR,
     LOW_CONFIDENCE_COLOR,
     UNCURATE_COLOR,
+    ConfidenceEdit,
+    ConfidenceHistogramsDialog,
     GridModeBar,
     LabelSetupPage,
     _mapping_color_hex,
     _row_confidence,
     _row_method,
+    confidence_groups,
+    confidence_style,
+    confidence_text,
     curation_panel_of,
     entry_inst,
     is_low_confidence,
+    keep_method,
     resolve_video_jobs,
     settle,
 )
@@ -160,11 +166,14 @@ def build_clip_entries(
     cameras: list[str | None],
     point_window_s: float,
     allowed_trials: set[str] | None = None,
+    methods: frozenset[str] | None = None,
 ) -> list[ClipEntry]:
     """One clip per matching label row per camera.
 
     A state event's clip is its span; a point event's is ``±point_window_s``
     around the instant, clamped so it never starts before the trial.
+    *methods* keeps only the labeling methods named (``None`` keeps every
+    label).
     """
     if labels_df is None or labels_df.empty:
         return []
@@ -175,6 +184,8 @@ def build_clip_entries(
 
     entries: list[ClipEntry] = []
     for _, row in rows.iterrows():
+        if not keep_method(row, methods):
+            continue
         label_id = int(row["labels"])
         info = mappings.get(label_id, {})
         event_type = str(info.get("event_type", "state"))
@@ -402,6 +413,7 @@ class _ClipTile(QFrame):
     """One clip: its current frame (marker painted on), title and caption."""
 
     clicked = Signal(object)
+    double_clicked = Signal(object)
 
     def __init__(self, entry: ClipEntry, parent=None):
         super().__init__(parent)
@@ -414,18 +426,34 @@ class _ClipTile(QFrame):
         lay.setSpacing(2)
         self.title = QLabel(f"{entry.name} ({entry.label_id}) · trial {entry.trial}")
         self.title.setStyleSheet(f"font-weight: bold; color: {entry.color_hex}; font-size: 11px;")
-        lay.addWidget(self.title)
+        # Word-wrapped so a long name/trial id grows the tile's height, never
+        # its width — an unwrapped label's minimum width tracks its full text
+        # and can exceed the column width _fit_tiles() assigned, which grows
+        # the grid host and feeds back into an ever-larger next resize.
+        self.title.setWordWrap(True)
+        header = QHBoxLayout()
+        header.setSpacing(6)
+        header.addWidget(self.title, 1)
+        self.confidence = QLabel(confidence_text(entry))
+        self.confidence.setStyleSheet(confidence_style(entry, 0.0))
+        self.confidence.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.confidence.setToolTip("Confidence of this label — red below the flag threshold.")
+        header.addWidget(self.confidence, 0)
+        lay.addLayout(header)
         self.image = QLabel()
         self.image.setAlignment(Qt.AlignCenter)
         self.image.setStyleSheet("background: #111;")
         lay.addWidget(self.image, stretch=1)
         self.caption = QLabel()
         self.caption.setStyleSheet("color: grey; font-size: 10px;")
+        self.caption.setWordWrap(True)
         lay.addWidget(self.caption)
         self.refresh_caption()
 
-    def refresh_caption(self) -> None:
+    def refresh_caption(self, threshold: float = 0.0) -> None:
         e = self.entry
+        self.confidence.setText(confidence_text(e))
+        self.confidence.setStyleSheet(confidence_style(e, threshold))
         parts = []
         if e.camera:
             parts.append(str(e.camera))
@@ -436,7 +464,6 @@ class _ClipTile(QFrame):
         # t≈0 looks like "the start of the trial", and this is how to tell.
         parts.append(f"at {e.onset_s:.2f} s" if e.is_point else f"{e.onset_s:.2f}–{e.offset_s:.2f} s")
         parts.append(f"{e.duration:.2f} s")
-        parts.append(f"conf {e.confidence:.2f}")
         parts.append(e.labeling_method)
         if e.note:
             parts.append(e.note)
@@ -472,6 +499,10 @@ class _ClipTile(QFrame):
         self.clicked.emit(self.entry)
         super().mousePressEvent(event)
 
+    def mouseDoubleClickEvent(self, event):
+        self.double_clicked.emit(self.entry)
+        super().mouseDoubleClickEvent(event)
+
 
 class VideoGridPlayer(QWidget):
     """The *Playback* tab: one group's page of clips, played together."""
@@ -505,6 +536,8 @@ class VideoGridPlayer(QWidget):
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._tick)
         self._slider_from_timer = False
+        #: The confidence-histogram popup while it is open.
+        self._hist_dialog: ConfidenceHistogramsDialog | None = None
 
         layout = QVBoxLayout(self)
         self.header = QLabel("")
@@ -512,14 +545,12 @@ class VideoGridPlayer(QWidget):
         layout.addWidget(self.header)
 
         top = QHBoxLayout()
-        # The threshold spin exists before the mode bar: the bar restyles the
+        # The threshold box exists before the mode bar: the bar restyles the
         # tiles as soon as it is built, and the style reads the threshold.
-        self.threshold_spin = QDoubleSpinBox()
-        self.threshold_spin.setRange(0.0, 1.0)
-        self.threshold_spin.setDecimals(2)
-        self.threshold_spin.setSingleStep(0.05)
-        self.threshold_spin.setSpecialValueText("off")
-        self.threshold_spin.valueChanged.connect(self._apply_styles)
+        # Shared (SCOPE_GLOBAL) with the frame grid's own threshold box.
+        self.threshold_edit = ConfidenceEdit(float(self.app_state.get_with_default("grid_confidence_threshold")))
+        self.threshold_edit.valueChanged.connect(self._apply_styles)
+        self.threshold_edit.valueChanged.connect(self._on_threshold_changed)
         self.mode_bar = GridModeBar(
             meta,
             entries_fn=lambda: self._all_entries,
@@ -528,7 +559,16 @@ class VideoGridPlayer(QWidget):
         )
         top.addWidget(self.mode_bar, stretch=1)
         top.addWidget(QLabel("Flag confidence below:"))
-        top.addWidget(self.threshold_spin)
+        top.addWidget(self.threshold_edit)
+        self.histogram_btn = QPushButton("Histogram…")
+        self.histogram_btn.setAutoDefault(False)
+        self.histogram_btn.setToolTip(
+            "How the confidences are distributed, one histogram per label class\n"
+            "(per individual too, when more than one is labelled). The part below\n"
+            "the threshold is red, and the threshold can be set from there."
+        )
+        self.histogram_btn.clicked.connect(self._show_histograms)
+        top.addWidget(self.histogram_btn)
         layout.addLayout(top)
 
         self.hint = QLabel("")
@@ -539,6 +579,17 @@ class VideoGridPlayer(QWidget):
         self._grid_host = QWidget()
         self._grid = QGridLayout(self._grid_host)
         self._grid.setSpacing(8)
+        # _fit_tiles() below reserves exactly `spacing` on every edge (the
+        # `+1` gap terms) — the style's own default content margins (often
+        # wider than that) are not accounted for. Left at their default, the
+        # tiles it sizes end up needing more room than the host currently
+        # has, forcing the host (and the window) to grow to fit; the next
+        # resizeEvent then computes an even bigger available width from that
+        # grown host, growing the tiles again — an unbounded per-resize
+        # creep, worse with few columns because the same fixed margin
+        # mismatch is divided across fewer tiles. Zeroing the margins here
+        # makes `_fit_tiles`'s spacing-only assumption exactly correct.
+        self._grid.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self._grid_host, stretch=1)
 
         controls = QHBoxLayout()
@@ -560,8 +611,9 @@ class VideoGridPlayer(QWidget):
         self.play_btn.setFixedWidth(70)
         self.play_btn.clicked.connect(self.toggle_play)
         controls.addWidget(self.play_btn)
-        # Playback speed, % of real time — opens at whatever the bottom bar's
-        # speed field says right now; changing it here touches only the grid.
+        # Playback speed, % of real time — its own sticky setting (SCOPE_GLOBAL),
+        # deliberately decoupled from the GUI's own playback_speed_pct so
+        # tuning it here for a review never touches main playback.
         self.speed_spin = QSpinBox()
         self.speed_spin.setRange(5, 400)
         self.speed_spin.setSingleStep(5)
@@ -569,9 +621,9 @@ class VideoGridPlayer(QWidget):
         self.speed_spin.setFixedWidth(72)
         self.speed_spin.setToolTip(
             "Playback speed as a % of real time (100 = the recording's own pace).\n"
-            "Starts at the GUI's current playback speed; adjusting it here changes only the grid."
+            "Remembered across sessions, independent of the GUI's own playback speed."
         )
-        self.speed_spin.setValue(int(round(float(self.app_state.get_with_default("playback_speed_pct")))))
+        self.speed_spin.setValue(int(round(float(self.app_state.get_with_default("video_grid_speed_pct")))))
         self.speed_spin.valueChanged.connect(self._on_speed_changed)
         controls.addWidget(self.speed_spin)
         self.slider = QSlider(Qt.Horizontal)
@@ -661,6 +713,7 @@ class VideoGridPlayer(QWidget):
         for i, entry in enumerate(page):
             tile = _ClipTile(entry)
             tile.clicked.connect(self._on_tile_clicked)
+            tile.double_clicked.connect(self._on_tile_double_clicked)
             self._grid.addWidget(tile, i // self._columns, i % self._columns)
             self._tiles.append(tile)
         self._fit_tiles()
@@ -706,15 +759,14 @@ class VideoGridPlayer(QWidget):
         self.next_clips_btn.setEnabled(self._page_idx < len(self.pages) - 1)
 
     def _sync_hint(self, *_args) -> None:
-        mode = self.mode_bar.mode()
-        if mode == "navigate":
-            self.hint.setText(
-                "Clips of one label class, shortest first · ←/→ step a frame · click a clip to jump the GUI there."
-            )
-        elif mode == "curate":
-            self.hint.setText("Click the clips that are right, then Done curates those labels.")
+        if self.mode_bar.mode() == "curate":
+            click = "Click the clips that are right, then Done curates those labels."
         else:
-            self.hint.setText("Click the clips that are wrong, then Done curates every other label.")
+            click = "Click the clips that are wrong, then Done curates every other label."
+        self.hint.setText(
+            f"Clips of one label class, shortest first · ←/→ step a frame · {click}"
+            " Double-click a clip to jump the GUI there."
+        )
 
     # ------------------------------------------------------------------
     # Layout: every tile stays visible
@@ -769,6 +821,7 @@ class VideoGridPlayer(QWidget):
         return max(0.01, self.speed_spin.value() / 100.0)
 
     def _on_speed_changed(self, value: int) -> None:
+        self.app_state.video_grid_speed_pct = float(value)
         self._apply_timer_interval()
 
     def _apply_timer_interval(self) -> None:
@@ -857,28 +910,56 @@ class VideoGridPlayer(QWidget):
     # ------------------------------------------------------------------
 
     def _flagged_entries(self) -> list[ClipEntry]:
-        threshold = self.threshold_spin.value()
+        threshold = self.threshold_edit.value()
         return [e for e in self._all_entries if is_low_confidence(e, threshold)]
 
+    def _on_threshold_changed(self, value: float) -> None:
+        self.app_state.grid_confidence_threshold = float(value)
+
     def _apply_styles(self, *_args) -> None:
-        threshold = self.threshold_spin.value()
+        threshold = self.threshold_edit.value()
         mode = self.mode_bar.mode()
         verdicts = self.mode_bar.verdicts
         for tile in self._tiles:
             entry = tile.entry
-            if mode != "navigate" and verdicts.is_clicked(entry):
+            if verdicts.is_clicked(entry):
                 tile.setStyleSheet(_TILE_CURATE_STYLE if mode == "curate" else _TILE_UNCURATE_STYLE)
             elif is_low_confidence(entry, threshold):
                 tile.setStyleSheet(_TILE_LOW_STYLE)
             else:
                 tile.setStyleSheet(_TILE_STYLE)
-            tile.refresh_caption()
+            tile.refresh_caption(threshold)
+        if self._hist_dialog is not None:
+            self._hist_dialog.set_threshold(threshold)
+
+    def _show_histograms(self) -> None:
+        """Open (or raise) the per-label confidence histograms, scope-wide."""
+        if self._hist_dialog is not None:
+            self._hist_dialog.show()
+            self._hist_dialog.raise_()
+            return
+        groups = confidence_groups(self._all_entries)
+        if not groups:
+            notify("No labels to plot confidences for.", severity="warning")
+            return
+        self._hist_dialog = ConfidenceHistogramsDialog(groups, self.threshold_edit.value(), parent=self)
+        self._hist_dialog.threshold_changed.connect(self.threshold_edit.setValue)
+        self._hist_dialog.destroyed.connect(self._on_histograms_closed)
+        self._hist_dialog.show()
+
+    def _on_histograms_closed(self, *_args) -> None:
+        self._hist_dialog = None
 
     def _on_tile_clicked(self, entry: ClipEntry) -> None:
-        if self.mode_bar.mode() == "navigate":
-            self._jump(entry)
-        else:
-            self.mode_bar.click(entry)
+        """A single click is the verdict the mode names."""
+        self.mode_bar.click(entry)
+
+    def _on_tile_double_clicked(self, entry: ClipEntry) -> None:
+        """A double click navigates, in every mode. Qt delivers a plain press
+        first, which already toggled the tile — toggling again undoes it, so
+        navigating leaves the verdicts exactly as they were."""
+        self.mode_bar.click(entry)
+        self._jump(entry)
 
     def _jump(self, entry: ClipEntry) -> None:
         self.stop()
@@ -947,9 +1028,7 @@ class VideoGridDialog(QDialog):
         self.point_window_spin.setValue(float(state.get_with_default("video_grid_point_window_s")))
         self.point_window_spin.setSuffix(" s")
         self.point_window_spin.setToolTip("A point event's clip spans ± this around the instant (red marker on it)")
-        self.point_window_spin.valueChanged.connect(
-            lambda v: setattr(state, "video_grid_point_window_s", float(v))
-        )
+        self.point_window_spin.valueChanged.connect(lambda v: setattr(state, "video_grid_point_window_s", float(v)))
         play_lay.addWidget(self.point_window_spin, 0, 1)
         play_lay.addWidget(QLabel("Clips on screen:"), 1, 0)
         self.per_page_spin = QSpinBox()
@@ -1068,6 +1147,10 @@ class VideoGridDialog(QDialog):
         )
         progress.close()
 
+    def generate(self) -> None:
+        """Build the grid as if *Generate* were pressed (a workflow's entry)."""
+        self._generate()
+
     def _generate(self) -> None:
         label_ids = self.setup.selected_label_ids()
         if not label_ids:
@@ -1088,9 +1171,13 @@ class VideoGridDialog(QDialog):
             cameras,
             self.point_window_spin.value(),
             self.setup.allowed_trials(),
+            self.setup.selected_methods(),
         )
         if not entries:
-            notify("No label instances match the selected labels and metadata filters.", severity="warning")
+            notify(
+                "No label instances match the selected labels, labeling method and metadata filters.",
+                severity="warning",
+            )
             return
         self._show_player(entries)
 

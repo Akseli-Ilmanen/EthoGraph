@@ -2,6 +2,7 @@
 
 import logging
 import os
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, get_args, get_origin
@@ -22,6 +23,7 @@ from ethograph.io.time_model import (
     TimeRange,
     TrialVideoBounds,
 )
+from ethograph.labels import workflow as wf
 from ethograph.labels.curation import trial_curation_status
 from ethograph.labels.tsv_store import (
     LabelEdit,
@@ -120,6 +122,17 @@ class AppStateSpec:
         "curation_mode": (str, "manual", True, SCOPE_LOCAL),
         "curation_label_ids": (list | None, None, True, SCOPE_LOCAL),
         "curation_next_curates": (bool, True, True),
+        # Frame-by-frame review queue: skip manual/curated boundaries, only
+        # queuing automated ones — a human already vouched for the rest, so
+        # there is nothing to re-review. On by default; a reviewing
+        # preference like curation_next_curates.
+        "frame_review_automated_only": (bool, True, True),
+        # curation_active: is anyone curating this session? Off until the user
+        # drops label rows into the scope area or curates something — only then
+        # does the per-trial verdict get a metadata file to live in, and only
+        # then does the sync timer run. Never saved: opening the GUI curates
+        # nothing, so it must not come back armed.
+        "curation_active": (bool, False, False),
         # How the plot x-limits are derived: "interval" (follows slider scope:
         # trial/label/sequence extent + before/after padding) or "fixed"
         # (fixed-size window from t=0). User preference, not tied to how the
@@ -168,14 +181,35 @@ class AppStateSpec:
         "playback_speed_pct": (float, 100.0, True),
         # Review-grid layout (dialog_video_grid, dialog_label_gridview): how
         # the grids are laid out is a viewing habit, not a dataset property —
-        # global, like refine_window_s. The video grid's speed has no setting
-        # of its own: it opens at the GUI's playback_speed_pct and a change
-        # there lives only as long as the grid.
+        # global, like refine_window_s. Curation is done over many trials, so
+        # every knob a reviewer tunes here is remembered across sessions
+        # instead of resetting each time a grid dialog opens.
         "video_grid_point_window_s": (float, 0.5, True),
         "video_grid_per_page": (int, 6, True),
         "video_grid_columns": (int, 3, True),
         "label_grid_columns": (int, 3, True),
         "label_grid_window_s": (float, 1.0, True),
+        # The video grid's own playback speed — deliberately decoupled from
+        # playback_speed_pct (tweaking it for a slow-motion review must not
+        # disturb the main GUI's speed) but, like the rest of the grid
+        # layout, sticky across sessions rather than resetting on every open.
+        "video_grid_speed_pct": (float, 100.0, True),
+        # "Flag confidence below" — shared by the frame grid and the video
+        # grid, so a threshold picked while reviewing one still applies when
+        # switching to the other. Typed in full rather than stepped, so a
+        # threshold of 0.0002 is as easy to set as 0.5
+        # (dialog_label_gridview.ConfidenceEdit).
+        "grid_confidence_threshold": (float, wf.DEFAULT_CONFIDENCE, True),
+        # The grids' "Labeling method" filter: a key of
+        # dialog_label_gridview.GRID_METHOD_FILTERS ("all" | "manual" |
+        # "curated" | "human" | "automated"). Global like the rest of the grid
+        # setup — which slice of the labels a reviewer is working through
+        # outlives one dataset.
+        "grid_method_filter": (str, "all", True),
+        # Cameras ticked in the grid dialogs' Cameras list, by name. None =
+        # no preference recorded yet (defaults to all checked). A name absent
+        # from the current dataset's cameras is simply never offered.
+        "grid_selected_cameras": (list[str] | None, None, True),
         # Output volume as a % (0–100) applied inside EthoGraph's own audio
         # stream, independent of the system volume. Global — a listening
         # preference, not a dataset property.
@@ -1164,6 +1198,13 @@ class ObservableAppState(QObject):
         with open(path, encoding="utf-8") as f:
             return yaml.safe_load(f) or {}
 
+    # os.replace() on Windows needs exclusive access to the destination; a
+    # second EthoGraph instance briefly opening the same global settings
+    # file for its own autosave is enough to raise WinError 32. Retry a
+    # few times before giving up.
+    _REPLACE_RETRIES = 5
+    _REPLACE_RETRY_DELAY_S = 0.05
+
     def _yaml_write(self, path: Path, state_dict: dict) -> None:
         # Atomic replace: a crash mid-write must never truncate the settings
         # file the next launch will load.
@@ -1171,7 +1212,14 @@ class ObservableAppState(QObject):
         tmp = path.with_suffix(path.suffix + ".tmp")
         with open(tmp, "w", encoding="utf-8") as f:
             yaml.dump(self._to_native(state_dict), f, default_flow_style=False, sort_keys=False)
-        os.replace(tmp, path)
+        for attempt in range(self._REPLACE_RETRIES):
+            try:
+                os.replace(tmp, path)
+                return
+            except PermissionError:
+                if attempt == self._REPLACE_RETRIES - 1:
+                    raise
+                time.sleep(self._REPLACE_RETRY_DELAY_S)
 
     def _to_native(self, value):
         """Recursively convert numpy types to native Python types for YAML serialization."""

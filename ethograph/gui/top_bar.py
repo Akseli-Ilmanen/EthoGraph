@@ -129,6 +129,8 @@ class TopBarBuilder:
         #: tree and point-event classes reflect the currently loaded session.
         self._onset_train_dialog = None
         self._onset_predict_dialog = None
+        self._video_feature_rank_dialog = None
+        self._label_inconsistency_dialog = None
 
     # ------------------------------------------------------------------
     # Public entry point
@@ -160,6 +162,12 @@ class TopBarBuilder:
         self._record_controller.state_changed.connect(self._on_record_state)
 
         menu.addSeparator()
+        # Filters the trials table by what the LABELS do — the questions no
+        # metadata column can answer (an event without its partner, a broken
+        # order). See dialog_label_inconsistencies.py.
+        menu.addAction("Labels: Find label inconsistencies…", self._open_label_inconsistencies)
+
+        menu.addSeparator()
         menu.addAction("Pose tracking (from scratch)…", self._open_keypoint_labelling)
         # Correcting an imported pose file (DLC/SLEAP/…) rather than labelling
         # from scratch — writes {stem}_refined copies beside the sources.
@@ -181,17 +189,29 @@ class TopBarBuilder:
         menu.addAction("Neural: Compute firing rates…", lambda: self._popup_section("firing", "Firing rates", ephys))
 
     def _build_model_menu(self, menu_bar):
-        """Model menu — supervised point-event onset detection (LightGBM).
+        """Model menu — supervised modelling of the session's labels.
 
         Train collects the session's existing point events as training data,
         one ``HistGradientBoostingClassifier`` per ticked class (plus an
         optional sequence CRF); Predict fills those events into the trials
         that don't carry them yet, each with the model's own confidence.
         Documented in ``docs/source/advanced/labels/onset_model.md``.
+
+        The third entry fits nothing: it ranks a video-feature bank's
+        dimensions by how well each separates a behaviour class from the rest
+        (``ethograph/video_features/select.py``), so a segment config can name
+        a useful subset instead of all 1024.
+
+        The last is the routine around the model rather than the model: a
+        saved sequence of curation steps (``dialog_curation_workflow.py``),
+        replayed instead of set up by hand each session.
         """
         menu = menu_bar.addMenu("&Model")
         menu.addAction("LightGBM: Train…", self._open_onset_train)
         menu.addAction("LightGBM: Predict…", self._open_onset_predict)
+        menu.addAction("Video features: rank by Cohen's d…", self._open_video_feature_rank)
+        menu.addSeparator()
+        menu.addAction("Curation workflows…", self._open_curation_workflows)
 
     def _open_onset_train(self):
         from .dialog_onset_model import TrainOnsetDialog
@@ -212,6 +232,41 @@ class TopBarBuilder:
         self._onset_predict_dialog.show()
         self._onset_predict_dialog.raise_()
         self._onset_predict_dialog.activateWindow()
+
+    def _open_curation_workflows(self):
+        """The Curation section's workflow dialog, reachable from the model too.
+
+        A workflow usually starts with a prediction, so it belongs next to the
+        Predict entry as well as under the labels being curated.
+        """
+        panel = getattr(getattr(self.meta, "labels_widget", None), "curation_panel", None)
+        if panel is None:
+            return
+        panel.open_workflows()
+
+    def _open_video_feature_rank(self):
+        from .dialog_video_feature_rank import VideoFeatureRankDialog
+
+        # Rebuilt when reopened so the feature list reflects the loaded session.
+        if self._video_feature_rank_dialog is None or not self._video_feature_rank_dialog.isVisible():
+            self._video_feature_rank_dialog = VideoFeatureRankDialog(self.meta, parent=self.shell)
+        self._video_feature_rank_dialog.show()
+        self._video_feature_rank_dialog.raise_()
+        self._video_feature_rank_dialog.activateWindow()
+
+    def _open_label_inconsistencies(self):
+        """Filter the trials table by what the labels do (Tools)."""
+        from .dialog_label_inconsistencies import open_label_inconsistencies
+
+        # Rebuilt when reopened so the classes and individuals reflect the
+        # loaded session, like the other session-dependent dialogs here.
+        if self._label_inconsistency_dialog is None or not self._label_inconsistency_dialog.isVisible():
+            self._label_inconsistency_dialog = open_label_inconsistencies(self.meta, parent=self.shell)
+        if self._label_inconsistency_dialog is None:
+            return
+        self._label_inconsistency_dialog.show()
+        self._label_inconsistency_dialog.raise_()
+        self._label_inconsistency_dialog.activateWindow()
 
     def _open_keypoint_labelling(self):
         """Open the keypoint labelling dialog (owned by the DataWidget, so the

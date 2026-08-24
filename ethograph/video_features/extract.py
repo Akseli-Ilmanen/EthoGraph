@@ -32,7 +32,8 @@ import xarray as xr
 from scipy.interpolate import interp1d
 from scipy.ndimage import uniform_filter1d
 
-from ethograph.gui.pose_fill import resolve_device
+from ethograph.io.schema import VIDEO_FEATURE, describe
+from ethograph.utils.device import resolve_device
 from ethograph.video_features.frames import iter_frame_chunks, probe_video
 from ethograph.video_features.plan import S3DConfig, S3DPlan, plan_s3d
 from ethograph.video_features.s3d import FULL_STAGE, S3D, S3D_STAGES, S3DStage, truncated_base
@@ -255,7 +256,7 @@ def extract_s3d(
 
 def _to_dataarray(feats: np.ndarray, plan: S3DPlan, path: str, cfg: S3DConfig, stage_name: str) -> xr.DataArray:
     time = np.arange(feats.shape[0]) * plan.step / plan.video_fps
-    return xr.DataArray(
+    da = xr.DataArray(
         feats.astype(np.float32),
         dims=(TIME_DIM, FEATURE_DIM),
         coords={TIME_DIM: time, FEATURE_DIM: np.arange(feats.shape[1])},
@@ -274,3 +275,4 @@ def _to_dataarray(feats: np.ndarray, plan: S3DPlan, path: str, cfg: S3DConfig, s
             "time_basis": "video",
         },
     )
+    return describe(da, VIDEO_FEATURE, is_egocentric=False)

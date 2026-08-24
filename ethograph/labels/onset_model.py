@@ -22,27 +22,40 @@ Target encoding: each classifier sees a binary target (frames within
 ``tolerance_s`` of the labelled event are positive) with a Gaussian sample
 weight peaking at the event, so a near-miss frame counts less than the exact
 frame. At inference the per-frame probability is Gaussian-smoothed with the
-same tolerance and the trial's argmax becomes the predicted onset.
+same tolerance and its tallest peak becomes the predicted onset.
 
-Confidence: the smoothed curve answers two questions — *how strongly* does the
-model believe (its peak height) and *how localised* is that belief (one minus
-the normalised entropy of the curve read as a distribution over time). A model
-that is sure of the moment scores high on both; a flat curve with one mild
-bump scores low. :func:`predict_events` reports both and their geometric mean
-as ``confidence``, which is what lands in the labels TSV's ``confidence``
-column (a human label is 1.0 by definition).
+Confidence is that peak's **height**, and nothing else (:func:`tallest_peak`).
+The number in the labels TSV's ``confidence`` column is a point on the curve —
+the same curve frame-by-frame review draws — so a threshold is something the
+user sets by looking rather than by trusting a formula. What the score leaves
+out, the picture shows: a rival peak elsewhere, a broad ramp, a trial where
+nothing rose at all. That is the trade, made deliberately — a legible number
+plus the curve beats an elaborate number alone. A human label is 1.0 by
+definition; the curves are kept beside the labels
+(:mod:`ethograph.labels.onset_curves`).
 
-Sequence model (optional): when the classes follow a stereotypic order in a
-trial (A then B then C), ``use_crf`` adds a linear-chain CRF
-(``sklearn-crfsuite``) on top. Every frame is tagged with the class of the most
-recent event, so the CRF's transitions *are* the sequence dependencies, and
-Viterbi decoding returns one ordered, mutually consistent set of events per
-trial instead of independent per-class argmaxes. See :func:`phase_tags`.
+How often the model is *right* is a property of the model, not of one label:
+:func:`fit_confidence_calibration` scores every training trial with
+classifiers that never saw it, and training reports that hit rate.
+
+Expectations (optional): a user who knows the classes run A then B, and that
+a trial with one has the other, says so when creating the model
+(``expected_order``, ``expect_together``). Nothing about the prediction
+changes — every class still lands on its own curve's tallest peak. What the
+declaration buys is a **flag**: :func:`check_expectations` reports the trials
+that came out in another order or got only part of the set, and those are the
+trials worth a human's attention first.
+
+That is deliberately a flag and not a correction. A model that jointly decoded
+the order (this module used to fit a linear-chain CRF) can move an event away
+from its own evidence to satisfy the sequence — which is invisible on the
+curve, and unarguable when it is wrong. Predicting from the curve and flagging
+the surprise keeps both halves legible.
 
 Model layout (``~/.ethograph/models/{name}/``)::
 
     config.yaml                 # frozen at creation: targets, features, params
-    model.joblib                # trained bundle: one clf per target (+ CRF)
+    model.joblib                # trained bundle: one clf per target
     train_data/{session}/       # one folder per contributing session
         meta.yaml               # source path, columns, fs, trials
         trial_{id}.npz          # time (T,), data (T, D), y_labels, y_times, fs
@@ -53,24 +66,38 @@ pinned and selected through ``DataLoader.select`` (the same ``sel_valid``
 path the plots use), yielding one column per combination. Freezing explicit
 values (instead of "all") keeps the column set — and thus the model's input
 layout — identical across sessions.
+
+A feature can also contribute its **time derivative** as an extra column
+(``config.derivatives``, ``np.gradient`` — centred on the sample, so the
+derivative peaks at the frame the signal turned). Boosted trees see each tap
+of the window in isolation and cannot difference them, so "how fast is this
+changing" has to be handed to them as its own input.
 """
 
 from __future__ import annotations
 
 import hashlib
-import itertools
 import logging
 import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, NamedTuple
+from typing import NamedTuple
 
 import joblib
 import numpy as np
-import sklearn_crfsuite
 import yaml
+from scipy.signal import find_peaks
 from sklearn.ensemble import HistGradientBoostingClassifier
+from sklearn.linear_model import LogisticRegression
 
+from ethograph.features.columns import (
+    FeatureColumn,
+    check_same_fs,
+    enumerate_columns,
+    extract_features,
+    sampling_rate,
+)
+from ethograph.labels.curation import EXPECTATION_COLUMN, EXPECTED_OK
 from ethograph.utils.paths import ethograph_home
 
 logger = logging.getLogger(__name__)
@@ -79,34 +106,29 @@ logger = logging.getLogger(__name__)
 #: across the window so high-rate features don't explode the design matrix.
 MAX_LAGS = 25
 
-#: Relative tolerance for "same sampling rate" comparisons.
-_FS_RTOL = 1e-3
-
 #: Deterministic seed for negative-frame subsampling.
 _RNG_SEED = 0
+
+#: Keeps a 0 or 1 probability off the log-odds asymptotes.
+_PROB_EPS = 1e-6
 
 #: Placeholder label for training trials stored before multi-target support
 #: (their npz holds one unlabelled ``y_time``).
 _LEGACY_TARGET = -1
 
-#: Tag for the frames of a trial before its first event.
-CRF_NONE_TAG = "none"
+#: Folds used to cross-fit the probability curves the held-out score reads.
+#: Each fold refits every target, so this multiplies training time; 3 keeps
+#: the scoring honest without making Train a coffee break.
+_CV_FOLDS = 3
 
-#: A CRF sequence is one token per frame, so a trial's frame count is the cost
-#: driver. Refuse absurd lengths with a message instead of hanging in CRFsuite.
-CRF_MAX_FRAMES = 200_000
+#: Below this many held-out predictions a target's calibration is the identity
+#: map under its ceiling: too few points to fit a slope through, and pretending
+#: otherwise would be its own kind of overconfidence.
+_MIN_CALIBRATION_TRIALS = 6
 
-#: CRFsuite L1/L2 regularisation and iteration cap. Not exposed: the emissions
-#: are already a handful of probabilities, so there is little to overfit and
-#: nothing here rewards tuning.
-_CRF_C1 = 0.1
-_CRF_C2 = 0.1
-_CRF_MAX_ITER = 120
-
-#: Folds used to cross-fit the probability curves the CRF trains on. Each fold
-#: refits every target, so this multiplies training time — 3 keeps the
-#: emissions honest without making Train a coffee break.
-_CRF_FOLDS = 3
+#: Platt scaling's L2 strength. Small on purpose — with a handful of held-out
+#: trials a steep map is noise, and the ceiling is what carries the honesty.
+_CALIBRATION_C = 0.5
 
 _MODEL_FILE = "model.joblib"
 _CONFIG_FILE = "config.yaml"
@@ -129,6 +151,9 @@ class OnsetModelConfig:
     #: feature -> dim -> explicit values to include (every combination becomes
     #: one input column). A feature with no dims maps to ``{}``.
     features: dict[str, dict[str, list[str]]] = field(default_factory=dict)
+    #: Features whose time derivative is included as an extra column beside
+    #: every value column they produce (see :func:`.columns.time_derivative`).
+    derivatives: list[str] = field(default_factory=list)
     window_s: float = 0.5
     tolerance_s: float = 0.05
     max_iter: int = 200
@@ -136,15 +161,29 @@ class OnsetModelConfig:
     #: Negative frames kept per positive frame (hard negatives near the event
     #: are always kept; the rest are subsampled deterministically).
     neg_per_pos: int = 20
-    #: Model the order the classes occur in with a linear-chain CRF on top of
-    #: the per-class classifiers (see :func:`train_crf`). Only worth it when
-    #: the classes really do follow a stereotypic sequence.
-    use_crf: bool = False
+    #: The order the user expects these classes to occur in, by label id — a
+    #: declaration, not something learnt. A trial whose predictions come out
+    #: in another order is *flagged*, never moved: see
+    #: :func:`check_expectations`. Classes left out are unconstrained; an
+    #: empty list expects nothing.
+    expected_order: list[int] = field(default_factory=list)
+    #: Whether the classes in :attr:`expected_order` come as a set: if a trial
+    #: has **one** of them it should have the others. A trial with none of
+    #: them is not surprising — the behaviour simply did not happen there —
+    #: so only a *partial* set is flagged.
+    expect_together: bool = False
 
     def __post_init__(self) -> None:
         # YAML round-trips keys as ints already, but a config built from GUI
         # widgets may carry numpy ints or strings.
         self.targets = {int(label): str(name) for label, name in self.targets.items()}
+        self.derivatives = [str(feature) for feature in self.derivatives]
+        self.expected_order = [int(label) for label in self.expected_order]
+
+    def columns(self) -> list[FeatureColumn]:
+        """This model's input layout: one column per pinned combination, plus
+        the derivative columns the config asks for."""
+        return enumerate_columns(self.features, self.derivatives)
 
     @property
     def target_labels(self) -> list[int]:
@@ -155,6 +194,13 @@ class OnsetModelConfig:
 
     def describe_targets(self) -> str:
         return ", ".join(f"{name} ({label})" for label, name in self.targets.items())
+
+    def describe_expectations(self) -> str:
+        """The declared expectations in words, or "" when nothing is declared."""
+        if not self.expected_order:
+            return ""
+        chain = " → ".join(self.target_name(label) for label in self.expected_order)
+        return f"{chain}, one implies the rest" if self.expect_together else chain
 
 
 def models_root() -> Path:
@@ -193,6 +239,9 @@ def _upgrade_config_dict(raw: dict) -> dict:
         raw["targets"] = {int(raw.pop("target_label")): str(raw.pop("target_name", ""))}
     raw.pop("target_label", None)
     raw.pop("target_name", None)
+    # The sequence CRF was replaced by declared expectations: a config that
+    # asked for one still loads, it just no longer decides anything.
+    raw.pop("use_crf", None)
     return raw
 
 
@@ -233,102 +282,33 @@ def list_sessions(name: str) -> dict[str, dict]:
 # ---------------------------------------------------------------------------
 # Feature columns — the catalog-selection view of the config
 # ---------------------------------------------------------------------------
+# Defined once in ``ethograph.features.columns`` and shared with the
+# segmentation pipeline; re-exported here so existing callers keep working.
+
+_check_same_fs = check_same_fs
+
+__all__ = [
+    "FeatureColumn",
+    "enumerate_columns",
+    "extract_features",
+    "extract_model_features",
+    "sampling_rate",
+]
 
 
-class FeatureColumn(NamedTuple):
-    """One input column: a feature with every dim pinned to one value."""
-
-    feature: str
-    selections: dict[str, str]
-    name: str
-
-
-def enumerate_columns(features: dict[str, dict[str, list[str]]]) -> list[FeatureColumn]:
-    """Expand the config's per-dim value lists into pinned columns.
-
-    Order is deterministic (config order, then the cartesian product in the
-    values' stored order) — it defines the model's input layout.
-    """
-    columns: list[FeatureColumn] = []
-    for feature, dims in features.items():
-        if not dims:
-            columns.append(FeatureColumn(feature, {}, feature))
-            continue
-        dim_names = list(dims)
-        for combo in itertools.product(*(dims[d] for d in dim_names)):
-            selections = dict(zip(dim_names, (str(v) for v in combo)))
-            label = ",".join(f"{d}={v}" for d, v in selections.items())
-            columns.append(FeatureColumn(feature, selections, f"{feature}|{label}"))
-    return columns
-
-
-def sampling_rate(time: np.ndarray) -> float:
-    """Sampling rate implied by a time vector (median spacing)."""
-    time = np.asarray(time, dtype=np.float64)
-    if time.size < 2:
-        raise ValueError("Need at least 2 samples to determine a sampling rate.")
-    dt = float(np.median(np.diff(time)))
-    if dt <= 0:
-        raise ValueError("Time vector is not increasing.")
-    return 1.0 / dt
-
-
-def _check_same_fs(fs_ref: float, fs: float, what: str) -> None:
-    if not np.isclose(fs_ref, fs, rtol=_FS_RTOL):
-        raise ValueError(
-            f"Sampling-rate mismatch: {what} runs at {fs:.6g} Hz but the model's "
-            f"features run at {fs_ref:.6g} Hz. All selected features must share "
-            "one sampling rate."
-        )
-
-
-def extract_features(
-    loader: Any,
-    features: dict[str, dict[str, list[str]]],
+def extract_model_features(
+    loader,
+    config: OnsetModelConfig,
     t0: float | None = None,
     t1: float | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Select every configured column over ``[t0, t1]`` and stack to ``(T, D)``.
+    """One trial's design inputs as *config* defines them: ``(time, (T, D))``.
 
-    *loader* is any :class:`~ethograph.io.catalog.DataLoader`; times are in the
-    loader's native clock. Raises ``ValueError`` when a feature is missing,
-    a selection does not pin down to one column, or sampling rates differ.
+    The one way a model's features are read — training-data collection and
+    inference both go through it, so the derivative columns cannot be present
+    on one side and missing on the other.
     """
-    columns = enumerate_columns(features)
-    if not columns:
-        raise ValueError("The model config selects no features.")
-
-    time_ref: np.ndarray | None = None
-    fs_ref = 0.0
-    arrays: list[np.ndarray] = []
-    for col in columns:
-        plot_data = loader.select(col.feature, col.selections, t0, t1)
-        if plot_data is None:
-            raise ValueError(f"Feature {col.feature!r} is not available in this session.")
-        data = np.asarray(plot_data.data, dtype=np.float64)
-        if data.ndim != 1:
-            raise ValueError(
-                f"Column {col.name!r} did not pin down to a single series "
-                f"(got shape {data.shape}) — the dataset has a dim the model "
-                "config does not cover. Recreate the model on this dataset."
-            )
-        time = np.asarray(plot_data.time, dtype=np.float64)
-        fs = sampling_rate(time)
-        if time_ref is None:
-            time_ref, fs_ref = time, fs
-        else:
-            _check_same_fs(fs_ref, fs, f"feature {col.feature!r}")
-            if abs(float(time[0]) - float(time_ref[0])) > 0.5 / fs_ref:
-                raise ValueError(
-                    f"Feature {col.feature!r} starts {abs(time[0] - time_ref[0]):.4g} s "
-                    "away from the other features — their samples cannot be aligned."
-                )
-        arrays.append(data)
-
-    assert time_ref is not None
-    n = min(len(time_ref), *(len(a) for a in arrays))
-    stacked = np.column_stack([a[:n] for a in arrays])
-    return time_ref[:n], stacked
+    return extract_features(loader, config.features, t0, t1, config.derivatives)
 
 
 # ---------------------------------------------------------------------------
@@ -575,24 +555,35 @@ def _fit_targets(
 
     models: dict[int, HistGradientBoostingClassifier] = {}
     per_target: dict[int, dict] = {}
-    for label, (xs, ys, ws) in buckets.items():
+    for i, (label, (xs, ys, ws)) in enumerate(buckets.items(), start=1):
         if not xs:
             raise ValueError(
                 f"No training trial carries {config.target_name(label)!r} — add a session "
                 "that labels it, or create the model without that target."
             )
+        logger.info("Fitting target %d/%d: %s...", i, len(buckets), config.target_name(label))
         models[label], per_target[label] = _fit_target(label, xs, ys, ws, config)
+        stats = per_target[label]
+        logger.info(
+            "  %s: %d trials, %d frames, %d positive",
+            config.target_name(label),
+            stats["n_trials"],
+            stats["n_frames"],
+            stats["n_positive"],
+        )
     return models, per_target
 
 
 def train_model(name: str) -> dict:
-    """Fit one classifier per target — and the sequence CRF when configured.
+    """Fit one classifier per target.
 
-    Returns a summary dict (``n_sessions``, ``n_trials``, ``targets`` mapping
-    each label to its own ``n_trials``/``n_frames``/``n_positive``, and ``crf``
-    when a sequence model was fitted). Raises ``ValueError`` when there is no
-    training data, a target has no labelled trial, or the stored trials
-    disagree on sampling rate.
+    Returns a summary dict: ``n_sessions``, ``n_trials``, ``targets`` (each
+    label's ``n_trials``/``n_frames``/``n_positive`` plus its held-out record)
+    and ``sequences`` — how often each event order appeared in the training
+    trials, which is how a user checks a declared ``expected_order`` against
+    what the data actually did. Raises ``ValueError`` when there is no training
+    data, a target has no labelled trial, or the stored trials disagree on
+    sampling rate.
     """
     config = load_config(name)
     if not config.targets:
@@ -601,24 +592,38 @@ def train_model(name: str) -> dict:
     if not trials:
         raise ValueError("No training data yet — add at least one session first.")
 
+    logger.info("Training model %r on %d trials, %d target(s)...", name, len(trials), len(config.targets))
     fs_ref = trials[0].fs
     offsets = lag_offsets(fs_ref, config.window_s)
     models, per_target = _fit_targets(trials, offsets, config)
 
+    # What the model scores on trials it did not see: the model's report card.
+    logger.info("Scoring held-out trials...")
+    cross_fitted = _cross_fit_curves(trials, offsets, config)
+    calibration = fit_confidence_calibration(trials, cross_fitted, config)
+
     bundle = {
         "models": models,
         "fs": fs_ref,
-        "columns": [c.name for c in enumerate_columns(config.features)],
+        "columns": [c.name for c in config.columns()],
         "config": asdict(config),
+        "calibration": {label: cal.to_dict() for label, cal in calibration.items()},
     }
     summary = {
         "n_sessions": len(list_sessions(name)),
         "n_trials": len(trials),
         "targets": per_target,
+        "calibration": {label: cal.to_dict() for label, cal in calibration.items()},
+        "sequences": observed_sequences(trials, config),
     }
-    if config.use_crf:
-        bundle["crf"], summary["crf"] = train_crf(trials, offsets, config)
+    for label, stats in per_target.items():
+        cal = calibration.get(label)
+        if cal is not None:
+            stats["held_out"] = f"{cal.n_hits}/{cal.n_trials}"
+            stats["confidence_ceiling"] = cal.hit_rate
+    logger.info("Event orders seen in training: %s", summary["sequences"] or "none")
     joblib.dump(bundle, model_dir(name) / _MODEL_FILE)
+    logger.info("Training done: %r", name)
     return summary
 
 
@@ -640,6 +645,13 @@ def load_bundle(name: str) -> dict:
     if "models" not in bundle:
         bundle["models"] = {OnsetModelConfig(**bundle["config"]).target_labels[0]: bundle.pop("model")}
     bundle["models"] = {int(label): clf for label, clf in bundle["models"].items()}
+    # A bundle from when the sequence model existed still loads; its CRF is
+    # simply not consulted, because nothing decodes an order any more.
+    bundle.pop("crf", None)
+    # Stored as plain dicts so a bundle survives this dataclass changing shape.
+    bundle["calibration"] = {
+        int(label): TargetCalibration(**cal) for label, cal in (bundle.get("calibration") or {}).items()
+    }
     return bundle
 
 
@@ -656,23 +668,79 @@ def _smoothing_kernel(tolerance_s: float, fs: float) -> np.ndarray:
     return kernel / kernel.sum()
 
 
-def curve_sharpness(curve: np.ndarray) -> float:
-    """How localised a probability curve is over time, in ``[0, 1]``.
+def tallest_peak(curve: np.ndarray) -> tuple[int, float]:
+    """The curve's tallest local maximum: ``(frame index, height)``.
 
-    The curve is read as a distribution over the trial's frames and scored by
-    one minus its normalised entropy: a single-frame spike scores 1, a flat
-    curve scores 0. This is the point-event counterpart of the frame-wise
-    ``1 - normalised entropy`` used for dense predictions — there the
-    distribution is over classes, here it is over time.
+    ``find_peaks`` rather than ``argmax`` so a curve still climbing at the
+    trial's edge does not report its last frame as a confident event — an edge
+    is not a peak. With no local maximum anywhere (a flat or monotone curve)
+    the argmax stands in, which for a flat curve is a height near 0 and says
+    exactly what it should.
+
+    The height is the confidence: a value that can be read straight off the
+    curve the review draws.
     """
     curve = np.asarray(curve, dtype=np.float64)
-    total = float(curve.sum())
-    if curve.size < 2 or total <= 0:
-        return 0.0
-    q = curve / total
-    q = q[q > 0]
-    entropy = float(-np.sum(q * np.log(q)))
-    return float(np.clip(1.0 - entropy / np.log(curve.size), 0.0, 1.0))
+    if curve.size == 0:
+        return 0, 0.0
+    peaks = find_peaks(curve)[0]
+    index = int(peaks[np.argmax(curve[peaks])]) if peaks.size else int(np.argmax(curve))
+    return index, float(np.clip(curve[index], 0.0, 1.0))
+
+
+def _logit(p) -> np.ndarray | float:
+    """Log-odds, clipped off the asymptotes so a 0 or 1 reading stays finite."""
+    p = np.clip(p, _PROB_EPS, 1.0 - _PROB_EPS)
+    return np.log(p / (1.0 - p))
+
+
+def _sigmoid(x: float) -> float:
+    return float(1.0 / (1.0 + np.exp(-x)))
+
+
+@dataclass
+class TargetCalibration:
+    """What one target's held-out predictions said about its reliability.
+
+    This is a verdict on the **model**, reported when it trains — not a
+    transform applied to any label. Cross-fitting
+    (:func:`fit_confidence_calibration`) predicts every training trial with
+    classifiers that never saw it and counts the predictions landing within
+    ``tolerance_s`` of the labelled event, so a model that gets a third of its
+    held-out trials right says so out loud however loud its curves are. A
+    label's own ``confidence`` stays the height of its curve's tallest peak,
+    which is what the user sees drawn and thresholds by eye.
+
+    ``slope``/``intercept`` are a Platt fit of that peak height against the
+    hits, kept so the mapping is on record; nothing reads them today.
+    """
+
+    #: Held-out predictions scored, and how many landed within the tolerance.
+    n_trials: int
+    n_hits: int
+    #: Platt scaling of the raw reading's log-odds (identity: 1, 0).
+    slope: float
+    intercept: float
+
+    @property
+    def hit_rate(self) -> float:
+        """Laplace-smoothed held-out accuracy — the model's report card.
+
+        A model right on 8 of 8 held-out trials scores 9/10, not 1.0: eight
+        trials cannot support certainty. A model with nothing held out at all
+        (one training trial) reads 1/2 — nothing is known about how often it
+        is right, and that is what a half says.
+        """
+        return (self.n_hits + 1) / (self.n_trials + 2)
+
+    def apply(self, raw: float) -> float:
+        """The stored mapping of a peak height onto P(hit), capped at the
+        record. Kept on record; a label's ``confidence`` does not go through
+        it — see this class's own docstring."""
+        return float(min(_sigmoid(self.slope * float(_logit(raw)) + self.intercept), self.hit_rate))
+
+    def to_dict(self) -> dict:
+        return asdict(self)
 
 
 @dataclass
@@ -682,18 +750,9 @@ class OnsetPrediction:
     label: int
     name: str
     time: float
-    #: Smoothed event probability at the peak — how strongly the model believes.
-    peak: float
-    #: How localised that belief is over the trial (see :func:`curve_sharpness`).
-    sharpness: float
-
-    @property
-    def confidence(self) -> float:
-        """Geometric mean of *peak* and *sharpness* — both have to hold up.
-
-        This is the number written to the label's ``confidence`` column.
-        """
-        return float(np.sqrt(np.clip(self.peak, 0.0, 1.0) * self.sharpness))
+    #: Height of the curve's tallest peak — the number written to the label's
+    #: ``confidence`` column, and a point on the curve the review draws.
+    confidence: float
 
 
 def target_curves(
@@ -709,19 +768,40 @@ def target_curves(
     return {label: np.convolve(clf.predict_proba(x)[:, 1], kernel, mode="same") for label, clf in models.items()}
 
 
+class TrialPrediction(NamedTuple):
+    """One trial's predicted events **and** the curves they were read off.
+
+    The curves are what the events' confidences compress: keeping them lets
+    the GUI show *why* a score is low (a rival moment) instead of only that
+    it is. See :mod:`ethograph.labels.onset_curves`.
+    """
+
+    events: dict[int, OnsetPrediction]
+    #: label -> smoothed per-frame event probability, on the caller's clock.
+    curves: dict[int, np.ndarray]
+
+
 def predict_events(
     bundle: dict,
     time: np.ndarray,
     data: np.ndarray,
-    use_crf: bool = True,
 ) -> dict[int, OnsetPrediction]:
+    """The events :func:`predict_trial` predicts, for callers wanting only those."""
+    return predict_trial(bundle, time, data).events
+
+
+def predict_trial(
+    bundle: dict,
+    time: np.ndarray,
+    data: np.ndarray,
+) -> TrialPrediction:
     """Predict one event per target in one trial's assembled features.
 
-    Times are on *time*'s clock. Without a sequence model each target's
-    smoothed probability curve is read independently and its argmax is that
-    target's event. With one (and *use_crf*), the curves are decoded jointly
-    so the events come out in an order the training data actually showed —
-    which can also mean a target gets no prediction in this trial.
+    Times are on *time*'s clock. Every target is read independently off its
+    own smoothed probability curve: the tallest peak is the event, and that
+    peak's height is the confidence. No class's evidence is allowed to move
+    another's — an order the user did not expect is reported by
+    :func:`check_expectations`, never corrected here.
     """
     config = bundle_config(bundle)
     fs = sampling_rate(time)
@@ -731,73 +811,73 @@ def predict_events(
     x = build_windows(data, offsets)
     curves = target_curves(bundle["models"], x, _smoothing_kernel(config.tolerance_s, fs))
 
-    crf = bundle.get("crf")
-    if crf is not None and use_crf:
-        return decode_crf(crf, time, curves, config)
-    return {
-        label: OnsetPrediction(
+    events: dict[int, OnsetPrediction] = {}
+    for label, curve in curves.items():
+        index, height = tallest_peak(curve)
+        events[label] = OnsetPrediction(
             label=label,
             name=config.target_name(label),
-            time=float(time[int(np.argmax(curve))]),
-            peak=float(curve[int(np.argmax(curve))]),
-            sharpness=curve_sharpness(curve),
+            time=float(time[index]),
+            confidence=height,
         )
-        for label, curve in curves.items()
-    }
+    return TrialPrediction(events, curves)
 
 
 # ---------------------------------------------------------------------------
-# Sequence model — a linear-chain CRF over "which event happened last"
+# Expectations — what the user says the classes do, checked afterwards
 # ---------------------------------------------------------------------------
 
 
-def phase_tags(time: np.ndarray, y_times: dict[int, float]) -> list[str]:
-    """Tag every frame with the class of the most recent event.
+#: Flags :func:`check_expectations` can raise for one trial.
+FLAG_ORDER = "order"
+FLAG_MISSING = "missing"
 
-    Before the first event a frame is :data:`CRF_NONE_TAG`; from the frame of
-    event A onwards it is ``"A"``, from event B onwards ``"B"``, and so on.
-    Written this way the CRF's *transitions* are exactly the sequence
-    dependencies — ``none→A``, ``A→B``, ``B→C`` — and the frames where the tag
-    changes are the events. Because a tag persists until the next event, a
-    first-order chain is enough to carry the whole order.
+#: Re-exported: the metadata column a run writes its verdict to, and the value
+#: meaning "nothing surprising". Defined in :mod:`ethograph.labels.curation`
+#: beside the curation verdict, because both are derived per-trial state that
+#: ``io/metadata_edit`` must keep out of a recording — and that module cannot
+#: import this one.
+__all__ = ["EXPECTATION_COLUMN", "EXPECTED_OK"]
+
+
+def check_expectations(times: dict[int, float], config: OnsetModelConfig) -> list[str]:
+    """Which declared expectations one trial's predictions broke.
+
+    *times* is what the run actually wrote for this trial, ``{label: time}`` —
+    a class dropped for low confidence is simply absent, which is what gives
+    the coupling check something to see.
+
+    Returns :data:`FLAG_ORDER` when the classes present came out in an order
+    other than the declared one, and :data:`FLAG_MISSING` when a trial got
+    **some but not all** of a coupled set. A trial that got *none* of them is
+    never flagged: the coupling says "one implies the others", not "every
+    trial has them", and a trial where the behaviour did not happen is not a
+    surprise. Nothing here changes a prediction: the flag says *look at this
+    trial*, and the trials table's filter is how a user acts on it.
     """
-    tags = np.full(len(time), CRF_NONE_TAG, dtype=object)
-    for label, t_event in sorted(y_times.items(), key=lambda item: item[1]):
-        tags[int(np.searchsorted(time, t_event)) :] = str(label)
-    return tags.tolist()
+    if not config.expected_order:
+        return []
+    flags: list[str] = []
+    present = [label for label in config.expected_order if label in times]
+    if present != sorted(present, key=lambda label: times[label]):
+        flags.append(FLAG_ORDER)
+    if config.expect_together and 0 < len(present) < len(config.expected_order):
+        flags.append(FLAG_MISSING)
+    return flags
 
 
-def crf_features(time: np.ndarray, curves: dict[int, np.ndarray]) -> list[dict[str, float]]:
-    """One CRFsuite feature dict per frame.
-
-    The emissions are the per-target probabilities the classifiers produced,
-    not the raw signals: the boosted trees answer "is the event here?" frame
-    by frame, and the CRF only has to glue those answers into one ordered
-    sequence. Each target contributes its value at the frame plus its
-    neighbours (CRFsuite has no window of its own), and every frame carries
-    its relative position in the trial.
-    """
-    n = len(time)
-    span = float(time[-1] - time[0]) if n > 1 else 0.0
-    position = (np.asarray(time, dtype=np.float64) - float(time[0])) / span if span > 0 else np.zeros(n)
-    sequence = [{"bias": 1.0, "t": float(position[i])} for i in range(n)]
-    for label, curve in curves.items():
-        previous = np.concatenate([curve[:1], curve[:-1]])
-        following = np.concatenate([curve[1:], curve[-1:]])
-        for i in range(n):
-            frame = sequence[i]
-            frame[f"p:{label}"] = float(curve[i])
-            frame[f"p:{label}@-1"] = float(previous[i])
-            frame[f"p:{label}@+1"] = float(following[i])
-    return sequence
+def expectation_verdict(flags: list[str]) -> str:
+    """One trial's flags as the string written to :data:`EXPECTATION_COLUMN`."""
+    return "+".join(flags) if flags else EXPECTED_OK
 
 
 def observed_sequences(trials: list[TrainingTrial], config: OnsetModelConfig) -> dict[str, int]:
     """How often each event order appears in the training trials.
 
     ``{"3-4-5": 18, "3-5": 2}`` reads as "18 trials ran 3 then 4 then 5". This
-    is what the CRF has to work with — an order that never appears here is an
-    order it will never predict.
+    This is how a user checks a declared ``expected_order`` against what the
+    trials actually did: training reports it, and an order that dominates here
+    but is not the one declared is worth a second look at the declaration.
     """
     counts: dict[str, int] = {}
     for trial in trials:
@@ -820,15 +900,15 @@ def _cross_fit_curves(
 ) -> list[dict[int, np.ndarray]]:
     """Out-of-fold probability curves, one dict per trial.
 
-    A classifier scores its own training trials almost perfectly, so a CRF fed
-    those curves would learn to trust the emissions far more than it should.
-    Each trial is therefore scored by classifiers that never saw it: the
-    trials are split into folds and each fold is scored by a model fitted on
-    the rest.
+    A classifier scores its own training trials almost perfectly, so reading
+    its record off them would flatter it. Each trial is therefore scored by
+    classifiers that never saw it: the trials are split into folds and each
+    fold is scored by a model fitted on the rest.
     """
-    n_splits = min(_CRF_FOLDS, len(trials))
+    n_splits = min(_CV_FOLDS, len(trials))
     curves: list[dict[int, np.ndarray]] = [{} for _ in trials]
     for fold in range(n_splits):
+        logger.info("  cross-fitting fold %d/%d...", fold + 1, n_splits)
         held = [i for i in range(len(trials)) if i % n_splits == fold]
         rest = [trials[i] for i in range(len(trials)) if i % n_splits != fold]
         covered = [
@@ -856,81 +936,61 @@ def _cross_fit_curves(
     return curves
 
 
-def train_crf(
+def _fit_platt(raws: np.ndarray, hits: np.ndarray) -> tuple[float, float]:
+    """Map a reading's log-odds to the probability of a hit.
+
+    With too few held-out predictions, or only one outcome among them, there
+    is nothing to fit a slope through: the map is the identity and the
+    ceiling (:attr:`TargetCalibration.hit_rate`) carries the honesty on its
+    own. Fitting is what sharpens a good model's readings apart; the identity
+    keeps them in the order the curves put them in.
+    """
+    if raws.size < _MIN_CALIBRATION_TRIALS or np.unique(hits).size < 2:
+        return 1.0, 0.0
+    fit = LogisticRegression(C=_CALIBRATION_C)
+    fit.fit(np.asarray(_logit(raws)).reshape(-1, 1), hits)
+    return float(fit.coef_[0, 0]), float(fit.intercept_[0])
+
+
+def fit_confidence_calibration(
     trials: list[TrainingTrial],
-    offsets: np.ndarray,
+    curves: list[dict[int, np.ndarray]],
     config: OnsetModelConfig,
-) -> tuple[sklearn_crfsuite.CRF, dict]:
-    """Fit the linear-chain CRF that models the order the classes occur in.
+) -> dict[int, TargetCalibration]:
+    """Each target's held-out record, read off the cross-fitted curves.
 
-    ``all_possible_transitions=False`` is the structural choice that makes
-    this worth doing: CRFsuite only weights transitions it saw in training, so
-    an order the trials never showed is one Viterbi cannot produce.
+    A prediction is a **hit** when it lands within ``tolerance_s`` of the
+    labelled event — the same tolerance the classifier was trained to, and the
+    one the review nudges within. This says how good the *model* is; a
+    label's own ``confidence`` is its curve's peak height and is not touched
+    by what is fitted here.
     """
-    if len(trials) < 2:
-        raise ValueError("The sequence model needs at least 2 training trials — add more before training.")
-    _check_crf_length(max(len(trial.time) for trial in trials))
-
-    curves = _cross_fit_curves(trials, offsets, config)
-    sequences = [crf_features(trial.time, curve) for trial, curve in zip(trials, curves)]
-    tag_lists = [phase_tags(trial.time, trial.y_times) for trial in trials]
-
-    crf = sklearn_crfsuite.CRF(
-        algorithm="lbfgs",
-        c1=_CRF_C1,
-        c2=_CRF_C2,
-        max_iterations=_CRF_MAX_ITER,
-        all_possible_transitions=False,
-    )
-    crf.fit(sequences, tag_lists)
-    return crf, {"n_trials": len(trials), "sequences": observed_sequences(trials, config)}
-
-
-def _check_crf_length(n_frames: int) -> None:
-    if n_frames > CRF_MAX_FRAMES:
-        raise ValueError(
-            f"A trial has {n_frames} frames; the sequence model takes one token per frame and "
-            f"is capped at {CRF_MAX_FRAMES}. Pick features from a lower-rate stream, or train "
-            "without the sequence model."
+    calibrations: dict[int, TargetCalibration] = {}
+    for label in config.targets:
+        raws: list[float] = []
+        hits: list[int] = []
+        for trial, curve in zip(trials, curves):
+            y_time = _resolve_y_time(trial.y_times, label, config)
+            if y_time is None or label not in curve:
+                continue
+            index, height = tallest_peak(curve[label])
+            raws.append(height)
+            hits.append(int(abs(float(trial.time[index]) - y_time) <= config.tolerance_s))
+        raw_arr = np.asarray(raws, dtype=np.float64)
+        hit_arr = np.asarray(hits, dtype=int)
+        slope, intercept = _fit_platt(raw_arr, hit_arr)
+        calibrations[label] = TargetCalibration(
+            n_trials=int(hit_arr.size),
+            n_hits=int(hit_arr.sum()),
+            slope=slope,
+            intercept=intercept,
         )
-
-
-def decode_crf(
-    crf: sklearn_crfsuite.CRF,
-    time: np.ndarray,
-    curves: dict[int, np.ndarray],
-    config: OnsetModelConfig,
-) -> dict[int, OnsetPrediction]:
-    """Viterbi-decode one trial into an ordered set of events.
-
-    Each frame where the decoded tag changes is the event of the class it
-    changes *to*; a class the path never enters gets no prediction in this
-    trial, which is the sequence model saying it did not happen. Confidence
-    reuses the same two-part reading as the argmax path, on the CRF's
-    marginals: *peak* is how sure it is of the state at that frame, and
-    *sharpness* how localised the switch into it was.
-    """
-    _check_crf_length(len(time))
-    sequence = crf_features(time, curves)
-    path = list(crf.predict_single(sequence))
-    marginals = crf.predict_marginals_single(sequence)
-
-    out: dict[int, OnsetPrediction] = {}
-    previous = CRF_NONE_TAG
-    for idx, tag in enumerate(path):
-        if tag == previous:
-            continue
-        previous = tag
-        if tag == CRF_NONE_TAG or int(tag) not in config.targets:
-            continue
-        state = np.array([frame.get(tag, 0.0) for frame in marginals], dtype=np.float64)
-        switch = np.clip(np.diff(state, prepend=state[0]), 0.0, None)
-        label = int(tag)
-        out[label] = OnsetPrediction(
-            label=label,
-            name=config.target_name(label),
-            time=float(time[idx]),
-            peak=float(state[idx]),
-            sharpness=curve_sharpness(switch),
+        logger.info(
+            "  %s: %d/%d held-out predictions within %.3f s (confidence ceiling %.2f)",
+            config.target_name(label),
+            calibrations[label].n_hits,
+            calibrations[label].n_trials,
+            config.tolerance_s,
+            calibrations[label].hit_rate,
         )
-    return out
+    return calibrations

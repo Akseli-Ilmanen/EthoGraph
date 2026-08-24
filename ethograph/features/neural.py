@@ -7,6 +7,8 @@ import numpy as np
 import pynapple as nap
 import xarray as xr
 
+from ethograph.io import schema
+
 
 def build_tsgroup(
     spike_times: np.ndarray,
@@ -155,19 +157,21 @@ def compute_pca(
 
     pc_labels = [f"PC{i + 1}" for i in range(n_components)]
 
-    return xr.DataArray(
-        data=scores,
-        dims=("time_fr", "pc"),
-        coords={
-            "time_fr": firing_rate.coords["time_fr"].values,
-            "pc": pc_labels,
-        },
-        attrs={
-            "type": "pca",
-            "explained_variance": explained.tolist(),
-            "zscore": zscore,
-            "n_clusters": firing_rate.sizes["cluster_id"],
-        },
+    return schema.describe(
+        xr.DataArray(
+            data=scores,
+            dims=("time_fr", "pc"),
+            coords={
+                "time_fr": firing_rate.coords["time_fr"].values,
+                "pc": pc_labels,
+            },
+            attrs={
+                "explained_variance": explained.tolist(),
+                "zscore": zscore,
+                "n_clusters": firing_rate.sizes["cluster_id"],
+            },
+        ),
+        schema.NEURAL_FEATURE,
     )
 
 

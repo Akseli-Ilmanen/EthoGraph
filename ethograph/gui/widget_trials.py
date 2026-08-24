@@ -31,6 +31,7 @@ from ethograph.io.metadata_edit import (
     TARGET_NWB,
     blank_column,
     coerce_value,
+    ensure_tabular_target,
     fits_dtype,
     resolve_metadata_target,
     write_metadata,
@@ -276,6 +277,10 @@ class TrialsWidget(QWidget):
         self._cat_values: dict[int, list[str]] = {}
         self._cat_active: dict[int, set[str]] = {}
         self._num_active: dict[int, tuple[str, float]] = {}
+        #: Trials the label filter allows (see :meth:`set_label_filter`), or
+        #: None when it is off. Session state — a dataset load starts clean.
+        self._label_trials: set[str] | None = None
+        self._label_note: str = ""
         self._editable_cols: set[int] = set()
         self._dirty_columns: set[str] = set()
         self._building = False
@@ -554,6 +559,12 @@ class TrialsWidget(QWidget):
                 if not keep and trial in filtered:
                     filtered.remove(trial)
 
+        # The label filter sits ON TOP of the column filters rather than
+        # replacing them: "wild-type trials where the sequence broke" is one
+        # question, and answering it must not throw the genotype away.
+        if self._label_trials is not None:
+            filtered = {t for t in filtered if str(t) in self._label_trials}
+
         try:
             sorted_trials = sorted(filtered, key=int)
         except (ValueError, TypeError):
@@ -573,9 +584,117 @@ class TrialsWidget(QWidget):
 
         n_total = len(original_trials)
         n_shown = len(sorted_trials)
-        self._status_label.setText(f"Showing {n_shown} of {n_total} trials")
+        note = f"Showing {n_shown} of {n_total} trials"
+        if self._label_trials is not None:
+            # Say it out loud: a filter the header funnels cannot show would
+            # otherwise look like trials going missing for no reason.
+            note += f" · label filter: {self._label_note or 'on'}"
+        self._status_label.setText(note)
 
         self.trials_filtered.emit(sorted_trials)
+
+    # ------------------------------------------------------------------
+    # Filters by column name — how a saved curation workflow replays them
+    # ------------------------------------------------------------------
+
+    def column_filters(self) -> list[dict]:
+        """The active filters, keyed by column name rather than index.
+
+        The serialisable form :mod:`ethograph.labels.workflow` stores: one
+        entry per filtered column, carrying either ``values`` (categorical)
+        or ``op``/``value`` (numeric).
+        """
+        columns = list(self._metadata_df.columns)
+        out: list[dict] = []
+        for col_idx, allowed in sorted(self._cat_active.items()):
+            if col_idx < len(columns):
+                out.append({"column": str(columns[col_idx]), "values": sorted(str(v) for v in allowed)})
+        for col_idx, (op, value) in sorted(self._num_active.items()):
+            if col_idx < len(columns):
+                out.append({"column": str(columns[col_idx]), "op": str(op), "value": float(value)})
+        return out
+
+    def filterable_columns(self) -> dict[str, list[str] | None]:
+        """Column name → its categorical values, or ``None`` when numeric."""
+        out: dict[str, list[str] | None] = {}
+        for col_idx, name in enumerate(self._metadata_df.columns):
+            if col_idx in self._cat_cols:
+                out[str(name)] = list(self._cat_values.get(col_idx, []))
+            elif col_idx in self._num_cols:
+                out[str(name)] = None
+        return out
+
+    def clear_column_filters(self) -> None:
+        """Drop every filter, so every trial is shown again."""
+        self._cat_active.clear()
+        self._num_active.clear()
+        self._label_trials = None
+        self._label_note = ""
+        self._update_header_active_filters()
+        self._apply_filters()
+
+    # ------------------------------------------------------------------
+    # Label filter — a restriction the metadata columns cannot express
+    # ------------------------------------------------------------------
+
+    def set_label_filter(self, trials, note: str = "") -> int:
+        """Restrict to *trials* on top of the column filters; ``None`` clears it.
+
+        Set by **Tools ▸ Find label inconsistencies…**, which works out which
+        trials look wrong from the labels themselves — something no metadata
+        column knows. It is deliberately a separate slot from the column
+        filters: clearing one leaves the other alone, and the status line says
+        when it is on. Returns how many trials the table now shows.
+        """
+        self._label_trials = None if trials is None else {str(t) for t in trials}
+        self._label_note = note if trials is not None else ""
+        self._apply_filters()
+        return len(self.app_state.trials or [])
+
+    def label_filter_active(self) -> bool:
+        return self._label_trials is not None
+
+    def apply_column_filters(self, filters: list[dict], *, clear_first: bool = True) -> list[str]:
+        """Apply filters named by column, as :meth:`column_filters` returns them.
+
+        Returns the entries that could not be applied, as sentences — a column
+        this dataset's metadata does not have, or a comparison on a column
+        that is not numeric here. Applying nothing is not an error: the
+        remaining filters still take effect.
+        """
+        columns = {str(name): idx for idx, name in enumerate(self._metadata_df.columns)}
+        if clear_first:
+            self._cat_active.clear()
+            self._num_active.clear()
+        skipped: list[str] = []
+        for entry in filters or []:
+            column = str(entry.get("column", ""))
+            col_idx = columns.get(column)
+            if col_idx is None:
+                skipped.append(f"no metadata column {column!r}")
+                continue
+            values = entry.get("values")
+            if isinstance(values, list) and values:
+                if col_idx not in self._cat_cols:
+                    skipped.append(f"{column!r} is numeric here, so a value list does not apply")
+                    continue
+                self._cat_active[col_idx] = {str(v) for v in values}
+                known = set(self._cat_values.get(col_idx, []))
+                missing = sorted({str(v) for v in values} - known)
+                if missing:
+                    skipped.append(f"{column!r} has no value(s) {', '.join(missing)} in this dataset")
+                continue
+            op, value = entry.get("op"), entry.get("value")
+            if op in (">=", "<=") and value is not None:
+                if col_idx not in self._num_cols:
+                    skipped.append(f"{column!r} is categorical here, so a comparison does not apply")
+                    continue
+                self._num_active[col_idx] = (str(op), float(value))
+                continue
+            skipped.append(f"the filter on {column!r} states no condition")
+        self._update_header_active_filters()
+        self._apply_filters()
+        return skipped
 
     # ==================================================================
     # Editing metadata in place (double-click, current trial only)
@@ -770,16 +889,44 @@ class TrialsWidget(QWidget):
         self._dirty_columns.add(column)
         self._save_timer.start()
 
-    def _metadata_target(self):
+    def _alignment_nwb_path(self) -> str | None:
         alignment = getattr(self.app_state, "nwb_alignment", None)
-        alignment_path = getattr(alignment, "_path", None)
-        if alignment_path is not None and Path(alignment_path).suffix.lower() != ".nwb":
-            alignment_path = None
+        path = getattr(alignment, "_path", None)
+        if path is None or Path(path).suffix.lower() != ".nwb":
+            return None
+        return path
+
+    def _metadata_target(self):
         return resolve_metadata_target(
             getattr(self.app_state, "nc_file_path", None),
             metadata_path=getattr(self.app_state, "metadata_path", None),
-            alignment_path=alignment_path,
+            alignment_path=self._alignment_nwb_path(),
         )
+
+    def ensure_tabular_metadata_file(self) -> Path | None:
+        """Make sure the metadata table lives in a file we may write freely.
+
+        Curation calls this when it starts: its ``curated`` column is derived
+        state and must not go into a recording or the alignment NWB
+        (``io/metadata_edit.DERIVED_COLUMNS``). With an NWB target the loaded
+        table is copied to the sidecar TSV, which becomes the metadata table
+        for this dataset from then on.
+        """
+        target = ensure_tabular_target(
+            getattr(self.app_state, "nc_file_path", None),
+            getattr(self.app_state, "metadata_df", None),
+            metadata_path=getattr(self.app_state, "metadata_path", None),
+            alignment_path=self._alignment_nwb_path(),
+            trials=getattr(self.app_state, "trials", None),
+        )
+        if target is None:
+            return None
+        if str(target.path) != str(getattr(self.app_state, "metadata_path", None) or ""):
+            # Reloads the table from the TSV and makes it what the next load
+            # reads first.
+            self.app_state.metadata_path = str(target.path)
+            self.reload_metadata()
+        return target.path
 
     def flush_metadata(self) -> None:
         """Write pending edits to the metadata source. A no-op when there are none."""

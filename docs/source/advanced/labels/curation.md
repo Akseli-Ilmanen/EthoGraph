@@ -26,6 +26,22 @@ trial turns it red again until those are curated too.
 Everything about curation lives in one place: the **Curation** section at the
 bottom of the **Labels** tab.
 
+## Where the verdict is saved
+
+Nothing is written until you start curating. Opening a dataset arms nothing:
+curation becomes **active** the moment you drop label classes into the scope
+area or curate anything, and only then does the verdict start being saved
+(a line in the terminal says so). Loading another dataset disarms it again.
+
+Arming is also the one moment a metadata file appears. The `curated` column is
+EthoGraph's own bookkeeping, so it is never written into a recording or into
+`.ethograph/alignment.nwb`: that write happens in place, and for a non-NWB
+dataset the alignment NWB is the only holder of your trial timing. Instead the
+metadata table you have loaded is copied to a sidecar `{stem}_metadata.tsv`
+next to the data, and that file is the metadata table from then on — it is
+what the next load reads, and where later edits to trial metadata go. An
+existing metadata file is used as it stands, never overwritten.
+
 ## Scope: which labels
 
 Curation acts on a *scope* of label classes. Drag rows out of the label tables
@@ -39,6 +55,14 @@ so other labels can be dragged in. The scope is remembered per dataset.
 makes it manual, as always. Press `Ctrl+C` (or **Curate trial**) and every
 automated label in scope of the current trial becomes curated; manual labels
 stay manual.
+
+**Curate visible trials…** next to it does the same across *every* trial the
+trials table shows. It asks first, because one click here says a human
+approved labels nobody looked at, and **curating cannot be undone** — `Ctrl+Z`
+takes back label edits, not curations. (Nothing reaches disk until you save,
+so closing without saving still discards it.) Reach for it when a review left
+some unjudged — a grid browsed without curating, a review stopped partway —
+not as a way to skip looking.
 
 **Inspect is enough (trial level)** — merely opening a trial curates its
 automated labels in scope. Use it when a model is good enough that looking at
@@ -66,6 +90,14 @@ Navigating trials the normal way (trial combo, `Up`/`Down`) pulls the review
 along to that trial's first boundary. Nothing reaches disk until you save with
 `Ctrl+S`.
 
+Reviewing what an {doc}`onset model <onset_model>` predicted, you also get the
+**curve it predicted from**: a dashed line per label class, in the class's own
+colour, on a 0–1 right-hand axis. Only the classes **in scope** are drawn, so
+dragging in one class shows that class's belief and nothing else. A low
+confidence then explains itself — a second peak elsewhere in the trial means
+the model was torn, a flat line means it never found anything. Labels placed
+by hand have no curve and none is drawn.
+
 Seeds don't have to be hand-placed. Because the queue is built from the labels
 TSV, you can generate first-guess labels **programmatically from a time-series
 criterion** — say, the first frame where beak opening exceeds a threshold
@@ -75,12 +107,21 @@ width — write them into the `{name}_labels.tsv` file with
 A rough automatic pass plus a fast frame-accurate review is often far quicker
 than either alone.
 
+(target-curation-grids)=
 ## The grids
 
 Two buttons in the section open review grids on the scope; both come with the
 same **mode** combo and a **Done** button. Their *Setup* tab lists the labels
 in scope for clarity but cannot change them — the scope area is the one place
 labels are chosen, so close the grid, drag other rows in, and open it again.
+
+Setup's **Labeling method** combo picks which labels of those classes the grid
+is about: *All labels*, *Automated only* — a model's output that nobody has
+looked at, which is what a prediction review is for — or *Manual or curated*,
+for checking your own work. Manual and curated are one choice on purpose: both
+mean a human vouched for the label, and which of the two it is says only how
+it got there. Like the rest of the grid setup the choice is remembered across
+sessions, and a {doc}`workflow <workflows>` step sets it per grid.
 
 **Label grid view…** shows the video frame at every boundary in scope — one
 tile per point event, a start and an end tile per state event, per camera —
@@ -89,8 +130,14 @@ below** outlining doubtful tiles in red and **Histogram…** showing where the
 scores pile up (see {ref}`target-onset-model-confidence`). The grid exports to
 a paginated PDF.
 
-* *Click = navigate* — a tile click jumps the main GUI to that trial and time.
-  In frame-by-frame mode it drops straight into the review at that boundary.
+A **double click** always jumps the main GUI to that trial and time — in
+frame-by-frame mode, straight into the review at that boundary — whichever
+mode the grid is in, and it leaves the verdicts exactly as they were. So
+judging a batch and going to look at one of its labels are not two modes to
+switch between: click to judge, double-click to go and see.
+
+A **single** click is a verdict, and the mode says which:
+
 * *Click = curated* — click the tiles that are right (green); **Done** curates
   those labels.
 * *Click = uncurated, rest = curated* — for a batch that is mostly right:
@@ -98,6 +145,15 @@ a paginated PDF.
   pre-clicks what the threshold outlines (it exists only in this mode — a low
   score is a reason to doubt a label, never to approve it), and **Done**
   curates every other label.
+
+When the scope holds more than one label class the grid gets a **Label**
+combo, which narrows it to one class at a time (each choice says how many
+tiles it has). It narrows the *operations* too, which is the point of it:
+**Mark low-confidence as uncurated**, **Done** and the PDF apply to the class
+on screen and to no other — so "rest = curated" means the rest of *that*
+class, and a scope of several classes is curated one class at a time without
+reopening the dialog. Clicks on a class you have filtered away are simply out
+of **Done**'s reach until you show it again.
 
 **Video grid…** plays the labels instead of freezing them — a state event's
 whole span, a point event's window (**Window around point events**) with a
@@ -122,3 +178,11 @@ from one whose window was clipped. Clips decode a screenful at a time at a
 reduced size, so opening long events takes a moment; while a screenful is
 showing, the next one is already decoding in the background, so stepping on
 is quick. Clicks mean the same as in the label grid.
+
+## Doing all of that again next session
+
+Scope, mode, grid layout and review window are settings you will set the same
+way every time you review the same behaviour. **Workflows…** at the bottom of
+the section records that whole routine — filters, prediction, scope, grid,
+review, save — and replays it in one press. See
+{doc}`workflows`.

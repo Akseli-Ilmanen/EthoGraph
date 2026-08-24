@@ -10,15 +10,20 @@ picked. *Generate* decodes, for every matching label instance, the
 video frame closest to its time — one frame per point event, a start and an
 end frame per state event — overlays the pose when a pose file exists for
 that (trial, camera), and fills the *Frames* tab with a grid of thumbnails.
-Each tile is titled with the label, trial, camera, time, confidence and
-``labeling_method``; a confidence threshold outlines doubtful tiles in red and
-**Histogram…** shows where the scores pile up.
+Each tile is titled with the label and carries its confidence beside that
+title, large and in red once it falls under the threshold; trial, camera, time
+and ``labeling_method`` read underneath. The same threshold outlines doubtful
+tiles in red and **Histogram…** shows where the scores pile up.
 
-What a tile click does is the grid's **mode**:
+**A double click always navigates**, whatever the mode: it jumps the main
+GUI to that trial and time, or — in frame-by-frame curation mode — drops
+straight into the review at that boundary
+(:meth:`CurationPanel.start_review_at`). Qt opens a double click with a plain
+press, which has already toggled the tile; the double click toggles it back,
+so navigating never leaves a verdict behind.
 
-* *Click = navigate* — jump the main GUI to that trial and time. In
-  frame-by-frame curation mode this drops straight into the review at that
-  boundary (:meth:`CurationPanel.start_review_at`).
+A **single** click is a verdict, and the **mode** says which:
+
 * *Click = curated* — every tile clicked turns green; **Done** curates those
   labels (automated → curated).
 * *Click = uncurated, rest = curated* — for a batch that is mostly right:
@@ -26,6 +31,11 @@ What a tile click does is the grid's **mode**:
   **Mark low-confidence as uncurated** pre-clicks the tiles the confidence
   threshold outlines — only in this mode, since a low score is a reason to
   doubt a label, never to approve it.
+
+The **Label** combo narrows a grid built from several classes to one of them,
+and it narrows the operations too: the flagged tiles, **Done** and the PDF
+all run over what is on screen, so a scope of several classes is curated one
+class at a time without reopening the dialog.
 
 The grid's column count is adjustable and the whole grid exports to a
 paginated PDF. The same verdict machinery (:class:`TileVerdicts`) drives the
@@ -44,8 +54,18 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pyqtgraph as pg
-from qtpy.QtCore import QEventLoop, QRect, Qt, QTimer, Signal
-from qtpy.QtGui import QColor, QFont, QImage, QPageSize, QPainter, QPdfWriter, QPen, QPixmap
+from qtpy.QtCore import QEventLoop, QLocale, QRect, Qt, QTimer, Signal
+from qtpy.QtGui import (
+    QColor,
+    QDoubleValidator,
+    QFont,
+    QImage,
+    QPageSize,
+    QPainter,
+    QPdfWriter,
+    QPen,
+    QPixmap,
+)
 from qtpy.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -59,6 +79,7 @@ from qtpy.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QListWidget,
     QListWidgetItem,
     QProgressDialog,
@@ -85,6 +106,7 @@ from ethograph.labels.intervals import (
     LABELING_CURATED,
     LABELING_MANUAL,
 )
+from ethograph.labels.workflow import DEFAULT_CONFIDENCE
 
 logger = logging.getLogger(__name__)
 
@@ -113,6 +135,11 @@ _REFLOW_DEBOUNCE_MS = 120
 LOW_CONFIDENCE_COLOR = "#d94040"
 _LOW_CONFIDENCE_STYLE = f"QFrame#frameCell {{ border: 2px solid {LOW_CONFIDENCE_COLOR}; border-radius: 3px; }}"
 
+#: The confidence beside a tile's title: big enough to read across a grid, and
+#: in the flag red once it falls under the threshold.
+CONFIDENCE_OK_COLOR = "#9aa0a6"
+CONFIDENCE_FONT_PX = 15
+
 #: Tile outlines for the verdict a click gave: curated (green) or flagged as
 #: wrong (orange — distinct from the confidence red, which is a hint, not a
 #: verdict).
@@ -121,9 +148,9 @@ UNCURATE_COLOR = "#ff9f1c"
 _CURATE_STYLE = f"QFrame#frameCell {{ border: 3px solid {CURATE_COLOR}; border-radius: 3px; }}"
 _UNCURATE_STYLE = f"QFrame#frameCell {{ border: 3px solid {UNCURATE_COLOR}; border-radius: 3px; }}"
 
-#: Grid click modes: key → combo text.
+#: What a *single* tile click means: key → combo text. A double click always
+#: navigates, in every mode, so there is no mode for it.
 GRID_MODES = {
-    "navigate": "Click = navigate",
     "curate": "Click = curated",
     "uncurate": "Click = uncurated, rest = curated",
 }
@@ -182,6 +209,112 @@ def is_low_confidence(entry: "FrameEntry", threshold: float) -> bool:
     return threshold > 0.0 and entry.confidence < threshold
 
 
+#: Decimal places a confidence is stored and shown to. A model's scores live
+#: at the bottom of the range, where 0.0002 and 0.001 are different answers.
+CONFIDENCE_DECIMALS = 12
+
+
+#: Decimal places a confidence is *displayed* to. Three, not two: an onset
+#: model's scores cluster low, where 0.004 and 0.001 are different answers and
+#: two decimals shows both as 0.00. (The threshold box keeps full precision —
+#: that is what CONFIDENCE_DECIMALS is for.)
+CONFIDENCE_DISPLAY_DECIMALS = 3
+
+
+def format_confidence(value: float) -> str:
+    """*value* as it is typed back into a :class:`ConfidenceEdit`."""
+    return f"{round(float(value), CONFIDENCE_DECIMALS):.{CONFIDENCE_DECIMALS}f}".rstrip("0").rstrip(".") or "0"
+
+
+def confidence_display(value: float) -> str:
+    """A confidence as it reads anywhere in the GUI that shows one."""
+    return f"{float(value):.{CONFIDENCE_DISPLAY_DECIMALS}f}"
+
+
+class ConfidenceEdit(QLineEdit):
+    """A confidence in [0, 1], typed rather than stepped.
+
+    A spin box has to pick a number of decimals, and every choice is wrong
+    for a probability: two decimals cannot tell 0.0002 from 0, and twelve
+    make the arrows useless. So this is a plain line edit with the spin box's
+    API — ``value()``, ``setValue()``, ``valueChanged`` — and callers cannot
+    tell the difference. Empty text reads as 0.
+    """
+
+    valueChanged = Signal(float)
+
+    def __init__(self, value: float = DEFAULT_CONFIDENCE, parent=None):
+        super().__init__(parent)
+        self._value = 0.0
+        validator = QDoubleValidator(0.0, 1.0, CONFIDENCE_DECIMALS, self)
+        validator.setNotation(QDoubleValidator.StandardNotation)
+        validator.setLocale(QLocale.c())
+        self.setLocale(QLocale.c())
+        self.setValidator(validator)
+        self.setMaximumWidth(90)
+        self.setPlaceholderText("off")
+        self.setValue(value)
+        self.textChanged.connect(self._on_text)
+        self.editingFinished.connect(self._normalise)
+
+    def value(self) -> float:
+        return self._value
+
+    def setValue(self, value: float) -> None:
+        """Show *value*, announcing it exactly when it is a different number.
+
+        Two boxes bound to each other (the grid's and the histogram's) settle
+        after one round trip: the second call finds the value it already
+        holds and stays quiet.
+        """
+        new = min(1.0, max(0.0, float(value)))
+        text = format_confidence(new)
+        if text != self.text():
+            blocked = self.blockSignals(True)
+            self.setText(text)
+            self.blockSignals(blocked)
+        self._announce(new)
+
+    def _on_text(self, text: str) -> None:
+        new = self._parse(text)
+        if new is not None:
+            self._announce(new)
+
+    def _announce(self, value: float) -> None:
+        if value == self._value:
+            return
+        self._value = value
+        self.valueChanged.emit(value)
+
+    def _normalise(self) -> None:
+        """Once typing is over, show the number that is actually in force."""
+        if self._parse(self.text()) is None:
+            self.setText(format_confidence(self._value))
+
+    @staticmethod
+    def _parse(text: str) -> float | None:
+        """*text* as a confidence, or ``None`` while it is still half-typed."""
+        stripped = text.strip()
+        if not stripped:
+            return 0.0
+        try:
+            parsed = float(stripped)
+        except ValueError:
+            return None
+        return min(1.0, max(0.0, parsed))
+
+
+def confidence_text(entry) -> str:
+    """The confidence as it reads beside a tile's title."""
+    return confidence_display(entry.confidence)
+
+
+def confidence_style(entry, threshold: float) -> str:
+    """Stylesheet for that reading — red exactly when the tile is flagged."""
+    color = LOW_CONFIDENCE_COLOR if is_low_confidence(entry, threshold) else CONFIDENCE_OK_COLOR
+    return f"font-weight: bold; font-size: {CONFIDENCE_FONT_PX}px; color: {color};"
+
+
 def _mapping_color_hex(info: dict) -> str:
     color = info.get("color")
     if color is None:
@@ -220,12 +353,14 @@ def build_frame_entries(
     label_ids: list[int],
     cameras: list[str | None],
     allowed_trials: set[str] | None = None,
+    methods: frozenset[str] | None = None,
 ) -> list[FrameEntry]:
     """Expand matching label rows into grid entries.
 
     One entry per point event, a start + end entry per state event, times
     trial-relative — each repeated for every selected camera so a label's
-    views sit next to each other in the grid.
+    views sit next to each other in the grid. *methods* keeps only the
+    labeling methods named (``None`` keeps every label).
     """
     if labels_df is None or labels_df.empty:
         return []
@@ -236,6 +371,8 @@ def build_frame_entries(
 
     entries: list[FrameEntry] = []
     for _, row in rows.iterrows():
+        if not keep_method(row, methods):
+            continue
         label_id = int(row["labels"])
         info = mappings.get(label_id, {})
         name = str(info.get("name", label_id))
@@ -285,6 +422,31 @@ def seeds_from_entries(entries: list[FrameEntry]) -> list[dict]:
 def flagged_trials(entries: list[FrameEntry], threshold: float) -> set[str]:
     """Trials holding at least one entry below *threshold* (as strings)."""
     return {str(entry.trial) for entry in entries if is_low_confidence(entry, threshold)}
+
+
+def label_filter_choices(entries: list[FrameEntry]) -> list[tuple[int | None, str]]:
+    """The grid's label filter: every class in the grid, plus "all" first.
+
+    Each choice carries its tile count, so a grid built from several classes
+    says how much of it each one is. The ``None`` choice is the unfiltered
+    grid — the first, and the one a grid opens on.
+    """
+    counts: dict[int, int] = {}
+    names: dict[int, str] = {}
+    for entry in entries:
+        counts[entry.label_id] = counts.get(entry.label_id, 0) + 1
+        names.setdefault(entry.label_id, entry.name)
+    choices: list[tuple[int | None, str]] = [(None, f"All labels ({len(entries)})")]
+    for label_id in sorted(counts, key=lambda i: (names[i], i)):
+        choices.append((label_id, f"{names[label_id]} ({counts[label_id]})"))
+    return choices
+
+
+def filter_entries(entries: list[FrameEntry], label_id: int | None) -> list[FrameEntry]:
+    """The entries one filter choice shows; ``None`` shows all of them."""
+    if label_id is None:
+        return list(entries)
+    return [entry for entry in entries if entry.label_id == label_id]
 
 
 class TileVerdicts:
@@ -393,6 +555,30 @@ def _row_method(row) -> str:
     if isinstance(value, str) and value in (LABELING_MANUAL, LABELING_AUTOMATED, LABELING_CURATED):
         return value
     return LABELING_AUTOMATED if _row_confidence(row) < HUMAN_CONFIDENCE else LABELING_MANUAL
+
+
+#: The grids' "Labeling method" filter: each choice's label and the methods it
+#: keeps (``None`` keeps every label). "Manual or curated" stays as its own
+#: choice — both mean a human vouched for the label — alongside the two split
+#: out separately for a reviewer who wants to see one without the other.
+GRID_METHOD_FILTERS: dict[str, tuple[str, frozenset[str] | None]] = {
+    "all": ("All labels", None),
+    "manual": ("Manual only", frozenset({LABELING_MANUAL})),
+    "curated": ("Curated only", frozenset({LABELING_CURATED})),
+    "human": ("Manual or curated", frozenset({LABELING_MANUAL, LABELING_CURATED})),
+    "automated": ("Automated only", frozenset({LABELING_AUTOMATED})),
+}
+
+
+def methods_for_filter(choice: str) -> frozenset[str] | None:
+    """The labeling methods *choice* keeps; ``None`` (also for an unknown
+    choice) keeps every label."""
+    return GRID_METHOD_FILTERS.get(str(choice), GRID_METHOD_FILTERS["all"])[1]
+
+
+def keep_method(row, methods: frozenset[str] | None) -> bool:
+    """Whether a label row survives a method filter."""
+    return methods is None or _row_method(row) in methods
 
 
 def _hex_to_rgb(color_hex: str) -> tuple[int, int, int]:
@@ -784,7 +970,6 @@ def _entry_info(entry: FrameEntry) -> str:
     if individual is not None and not (isinstance(individual, float) and math.isnan(individual)):
         parts.append(str(individual))
     parts.append(f"{entry.t_rel:.3f} s")
-    parts.append(f"conf {entry.confidence:.2f}")
     parts.append(entry.labeling_method)
     if entry.cropped:
         parts.append("cropped")
@@ -820,9 +1005,13 @@ def write_frames_pdf(
         page_w, page_h = writer.width(), writer.height()
         margin, gap = 40, 18
         cell_w = (page_w - 2 * margin - (columns - 1) * gap) // columns
-        painter.setFont(QFont("Helvetica", 7))
+        body_font = QFont("Helvetica", 7)
+        conf_font = QFont("Helvetica", 10, QFont.Bold)
+        painter.setFont(conf_font)
+        conf_h = painter.fontMetrics().height()
+        painter.setFont(body_font)
         line_h = painter.fontMetrics().height()
-        text_h = 2 * line_h + 4
+        text_h = conf_h + line_h + 4
 
         def frame_height(entry: FrameEntry) -> int:
             if entry.image is not None:
@@ -850,8 +1039,20 @@ def write_frames_pdf(
                     painter.setPen(QPen(QColor(LOW_CONFIDENCE_COLOR), 2))
                     painter.drawRect(x - 5, y - 5, cell_w + 10, cell_height(entry) + 10)
                     painter.restore()
-                painter.drawText(x, y + line_h, _entry_title(entry))
-                painter.drawText(x, y + 2 * line_h, _entry_info(entry))
+                painter.save()
+                painter.setFont(conf_font)
+                if is_low_confidence(entry, confidence_threshold):
+                    painter.setPen(QColor(LOW_CONFIDENCE_COLOR))
+                conf_text = confidence_text(entry)
+                conf_w = painter.fontMetrics().horizontalAdvance(conf_text)
+                painter.drawText(QRect(x, y, cell_w, conf_h), Qt.AlignRight | Qt.AlignVCenter, conf_text)
+                painter.restore()
+                painter.drawText(
+                    QRect(x, y, max(1, cell_w - conf_w - 6), conf_h),
+                    Qt.AlignLeft | Qt.AlignVCenter,
+                    _entry_title(entry),
+                )
+                painter.drawText(x, y + conf_h + line_h, _entry_info(entry))
                 cy = y + text_h
                 h_img = frame_height(entry)
                 if entry.image is not None:
@@ -878,10 +1079,15 @@ def write_frames_pdf(
 
 class _ClickableLabel(QLabel):
     clicked = Signal()
+    double_clicked = Signal()
 
     def mousePressEvent(self, event):
         self.clicked.emit()
         super().mousePressEvent(event)
+
+    def mouseDoubleClickEvent(self, event):
+        self.double_clicked.emit()
+        super().mouseDoubleClickEvent(event)
 
 
 def histogram_bar_color(color_hex: str) -> str:
@@ -912,7 +1118,7 @@ class ConfidenceHistogramsDialog(QDialog):
     individual is labelled — with the part below the threshold drawn in the
     same red the grid outlines flagged tiles in, so the threshold can be
     chosen by looking at where the model's scores actually pile up. The
-    threshold spin is bound both ways to the grid's.
+    threshold box is bound both ways to the grid's.
     """
 
     threshold_changed = Signal(float)
@@ -928,15 +1134,10 @@ class ConfidenceHistogramsDialog(QDialog):
         layout = QVBoxLayout(self)
         bar = QHBoxLayout()
         bar.addWidget(QLabel("Flag confidence below:"))
-        self.threshold_spin = QDoubleSpinBox()
-        self.threshold_spin.setRange(0.0, 1.0)
-        self.threshold_spin.setDecimals(2)
-        self.threshold_spin.setSingleStep(0.05)
-        self.threshold_spin.setSpecialValueText("off")
-        self.threshold_spin.setValue(threshold)
-        self.threshold_spin.setToolTip("Shared with the grid — moving it here recolours the tiles too.")
-        self.threshold_spin.valueChanged.connect(self._on_threshold)
-        bar.addWidget(self.threshold_spin)
+        self.threshold_edit = ConfidenceEdit(threshold)
+        self.threshold_edit.setToolTip("Shared with the grid — moving it here recolours the tiles too.")
+        self.threshold_edit.valueChanged.connect(self._on_threshold)
+        bar.addWidget(self.threshold_edit)
         bar.addSpacing(12)
         bar.addWidget(QLabel("Bins:"))
         self.bins_spin = QSpinBox()
@@ -978,14 +1179,14 @@ class ConfidenceHistogramsDialog(QDialog):
 
     def set_threshold(self, value: float) -> None:
         """Follow the grid's threshold (a no-op when it already matches)."""
-        self.threshold_spin.setValue(float(value))
+        self.threshold_edit.setValue(float(value))
 
     def _on_threshold(self, value: float) -> None:
         self.threshold_changed.emit(float(value))
         self._redraw()
 
     def _redraw(self) -> None:
-        threshold = self.threshold_spin.value()
+        threshold = self.threshold_edit.value()
         bins = self.bins_spin.value()
         for group, plot in self._plots:
             edges, below, above = split_histogram(group.values, threshold, bins)
@@ -1032,6 +1233,8 @@ class GridModeBar(QWidget):
 
     The host passes its entries and a ``restyle()`` callback; this widget owns
     the :class:`TileVerdicts` and applies Done through the curation panel.
+    ``entries_fn`` returns what is *on screen* — a grid filtered to one label
+    class curates that class and nothing else.
     """
 
     mode_changed = Signal(str)
@@ -1051,10 +1254,11 @@ class GridModeBar(QWidget):
         for key, text in GRID_MODES.items():
             self.mode_combo.addItem(text, key)
         self.mode_combo.setToolTip(
-            "Click = navigate: a tile click jumps the GUI there (into the frame-by-frame\n"
-            "review when that curation mode is on).\n"
+            "What a single tile click means.\n"
             "Click = curated: Done curates every clicked label.\n"
-            "Click = uncurated, rest = curated: click the bad ones, Done curates the rest."
+            "Click = uncurated, rest = curated: click the bad ones, Done curates the rest.\n"
+            "A double click always jumps the GUI there instead (into the frame-by-frame\n"
+            "review when that curation mode is on), whichever mode is chosen."
         )
         self.mode_combo.currentIndexChanged.connect(self._on_mode)
         lay.addWidget(self.mode_combo)
@@ -1082,12 +1286,9 @@ class GridModeBar(QWidget):
         self._sync_buttons()
 
     def mode(self) -> str:
-        return str(self.mode_combo.currentData() or "navigate")
+        return str(self.mode_combo.currentData() or "curate")
 
     def _sync_buttons(self) -> None:
-        verdict_mode = self.mode() != "navigate"
-        self.done_btn.setEnabled(verdict_mode)
-        self.clear_btn.setEnabled(verdict_mode)
         # Low confidence argues for doubt, not approval: the shortcut exists
         # only where a click means "uncurated".
         self.mark_flagged_btn.setEnabled(self.mode() == "uncurate" and self._flagged_fn is not None)
@@ -1101,8 +1302,15 @@ class GridModeBar(QWidget):
         self.mode_changed.emit(self.mode())
 
     def _sync_count(self) -> None:
-        n = len(self.verdicts.clicked)
+        """Count the clicks the host is showing, not every click ever made —
+        a verdict on a hidden label is not what Done is about to apply."""
+        keys = {entry_key(entry) for entry in self._entries_fn()}
+        n = len(self.verdicts.clicked & keys)
         self.count_label.setText(f"{n} clicked" if n else "")
+
+    def refresh(self) -> None:
+        """Re-read the host's entries — what is shown, and so what Done does."""
+        self._sync_count()
 
     def click(self, entry) -> bool:
         """A tile click in a verdict mode; returns whether it is marked now."""
@@ -1137,8 +1345,13 @@ class GridModeBar(QWidget):
             return 0
         n = panel.curate_labels(insts)
         done_keys = {
-            (str(i["trial"]), int(i["labels"]), round(float(i["onset_s"]), 6), subject_str(i.get("individual")),
-             subject_str(i.get("individual_rec")))
+            (
+                str(i["trial"]),
+                int(i["labels"]),
+                round(float(i["onset_s"]), 6),
+                subject_str(i.get("individual")),
+                subject_str(i.get("individual_rec")),
+            )
             for i in insts
         }
         for entry in entries:
@@ -1154,6 +1367,12 @@ class LabelGridView(QWidget):
     """Grid of label frames — the *Frames* tab of the dialog.
 
     A tile click is what the mode bar says it is: a jump, or a verdict.
+
+    The **Label** combo narrows the grid to one of the classes it was built
+    from. It is a filter on the whole tab, not just the view: the tile count,
+    **Mark low-confidence as uncurated**, **Done** and the PDF all run over
+    what is on screen, so a scope of several classes can be curated one class
+    at a time without reopening the dialog.
     """
 
     def __init__(self, meta, entries: list[FrameEntry], parent=None):
@@ -1161,6 +1380,8 @@ class LabelGridView(QWidget):
         self.meta = meta
         self.app_state = meta.app_state
         self._entries = entries
+        #: Which label class the grid is narrowed to; ``None`` is all of them.
+        self._filter_label_id: int | None = None
         #: Filled once the toolbar exists — the mode bar restyles on creation.
         self._cells: list[QFrame] = []
         #: The confidence-histogram popup while it is open.
@@ -1171,6 +1392,25 @@ class LabelGridView(QWidget):
 
         layout = QVBoxLayout(self)
         bar = QHBoxLayout()
+        choices = label_filter_choices(entries)
+        self._filter_row = QWidget()
+        filter_lay = QHBoxLayout(self._filter_row)
+        filter_lay.setContentsMargins(0, 0, 0, 0)
+        filter_lay.addWidget(QLabel("Label:"))
+        self.label_filter = QComboBox()
+        for label_id, text in choices:
+            self.label_filter.addItem(text, label_id)
+        self.label_filter.setToolTip(
+            "Show one label class at a time.\n"
+            "The rest of the tab follows the filter: the flagged tiles, Done and the\n"
+            "PDF all apply to the class on screen and to no other."
+        )
+        self.label_filter.currentIndexChanged.connect(self._on_filter_changed)
+        filter_lay.addWidget(self.label_filter)
+        bar.addWidget(self._filter_row)
+        # Nothing to choose between when the grid holds a single class.
+        self._filter_row.setVisible(len(choices) > 2)
+        bar.addSpacing(12)
         bar.addWidget(QLabel("Columns:"))
         self.columns_spin = QSpinBox()
         self.columns_spin.setRange(1, 12)
@@ -1180,18 +1420,16 @@ class LabelGridView(QWidget):
         bar.addWidget(self.columns_spin)
         bar.addSpacing(12)
         bar.addWidget(QLabel("Flag confidence below:"))
-        self.threshold_spin = QDoubleSpinBox()
-        self.threshold_spin.setRange(0.0, 1.0)
-        self.threshold_spin.setDecimals(2)
-        self.threshold_spin.setSingleStep(0.05)
-        self.threshold_spin.setValue(0.0)
-        self.threshold_spin.setSpecialValueText("off")
-        self.threshold_spin.setToolTip(
+        # Shared (SCOPE_GLOBAL) with the video grid's own threshold box.
+        self.threshold_edit = ConfidenceEdit(float(self.app_state.get_with_default("grid_confidence_threshold")))
+        self.threshold_edit.setToolTip(
             "Outline every tile whose label scores below this in red.\n"
-            "Human labels are 1.0; a predicted label carries the model's own score."
+            "Human labels are 1.0; a predicted label carries the model's own score.\n"
+            "Type it to as many decimals as the scores need (0.0002); 0 flags nothing."
         )
-        self.threshold_spin.valueChanged.connect(self._apply_styles)
-        bar.addWidget(self.threshold_spin)
+        self.threshold_edit.valueChanged.connect(self._apply_styles)
+        self.threshold_edit.valueChanged.connect(self._on_threshold_changed)
+        bar.addWidget(self.threshold_edit)
         self.histogram_btn = QPushButton("Histogram…")
         self.histogram_btn.setAutoDefault(False)
         self.histogram_btn.setToolTip(
@@ -1202,7 +1440,8 @@ class LabelGridView(QWidget):
         self.histogram_btn.clicked.connect(self._show_histograms)
         bar.addWidget(self.histogram_btn)
         bar.addStretch()
-        bar.addWidget(QLabel(f"{len(entries)} frames"))
+        self.count_label = QLabel("")
+        bar.addWidget(self.count_label)
         export_btn = QPushButton("Export PDF…")
         export_btn.setAutoDefault(False)
         export_btn.clicked.connect(self._export_pdf)
@@ -1211,7 +1450,7 @@ class LabelGridView(QWidget):
 
         self.mode_bar = GridModeBar(
             meta,
-            entries_fn=lambda: self._entries,
+            entries_fn=self.visible_entries,
             restyle_fn=self._apply_styles,
             flagged_fn=self._flagged_entries,
         )
@@ -1233,24 +1472,51 @@ class LabelGridView(QWidget):
         self._cells = [self._make_cell(entry) for entry in entries]
         self._relayout()
         self._apply_styles()
+        self._sync_count()
         self._sync_hint()
 
     @property
     def entries(self) -> list[FrameEntry]:
         return self._entries
 
+    def visible_entries(self) -> list[FrameEntry]:
+        """The entries the label filter shows — what every operation acts on."""
+        return filter_entries(self._entries, self._filter_label_id)
+
+    def _on_filter_changed(self, *_args) -> None:
+        """Re-show the grid under the new filter. The clicks are kept: a
+        verdict on a hidden label is simply out of Done's reach until its
+        class is shown again."""
+        self._filter_label_id = self.label_filter.currentData()
+        self._relayout()
+        self._apply_styles()
+        self._sync_count()
+        self.mode_bar.refresh()
+        self._sync_hint()
+
+    def _sync_count(self) -> None:
+        shown = len(self.visible_entries())
+        total = len(self._entries)
+        self.count_label.setText(f"{shown} frames" if shown == total else f"{shown} of {total} frames")
+
     def _sync_hint(self, *_args) -> None:
-        mode = self.mode_bar.mode()
-        if mode == "navigate":
-            panel = curation_panel_of(self.meta)
-            if panel is not None and panel.mode() == "frame":
-                self.hint.setText("Click a frame to review that boundary frame by frame in the main GUI.")
-            else:
-                self.hint.setText("Click a frame to jump the GUI to that trial and time.")
-        elif mode == "curate":
-            self.hint.setText("Click the frames that are right, then Done curates those labels.")
+        if self.mode_bar.mode() == "curate":
+            click = "Click the frames that are right, then Done curates those labels."
         else:
-            self.hint.setText("Click the frames that are wrong, then Done curates every other label.")
+            click = "Click the frames that are wrong, then Done curates every other label."
+        panel = curation_panel_of(self.meta)
+        if panel is not None and panel.mode() == "frame":
+            jump = "Double-click a frame to review that boundary frame by frame in the main GUI."
+        else:
+            jump = "Double-click a frame to jump the GUI to that trial and time."
+        self.hint.setText(f"{click} {jump}{self._filter_note()}")
+
+    def _filter_note(self) -> str:
+        """What the filter restricts Done to — silent when nothing is filtered."""
+        if self._filter_label_id is None:
+            return ""
+        name = next((e.name for e in self._entries if e.label_id == self._filter_label_id), self._filter_label_id)
+        return f" Filtered to '{name}': no other label class is touched."
 
     def _make_cell(self, entry: FrameEntry) -> QFrame:
         cell = QFrame()
@@ -1259,9 +1525,19 @@ class LabelGridView(QWidget):
         lay.setContentsMargins(2, 2, 2, 2)
         lay.setSpacing(2)
 
+        header = QHBoxLayout()
+        header.setSpacing(6)
         title = QLabel(_entry_title(entry))
         title.setStyleSheet(f"font-weight: bold; color: {entry.color_hex};")
-        lay.addWidget(title)
+        title.setWordWrap(True)
+        header.addWidget(title, 1)
+        conf = QLabel(confidence_text(entry))
+        conf.setStyleSheet(confidence_style(entry, self.threshold_edit.value()))
+        conf.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        conf.setToolTip("Confidence of this label — red below the flag threshold.")
+        header.addWidget(conf, 0)
+        lay.addLayout(header)
+        cell._conf = conf  # type: ignore[attr-defined]
         info = QLabel(_entry_info(entry))
         info.setStyleSheet("color: grey; font-size: 10px;")
         lay.addWidget(info)
@@ -1283,6 +1559,7 @@ class LabelGridView(QWidget):
             image_label.setFrameShape(QFrame.StyledPanel)
             image_label.setMinimumSize(160, 90)
         image_label.clicked.connect(lambda e=entry: self._on_tile_clicked(e))
+        image_label.double_clicked.connect(lambda e=entry: self._on_tile_double_clicked(e))
         lay.addWidget(image_label)
 
         for panel_title, qimage in entry.panels:
@@ -1301,20 +1578,25 @@ class LabelGridView(QWidget):
         return cell
 
     def _flagged_entries(self) -> list[FrameEntry]:
-        threshold = self.threshold_spin.value()
-        return [e for e in self._entries if is_low_confidence(e, threshold)]
+        threshold = self.threshold_edit.value()
+        return [e for e in self.visible_entries() if is_low_confidence(e, threshold)]
+
+    def _on_threshold_changed(self, value: float) -> None:
+        self.app_state.grid_confidence_threshold = float(value)
 
     def _apply_styles(self, *_args) -> None:
         """Outline the tiles: verdict colour first, else the confidence red."""
-        threshold = self.threshold_spin.value()
+        threshold = self.threshold_edit.value()
         mode = self.mode_bar.mode()
         verdicts = self.mode_bar.verdicts
         for cell, entry in zip(self._cells, self._entries):
-            if mode != "navigate" and verdicts.is_clicked(entry):
+            if verdicts.is_clicked(entry):
                 cell.setStyleSheet(_CURATE_STYLE if mode == "curate" else _UNCURATE_STYLE)
             else:
                 cell.setStyleSheet(_LOW_CONFIDENCE_STYLE if is_low_confidence(entry, threshold) else "")
             cell._info.setText(_entry_info(entry))
+            cell._conf.setText(confidence_text(entry))
+            cell._conf.setStyleSheet(confidence_style(entry, threshold))
         if self._hist_dialog is not None:
             self._hist_dialog.set_threshold(threshold)
 
@@ -1328,8 +1610,8 @@ class LabelGridView(QWidget):
         if not groups:
             notify("No labels to plot confidences for.", severity="warning")
             return
-        self._hist_dialog = ConfidenceHistogramsDialog(groups, self.threshold_spin.value(), parent=self)
-        self._hist_dialog.threshold_changed.connect(self.threshold_spin.setValue)
+        self._hist_dialog = ConfidenceHistogramsDialog(groups, self.threshold_edit.value(), parent=self)
+        self._hist_dialog.threshold_changed.connect(self.threshold_edit.setValue)
         self._hist_dialog.destroyed.connect(self._on_histograms_closed)
         self._hist_dialog.show()
 
@@ -1354,21 +1636,32 @@ class LabelGridView(QWidget):
         thumb_w = max(100, (viewport_w - spacing * (columns + 1)) // columns)
         while self._grid.count():
             self._grid.takeAt(0)
-        for i, cell in enumerate(self._cells):
+        i = 0
+        for cell, entry in zip(self._cells, self._entries):
+            if self._filter_label_id is not None and entry.label_id != self._filter_label_id:
+                cell.setVisible(False)
+                continue
+            cell.setVisible(True)
             for label, pixmap in cell._pix_labels:
                 if not pixmap.isNull():
                     label.setPixmap(pixmap.scaledToWidth(min(thumb_w, pixmap.width()), Qt.SmoothTransformation))
             self._grid.addWidget(cell, i // columns, i % columns, alignment=Qt.AlignTop)
+            i += 1
 
     def _on_tile_clicked(self, entry: FrameEntry):
-        if self.mode_bar.mode() == "navigate":
-            self._jump(entry)
-        else:
-            self.mode_bar.click(entry)
+        """A single click is the verdict the mode names."""
+        self.mode_bar.click(entry)
+
+    def _on_tile_double_clicked(self, entry: FrameEntry):
+        """A double click navigates, in every mode. Qt delivers a plain press
+        first, which already toggled the tile — toggling again undoes it, so
+        navigating leaves the verdicts exactly as they were."""
+        self.mode_bar.click(entry)
+        self._jump(entry)
 
     def _jump(self, entry: FrameEntry):
-        """Navigate mode: go there — into the frame-by-frame review when the
-        curation panel is in that mode, else a plain jump."""
+        """Go there — into the frame-by-frame review when the curation panel
+        is in that mode, else a plain jump."""
         panel = curation_panel_of(self.meta)
         if panel is not None and panel.mode() == "frame":
             panel.start_review_at(entry_inst(entry), entry.boundary)
@@ -1391,7 +1684,7 @@ class LabelGridView(QWidget):
         )
         if not path:
             return
-        write_frames_pdf(path, self._entries, self.columns_spin.value(), self.threshold_spin.value())
+        write_frames_pdf(path, self.visible_entries(), self.columns_spin.value(), self.threshold_edit.value())
         notify(f"Wrote {Path(path).name}")
 
 
@@ -1449,6 +1742,26 @@ class LabelSetupPage(QWidget):
             labels_lay.addWidget(restricted)
         layout.addWidget(labels_group)
 
+        # Which labels of those classes: everything, or one side of the
+        # human/model divide. Reviewing a model's output means looking at what
+        # it wrote and nothing else, while checking one's own labelling means
+        # the opposite — and both grids fill up with the wrong half otherwise.
+        method_group = QGroupBox("Labeling method")
+        method_lay = QVBoxLayout(method_group)
+        self.method_combo = QComboBox()
+        for key, (text, _methods) in GRID_METHOD_FILTERS.items():
+            self.method_combo.addItem(text, key)
+        saved = str(self.app_state.get_with_default("grid_method_filter"))
+        index = self.method_combo.findData(saved)
+        self.method_combo.setCurrentIndex(index if index >= 0 else 0)
+        self.method_combo.setToolTip(
+            "Which labels of those classes the grid shows.\n"
+            "Manual and curated are one choice: both mean a human vouched for the label."
+        )
+        self.method_combo.currentIndexChanged.connect(self._save_method_filter)
+        method_lay.addWidget(self.method_combo)
+        layout.addWidget(method_group)
+
         # Which trials: the trials table's filters, and nothing else — the one
         # place trials are included or excluded for every operation.
         self.trials_note = QLabel("")
@@ -1464,14 +1777,19 @@ class LabelSetupPage(QWidget):
             cam_group = QGroupBox("Cameras")
             cam_lay = QVBoxLayout(cam_group)
             self.camera_list = QListWidget()
+            # Seed check state from the last-saved preference (gui_settings.yaml);
+            # a camera never seen before defaults to checked.
+            saved = getattr(self.app_state, "grid_selected_cameras", None)
             for camera in cameras:
                 cropped = self.gui_crop_for(camera) is not None
                 item = QListWidgetItem(f"{camera}  (cropped)" if cropped else str(camera))
                 item.setData(Qt.UserRole, camera)
                 item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
-                item.setCheckState(Qt.Checked)
+                checked = str(camera) in saved if saved else True
+                item.setCheckState(Qt.Checked if checked else Qt.Unchecked)
                 self.camera_list.addItem(item)
             self.camera_list.setMaximumHeight(90)
+            self.camera_list.itemChanged.connect(self._save_camera_selection)
             cam_lay.addWidget(self.camera_list)
             layout.addWidget(cam_group)
 
@@ -1536,6 +1854,17 @@ class LabelSetupPage(QWidget):
             if item.checkState() == Qt.Checked:
                 cameras.append(item.data(Qt.UserRole))
         return cameras
+
+    def selected_methods(self) -> frozenset[str] | None:
+        """The labeling methods the grid shows; ``None`` = all of them."""
+        return methods_for_filter(self.method_combo.currentData())
+
+    def _save_method_filter(self, *_args) -> None:
+        self.app_state.grid_method_filter = str(self.method_combo.currentData())
+
+    def _save_camera_selection(self, *_args) -> None:
+        checked = [str(c) for c in self.selected_cameras() if c is not None]
+        self.app_state.grid_selected_cameras = checked
 
     def allowed_trials(self) -> set[str] | None:
         """The trials this run covers: what the trials table shows, further
@@ -1608,9 +1937,7 @@ class LabelGridViewDialog(QDialog):
             self.window_spin.setValue(float(self.app_state.get_with_default("label_grid_window_s")))
             self.window_spin.setSuffix(" s")
             self.window_spin.setToolTip("Plot window shown around each label time — the marker sits on the label.")
-            self.window_spin.valueChanged.connect(
-                lambda v: setattr(self.app_state, "label_grid_window_s", float(v))
-            )
+            self.window_spin.valueChanged.connect(lambda v: setattr(self.app_state, "label_grid_window_s", float(v)))
             window_row.addWidget(self.window_spin, stretch=1)
             panel_lay.addLayout(window_row)
             self.axis_auto_cb = QCheckBox("Autoscale y per window")
@@ -1740,6 +2067,10 @@ class LabelGridViewDialog(QDialog):
                 data_widget.video_mgr.sync_proxies()
                 data_widget.update_pose()
 
+    def generate(self):
+        """Build the grid as if *Generate* were pressed (a workflow's entry)."""
+        self._generate()
+
     def _generate(self):
         label_ids = self.setup.selected_label_ids()
         if not label_ids:
@@ -1753,9 +2084,19 @@ class LabelGridViewDialog(QDialog):
         if not cameras:
             notify("Tick at least one camera.", severity="warning")
             return
-        entries = build_frame_entries(df, self._mappings(), label_ids, cameras, self.setup.allowed_trials())
+        entries = build_frame_entries(
+            df,
+            self._mappings(),
+            label_ids,
+            cameras,
+            self.setup.allowed_trials(),
+            self.setup.selected_methods(),
+        )
         if not entries:
-            notify("No label instances match the selected labels and metadata filters.", severity="warning")
+            notify(
+                "No label instances match the selected labels, labeling method and metadata filters.",
+                severity="warning",
+            )
             return
 
         progress = QProgressDialog("Extracting frames…", "Cancel", 0, len(entries), self)

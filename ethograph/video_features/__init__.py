@@ -8,15 +8,19 @@ DataArray on its own ``time_s3d`` axis.
 from ethograph.video_features.extract import FEATURE_DIM, TIME_DIM, extract_s3d
 from ethograph.video_features.plan import MIN_STACK, S3DConfig, S3DPlan, plan_s3d
 from ethograph.video_features.s3d import FULL_STAGE, S3D_STAGES
+from ethograph.video_features.select import FeatureRanking, cohens_d, rank_features
 
 __all__ = [
     "FEATURE_DIM",
     "FULL_STAGE",
+    "FeatureRanking",
     "MIN_STACK",
     "S3DConfig",
     "S3DPlan",
     "S3D_STAGES",
     "TIME_DIM",
+    "cohens_d",
     "extract_s3d",
     "plan_s3d",
+    "rank_features",
 ]

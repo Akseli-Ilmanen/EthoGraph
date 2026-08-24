@@ -1,0 +1,1003 @@
+"""One YAML per project: sessions, features, model, train, infer.
+
+A config is a plain YAML file built into typed dataclasses. Two conveniences
+and nothing more:
+
+* ``base: other.yaml`` — the file is deep-merged *over* ``other.yaml``
+  (relative to itself), so a benchmark is a base file plus small overrides.
+* dotlist overrides — ``Project("cfg.yaml", "model.architecture=mstcn",
+  "train.loss.focal_gamma=2")`` — values are parsed as YAML.
+
+Relative paths resolve against the config file's folder. Unknown keys are an
+error: a typo must not silently become a default. Derived values (column
+layout, normalisation statistics, class table) are never part of the config;
+they are outputs written into the run directory.
+"""
+
+from __future__ import annotations
+
+import copy
+import dataclasses
+from dataclasses import MISSING, dataclass, field, fields, is_dataclass
+from pathlib import Path
+from typing import Any, Iterable
+
+import yaml
+
+from ethograph.utils.paths import ethograph_home
+
+DLC2ACTION_CONFIG = Path(__file__).parent / "dlc2action" / "config"
+"""The vendored DLC2Action config tree (see ``dlc2action/NOTICE.md``).
+
+Reached by path, not by import: importing the package here would re-enter
+``ethograph.__init__``'s lazy loader while this module is still being built.
+"""
+
+TRAINING_CONFIG = DLC2ACTION_CONFIG / "training.yaml"
+"""Upstream's ``dlc2action/config/training.yaml``.
+
+Unlike ``config/model/*.yaml`` and ``config/losses.yaml``, this file has no
+constructor to feed: it configures DLC2Action's *own* training loop, and we
+run ours. Only the settings that carry over unchanged are read from it — see
+:func:`upstream_training_default`.
+"""
+
+
+def upstream_training_defaults() -> dict[str, Any]:
+    """DLC2Action's own training defaults, straight from ``config/training.yaml``."""
+    if not TRAINING_CONFIG.is_file():
+        raise FileNotFoundError(f"No vendored DLC2Action training config at {TRAINING_CONFIG}")
+    return yaml.safe_load(TRAINING_CONFIG.read_text(encoding="utf-8")) or {}
+
+
+def upstream_training_default(key: str, cast: Any) -> Any:
+    """One value from that file, coerced.
+
+    The coercion is not cosmetic: YAML 1.1 reads ``lr: 1e-3`` as the *string*
+    ``"1e-3"``, which would silently reach the optimizer.
+    """
+    defaults = upstream_training_defaults()
+    if key not in defaults:
+        raise KeyError(f"{TRAINING_CONFIG} has no {key!r}; found {sorted(defaults)}")
+    return cast(defaults[key])
+
+
+ROLES = ("train", "val", "test")
+"""The three roles a *sample* can have inside a run.
+
+A role is never declared per session in the config file. It is drawn by
+:class:`SplitConfig` from ``train_fraction`` / ``val_fraction`` /
+``test_fraction`` (stage 1 — the ratios you tune a search against), or pinned
+whole-session by ``train.split.holdout_sessions`` (stage 2 — the
+cross-validation folds that
+:meth:`ethograph.segment.project.Project.cross_validate` writes per fold).
+"""
+
+#: The variable :func:`~ethograph.features.changepoints.merge_changepoints`
+#: writes, and therefore the stem of the columns a merged expansion generates.
+MERGED_CHANGEPOINTS = "changepoints"
+
+
+@dataclass
+class SessionSpec:
+    """One session: its source file, and where its labels and video live.
+
+    No discovery: ``labels_path`` names the labels TSV directly (there is no
+    ``{stem}_labels.tsv`` sidecar guess) and ``video_dir``, when the session
+    has video, is the one folder searched for it (no project-level list to
+    fall through). ``labels_path`` is required by :func:`config_from_dict` —
+    it stays optional on this dataclass only so a session can be built by
+    hand for a labels-free probe (see
+    :func:`ethograph.segment.sessions.discover_columns_from_source`).
+
+    A session carries no role. Every listed session is material for the
+    model; which of its *trials* end up train / val / test is drawn by
+    ``train.split``, and holding a whole session out is a cross-validation
+    fold (``train.split.holdout_sessions``), not something you write per
+    session in the config.
+    """
+
+    source: Path
+    labels_path: Path | None = None
+    video_dir: Path | None = None
+
+
+@dataclass
+class TrialsConfig:
+    """Trial filter applied in every stage: metadata column → allowed values."""
+
+    where: dict[str, list[Any]] = field(default_factory=dict)
+
+
+@dataclass
+class PreprocessConfig:
+    """The fixed preprocessing chain, in the order it runs."""
+
+    #: Frames whose keypoint confidence is below this become NaN (then interpolated).
+    likelihood_threshold: float | None = None
+    #: The per-keypoint confidence feature used by ``likelihood_threshold``.
+    likelihood_feature: str = "confidence"
+    interpolate: bool = True
+    clip_percentiles: tuple[float, float] | None = (2.0, 98.0)
+    #: Z-score with statistics computed over the *training* samples of a run.
+    zscore: bool = True
+    #: Features never z-scored (in addition to any carrying ``attrs["normalise"] = 0``).
+    zscore_exclude: list[str] = field(default_factory=list)
+
+
+@dataclass
+class LabelsConfig:
+    """Which labels are the targets: one branch of a ``mapping.txt``."""
+
+    #: ``mapping.txt`` path; ``None`` defaults to ``~/.ethograph/mapping.txt``.
+    mapping: Path | None = None
+    branch: int = 0
+    #: Label ids to predict; ``None`` = every state class of the branch.
+    classes: list[int] | None = None
+
+
+@dataclass
+class ChangepointFeaturesConfig:
+    """Expand named changepoint masks into :func:`~ethograph.features.changepoints.more_changepoint_features`.
+
+    Applied once per session, at ``open_session`` time (materialise and
+    infer both go through it): each ``inputs`` entry names a raw changepoint
+    mask and pins its dims exactly like a ``features.columns`` entry, and
+    ``transforms`` picks which of the four column groups
+    (:data:`~ethograph.features.changepoints.CP_TRANSFORMS`) to keep. The
+    generated columns are merged straight into ``features.columns`` at
+    config-load time (see :func:`config_from_dict`), so nothing downstream
+    needs to know this section exists, and you never spell out
+    ``{var}_cp_sigma2_weighted`` yourself.
+
+    This is the one exception to "features are built with the session,
+    never by the pipeline": it is a deterministic expansion of a mask
+    already in the file, not a new modelling choice, so there is nothing to
+    decide beyond which columns to keep — see
+    ``examples/segment_changepoint_features.ipynb`` for what each one looks
+    like on real data before turning it on here.
+    """
+
+    sigmas: list[float] = field(default_factory=list)
+    distribution: str = "laplacian"
+    #: OR every mask named in ``inputs`` into one ``changepoints`` mask
+    #: (across every non-time dim) and expand *that* — one block of columns
+    #: instead of one per mask. Use it when "something changed here" is the
+    #: signal and which detector fired is not. All merged masks must share a
+    #: ``target_feature``.
+    merge: bool = False
+    #: feature → dim → values, the same shape as ``features.columns``: which
+    #: raw changepoint masks to expand, and which dims to pin (typically
+    #: ``keypoint``; the individual dim is still pinned per sample).
+    inputs: dict[str, dict[str, Any]] = field(default_factory=dict)
+    #: Which of the four ``more_changepoint_features`` column groups become
+    #: real columns; default is all four. ``binary`` duplicates the raw mask
+    #: (just marked ``normalise=0``), so drop it if you already select the
+    #: mask itself.
+    transforms: list[str] | None = None
+
+    def __post_init__(self) -> None:
+        from ethograph.features.changepoints import CP_TRANSFORMS
+
+        if self.distribution not in ("laplacian", "gaussian"):
+            raise ValueError(
+                f"features.changepoint_features.distribution must be 'laplacian' or 'gaussian', "
+                f"got {self.distribution!r}"
+            )
+        self.sigmas = [float(s) for s in self.sigmas]
+        if not self.sigmas:
+            raise ValueError("features.changepoint_features.sigmas must name at least one sigma")
+        if not self.inputs:
+            raise ValueError("features.changepoint_features.inputs must name at least one changepoint variable")
+        if self.transforms is None:
+            self.transforms = list(CP_TRANSFORMS)
+        unknown = set(self.transforms) - set(CP_TRANSFORMS)
+        if unknown:
+            raise ValueError(
+                f"features.changepoint_features.transforms must be a subset of {CP_TRANSFORMS}, got {sorted(unknown)}"
+            )
+
+    def expanded_columns(self) -> dict[str, dict[str, Any]]:
+        """The ``features.columns`` entries this config generates."""
+        from ethograph.features.changepoints import cp_feature_names
+
+        out: dict[str, dict[str, Any]] = {}
+        if self.merge:
+            # The merge ORs across every non-time dim, so the one surviving
+            # mask has no dim left to pin.
+            for name in cp_feature_names(MERGED_CHANGEPOINTS, self.sigmas, self.transforms):
+                out[name] = {}
+            return out
+        for var, dims in self.inputs.items():
+            for name in cp_feature_names(var, self.sigmas, self.transforms):
+                out[name] = dict(dims or {})
+        return out
+
+
+@dataclass
+class FeaturesConfig:
+    """What a sample is made of."""
+
+    #: Materialised dataset name → ``{root}/data/{name}``.
+    name: str = "default"
+    #: feature → dim → values. The individual dim is never listed (it is
+    #: pinned per sample); a second individual dim may be ``other: "*"``.
+    columns: dict[str, dict[str, Any]] = field(default_factory=dict)
+    #: Individuals that become samples; ``None`` = the dataset's individual coord.
+    individuals: list[str] | None = None
+    preprocess: PreprocessConfig = field(default_factory=PreprocessConfig)
+    labels: LabelsConfig | None = None
+    #: Set to expand raw changepoint masks into proximity/segment-ID features
+    #: at session-open time; ``None`` = sessions keep only what their own
+    #: ``.nc``/sidecar already declares.
+    changepoint_features: ChangepointFeaturesConfig | None = None
+
+
+@dataclass
+class ModelConfig:
+    architecture: str = "c2f_tcn"
+    params: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class AugmentConfig:
+    """Training-time augmentation; geometric ones act on vector groups only."""
+
+    noise_std: float = 0.0
+    #: Random temporal stretch factor range, e.g. ``[0.8, 1.2]``.
+    stretch: tuple[float, float] | None = None
+    mirror: bool = False
+    rotate_deg: float = 0.0
+
+
+@dataclass
+class SplitConfig:
+    """Three ratios, drawn by whole trial. Nothing else to decide.
+
+    The trials of every session (after ``trials.where``) are pooled, shuffled
+    once with ``seed`` and cut into the three roles — 60/20/20 by default.
+    Splitting is by whole trial, never mid-trial, so no trial is ever in two
+    roles.
+
+    ``holdout_sessions`` is the cross-validation escape hatch: name one or
+    more sessions and *all* of their trials become ``test``, whatever the
+    fractions say, with ``val_fraction`` (renormalised against
+    ``train_fraction``) carved out of the sessions that remain. That is what
+    :meth:`ethograph.segment.project.Project.cross_validate` writes per fold,
+    and it is the only place a whole session gets a role.
+
+    **These three defaults are ours, deliberately not upstream's.**
+    DLC2Action's ``config/training.yaml`` sets ``val_frac: 0.2`` and
+    ``test_frac: 0`` over fixed-length 128-frame windows; a sample here is a
+    whole trial, and its ``test_frac: 0`` assumes a separate held-out project.
+    60/20/20 is what the two-stage workflow needs: a validation set big enough
+    that the score it hands Optuna means something, and a test set that stays
+    untouched underneath it.
+    """
+
+    #: Fraction of trials the model learns from.
+    train_fraction: float = 0.6
+    #: Fraction held back to score the model *during* development — the
+    #: objective an Optuna search maximises, and what selects ``best.pt``.
+    val_fraction: float = 0.2
+    #: Fraction touched once, at the end, for a number you can report.
+    test_fraction: float = 0.2
+    seed: int = 0
+    #: Sessions held out whole as ``test`` (a cross-validation fold). Each
+    #: entry is a session ``source`` path, matched against ``sessions``.
+    holdout_sessions: list[Path] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        for name in ("train_fraction", "val_fraction", "test_fraction"):
+            value = float(getattr(self, name))
+            if not 0.0 <= value <= 1.0:
+                raise ValueError(f"train.split.{name} must be between 0 and 1, got {value}")
+            setattr(self, name, value)
+        total = self.train_fraction + self.val_fraction + self.test_fraction
+        if abs(total - 1.0) > 1e-6:
+            raise ValueError(
+                "train.split fractions must sum to 1, got "
+                f"train_fraction={self.train_fraction} + val_fraction={self.val_fraction} + "
+                f"test_fraction={self.test_fraction} = {total:g}"
+            )
+        if not self.train_fraction:
+            raise ValueError("train.split.train_fraction is 0 — there would be nothing to learn from")
+        self.holdout_sessions = [Path(p) for p in self.holdout_sessions]
+
+
+@dataclass
+class BoundaryConfig:
+    """The class-agnostic boundary branch's training term (ASRF's second head).
+
+    Off by default (``weight: 0``), so an architecture that has the head
+    trains exactly as it did without it and turning it on is one line — which
+    is what makes it an ablation rather than a fork.
+
+    ``tolerance_s`` is in **seconds**, always. The literature's ±4 frames was
+    tuned at 15–30 fps; the same number of frames at 200 Hz is ±20 ms, which
+    is not the tolerance those papers meant. The frame half-width is resolved
+    against the materialised dataset's own sampling rate
+    (:func:`~ethograph.segment.boundary.tolerance_frames`).
+    """
+
+    #: Weight of the boundary BCE in the total loss; ``0`` leaves the head untrained.
+    weight: float = 0.0
+    #: Half-width the binary target is dilated by, in seconds. ``0`` = a single frame.
+    tolerance_s: float = 0.0
+    #: Positive-class weight; ``None`` recomputes ``n_negative / n_positive`` per batch.
+    pos_weight: float | None = None
+    #: Use the focal form of the BCE instead of the positive weight.
+    focal: bool = False
+    focal_gamma: float = 2.0
+
+
+@dataclass
+class CircleConfig:
+    """Deep metric-learning term over the finest-stage logits (Sun et al. 2020, circle loss).
+
+    Off by default (``weight: 0``). Pulls same-class frames' logit vectors
+    together and pushes different-class ones apart, independent of the frame
+    cross-entropy above — see :class:`~ethograph.segment.losses.CircleLoss`.
+    Ported from an older CETNet training script
+    (``segment/archive/cetnet_encoder.py``), which applied it to an encoder
+    trunk's own normalised feature map; that layer is not part of the current
+    registry contract (:class:`~ethograph.segment.models.ModelOutput`), so
+    here it reads the class logits instead — the one per-frame representation
+    every architecture produces.
+    """
+
+    #: Weight of the circle loss in the total; ``0`` leaves it untrained.
+    weight: float = 0.0
+    #: Margin: how far inside the unit circle a pair may sit before it counts
+    #: against the loss.
+    m: float = 0.25
+    #: Scale applied to the (margin-weighted) similarities before the softplus.
+    gamma: float = 128.0
+    #: Randomly subsample to at most this many (unpadded) frames per batch
+    #: before building the pairwise similarity matrix, which is O(frames^2).
+    #: ``None`` uses every frame, which for a whole trial at a high sampling
+    #: rate can be large.
+    max_frames: int | None = 2048
+
+    def __post_init__(self) -> None:
+        if not 0.0 < self.m < 1.0:
+            raise ValueError(f"train.circle.m must be between 0 and 1, got {self.m}")
+        if self.gamma <= 0:
+            raise ValueError(f"train.circle.gamma must be positive, got {self.gamma}")
+        if self.max_frames is not None and self.max_frames < 2:
+            raise ValueError(f"train.circle.max_frames must be at least 2 (need a pair), got {self.max_frames}")
+
+
+@dataclass
+class QueryLossConfig:
+    """BaFormer's set-prediction objective — used only by a query-head architecture.
+
+    The three matched terms (class / mask / dice) are both the matching cost
+    and the gradient, so the assignment and the loss agree about what a good
+    segment is. ``eos_coef`` down-weights the "no segment" class the unmatched
+    queries are pushed towards; without it the head learns that predicting
+    nothing is safe.
+    """
+
+    class_weight: float = 2.0
+    mask_weight: float = 5.0
+    dice_weight: float = 5.0
+    #: Weight of the boundary query's BCE within the set loss. The target's
+    #: dilation and positive weighting come from ``train.boundary``.
+    boundary_weight: float = 1.0
+    eos_coef: float = 0.1
+    label_smoothing: float = 0.0
+    #: Match and score every decoder level, not just the last.
+    deep_supervision: bool = True
+
+
+@dataclass
+class TrainConfig:
+    #: Base run name; ``None`` derives one from architecture + features name.
+    #: Every call to :func:`~ethograph.segment.train.train` creates its own,
+    #: never-overwritten run directory by appending the creation timestamp
+    #: (to the minute) — see ``train._new_run_dir``.
+    run_name: str | None = None
+    #: Upstream's ``num_epochs``, ``lr``, ``weight_decay``.
+    epochs: int = field(default_factory=lambda: upstream_training_default("num_epochs", int))
+    learning_rate: float = field(default_factory=lambda: upstream_training_default("lr", float))
+    weight_decay: float = field(default_factory=lambda: upstream_training_default("weight_decay", float))
+    #: **Ours, deliberately not upstream's.** Upstream's ``batch_size: 64``
+    #: counts fixed-length 128-frame windows (``general.yaml: len_segment``);
+    #: a sample here is a whole trial, so 64 of them is a different quantity
+    #: entirely. One trial per step also keeps ASFormer's sliding attention
+    #: and C2F's BatchNorm on their intended footing.
+    batch_size: int = 1
+    #: Ours: upstream does not clip gradients. ``0`` disables.
+    grad_clip: float = 1.0
+    #: Validate every N epochs. ``best.pt`` is always the checkpoint with the
+    #: best **val** :attr:`select_on`, regardless of :attr:`patience_on`.
+    eval_every: int = 5
+    #: Validation metric ``best.pt`` is selected on, and the objective a
+    #: hyperparameter search would read off :class:`RunResult.best_score`.
+    select_on: str = "f1@50"
+    f1_thresholds: list[float] = field(default_factory=lambda: [0.5, 0.75, 0.9])
+    #: Stop once :attr:`patience_on` has gone this many epochs with no
+    #: improvement on :attr:`select_on`; ``None`` (default) trains the full
+    #: :attr:`epochs` budget, since a fixed guess still under- or over-runs
+    #: architectures that converge at different speeds for a different reason
+    #: (see ``bench.py``).
+    patience: int | None = None
+    #: Which curve :attr:`patience` watches. ``"val"`` is the only choice
+    #: that never touches ``test`` and is the only one a cross-validated
+    #: report of test accuracy may use. ``"test"`` is for the exploratory
+    #: architecture comparison in ``bench.py`` only, where nothing about
+    #: *this* run's own test split is what gets reported — the winning
+    #: architecture's reported accuracy comes from a later, separate
+    #: cross-validation, so peeking here does not bias it.
+    patience_on: str = "val"
+    seed: int = 0
+    device: str | None = None
+    #: Feature categories to leave out of this run — the ablation axis
+    #: (``[video_feature]`` trains the same model without S3D). Applied to
+    #: the materialised dataset's columns, so an ablation costs a run, not a
+    #: re-materialisation. Columns whose kind is undeclared are always kept.
+    drop_kinds: list[str] = field(default_factory=list)
+    #: Train and predict at ``fs / subsample`` — the temporal-resolution axis,
+    #: run-level like :attr:`drop_kinds`, so one materialised dataset serves
+    #: every rate. ``1`` is the dataset's own rate. Every metric a run reports
+    #: is then in that run's frames; to compare rates, score the predictions
+    #: back on the full-rate grid (``scripts/experiment2_smoothing.py``).
+    subsample: int = 1
+    #: Overrides on DLC2Action's ``config/losses.yaml`` ``ms_tcn`` block —
+    #: the same shape as ``model.params``. The loss is upstream's
+    #: ``MS_TCN_Loss``; we write no default for it. See
+    #: :func:`ethograph.segment.losses.build_loss`.
+    loss: dict[str, Any] = field(default_factory=dict)
+    #: Weight of the frame-wise loss above in the total. ``0`` trains a
+    #: query-head architecture on its set objective alone (upstream's setting);
+    #: leave it at 1 to keep the frame loss as an auxiliary.
+    frame_weight: float = 1.0
+    #: The boundary branch's term. Needs an architecture with the head
+    #: (``asrf``, ``baformer``); a positive weight against one without is an error.
+    boundary: BoundaryConfig = field(default_factory=BoundaryConfig)
+    #: The segment-query objective. Read only when the architecture emits queries.
+    queries: QueryLossConfig = field(default_factory=QueryLossConfig)
+    #: The circle (deep metric-learning) term. Architecture-agnostic.
+    circle: CircleConfig = field(default_factory=CircleConfig)
+    augment: AugmentConfig = field(default_factory=AugmentConfig)
+    split: SplitConfig = field(default_factory=SplitConfig)
+
+    def __post_init__(self) -> None:
+        if self.patience_on not in ("val", "test"):
+            raise ValueError(f"train.patience_on must be 'val' or 'test', got {self.patience_on!r}")
+        if self.patience is not None and self.patience < 1:
+            raise ValueError(f"train.patience must be at least 1 epoch, got {self.patience}")
+
+
+@dataclass
+class SearchSpace:
+    """One hyperparameter's range, keyed in ``search.params`` by its dotted config path.
+
+    ``type`` mirrors Optuna's three suggest calls::
+
+        train.learning_rate: {type: float, low: 1.0e-5, high: 1.0e-2, log: true}
+        model.params.num_f_maps: {type: int, low: 32, high: 256, step: 32}
+        train.augment.mirror: {type: categorical, choices: [true, false]}
+    """
+
+    type: str = "float"
+    low: float | None = None
+    high: float | None = None
+    step: float | None = None
+    log: bool = False
+    choices: list[Any] | None = None
+
+    def __post_init__(self) -> None:
+        if self.type not in ("float", "int", "categorical"):
+            raise ValueError(f"search space type must be 'float', 'int' or 'categorical', got {self.type!r}")
+        if self.type == "categorical":
+            if not self.choices:
+                raise ValueError("a categorical search space needs a non-empty 'choices' list")
+            return
+        if self.low is None or self.high is None:
+            raise ValueError(f"a {self.type} search space needs 'low' and 'high'")
+        self.low, self.high = float(self.low), float(self.high)
+        if self.low >= self.high:
+            raise ValueError(f"search space low ({self.low}) must be below high ({self.high})")
+        if self.log and self.low <= 0:
+            raise ValueError("a log-scaled search space needs low > 0")
+
+    def suggest(self, trial: Any, name: str) -> Any:
+        """Ask *trial* for a value of this space."""
+        if self.type == "categorical":
+            return trial.suggest_categorical(name, list(self.choices or []))
+        if self.type == "int":
+            return trial.suggest_int(
+                name, int(self.low or 0), int(self.high or 0), step=int(self.step or 1), log=self.log
+            )
+        return trial.suggest_float(name, float(self.low or 0.0), float(self.high or 0.0), step=self.step, log=self.log)
+
+
+@dataclass
+class SearchConfig:
+    """Optuna hyperparameter search — stage 1 of the workflow.
+
+    Every trial trains one run with a different draw of ``params`` and is
+    scored by ``train.select_on`` **on the validation trials**
+    (:attr:`~ethograph.segment.train.RunResult.best_score`). That is what the
+    validation split is for; nothing else reads it to make a decision.
+
+    Keys are the same dotted paths an override uses, so a space and a manual
+    override are the same spelling::
+
+        search:
+          n_trials: 30
+          params:
+            train.learning_rate: {type: float, low: 1.0e-5, high: 1.0e-2, log: true}
+            model.params.num_f_maps: {type: categorical, choices: [64, 128, 256]}
+    """
+
+    #: Number of configurations to try.
+    n_trials: int = 20
+    #: Stop the study after this many seconds, however many trials are left.
+    timeout: float | None = None
+    #: dotted config key → :class:`SearchSpace`.
+    params: dict[str, SearchSpace] = field(default_factory=dict)
+    #: Search name → ``{root}/searches/{name}``, and ``runs/{name}/trial000_…``.
+    #: ``None`` derives one from the run name.
+    name: str | None = None
+    seed: int = 0
+    #: Abandon a trial whose validation curve is below the running median at
+    #: the same epoch (Optuna's ``MedianPruner``).
+    prune: bool = True
+    #: Keep every trial's weights. Off by default: a study is dozens of runs,
+    #: and only the best one's ``best.pt``/``last.pt`` is worth the disk. The
+    #: config, split and metrics of a pruned or losing trial are always kept.
+    keep_weights: bool = False
+
+    def __post_init__(self) -> None:
+        if self.n_trials < 1:
+            raise ValueError(f"search.n_trials must be at least 1, got {self.n_trials}")
+        spaces: dict[str, SearchSpace] = {}
+        for key, space in self.params.items():
+            if isinstance(space, SearchSpace):
+                spaces[key] = space
+            elif isinstance(space, dict):
+                unknown = set(space) - {f.name for f in fields(SearchSpace)}
+                if unknown:
+                    raise ValueError(f"search.params.{key}: unknown key(s) {sorted(unknown)}")
+                spaces[key] = SearchSpace(**space)
+            else:
+                raise ValueError(f"search.params.{key}: expected a mapping, got {type(space).__name__}")
+        self.params = spaces
+
+
+@dataclass
+class PostprocessConfig:
+    """(Re-cut at predicted boundaries) → purge → stitch → (snap to changepoints) → purge.
+
+    The two boundary steps are different things and both are available:
+    ``boundary_refinement`` re-cuts the dense prediction using the *model's*
+    boundary head before it ever becomes intervals, and
+    ``changepoint_correction`` snaps the resulting interval edges onto
+    *detected* changepoints. The four combinations are the comparison the
+    boundary head is worth doing at all::
+
+        none      + changepoint_correction   the existing pipeline
+        predicted                            snap to the model's own peaks
+        hybrid    + changepoint_correction   the model's peaks, restricted to
+                                             the detected changepoints
+    """
+
+    min_duration_s: float = 0.0
+    label_thresholds: dict[int, float] = field(default_factory=dict)
+    stitch_gap_s: float = 0.0
+    changepoint_correction: bool = False
+    #: Selections pinning the changepoint variables (e.g. ``keypoint: beakTip``);
+    #: the individual is pinned per sample.
+    changepoints: dict[str, str] = field(default_factory=dict)
+    max_expansion_s: float = 0.05
+    max_shrink_s: float = 0.05
+    #: ``none`` | ``predicted`` | ``hybrid`` — see
+    #: :data:`~ethograph.segment.boundary.REFINEMENT_MODES`. Anything but
+    #: ``none`` needs an architecture with a boundary head.
+    boundary_refinement: str = "none"
+    #: A boundary probability below this is not a peak.
+    boundary_threshold: float = 0.5
+    #: ``hybrid`` only: how far a predicted peak may be moved onto a detected
+    #: changepoint, in seconds. A peak with nothing that close is dropped.
+    boundary_snap_s: float = 0.05
+
+    def __post_init__(self) -> None:
+        self.label_thresholds = {int(k): float(v) for k, v in self.label_thresholds.items()}
+        # Local import: boundary → dataset → config, so the modes cannot be
+        # imported at module level without a cycle.
+        from ethograph.segment.boundary import REFINEMENT_MODES
+
+        if self.boundary_refinement not in REFINEMENT_MODES:
+            raise ValueError(
+                f"infer.postprocess.boundary_refinement={self.boundary_refinement!r} is not one of "
+                f"{list(REFINEMENT_MODES)}"
+            )
+        if self.boundary_refinement == "hybrid" and not self.changepoint_correction:
+            raise ValueError(
+                "infer.postprocess.boundary_refinement='hybrid' restricts the model's boundary peaks to "
+                "the detected changepoints, so it needs changepoint_correction: true (and the "
+                "changepoints selection that goes with it)."
+            )
+
+
+@dataclass
+class InferConfig:
+    #: Run name (or path) under ``{root}/runs``; ``None`` = the most recently
+    #: trained run for ``train.run_name`` (see ``train.run_name_for`` /
+    #: ``infer.resolve_run_dir``'s ``{base_name}_{timestamp}`` naming).
+    run: str | None = None
+    postprocess: PostprocessConfig = field(default_factory=PostprocessConfig)
+
+
+@dataclass
+class VideoFeaturesConfig:
+    """S3D settings — the two choices that change the features, and the camera.
+
+    Everything else about the extraction (batch size, decode chunk, fp16,
+    device, the ``dense`` ablation mode) is a performance detail with one
+    sensible answer, so it is not a project setting; build a
+    :class:`~ethograph.video_features.S3DConfig` yourself in the rare case
+    you need one.
+
+    ``stack_s`` must be at least 13 frames at the effective rate. The 0.5 s
+    default works down to 26 fps; if it does not, the error names the
+    shortest window that does.
+    """
+
+    #: Temporal extent of one S3D window, in seconds — how much motion
+    #: context each frame's feature sees.
+    stack_s: float = 0.5
+    #: Rate S3D sees; ``None`` = every frame. Frames are skipped, never
+    #: interpolated up, so halving this roughly halves the cost.
+    analysis_fps: float | None = None
+    #: Which camera's video to take, when the alignment holds several.
+    camera: str | None = None
+
+    def s3d_config(self):
+        """The :class:`~ethograph.video_features.S3DConfig` these settings describe."""
+        from ethograph.video_features import S3DConfig
+
+        return S3DConfig(analysis_fps=self.analysis_fps, stack_s=self.stack_s)
+
+
+@dataclass
+class SegmentConfig:
+    sessions: list[SessionSpec]
+    #: Project directory: ``data/`` and ``runs/`` live here. Default: the config's folder.
+    root: Path = Path(".")
+    trials: TrialsConfig = field(default_factory=TrialsConfig)
+    features: FeaturesConfig = field(default_factory=FeaturesConfig)
+    model: ModelConfig = field(default_factory=ModelConfig)
+    train: TrainConfig = field(default_factory=TrainConfig)
+    search: SearchConfig = field(default_factory=SearchConfig)
+    infer: InferConfig = field(default_factory=InferConfig)
+    video_features: VideoFeaturesConfig = field(default_factory=VideoFeaturesConfig)
+    #: Where this config was loaded from (not part of the YAML).
+    config_path: Path | None = None
+
+    @property
+    def data_dir(self) -> Path:
+        return self.root / "data" / self.features.name
+
+    @property
+    def video_features_dir(self) -> Path:
+        return self.root / "video_features"
+
+    @property
+    def runs_dir(self) -> Path:
+        return self.root / "runs"
+
+    @property
+    def searches_dir(self) -> Path:
+        return self.root / "searches"
+
+    @property
+    def cross_validation_dir(self) -> Path:
+        return self.root / "cross_validation"
+
+    def run_dir(self, run_name: str) -> Path:
+        return self.runs_dir / run_name
+
+    def select_sessions(self, selector: Iterable[str | Path] | None) -> list[SessionSpec]:
+        """The sessions *selector* names, in config order; ``None`` = all of them.
+
+        An entry matches a session by full path or by the source file's stem,
+        so a fold can be named ``"ses-03"`` rather than spelled out.
+        """
+        if selector is None:
+            return list(self.sessions)
+        chosen: list[SessionSpec] = []
+        wanted = [str(s) for s in selector]
+        for item in wanted:
+            matches = [
+                s for s in self.sessions if str(s.source) == item or s.source.stem == item or s.source.name == item
+            ]
+            if not matches:
+                raise ValueError(
+                    f"No session matches {item!r}; this config has {[s.source.stem for s in self.sessions]}"
+                )
+            for spec in matches:
+                if spec not in chosen:
+                    chosen.append(spec)
+        return [s for s in self.sessions if s in chosen]
+
+
+# ---------------------------------------------------------------------------
+# Building from dicts
+# ---------------------------------------------------------------------------
+
+_PATH_FIELDS = {"source", "labels_path", "video_dir", "mapping", "root"}
+_PATH_LIST_FIELDS = {"holdout_sessions"}
+_TUPLE_FIELDS = {"clip_percentiles", "stretch"}
+
+
+def _build(cls: type, data: Any, where: str, base_dir: Path) -> Any:
+    """Build dataclass *cls* from *data*, failing on unknown keys."""
+    if not isinstance(data, dict):
+        raise ValueError(f"{where}: expected a mapping, got {type(data).__name__}")
+    known = {f.name: f for f in fields(cls)}
+    unknown = set(data) - set(known)
+    if unknown:
+        raise ValueError(f"{where}: unknown key(s) {sorted(unknown)}; valid keys: {sorted(known)}")
+    kwargs: dict[str, Any] = {}
+    for name, value in data.items():
+        if value is None and known[name].default_factory is not MISSING:
+            # `params:` with nothing after it — or only a comment — is YAML
+            # null, and for a field whose default is built by a factory (every
+            # dict, list and nested config here) that plainly means "leave it
+            # at the default". Passing the None on would hand a `None` to code
+            # expecting a mapping, far from the line that wrote it.
+            continue
+        kwargs[name] = _convert(name, known[name].type, value, f"{where}.{name}", base_dir)
+    try:
+        return cls(**kwargs)
+    except TypeError as exc:
+        raise ValueError(f"{where}: {exc}") from exc
+
+
+_NESTED: dict[str, type] = {
+    "preprocess": PreprocessConfig,
+    "labels": LabelsConfig,
+    "changepoint_features": ChangepointFeaturesConfig,
+    "features": FeaturesConfig,
+    "model": ModelConfig,
+    "augment": AugmentConfig,
+    "boundary": BoundaryConfig,
+    "queries": QueryLossConfig,
+    "circle": CircleConfig,
+    "split": SplitConfig,
+    "train": TrainConfig,
+    "search": SearchConfig,
+    "postprocess": PostprocessConfig,
+    "infer": InferConfig,
+    "trials": TrialsConfig,
+    "video_features": VideoFeaturesConfig,
+}
+
+
+def _convert(name: str, annotation: Any, value: Any, where: str, base_dir: Path) -> Any:
+    if value is None:
+        return None
+    if name in _NESTED:
+        return _build(_NESTED[name], value, where, base_dir)
+    if name == "sessions":
+        if not isinstance(value, list):
+            raise ValueError(f"{where}: 'sessions' must be a list")
+        return [_session(v, f"{where}[{i}]", base_dir) for i, v in enumerate(value)]
+    if name in _PATH_FIELDS:
+        return _path(value, base_dir)
+    if name in _PATH_LIST_FIELDS:
+        if not isinstance(value, list):
+            raise ValueError(f"{where}: expected a list of session paths, got {type(value).__name__}")
+        return [_path(v, base_dir) for v in value]
+    if name in _TUPLE_FIELDS:
+        if len(value) != 2:
+            raise ValueError(f"{where}: expected two numbers, got {value!r}")
+        return (float(value[0]), float(value[1]))
+    cast = _numeric_cast(annotation)
+    if cast is not None and isinstance(value, (str, int, float)) and not isinstance(value, bool):
+        return _as_number(cast, value, where)
+    return value
+
+
+_NUMERIC: dict[str, type] = {"float": float, "int": int}
+
+
+def _numeric_cast(annotation: Any) -> type | None:
+    """The coercion a ``float``/``int`` (optionally ``| None``) field needs, else ``None``.
+
+    Not cosmetic: YAML 1.1 reads ``learning_rate: 1e-4`` as the *string*
+    ``"1e-4"`` — no dot, no sign — so an unconverted value would reach the
+    optimizer as text. Covered by ``tests/test_unit/test_segment_pipeline.py``.
+    """
+    text = annotation if isinstance(annotation, str) else getattr(annotation, "__name__", "")
+    return _NUMERIC.get(text.replace(" ", "").removesuffix("|None"))
+
+
+def _as_number(cast: type, value: Any, where: str) -> Any:
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{where}: expected a number, got {value!r}") from exc
+    if cast is int and not float(number).is_integer():
+        raise ValueError(f"{where}: expected a whole number, got {value!r}")
+    return cast(number)
+
+
+def _session(value: Any, where: str, base_dir: Path) -> SessionSpec:
+    if isinstance(value, (str, Path)):
+        return SessionSpec(source=_path(value, base_dir))
+    if isinstance(value, dict) and "role" in value:
+        raise ValueError(
+            f"{where}: sessions no longer carry a 'role'. Set the ratios in train.split "
+            "(train_fraction / val_fraction / test_fraction) to split trials, and hold whole "
+            "sessions out with Project.cross_validate() (train.split.holdout_sessions)."
+        )
+    return _build(SessionSpec, value, where, base_dir)
+
+
+def _path(value: Any, base_dir: Path) -> Path:
+    p = Path(str(value)).expanduser()
+    return p if p.is_absolute() else (base_dir / p).resolve()
+
+
+# ---------------------------------------------------------------------------
+# YAML in / out
+# ---------------------------------------------------------------------------
+
+
+def deep_merge(base: dict, over: dict) -> dict:
+    """Recursively merge *over* onto *base*, returning a new dict."""
+    out = copy.deepcopy(base)
+    for key, value in over.items():
+        if isinstance(value, dict) and isinstance(out.get(key), dict):
+            out[key] = deep_merge(out[key], value)
+        else:
+            out[key] = copy.deepcopy(value)
+    return out
+
+
+def _read_yaml_chain(path: Path) -> dict:
+    raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    if not isinstance(raw, dict):
+        raise ValueError(f"{path}: top level must be a mapping")
+    base_ref = raw.pop("base", None)
+    if base_ref is None:
+        return raw
+    base_path = _path(base_ref, path.parent)
+    if not base_path.is_file():
+        raise FileNotFoundError(f"{path}: base config {base_path} does not exist")
+    return deep_merge(_read_yaml_chain(base_path), raw)
+
+
+def as_overrides(params: dict[str, Any]) -> list[str]:
+    """``{"train.epochs": 40}`` → ``["train.epochs=40"]``, the spelling :func:`apply_overrides` takes.
+
+    Values go through YAML, so a dict, a list, a path or a bool round-trips
+    exactly as the file would have spelled it — which is what a script
+    building overrides programmatically wants, rather than ``str()`` and its
+    Python-repr quoting.
+    """
+    return [f"{key}={_dump_value(value)}" for key, value in params.items()]
+
+
+def _dump_value(value: Any) -> str:
+    """*value* as a one-line YAML scalar/flow collection.
+
+    PyYAML ends a scalar *document* with a ``...`` marker on its own line
+    (``1e-05`` dumps as ``"1.0e-05\\n...\\n"``), which would travel into the
+    override string and out again into anything that prints or re-uses it.
+    """
+    text = yaml.safe_dump(value, default_flow_style=True).strip()
+    lines = [line for line in text.splitlines() if line.strip() != "..."]
+    return " ".join(lines)
+
+
+def apply_overrides(data: dict, overrides: list[str]) -> dict:
+    """Apply ``a.b.c=value`` dotlist overrides (values parsed as YAML)."""
+    out = copy.deepcopy(data)
+    for item in overrides:
+        if "=" not in item:
+            raise ValueError(f"Override {item!r} is not of the form key.path=value")
+        key, _, raw_value = item.partition("=")
+        value = yaml.safe_load(raw_value) if raw_value != "" else None
+        node = out
+        parts = key.split(".")
+        for part in parts[:-1]:
+            node = node.setdefault(part, {})
+            if not isinstance(node, dict):
+                raise ValueError(f"Override {item!r}: {part!r} is not a mapping")
+        node[parts[-1]] = value
+    return out
+
+
+def config_from_dict(data: dict, base_dir: Path, config_path: Path | None = None) -> SegmentConfig:
+    data = dict(data)
+    data.setdefault("root", ".")
+    cfg = _build(SegmentConfig, data, "config", base_dir)
+    cfg.config_path = config_path
+    if not cfg.sessions:
+        raise ValueError("config.sessions is empty — list at least one session")
+    unlabelled = [str(s.source) for s in cfg.sessions if s.labels_path is None]
+    if unlabelled:
+        raise ValueError(
+            f"Every session needs an explicit labels_path (no {{stem}}_labels.tsv discovery): {unlabelled}"
+        )
+    if cfg.features.labels is None:
+        raise ValueError("config.features.labels is required (at least a branch of the mapping.txt naming the classes)")
+    if cfg.features.labels.mapping is None:
+        cfg.features.labels.mapping = ethograph_home() / "mapping.txt"
+    if cfg.features.changepoint_features is not None:
+        generated = cfg.features.changepoint_features.expanded_columns()
+        collisions = set(generated) & set(cfg.features.columns)
+        if collisions:
+            raise ValueError(
+                f"config.features.columns already names {sorted(collisions)}, which "
+                "config.features.changepoint_features also generates — remove the explicit "
+                "entries, or drop them from changepoint_features.inputs/transforms"
+            )
+        cfg.features.columns.update(generated)
+    if not cfg.features.columns:
+        raise ValueError("config.features.columns is empty — name at least one feature")
+    known_sources = {str(s.source) for s in cfg.sessions}
+    unknown_holdout = [str(p) for p in cfg.train.split.holdout_sessions if str(p) not in known_sources]
+    if unknown_holdout:
+        raise ValueError(
+            f"train.split.holdout_sessions names {unknown_holdout}, which config.sessions does not list; "
+            f"it holds {sorted(known_sources)}"
+        )
+    if len(cfg.train.split.holdout_sessions) == len(cfg.sessions):
+        raise ValueError("train.split.holdout_sessions holds out every session — nothing would be left to train on")
+    return cfg
+
+
+def load_config(path: str | Path, overrides: list[str] | None = None) -> SegmentConfig:
+    """Read a config file (following ``base:``), apply overrides, build."""
+    path = Path(path).resolve()
+    if not path.is_file():
+        raise FileNotFoundError(f"Config not found: {path}")
+    data = _read_yaml_chain(path)
+    if overrides:
+        data = apply_overrides(data, list(overrides))
+    return config_from_dict(data, path.parent, config_path=path)
+
+
+def _to_plain(obj: Any) -> Any:
+    if is_dataclass(obj) and not isinstance(obj, type):
+        return {f.name: _to_plain(getattr(obj, f.name)) for f in fields(obj) if f.name != "config_path"}
+    if isinstance(obj, Path):
+        return str(obj)
+    if isinstance(obj, dict):
+        return {k: _to_plain(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_to_plain(v) for v in obj]
+    return obj
+
+
+def config_to_dict(cfg: SegmentConfig) -> dict:
+    """The fully resolved config as plain YAML-able data (absolute paths).
+
+    Round-trips: the columns ``features.changepoint_features`` generated are
+    left out, because :func:`config_from_dict` merges them back in and would
+    otherwise read them as explicit entries colliding with its own expansion.
+    """
+    data = _to_plain(cfg)
+    if cfg.features.changepoint_features is not None:
+        generated = cfg.features.changepoint_features.expanded_columns()
+        columns = data["features"]["columns"]
+        data["features"]["columns"] = {k: v for k, v in columns.items() if k not in generated}
+    return data
+
+
+def save_config(cfg: SegmentConfig, path: Path) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(yaml.safe_dump(config_to_dict(cfg), sort_keys=False), encoding="utf-8")
+    return path
+
+
+def with_overrides(cfg: SegmentConfig, **changes: Any) -> SegmentConfig:
+    """A copy of *cfg* with top-level fields replaced."""
+    return dataclasses.replace(cfg, **changes)

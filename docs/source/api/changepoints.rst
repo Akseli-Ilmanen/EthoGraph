@@ -42,7 +42,7 @@ To attach detectors to a :class:`xarray.Dataset` or a pynapple object:
 Merging and time extraction
 ---------------------------
 
-Changepoints stored as multiple ``attrs["type"] == "changepoints"``
+Changepoints stored as multiple ``kind="changepoint_feature"`` (legacy: ``attrs["type"] == "changepoints"``)
 DataArrays can be merged into a single boolean mask, or converted directly
 to absolute times (seconds) for use by the GUI and correction pipeline.
 
@@ -116,7 +116,7 @@ Storage format
 --------------
 
 Kinematic changepoints are stored as binary (``int8``) DataArrays sharing
-their feature's time axis, tagged with ``attrs["type"] = "changepoints"``
+their feature's time axis, tagged with ``kind = "changepoint_feature"`` (plus the legacy ``attrs["type"] = "changepoints"``)
 and ``attrs["target_feature"]``. Audio changepoints, which would be
 prohibitively large at audio sample rates, are stored instead as
 ``audio_cp_onsets`` / ``audio_cp_offsets`` float pairs. See

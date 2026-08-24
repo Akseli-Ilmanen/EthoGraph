@@ -9,6 +9,8 @@ from typing import TYPE_CHECKING
 import numpy as np
 import xarray as xr
 
+from ethograph.io import schema
+
 if TYPE_CHECKING:
     from ethograph.io.trialtree import TrialTree
 
@@ -191,7 +193,7 @@ def validate_changepoints(ds: xr.Dataset) -> list[str]:
         Validation error messages (empty if valid).
     """
     errors = []
-    cp_ds = ds.filter_by_attrs(type="changepoints")
+    cp_ds = schema.filter_changepoints(ds)
 
     for var_name, var in cp_ds.data_vars.items():
         arr = var.values

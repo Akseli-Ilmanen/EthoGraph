@@ -221,7 +221,8 @@ class MetaWidget(GridSectionContainer):
         overlay_gb = getattr(self.data_panel, "overlays_groupbox", None)
         if overlay_gb is not None:
             overlay_gb.setTitle("Label overlay")
-            self.labels_widget.attach_overlay_groupbox(overlay_gb)
+            row1 = getattr(self.data_panel, "overlays_row1_layout", None)
+            self.labels_widget.attach_overlay_groupbox(overlay_gb, row_layout=row1)
             if self.labels_widget.layout() is not None:
                 self.labels_widget.layout().addWidget(overlay_gb)
 

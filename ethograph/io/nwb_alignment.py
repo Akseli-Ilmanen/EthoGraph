@@ -391,6 +391,14 @@ class NWBAlignment:
     # ── Media access ──
 
     def get_media(self, trial, stream: str, device: str | None = None) -> str | None:
+        """Return the trial table's media filename for *stream*/*device*.
+
+        A stored value that is an absolute local path (e.g. baked in by a
+        template authored on a different machine) is reduced to its
+        basename, so callers can always safely join it onto their own
+        video/audio/pose folder instead of resolving to a path that only
+        existed on the authoring machine.
+        """
         row = self._trial_row(trial)
         if row is None:
             return None
@@ -398,7 +406,10 @@ class NWBAlignment:
         if col in row.index:
             val = row[col]
             if pd.notna(val) and str(val):
-                return str(val)
+                val = str(val)
+                if not _is_url(val) and os.path.isabs(val):
+                    return os.path.basename(val)
+                return val
         return None
 
     def devices(self, stream: str) -> list[str]:

@@ -129,3 +129,114 @@ def match_sequences(
                 )
 
     return matches
+
+
+# ---------------------------------------------------------------------------
+# Trial-level label matching — "which trials do (not) look like this?"
+# ---------------------------------------------------------------------------
+#
+# Navigation above answers "where is the next match *inside* a trial". This
+# answers "which trials match at all", which is what a filter needs.
+
+#: Match modes, key -> what the key means to a user. The order is the order
+#: the Find label inconsistencies dialog offers them in.
+LABEL_MATCH_MODES = {
+    "present": "All of them occur (any order)",
+    "partial": "Some but not all occur",
+    "order": "In this order (other labels may come between)",
+    "order_strict": "In this order, one straight after another",
+}
+
+
+def _trial_labels(labels_df: pd.DataFrame, individual: str | None = None) -> dict:
+    """``{trial: [label ids in time order]}`` over the non-background labels.
+
+    *individual* restricts to one actor: with two animals labelled in one
+    trial their events interleave, and an order across both means nothing.
+    """
+    if labels_df is None or labels_df.empty:
+        return {}
+    df = labels_df[labels_df["labels"] > 0]
+    if individual is not None and "individual" in df.columns:
+        df = df[df["individual"].astype(str) == str(individual)]
+    if df.empty:
+        return {}
+    return {
+        trial: [int(v) for v in group.sort_values("onset_s")["labels"]]
+        for trial, group in df.groupby("trial", sort=False)
+    }
+
+
+def _is_subsequence(target: list[int], present: list[int]) -> bool:
+    """Whether *target* appears in *present* in order, gaps allowed."""
+    it = iter(present)
+    return all(label in it for label in target)
+
+
+def _has_run(target: list[int], present: list[int]) -> bool:
+    """Whether *target* appears in *present* as a contiguous run."""
+    n = len(target)
+    return any(present[i : i + n] == target for i in range(len(present) - n + 1))
+
+
+def trial_matches_labels(present: list[int], target: list[int], mode: str) -> bool:
+    """Whether one trial's label sequence matches *target* under *mode*.
+
+    *present* is the trial's labels in time order (repeats kept — that is what
+    makes ``order_strict`` differ from ``order``), *target* the ids the user
+    asked about, in the order they typed them.
+    """
+    if not target:
+        return False
+    if mode == "present":
+        return set(target).issubset(present)
+    if mode == "partial":
+        found = {label for label in target if label in present}
+        return 0 < len(found) < len(set(target))
+    if mode == "order":
+        return _is_subsequence(target, present)
+    if mode == "order_strict":
+        return _has_run(target, present)
+    raise ValueError(f"Unknown label match mode {mode!r} (expected one of {', '.join(LABEL_MATCH_MODES)}).")
+
+
+def trials_matching_labels(
+    labels_df: pd.DataFrame,
+    target: list[int],
+    *,
+    mode: str = "present",
+    invert: bool = False,
+    trials=None,
+    individual: str | None = None,
+) -> set[str]:
+    """Trial ids (as strings) whose labels match *target* under *mode*.
+
+    *trials* is the population to judge — pass the session's full trial list
+    so a trial carrying **no** labels is still considered (it matches nothing,
+    and therefore matches everything once *invert* is on, which is exactly how
+    "find the trials missing this" has to behave). Without it only trials that
+    carry at least one label are judged.
+    """
+    by_trial = _trial_labels(labels_df, individual)
+    population = [str(t) for t in trials] if trials is not None else [str(t) for t in by_trial]
+    lookup = {str(t): labels for t, labels in by_trial.items()}
+    hits = {t for t in population if trial_matches_labels(lookup.get(t, []), target, mode)}
+    return set(population) - hits if invert else hits
+
+
+def parse_label_pattern(text: str) -> list[int]:
+    """``"1-2-6-8"`` -> ``[1, 2, 6, 8]``; anything unparseable -> ``[]``.
+
+    The same spelling the Sequence navigate mode takes, so one habit serves
+    both. Repeats are kept: ``"6-6"`` asks about two occurrences.
+    """
+    parts = [p.strip() for p in (text or "").replace(",", "-").split("-")]
+    out: list[int] = []
+    for part in parts:
+        if not part:
+            continue
+        try:
+            out.append(int(part))
+        except ValueError:
+            return []
+    return out

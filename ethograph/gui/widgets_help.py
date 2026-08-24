@@ -14,6 +14,8 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
+from ethograph.io import schema
+
 TUTORIALS = [
     {
         "title": "Video playback",
@@ -176,13 +178,13 @@ class HelpWidget(QWidget):
             if hasattr(store, "_ds"):
                 store_ds = store._ds
                 if store_ds is not None:
-                    cp_vars = list(store_ds.filter_by_attrs(type="changepoints").data_vars)
+                    cp_vars = schema.changepoint_vars(store_ds)
                     print(f"  Store._ds changepoint vars: {cp_vars}")
                     print(f"  Store._ds is app_state.ds: {store_ds is ds}")
                 else:
                     print("  Store._ds is None")
         if ds is not None:
-            cp_vars = list(ds.filter_by_attrs(type="changepoints").data_vars)
+            cp_vars = schema.changepoint_vars(ds)
             for v in cp_vars:
                 da = ds[v]
                 import numpy as np

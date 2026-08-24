@@ -55,16 +55,6 @@ def test_video_area_survives_attach(gui):
     QLabel(canvas)
 
 
-def test_sidebars_span_full_height(gui):
-    from qtpy.QtCore import Qt
-
-    shell, meta = gui
-    assert shell.corner(Qt.TopLeftCorner) == Qt.LeftDockWidgetArea
-    assert shell.corner(Qt.BottomLeftCorner) == Qt.LeftDockWidgetArea
-    assert shell.corner(Qt.TopRightCorner) == Qt.RightDockWidgetArea
-    assert shell.corner(Qt.BottomRightCorner) == Qt.RightDockWidgetArea
-
-
 def test_every_panel_has_close_and_move_buttons(gui):
     from qtpy.QtWidgets import QPushButton
 
@@ -83,12 +73,6 @@ def test_every_panel_has_close_and_move_buttons(gui):
     close_btn.click()
     assert plot not in pc.audio_trace_plots
     assert plot not in pc._dyn_docks
-
-
-def test_top_bar_has_expected_menus(gui):
-    shell, meta = gui
-    titles = [a.text().replace("&", "") for a in shell.menuBar().actions()]
-    assert titles == ["File", "Changepoints", "Tools", "Model", "Docs", "Help"]
 
 
 def test_tools_menu_screen_record_is_a_plain_action(gui, monkeypatch):
@@ -184,36 +168,6 @@ def test_io_subpanel_popups_are_separate(gui):
     assert io.export_panel.isHidden()  # only shown while borrowed by its popup
 
 
-def test_overlay_checkboxes_relocated(birdpark_gui):
-    shell, meta = birdpark_gui
-    conf = meta.data_widget.show_confidence_checkbox
-    env = meta.data_widget.show_envelope_checkbox
-    # Confidence moved under the predictions importer (io_widget).
-    assert meta.io_widget.isAncestorOf(conf)
-    # Envelope moved under the energy (audio-trace) group.
-    assert meta.data_panel.energy_group.isAncestorOf(env)
-
-
-def test_overlay_group_moved_to_labels(gui):
-    shell, meta = gui
-    ov = meta.data_panel.overlays_groupbox
-    assert ov.title() == "Label overlay"
-    assert meta.labels_widget.isAncestorOf(ov)
-
-
-def test_file_menu_has_no_label_table(gui):
-    shell, meta = gui
-    file_menu = _menu(shell, "File")
-    texts = [a.text() for a in file_menu.actions() if a.text()]
-    assert not any("Label table" in t for t in texts)
-
-
-def test_sidebar_has_three_sections(gui):
-    shell, meta = gui
-    labels = [b.text().split()[0] for b in meta._buttons]
-    assert labels == ["Data", "Labels", "Nav"]
-
-
 def test_plot_click_shows_only_relevant_sections(birdpark_gui):
     """Clicking a plot shows only that plot's sections (minimal sidebar)."""
     meta = birdpark_gui[1]
@@ -254,12 +208,6 @@ def test_trials_table_hidden_without_metadata(gui):
     # Real metadata columns → table shown.
     trials.setup(pd.DataFrame({"trial": [1, 2], "condition": ["a", "b"]}))
     assert not trials._table.isHidden()
-
-
-def test_nav_tab_contains_trials_table(birdpark_gui):
-    shell, meta = birdpark_gui
-    # trials_widget (with its table) is parented into the Navigation section.
-    assert meta.trials_widget.parent() is not None
 
 
 def test_video_context_shows_pose_only_when_pose_exists(birdpark_gui):

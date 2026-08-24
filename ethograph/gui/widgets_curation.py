@@ -19,17 +19,31 @@ a user turns automated labels into curated ones:
     ``←``/``→`` nudge the video, **Enter** commits the frame on screen as the
     boundary (the label becomes manual if it moved), **Backspace** deletes the
     event outright, **B**/**N** go back / next — and *N* also curates the
-    boundary it leaves when the checkbox says so.
+    boundary it leaves when the checkbox says so. **Automated only** (ticked
+    by default) leaves manual/curated boundaries out of the queue — a human
+    already vouched for those, so there is nothing to re-review.
 
 * **Label grid view…** / **Video grid…** open the review grids
   (``dialog_label_gridview.py``, ``dialog_video_grid.py``) on the scope; a
   tile click there navigates, and in frame-by-frame mode it drops straight
   into the review at that label.
+* **Model ▸ Curation workflows…** (top bar) opens the saved curation routines
+  (``dialog_curation_workflow.py``): filter, predict, scope, grid, review,
+  save — recorded once and replayed, rather than set up again each session.
 
 The per-trial verdict (no automated label left) colours the trial combo and
 the bottom bar, and is written to the metadata table's ``curated`` column on
 a timer (:data:`METADATA_SYNC_MS`) — labelling must never wait on a file
 write.
+
+That timer only runs while curation is **active** (``app_state.curation_active``,
+never saved): dropping label classes into the scope area or curating anything
+arms it via :meth:`CurationPanel.activate`, and a fresh dataset disarms it. A
+session that curates nothing therefore touches no file. Arming is also the one
+moment a metadata TSV is created — the ``curated`` column is EthoGraph's own
+state and never goes into a recording or the alignment NWB, so
+:func:`~ethograph.io.metadata_edit.ensure_tabular_target` copies the loaded
+table to the sidecar TSV, which becomes the metadata table from then on.
 """
 
 from __future__ import annotations
@@ -38,7 +52,7 @@ import logging
 import math
 
 import numpy as np
-from qtpy.QtCore import Qt, QTimer
+from qtpy.QtCore import Qt, QTimer, Signal
 from qtpy.QtGui import QKeySequence, QShortcut
 from qtpy.QtWidgets import (
     QApplication,
@@ -50,17 +64,22 @@ from qtpy.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QMessageBox,
     QPushButton,
     QVBoxLayout,
     QWidget,
 )
 
+from ethograph.gui.dialog_label_gridview import confidence_display
 from ethograph.gui.label_drawing_mixin import draw_key
 from ethograph.gui.notify import notify
 from ethograph.gui.shortcuts import typing_in_text_field
 from ethograph.io.time_model import TimeRange
+from ethograph.labels import onset_curves
 from ethograph.labels.curation import (
     CURATED_COLUMN,
+    CURATED_NO,
+    CURATED_YES,
     ReviewTarget,
     build_review_queue,
     curate_label,
@@ -166,8 +185,7 @@ class ScopeDropArea(QFrame):
         self.setFrameShape(QFrame.StyledPanel)
         self.setMinimumHeight(30)
         self.setToolTip(
-            "Drag label rows from the tables above here to curate only those classes.\n"
-            "Empty means every class."
+            "Drag label rows from the tables above here to curate only those classes.\nEmpty means every class."
         )
         self._ids: list[int] = []
         lay = QHBoxLayout(self)
@@ -226,7 +244,7 @@ class ScopeDropArea(QFrame):
             while panel is not None and not isinstance(panel, CurationPanel):
                 panel = panel.parent()
             if panel is not None:
-                panel._on_scope_edited()
+                panel._on_scope_edited(activates=True)
 
 
 class ShortcutsPopup(QDialog):
@@ -272,6 +290,10 @@ class ShortcutsPopup(QDialog):
 class CurationPanel(QGroupBox):
     """Scope + mode + frame-by-frame review, under the label tables."""
 
+    #: A frame-by-frame review session ended (finished, stopped or torn down).
+    #: How a curation workflow knows the reviewer is done with that step.
+    review_finished = Signal()
+
     def __init__(self, app_state, labels_widget, parent=None):
         super().__init__("Curation", parent)
         self.app_state = app_state
@@ -282,6 +304,7 @@ class CurationPanel(QGroupBox):
         self.plot_container = None
         self._grid_dialog = None
         self._video_dialog = None
+        self._workflow_dialog = None
         self._shortcuts_popup: ShortcutsPopup | None = None
 
         # Frame-by-frame review state (one session at a time)
@@ -295,14 +318,20 @@ class CurationPanel(QGroupBox):
         self._n_confirmed = 0
         self._n_deleted = 0
         self._session_shortcuts: list[QShortcut] = []
+        #: Onset-model probability curves, and the (path, mtime) they were
+        #: read at — a fresh prediction run rewrites the sidecar, so the key
+        #: is what notices instead of a cross-module invalidation call.
+        self._curves: dict[str, onset_curves.TrialCurves] = {}
+        self._curves_key: tuple | None = None
 
         self._build_ui()
 
+        # Started by activate() — a session that curates nothing writes nothing.
         self._metadata_timer = QTimer(self)
         self._metadata_timer.setInterval(METADATA_SYNC_MS)
         self._metadata_timer.timeout.connect(self.sync_metadata)
-        self._metadata_timer.start()
 
+        app_state.ready_changed.connect(self._on_ready_changed)
         app_state.trial_changed.connect(self._on_trial_changed)
         app_state.current_frame_changed.connect(self._on_frame_changed)
         app_state.curation_mode_changed.connect(self._sync_mode_from_state)
@@ -384,7 +413,7 @@ class CurationPanel(QGroupBox):
         self.window_spin.editingFinished.connect(self.window_spin.clearFocus)
         win_row.addWidget(self.window_spin, stretch=1)
         self.lock_checkbox = QCheckBox("Locked around label")
-        self.lock_checkbox.setChecked(True)
+        self.lock_checkbox.setChecked(False)
         self.lock_checkbox.setToolTip(
             "Ticked: the view stays a small window around the boundary.\n"
             "Unticked: pan/zoom the whole trial freely — Enter still confirms\n"
@@ -394,14 +423,26 @@ class CurationPanel(QGroupBox):
         win_row.addWidget(self.lock_checkbox)
         frame_lay.addLayout(win_row)
 
-        self.next_curates_cb = QCheckBox("N (next) = seen, mark curated")
+        review_opts_row = QHBoxLayout()
+        self.next_curates_cb = QCheckBox("N = mark curated")
         self.next_curates_cb.setToolTip(
             "Moving on with N means you looked at the boundary and it is fine:\n"
             "an automated label becomes curated. Untick to only browse."
         )
         self.next_curates_cb.setChecked(bool(self.app_state.get_with_default("curation_next_curates")))
         self.next_curates_cb.toggled.connect(lambda v: setattr(self.app_state, "curation_next_curates", v))
-        frame_lay.addWidget(self.next_curates_cb)
+        review_opts_row.addWidget(self.next_curates_cb)
+
+        self.automated_only_cb = QCheckBox("Automated only")
+        self.automated_only_cb.setToolTip(
+            "A human already vouched for a manual or curated label, so the queue\n"
+            "leaves those out — only automated boundaries need a first look.\n"
+            "Untick to walk every label in scope regardless of method."
+        )
+        self.automated_only_cb.setChecked(bool(self.app_state.get_with_default("frame_review_automated_only")))
+        self.automated_only_cb.toggled.connect(lambda v: setattr(self.app_state, "frame_review_automated_only", v))
+        review_opts_row.addWidget(self.automated_only_cb)
+        frame_lay.addLayout(review_opts_row)
 
         keys_row = QHBoxLayout()
         keys = QLabel(_KEYS_SCHEMATIC)
@@ -425,11 +466,22 @@ class CurationPanel(QGroupBox):
         self.curate_trial_btn = QPushButton("Curate trial (Ctrl+C)")
         self.curate_trial_btn.setAutoDefault(False)
         self.curate_trial_btn.setToolTip(
-            "Every automated label in scope of the current trial becomes curated.\n"
-            "Manual labels stay manual."
+            "Every automated label in scope of the current trial becomes curated.\nManual labels stay manual."
         )
         self.curate_trial_btn.clicked.connect(self.curate_current_trial)
         tools_row.addWidget(self.curate_trial_btn)
+        self.curate_visible_btn = QPushButton("Curate visible trials…")
+        self.curate_visible_btn.setAutoDefault(False)
+        self.curate_visible_btn.setToolTip(
+            "Ctrl+C over every trial the trials table shows, not just this one:\n"
+            "every automated label in scope becomes curated. Manual labels stay manual.\n"
+            "\n"
+            "This says a human approved them and cannot be undone, so it asks first —\n"
+            "reach for it when a review left labels unjudged (a grid browsed without\n"
+            "curating, a review stopped partway), not as a way to skip looking."
+        )
+        self.curate_visible_btn.clicked.connect(lambda: self.curate_visible_trials(confirm=True))
+        tools_row.addWidget(self.curate_visible_btn)
         self.grid_btn = QPushButton("Label grid view…")
         self.grid_btn.setAutoDefault(False)
         self.grid_btn.setToolTip("A grid of video frames at the label times in scope — click a tile to go there")
@@ -484,8 +536,22 @@ class CurationPanel(QGroupBox):
         mappings = getattr(self.labels_widget, "_mappings", {}) or {}
         return sorted(lid for lid in mappings if isinstance(lid, int) and lid != 0)
 
-    def _on_scope_edited(self) -> None:
+    def _on_scope_edited(self, *, activates: bool = False) -> None:
         self.app_state.curation_label_ids = self.scope_area.ids() or None
+        if activates:
+            self.activate("label classes dropped into the curation scope")
+        self._refresh_status()
+
+    def set_scope(self, label_ids, *, reason: str) -> None:
+        """Replace the curation scope with *label_ids*, as if dragged in, and activate.
+
+        Public hand-off point for callers outside this module (e.g. the onset
+        model's "Review predictions…" button) that want the just-produced
+        classes sitting in the scope area rather than opening a dialog.
+        """
+        self.scope_area.set_ids(label_ids)
+        self.app_state.curation_label_ids = self.scope_area.ids() or None
+        self.activate(reason)
         self._refresh_status()
 
     def _scope_all(self) -> None:
@@ -543,6 +609,8 @@ class CurationPanel(QGroupBox):
         """
         if not n:
             return 0
+        # Something was actually curated, so the verdict now needs a home.
+        self.activate("labels curated")
         self.app_state.replace_all_labels(df)
         self.app_state.changes_saved = False
         restyled = 0
@@ -574,6 +642,63 @@ class CurationPanel(QGroupBox):
                 notify(f"Trial {trial}: nothing left to curate in scope.")
             return 0
         return self._commit(df, n, message=None if quiet else f"Trial {trial}: curated {n} label(s).")
+
+    def curate_visible_trials(self, confirm: bool = False) -> int:
+        """Every automated label in scope, in every trial the trials table shows.
+
+        Ctrl+C over the whole visible set rather than the current trial.
+        Manual labels are never rewritten.
+
+        *confirm* asks first, and is what the button passes: from the GUI this
+        is one click away from marking labels nobody looked at as seen, which
+        is the one thing the automated/curated split exists to keep apart. A
+        workflow step is already a deliberate, written-down choice and does
+        not ask.
+
+        Not a follow-up to a grid's *uncurate* Done: that already curates
+        every unclicked automated label in the grid, which is this same set.
+        This is for the flows where nothing swept up — a grid browsed in
+        navigate mode, a review stopped partway, or a deliberate bulk accept.
+        """
+        if not self.app_state.ready:
+            return 0
+        df = self.app_state._all_labels_df
+        scope = self.scope()
+        total = 0
+        for trial in self.app_state.trials or []:
+            df, n = curate_trial(df, trial, scope)
+            total += n
+        if not total:
+            notify("Nothing left to curate in scope across the visible trials.")
+            return 0
+        n_trials = len(self.app_state.trials or [])
+        if confirm and not self._confirm_bulk_curate(total, n_trials):
+            return 0
+        return self._commit(df, total, message=f"Curated {total} label(s) across {n_trials} trial(s).")
+
+    def _confirm_bulk_curate(self, total: int, n_trials: int) -> bool:
+        """Ask before marking labels across many trials as seen by a human.
+
+        Curating is **not** undoable: ``Ctrl+Z`` walks per-trial snapshots
+        recorded by the label handlers, and curation records none — nothing
+        runs automated → curated backwards. Saying so is the whole job of this
+        dialog, so it says it plainly and defaults to No.
+        """
+        scope = self.scope()
+        classes = "every label class" if scope is None else f"{len(scope)} label class(es)"
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Warning)
+        box.setWindowTitle("Curate visible trials")
+        box.setText(f"Mark {total} automated label(s) as curated, across {n_trials} trial(s) in {classes}?")
+        box.setInformativeText(
+            "Curated means a human has approved them — labels you have not looked at "
+            "will be marked as though you had.\n\n"
+            "This cannot be undone: Ctrl+Z does not take back a curation. Nothing "
+            "reaches disk until you save, so closing without saving still discards it."
+        )
+        box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+        box.setDefaultButton(QMessageBox.No)
+        return box.exec() == QMessageBox.Yes
 
     def curate_labels(self, insts: list[dict]) -> int:
         """Curate the given labels (grid-view verdicts); manual ones are untouched."""
@@ -608,12 +733,50 @@ class CurationPanel(QGroupBox):
             f"{counts[LABELING_CURATED]} curated · {counts[LABELING_MANUAL]} manual"
         )
 
+    # ------------------------------------------------------------------
+    # Active / inactive
+    # ------------------------------------------------------------------
+
+    def activate(self, reason: str) -> None:
+        """Curation has started: give the verdicts a file and start the sync.
+
+        Idempotent, and the only path that creates a metadata TSV. Until it
+        runs, a session that never curates anything writes nothing.
+        """
+        if self.app_state.curation_active:
+            return
+        self.app_state.curation_active = True
+        logger.info("Curation active (%s) — per-trial verdicts will be saved.", reason)
+        self._ensure_metadata_file()
+        self._metadata_timer.start()
+
+    def deactivate(self) -> None:
+        """Stop syncing (a fresh dataset curates nothing until asked to)."""
+        self._metadata_timer.stop()
+        self.app_state.curation_active = False
+
+    def _ensure_metadata_file(self) -> None:
+        """Point the metadata table at a TSV, creating it when there is none.
+
+        The ``curated`` column is ours, so it never goes into a recording or
+        the alignment NWB (``io/metadata_edit.py``): the loaded table is
+        copied to the sidecar TSV, which becomes the metadata table for this
+        dataset from here on.
+        """
+        trials_widget = self._trials_widget()
+        if trials_widget is None or not self.app_state.ready:
+            return
+        trials_widget.ensure_tabular_metadata_file()
+
     def sync_metadata(self) -> None:
         """Push the per-trial verdicts into the metadata ``curated`` column.
 
-        Runs on :data:`METADATA_SYNC_MS`; a no-op unless a verdict differs
-        from what the table holds, so the timer is cheap when idle.
+        Runs on :data:`METADATA_SYNC_MS` while curation is active; a no-op
+        unless a verdict differs from what the table holds, so the timer is
+        cheap when idle.
         """
+        if not self.app_state.curation_active:
+            return
         if not self.app_state.ready or not self.app_state.trials:
             return
         trials_widget = self._trials_widget()
@@ -627,11 +790,17 @@ class CurationPanel(QGroupBox):
             return
         if not curated_column_differs(mdf, status):
             return
-        trials_widget.set_column_values(CURATED_COLUMN, {t: int(v) for t, v in status.items()})
+        trials_widget.set_column_values(
+            CURATED_COLUMN, {t: (CURATED_YES if v else CURATED_NO) for t, v in status.items()}
+        )
 
     # ------------------------------------------------------------------
     # Trial changes
     # ------------------------------------------------------------------
+
+    def _on_ready_changed(self, *_args) -> None:
+        """A dataset came or went — curation starts off again."""
+        self.deactivate()
 
     def _on_trial_changed(self) -> None:
         if not self.app_state.ready:
@@ -648,27 +817,43 @@ class CurationPanel(QGroupBox):
     # Grids
     # ------------------------------------------------------------------
 
-    def open_grid_view(self) -> None:
+    def open_grid_view(self):
+        """Open (or raise) the label grid on the scope; returns the dialog."""
         from ethograph.gui.dialog_label_gridview import LabelGridViewDialog
 
         if self.meta is None:
-            return
+            return None
         if self._grid_dialog is None or not self._grid_dialog.isVisible():
             self._grid_dialog = LabelGridViewDialog(self.meta, parent=self.window(), label_ids=self.scope_or_all_ids())
         self._grid_dialog.show()
         self._grid_dialog.raise_()
         self._grid_dialog.activateWindow()
+        return self._grid_dialog
 
-    def open_video_grid(self) -> None:
+    def open_video_grid(self):
+        """Open (or raise) the video grid on the scope; returns the dialog."""
         from ethograph.gui.dialog_video_grid import VideoGridDialog
 
         if self.meta is None:
-            return
+            return None
         if self._video_dialog is None or not self._video_dialog.isVisible():
             self._video_dialog = VideoGridDialog(self.meta, parent=self.window(), label_ids=self.scope_or_all_ids())
         self._video_dialog.show()
         self._video_dialog.raise_()
         self._video_dialog.activateWindow()
+        return self._video_dialog
+
+    def open_workflows(self) -> None:
+        """The saved curation workflows: manage them, or run one from here."""
+        from ethograph.gui.dialog_curation_workflow import CurationWorkflowDialog
+
+        if self.meta is None:
+            return
+        if self._workflow_dialog is None or not self._workflow_dialog.isVisible():
+            self._workflow_dialog = CurationWorkflowDialog(self.meta, parent=self.window())
+        self._workflow_dialog.show()
+        self._workflow_dialog.raise_()
+        self._workflow_dialog.activateWindow()
 
     # ==================================================================
     # Frame-by-frame review session
@@ -699,7 +884,12 @@ class CurationPanel(QGroupBox):
 
     def build_queue(self) -> list[ReviewTarget]:
         """Every boundary of the labels in scope, in the trials the table shows."""
-        return build_review_queue(self.app_state._all_labels_df, self.scope(), allowed_trials=self._allowed_trials())
+        return build_review_queue(
+            self.app_state._all_labels_df,
+            self.scope(),
+            allowed_trials=self._allowed_trials(),
+            automated_only=self.automated_only_cb.isChecked(),
+        )
 
     def _toggle_session(self) -> None:
         if self._session_active:
@@ -765,6 +955,7 @@ class CurationPanel(QGroupBox):
         self.target_label.setText("")
         self.info_label.setText("")
         self.delta_label.setText("")
+        self.review_finished.emit()
         if not (n_confirmed or n_deleted):
             return
         parts = []
@@ -779,6 +970,58 @@ class CurationPanel(QGroupBox):
         self._advance_pending = False
         self._seed_frame = None
         self._remove_session_shortcuts()
+        if self.plot_container is not None:
+            self.plot_container.hide_onset_curves()
+
+    # ------------------------------------------------------------------
+    # The model's probability curves, under the label being reviewed
+    # ------------------------------------------------------------------
+
+    def _load_curves(self) -> dict[str, onset_curves.TrialCurves]:
+        """Every prediction run's curves for this session, newest word winning.
+
+        Re-read when a run folder appears or changes, so predicting again
+        during a review shows the new curves without any invalidation call.
+        """
+        session = self.app_state.nc_file_path
+        if not session:
+            return {}
+        folders = onset_curves.run_dirs(session)
+        key = tuple((str(p), p.stat().st_mtime) for p in folders)
+        if key != self._curves_key:
+            self._curves = onset_curves.read_all_curves(session)
+            self._curves_key = key
+        return self._curves
+
+    def _draw_curves(self) -> None:
+        """Draw the classes **in scope** for the trial under review.
+
+        Scope is what the user dragged in, so a review of one class shows
+        that class's belief and not every model output in the trial. The
+        curves are stored trial-relative; the plot axis may be on the session
+        clock, so they are shifted the way every other consumer shifts.
+        """
+        container = self.plot_container
+        if container is None:
+            return
+        entry = self._load_curves().get(str(self._targets[self._idx].inst["trial"]))
+        scope = self.scope()
+        wanted = {} if entry is None else {
+            label: curve for label, curve in entry[1].items() if scope is None or label in scope
+        }
+        if not wanted:
+            container.hide_onset_curves()
+            return
+        trial = self._targets[self._idx].inst["trial"]
+        mappings = getattr(self.labels_widget, "_mappings", {}) or {}
+        colors = {label: _color_hex(mappings.get(label, {})) for label in wanted}
+        offset = float(self.app_state.to_display(trial, 0.0))
+        if not container.show_onset_curves(entry[0] + offset, wanted, colors):
+            logger.info(
+                "Onset curves exist for trial %s but no open panel can host them — "
+                "open a feature panel to see them.",
+                trial,
+            )
 
     # ------------------------------------------------------------------
     # Session shortcuts: Enter, Backspace/Delete, B, N
@@ -924,6 +1167,7 @@ class CurationPanel(QGroupBox):
         self._seed_frame = video.time_to_frame(seed_display, round_nearest=True) if video else None
         self._update_target_display()
         self._update_delta()
+        self._draw_curves()
 
     def _update_target_display(self) -> None:
         target = self._targets[self._idx]
@@ -940,16 +1184,35 @@ class CurationPanel(QGroupBox):
         method = self._current_method()
         if method:
             parts.append(method)
+        confidence = self._current_confidence()
+        if confidence is not None:
+            parts.append(f"conf {confidence_display(confidence)}")
         self.info_label.setText("  ·  ".join(parts))
 
-    def _current_method(self) -> str | None:
+    def _current_label_row(self):
+        """The current target's row in ``_all_labels_df``, or ``None``."""
         df = getattr(self.app_state, "_all_labels_df", None)
-        if df is None or df.empty or "labeling_method" not in df.columns:
+        if df is None or df.empty:
             return None
         inst = self._targets[self._idx].inst
         mask = (df["trial"].astype(str) == str(inst["trial"])) & row_mask(df, inst)
-        rows = df.loc[mask, "labeling_method"]
-        return str(rows.iloc[0]) if len(rows) else None
+        rows = df.loc[mask]
+        return rows.iloc[0] if len(rows) else None
+
+    def _current_method(self) -> str | None:
+        row = self._current_label_row()
+        if row is None or "labeling_method" not in row.index:
+            return None
+        return str(row["labeling_method"])
+
+    def _current_confidence(self) -> float | None:
+        row = self._current_label_row()
+        if row is None or "confidence" not in row.index:
+            return None
+        value = row["confidence"]
+        if value is None or (isinstance(value, float) and math.isnan(value)):
+            return None
+        return float(value)
 
     def _on_frame_changed(self, *_args) -> None:
         if self._session_active:

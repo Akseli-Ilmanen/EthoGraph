@@ -4,6 +4,7 @@ import numpy as np
 import pynapple as nap
 import pytest
 
+from ethograph.io import schema
 from ethograph.io.catalog import (
     PynappleLoader as PynappleStore,
 )
@@ -165,7 +166,7 @@ def test_catalog_combos_match_loader_dims(multi_tsdframe_data):
 def test_catalog_detects_changepoints():
     cp_times = np.array([10.0, 25.0, 50.0, 75.0])
     group = nap.TsGroup({0: nap.Ts(t=cp_times)})
-    group.set_info(type=["changepoints"])
+    group.set_info(**schema.changepoint_metadata(1))
     data = {"cp_group": group}
     cat = catalog_from_pynapple(data)
     assert "cp_group" in cat.changepoints
@@ -346,7 +347,7 @@ def test_store_select_sparse_changepoints():
     cp_times = np.array([1.0, 3.5, 7.2])
     group = nap.TsGroup({0: nap.Ts(t=cp_times)})
     group.set_info(
-        type=["changepoints"],
+        **schema.changepoint_metadata(1),
         target_feature=["speed"],
         source_label=["unit_0"],
     )
@@ -372,7 +373,7 @@ def test_store_select_dense_tsd_changepoints():
     dense_cp = nap.Tsd(t=t, d=mask)
     group = nap.TsGroup({0: dense_cp})
     group.set_info(
-        type=["changepoints"],
+        **schema.changepoint_metadata(1),
         target_feature=["speed"],
         source_label=["unit_0"],
     )
@@ -399,7 +400,7 @@ def test_store_get_cp_times_sparse():
     cp_times = np.array([1.0, 3.5, 7.2])
     group = nap.TsGroup({0: nap.Ts(t=cp_times)})
     group.set_info(
-        type=["changepoints"],
+        **schema.changepoint_metadata(1),
         target_feature=["speed"],
         source_label=["unit_0"],
     )
@@ -467,7 +468,7 @@ def test_get_cp_times_with_offset():
     cp_times = np.array([16.0, 18.5, 22.2])
     group = nap.TsGroup({0: nap.Ts(t=cp_times)})
     group.set_info(
-        type=["changepoints"],
+        **schema.changepoint_metadata(1),
         target_feature=["speed"],
         source_label=["unit_0"],
     )

@@ -38,6 +38,15 @@ from ethograph.utils.paths import ethograph_home, get_project_root
 from ethograph.utils.xr_utils import get_ds_duration, get_time_coord, sel_valid
 
 
+def __getattr__(name: str):
+    """Expose ``eto.segment`` lazily — it imports torch, which the base install lacks."""
+    if name == "segment":
+        import ethograph.segment as segment
+
+        return segment
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
 def open(path: str) -> TrialTree:
     """Load a TrialTree from a saved NetCDF file.
 

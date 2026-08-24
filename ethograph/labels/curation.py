@@ -39,9 +39,22 @@ from ethograph.labels.intervals import (
     ensure_labeling_method,
 )
 
-#: Metadata-table column holding the per-trial verdict: 1 when every label
-#: of the trial is manual or curated, 0 while any is still automated.
+#: Metadata-table column holding the per-trial verdict: "yes" when every
+#: label of the trial is manual or curated, "no" while any is still
+#: automated. String-valued (not 0/1) so the trials table's funnel filter
+#: treats it as categorical (a yes/no checklist) rather than a numeric range.
 CURATED_COLUMN = "curated"
+CURATED_YES = "yes"
+CURATED_NO = "no"
+
+#: Metadata-table column holding a prediction run's verdict on each trial:
+#: whether its predicted events matched what the model's config declared it
+#: expects (:func:`~ethograph.labels.onset_model.check_expectations`).
+#: String-valued for the same reason :data:`CURATED_COLUMN` is, and derived
+#: state like it — both live here so ``io/metadata_edit.DERIVED_COLUMNS`` can
+#: keep them out of a recording without importing the model stack.
+EXPECTATION_COLUMN = "prediction_check"
+EXPECTED_OK = "ok"
 
 #: Visit order of the boundaries of one label: START before END.
 FIELD_RANK = {"point": 0, "start": 0, "end": 1}
@@ -203,16 +216,25 @@ def curated_column(metadata_df: pd.DataFrame | None, status: dict[str, bool]) ->
 
     ``None`` in, ``None`` out: there is no table to put the verdict in. A
     trial the status does not mention keeps whatever the column held (or
-    gets 0 when the column is new).
+    gets :data:`CURATED_NO` when the column is new).
     """
     if metadata_df is None:
         return None
     df = metadata_df.copy()
     if CURATED_COLUMN not in df.columns:
-        df[CURATED_COLUMN] = 0
-    values = df["trial"].astype(str).map(lambda t: int(status[t]) if t in status else None)
-    df[CURATED_COLUMN] = values.where(values.notna(), df[CURATED_COLUMN]).fillna(0).astype(int)
+        df[CURATED_COLUMN] = CURATED_NO
+    values = df["trial"].astype(str).map(lambda t: (CURATED_YES if status[t] else CURATED_NO) if t in status else None)
+    df[CURATED_COLUMN] = values.where(values.notna(), df[CURATED_COLUMN]).fillna(CURATED_NO)
     return df
+
+
+def _is_curated_value(value) -> bool:
+    """Read a (possibly legacy int-valued) curated cell as a bool."""
+    if isinstance(value, str):
+        return value.strip().lower() == CURATED_YES
+    if pd.isna(value):
+        return False
+    return bool(value)
 
 
 def curated_column_differs(metadata_df: pd.DataFrame | None, status: dict[str, bool]) -> bool:
@@ -226,7 +248,7 @@ def curated_column_differs(metadata_df: pd.DataFrame | None, status: dict[str, b
         if trial not in current:
             continue
         value = current[trial]
-        if pd.isna(value) or int(value) != int(curated):
+        if pd.isna(value) or _is_curated_value(value) != bool(curated):
             return True
     return False
 
@@ -274,12 +296,15 @@ def build_review_queue(
     *,
     individual: str | None = None,
     allowed_trials: set[str] | None = None,
+    automated_only: bool = False,
 ) -> list[ReviewTarget]:
     """Every boundary of the labels in scope, sorted (trial, onset).
 
     One target per point event, a start then an end target per state event,
     so each trial is visited once and in time order. *allowed_trials* (as
-    strings) is the trials-table filter.
+    strings) is the trials-table filter. *automated_only* skips manual and
+    already-curated labels — a human already vouched for those, so a
+    from-scratch review has nothing to add.
     """
     if all_df is None or all_df.empty:
         return []
@@ -288,7 +313,11 @@ def build_review_queue(
         mask &= all_df["individual"].astype(str) == str(individual)
     if allowed_trials is not None:
         mask &= all_df["trial"].astype(str).isin(allowed_trials)
-    rows = all_df[mask].sort_values(["trial", "onset_s"])
+    df = all_df
+    if automated_only:
+        df = ensure_labeling_method(all_df.copy())
+        mask &= df["labeling_method"] == LABELING_AUTOMATED
+    rows = df[mask].sort_values(["trial", "onset_s"])
     targets: list[ReviewTarget] = []
     for _, row in rows.iterrows():
         targets.extend(_targets_for_inst(_inst_from_row(row)))

@@ -100,6 +100,36 @@ inference — runs over the filtered trials only.
 
 ---
 
+(target-label-filter)=
+### Filtering by what the labels do
+
+The column filters ask about metadata. **Tools ▸ Find label inconsistencies…**
+asks about the labels themselves — which trials have an event without its
+partner, which ran the classes in an order they should not have, which are
+missing a sequence altogether. Type the label ids the way the Sequence
+navigator takes them (`1-2-6-8`) and pick the question:
+
+| | |
+|---|---|
+| **All of them occur** | the classes are all somewhere in the trial, any order |
+| **Some but not all occur** | one event without its partner — the uncoupled case |
+| **In this order** | in that order, other labels allowed in between (`1-2-6-6-8` matches `1-2-6-8`) |
+| **In this order, one straight after another** | the same, contiguously (`1-2-6-6-8` does *not* match) |
+
+**Invert** turns any of them into "find the trials where this is *not* true",
+which is how you ask which trials are missing the sequence. With more than one
+animal labelled, pick whose labels to read — two animals' events interleave,
+and an order across both means nothing.
+
+The count updates as you type. **Filter trials to these** puts the answer into
+the table's own **label filter**, a slot that sits *on top of* the column
+filters — so "wild-type trials where the order broke" is one question, and
+asking it does not throw the genotype filter away. The status line says when
+it is on, **Clear label filter** takes it off, and the column filters are
+untouched either way. Nothing about the labels is ever modified.
+
+---
+
 ### The `curated` column
 
 EthoGraph maintains one column itself: **`curated`** is `1` when every label

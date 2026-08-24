@@ -19,7 +19,7 @@ from movement.kinematics import (
 )
 
 import ethograph as eto
-from ethograph.gui.notify import notify, notify_dialog
+from ethograph.io import schema
 from ethograph.io.catalog import (
     DataCatalog,
     PynappleLoader,
@@ -202,6 +202,8 @@ def _load_pynapple_dataset(
         # Losing the alignment silently degrades everything downstream (no
         # trial timing, no media) — the user must see it, not just the log.
         fallback = f"sidecar {nwb_path}" if nwb_path else "NO alignment — trial timing and media unavailable"
+        from ethograph.gui.notify import notify
+
         notify(
             f"Alignment NWB not found: {alignment_path}\nFalling back to {fallback}.",
             severity="warning",
@@ -293,6 +295,8 @@ def _load_trialtree(
         error_msg = "\n".join(f"• {e}" for e in errors)
         suffix_msg = "\n\nSee documentation: XXX"
         msg = "Validation failed:\n" + error_msg + suffix_msg
+        from ethograph.gui.notify import notify_dialog
+
         notify_dialog(msg, "error", "Validation Error")
         raise ValueError(msg)
 
@@ -533,6 +537,8 @@ def wizard_single_from_pose(
             source_software=source_software,
         )
     except (OSError, ValueError, KeyError):
+        from ethograph.gui.notify import notify_dialog
+
         notify_dialog(
             f"Failed to load data from {pose_path}. Please check the file and try again.",
             "error",
@@ -540,9 +546,11 @@ def wizard_single_from_pose(
         )
         raise
 
-    ds["velocity"] = compute_velocity(ds.position)
-    ds["speed"] = compute_speed(ds.position)
-    ds["acceleration"] = compute_acceleration(ds.position)
+    ds["velocity"] = schema.describe(compute_velocity(ds.position), schema.KINEMATIC_FEATURE, is_egocentric=False)
+    ds["speed"] = schema.describe(compute_speed(ds.position), schema.KINEMATIC_FEATURE, is_egocentric=False)
+    ds["acceleration"] = schema.describe(
+        compute_acceleration(ds.position), schema.KINEMATIC_FEATURE, is_egocentric=False
+    )
 
     if "keypoint" in ds.coords and len(ds.keypoint) > 1:
         compute_pairwise_distances(ds.position, dim="keypoint", pairs="all")

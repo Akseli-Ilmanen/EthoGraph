@@ -31,6 +31,7 @@ from ethograph.features.changepoints import (
     extract_cp_times,
 )
 from ethograph.gui.notify import notify
+from ethograph.io import schema
 
 from .dialog_function_params import open_function_params_dialog
 from .make_pretty import styled_link
@@ -173,8 +174,9 @@ class ChangepointsWidget(QWidget):
             if var in new_ds.data_vars:
                 new_ds = new_ds.drop_vars(var)
 
+        # Onset/offset *times*, not a per-frame mask — read back by name, so
+        # they carry no schema attrs.
         attrs = {
-            "type": "audio_changepoints",
             "target_feature": target_feature,
             "method": method,
         }
@@ -560,7 +562,7 @@ class ChangepointsWidget(QWidget):
         if ds is None:
             return None, None
 
-        cp_ds = ds.filter_by_attrs(type="changepoints")
+        cp_ds = schema.filter_changepoints(ds)
         if len(cp_ds.data_vars) == 0:
             return None, None
 
@@ -853,12 +855,11 @@ class ChangepointsWidget(QWidget):
         new_ds[cp_var_name] = xr.Variable(
             dims=[time_coord.name],
             data=cp_array,
-            attrs={
-                "type": "changepoints",
-                "target_feature": features_sel,
-                "method": f"ruptures_{method}",
-                "model": model,
-            },
+            attrs=schema.changepoint_attrs(
+                target_feature=features_sel,
+                method=f"ruptures_{method}",
+                model=model,
+            ),
         )
 
         self._update_trial_dataset(new_ds)

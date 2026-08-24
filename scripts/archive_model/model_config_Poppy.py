@@ -7,6 +7,7 @@ import ethograph as eto
 from ethograph.model.dataset import save_config
 
 params_rigid = {
+    "Note": "Purge, stich and other changepoint_params determiend in configs/changepoints_settings.yaml",
     "fps": 200,
     "good_s3d_feats": None,
     "changepoint_feats": {
@@ -46,44 +47,35 @@ if __name__ == "__main__":
     trainDataReady = False
 
     # model_path = r"D:\Akseli\Code\ethograph\configs\model\Freddy_train_20251021_164220.json" # only for inference mode
-    model_path = os.path.join(
-        eto.get_project_root(), "configs", "crowlab", "model", "Ivy_train_20260505_165238_epoch-100.model"
-    )
-    # model_path = r"D:\Akseli\Code\ethograph\result\Poppy_train_20260331_175332\split_1\epoch-100.model"
+    # model_path = os.path.join(eto.get_project_root(), "configs", "crowlab", "model", "Ivy_train_20260202_191138_epoch-100.model")
+    model_path = r"D:\Akseli\Code\ethograph\result\Poppy_train_20260428_170036\split_1\epoch-100.model"
 
-    target_individual = "Ivy"  # predict labels for this individual
+    target_individual = "Poppy"  # predict labels for this individual
 
     cp_kwargs = {
-        "individual": target_individual,
-        "keypoint": "beakTip",
+        "individuals": target_individual,
+        "keypoints": "beakTip",
     }
     feat_kwargs = {
-        "keypoint": ["beakTip", "stickTip"],
-        "individual": target_individual,
+        "keypoints": ["beakTip", "stickTip"],
+        "individuals": target_individual,
     }
 
-    mapping_file = os.path.join(eto.get_project_root(), "configs", "crowlab", "mapping_Ivy.txt")  # CHANGE FOR Ivy/poppy
+    mapping_file = os.path.join(eto.get_project_root(), "configs", "crowlab", "mapping.txt")  # CHANGE FOR Ivy/poppy
 
     nc_paths = [
-        # train
-        # r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250306_01\behav\Trial_data.nc",
-        # r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250309_01\behav\Trial_data.nc",
-        # r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250503_02\behav\Trial_data.nc",
-        # r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250514_01\behav\Trial_data.nc",
-        # r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250504_01\behav\Trial_data.nc",
-        # r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250505_01\behav\Trial_data.nc",
-        # r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250307_01\behav\Trial_data.nc",
-        # r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250308_01\behav\Trial_data.nc",
-        # r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250506_02\behav\Trial_data.nc",
-        # r"D:\Akseli\AI_data\derivatives\sub-01_id-Ivy\ses-000_date-20260414_01\behav\Trial_data.nc",
-        # r"D:\Akseli\AI_data\derivatives\sub-01_id-Ivy\ses-000_date-20260416_01\behav\Trial_data.nc",
-        # inference
-        r"D:\Akseli\AI_data\derivatives\sub-01_id-Ivy\ses-000_date-20260413_01\behav\Trial_data.nc",
-        r"D:\Akseli\AI_data\derivatives\sub-01_id-Ivy\ses-000_date-20260415_01\behav\Trial_data.nc",
-        r"D:\Akseli\AI_data\derivatives\sub-01_id-Ivy\ses-000_date-20260417_01\behav\Trial_data.nc",
-        r"D:\Akseli\AI_data\derivatives\sub-01_id-Ivy\ses-000_date-20260420_01\behav\Trial_data.nc",
-        r"D:\Akseli\AI_data\derivatives\sub-01_id-Ivy\ses-000_date-20260421_01\behav\Trial_data.nc",
-        r"D:\Akseli\AI_data\derivatives\sub-01_id-Ivy\ses-000_date-20260424_01\behav\Trial_data.nc",
+        # r"D:\Akseli\AI_data\derivatives\sub-02_id-Poppy\ses-000_date-20260308_01\behav\Trial_data.nc",
+        # r"D:\Akseli\AI_data\derivatives\sub-02_id-Poppy\ses-000_date-20260309_01\behav\Trial_data.nc",
+        # r"D:\Akseli\AI_data\derivatives\sub-02_id-Poppy\ses-000_date-20260310_01\behav\Trial_data.nc",
+        # r"D:\Akseli\AI_data\derivatives\sub-02_id-Poppy\ses-000_date-20260311_01\behav\Trial_data.nc",
+        # r"D:\Akseli\AI_data\derivatives\sub-02_id-Poppy\ses-000_date-20260312_01\behav\Trial_data.nc",
+        # r"D:\Akseli\AI_data\derivatives\sub-02_id-Poppy\ses-000_date-20260304_01\behav\Trial_data.nc",
+        # r"D:\Akseli\AI_data\derivatives\sub-02_id-Poppy\ses-000_date-20260305_01\behav\Trial_data.nc", # MISSING ACCELEROMETER FEATURES?
+        # r"D:\Akseli\AI_data\derivatives\sub-02_id-Poppy\ses-000_date-20260305_02\behav\Trial_data.nc",
+        # r"D:\Akseli\AI_data\derivatives\sub-02_id-Poppy\ses-000_date-20260306_01\behav\Trial_data.nc",
+        # r"D:\Akseli\AI_data\derivatives\sub-02_id-Poppy\ses-000_date-20260307_01\behav\Trial_data.nc",
+        # r"D:\Akseli\AI_data\derivatives\sub-02_id-Poppy\ses-000_date-20260313_01\behav\Trial_data.nc",
+        # r"D:\Akseli\AI_data\derivatives\sub-02_id-Poppy\ses-000_date-20260317_01\behav\Trial_data.nc",
     ]
 
     params_dynamic = copy.deepcopy(params_rigid)
@@ -101,7 +93,7 @@ if __name__ == "__main__":
             params_dynamic["test_nc_paths"] = [nc_paths[0]]  # For compatibility, no eval
         if action in ["inference"]:
             params_dynamic["test_nc_paths"] = nc_paths  # Inference on all sessions
-        config_path = save_config(params_dynamic, "configs/model", action)
+        config_path = save_config(params_dynamic, "configs/crowlab/model", action)
 
         if action == "train":
             print("Next run: \npython scripts/model/model_run.py --config {} --action train".format(config_path))
@@ -123,7 +115,7 @@ if __name__ == "__main__":
             train_nc_paths = [nc_paths[i] for i in range(num_sessions) if i != fold_id]
             params_dynamic[f"split_{fold_id + 1}"] = {"train_nc_paths": train_nc_paths, "test_nc_paths": test_nc_paths}
 
-        config_path = save_config(params_dynamic, "configs/crowlab/model", action)
+        config_path = save_config(params_dynamic, "configs/model", action)
 
         eto.get_project_root()
 

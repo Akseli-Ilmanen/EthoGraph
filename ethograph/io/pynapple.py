@@ -11,6 +11,7 @@ import pynapple as nap
 from scipy.ndimage import gaussian_filter1d
 
 from ethograph.features.movement import get_angle_rgb
+from ethograph.io import schema
 
 ## IO
 
@@ -159,8 +160,7 @@ def add_changepoints_to_nap(
     group = nap.TsGroup(ts_dict, time_support=data.time_support)
     group.set_info(
         source_label=list(units.keys()),
-        target_feature=[target_feature] * len(units),
-        type=["changepoints"] * len(units),
+        **schema.changepoint_metadata(len(units), target_feature=target_feature),
     )
 
     if isinstance(data, nap.TsGroup) and data.metadata is not None:

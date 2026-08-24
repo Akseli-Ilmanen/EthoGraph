@@ -56,6 +56,9 @@ from .plots_raster import RasterPlot
 from .plots_spectrogram import SharedAudioCache, SpectrogramPlot
 from .widgets_transform import compute_energy_envelope
 
+#: Overlay-name prefix of the per-class onset-model probability curves.
+ONSET_CURVE_PREFIX = "onset_curve:"
+
 # Panel size ratios keyed by (has_audio, has_neurons_or_neo)
 # Values: dict mapping panel_name -> fraction of splitter height
 _PANEL_RATIOS = {
@@ -293,6 +296,9 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         self._pending_label_anchor: float | None = None
 
         self.overlay_manager = OverlayManager()
+        #: Overlay names of the onset curves currently drawn, so they can be
+        #: taken down again without the manager growing a query API.
+        self._onset_curve_names: list[str] = []
         self.ephys_trace_plot.vb.sigYRangeChanged.connect(
             lambda: self.overlay_manager.rescale_for_plot(self.ephys_trace_plot)
         )
@@ -1489,6 +1495,58 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
 
     def hide_confidence_plot(self):
         self.overlay_manager.remove_overlay("confidence")
+
+    # --- Onset-model probability curves ---
+
+    def show_onset_curves(self, time, curves: dict, colors: dict | None = None) -> int:
+        """One dashed curve per label class over the current plot.
+
+        What an onset model believed frame by frame, in each class's own
+        colour. Every class is scaled against a fixed 0–1 range rather than
+        its own extent, so their heights mean the same thing — the point is
+        seeing one class's belief rise where another class's event sits.
+
+        Returns how many were drawn — 0 when no open panel can host them.
+        """
+        self.hide_onset_curves()
+        host = self.overlay_host()
+        if host is None or time is None or len(time) == 0:
+            return 0
+        for label, curve in curves.items():
+            color = (colors or {}).get(label) or "k"
+            item = pg.PlotCurveItem(pen=pg.mkPen(color=color, width=2, style=Qt.PenStyle.DashLine))
+            name = f"{ONSET_CURVE_PREFIX}{label}"
+            self.overlay_manager.add_scaled_overlay(
+                name,
+                host,
+                item,
+                np.asarray(time, dtype=np.float64),
+                np.asarray(curve, dtype=np.float64),
+                data_min=0.0,
+                data_max=1.0,
+                tick_format="{:.2f}",
+            )
+            self._onset_curve_names.append(name)
+        return len(self._onset_curve_names)
+
+    def overlay_host(self):
+        """An **open** panel to hang a time overlay on, or ``None``.
+
+        :meth:`get_current_plot` never returns None — with no feature panel
+        open it hands back a hidden stand-in, which silently swallows an
+        overlay. Anything the user is meant to *see* asks here instead: the
+        active feature panel when it is open, else any open panel that can
+        host one, else nothing at all.
+        """
+        current = self.get_current_plot()
+        if current in self._dyn_panels:
+            return current
+        return next((p for p in self._dyn_panels if hasattr(p, "vb") and hasattr(p, "plot_item")), None)
+
+    def hide_onset_curves(self) -> None:
+        for name in self._onset_curve_names:
+            self.overlay_manager.remove_overlay(name)
+        self._onset_curve_names = []
 
     # --- Amplitude envelope ---
 

@@ -29,10 +29,9 @@ dependencies = [
     "netcdf4",
     "scipy",
     # scikit-learn: the LightGBM-style onset detector (labels/onset_model.py).
-    # sklearn-crfsuite: its optional sequence model. joblib is sklearn's own
-    # dependency but we import it directly to store trained bundles.
+    # joblib is sklearn's own dependency but we import it directly to store
+    # trained bundles.
     "scikit-learn",
-    "sklearn-crfsuite",
     "joblib",
     "matplotlib",
     "pynapple>=0.10",
@@ -109,11 +108,21 @@ proxy = [
 ]
 
 
-# Model training (experimental): ethograph.model + ethograph.video_features
-# torch/torchvision are deliberately excluded — install a CUDA-matched build
-# first (see docs), otherwise pip may replace it with a CPU-only wheel.
+# Segmentation pipeline (ethograph.segment) + S3D video features
+# (ethograph.video_features). torch/torchvision are deliberately excluded —
+# install a CUDA-matched build first (see docs), otherwise pip may replace it
+# with a CPU-only wheel.
 model = [
     "tqdm",
+    "movement>=0.14",
+    "av>=12",
+    # Used by the vendored DLC2Action MotionBERT model
+    # (ethograph/segment/dlc2action/model/motionbert.py); upstream requires it too.
+    "einops",
+    # Hyperparameter search (ethograph/segment/search.py): the study is scored
+    # on the validation split and stored in searches/{name}/study.db, so a
+    # search resumes rather than restarting.
+    "optuna",
 ]
 
 # PosePAL fill backend for pose keypoints (CoTracker3 + query-feature
@@ -172,6 +181,8 @@ exclude = ["tests", "docs*"]
 "ethograph.gui" = ["*.yaml", "assets/templates/*", "templates/*.j2"]
 ethograph = ["assets/*", "geometries/*"]
 "ethograph._vendor.vocalseg" = ["LICENSE"]
+# The architectures read their defaults from these at build time — see NOTICE.md.
+"ethograph.segment.dlc2action" = ["config/**/*.yaml", "NOTICE.md", "LICENSE.APGPL", "colors.txt"]
 
 [tool.setuptools.exclude-package-data]
 "ethograph.video_features" = ["checkpoint/*.pt"]
@@ -220,7 +231,7 @@ ignore = [
 
 [tool.ruff]
 line-length = 120
-exclude = ["__init__.py", "build", ".eggs", "scripts", "ethograph/_vendor", "*.ipynb"]
+exclude = ["__init__.py", "build", ".eggs", "scripts", "ethograph/_vendor", "ethograph/segment/dlc2action", "*.ipynb", ".archive"]
 lint.select = [
     "E",
     "F",
@@ -237,7 +248,7 @@ docstring-code-format = true
 # (chiefly "this could be None and you didn't handle it") without demanding
 # that every function be annotated. Tighten later if the signal proves useful.
 files = ["ethograph"]
-exclude = ['ethograph/_vendor/', '/_test_']
+exclude = ['ethograph/_vendor/', 'ethograph/segment/dlc2action/', '/_test_']
 ignore_missing_imports = true
 follow_imports = "silent"
 disallow_untyped_defs = false

@@ -17,6 +17,8 @@ from typing import TYPE_CHECKING, Any, Callable, Protocol, runtime_checkable
 
 import numpy as np
 
+from ethograph.io import schema
+
 if TYPE_CHECKING:
     import xarray as xr
 
@@ -429,7 +431,7 @@ class XarrayLoader(_CatalogMixin):
 
         changepoints = None
         if data.ndim == 1:
-            cp_ds = ds.filter_by_attrs(type="changepoints")
+            cp_ds = schema.filter_changepoints(ds)
             cp_dict: dict[str, np.ndarray] = {}
             for cp_name in cp_ds.data_vars:
                 cp_var = cp_ds[cp_name]
@@ -717,12 +719,12 @@ class PynappleLoader(_CatalogMixin):
                 if not (hasattr(raw_obj, "metadata") and raw_obj.metadata is not None):
                     continue
                 meta = raw_obj.metadata
-                if "type" not in meta.columns:
+                cp_units = schema.changepoint_units(meta)
+                if not cp_units:
                     continue
                 target = meta["target_feature"].iloc[0] if "target_feature" in meta.columns else None
                 if target != feature:
                     continue
-                cp_units = meta.index[meta["type"] == "changepoints"]
                 for uid in cp_units:
                     ts_obj = raw_obj[uid]
                     ts_obj = self._restrict(ts_obj, t0, t1)
@@ -775,12 +777,12 @@ class PynappleLoader(_CatalogMixin):
             if not (hasattr(obj, "metadata") and obj.metadata is not None):
                 continue
             meta = obj.metadata
-            if "type" not in meta.columns:
+            cp_units = schema.changepoint_units(meta)
+            if not cp_units:
                 continue
             if feature and "target_feature" in meta.columns:
                 if meta["target_feature"].iloc[0] != feature:
                     continue
-            cp_units = meta.index[meta["type"] == "changepoints"]
             for uid in cp_units:
                 ts_obj = obj[uid]
                 ts_obj = self._restrict(ts_obj, t0, t1)
@@ -899,7 +901,7 @@ def _feature_vars(ds: xr.Dataset) -> list[str]:
     for name, var in ds.data_vars.items():
         if name in _EXCLUDED_VARS:
             continue
-        if var.attrs.get("type") == "changepoints":
+        if schema.is_changepoint(var):
             continue
         if any("time" in str(d).lower() for d in var.dims):
             features.append(name)
@@ -920,7 +922,7 @@ def _auto_catalog_xarray(ds: xr.Dataset) -> DataCatalog:
         combos[_ind_dim] = ComboSpec(_ind_dim, vals)
 
     features_list = _feature_vars(ds)
-    changepoints_list = list(ds.filter_by_attrs(type="changepoints").data_vars)
+    changepoints_list = schema.changepoint_vars(ds)
 
     if features_list:
         combos["features"] = ComboSpec("features", tuple(features_list))
@@ -967,7 +969,7 @@ def catalog_from_xarray(ds: xr.Dataset, dt: TrialTree, nwb_alignment=None) -> Da
         combos[_ind_dim] = ComboSpec(_ind_dim, vals)
 
     features_list = _feature_vars(ds)
-    changepoints_list = list(ds.filter_by_attrs(type="changepoints").data_vars)
+    changepoints_list = schema.changepoint_vars(ds)
 
     if features_list:
         combos["features"] = ComboSpec("features", tuple(features_list))
@@ -1087,8 +1089,7 @@ def catalog_from_pynapple(
 
         if isinstance(obj, nap.TsGroup):
             if hasattr(obj, "metadata") and obj.metadata is not None:
-                meta = obj.metadata
-                if "type" in meta.columns and "changepoints" in meta["type"].unique():
+                if schema.changepoint_units(obj.metadata):
                     changepoints.append(key)
             continue
 
