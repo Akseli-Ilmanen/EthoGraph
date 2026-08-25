@@ -45,9 +45,8 @@ ethograph launch
 projects and is always available without activating anything.
 
 ```{danger}
-**On Linux/WSL, install the system libraries before first launch.** The wheels bundle Qt, OpenGL bindings and wgpu, but still load some shared libraries from the distro — without them the GUI opens black or not at all. One `apt`/`dnf` line, once per machine: {ref}`Linux: system libraries <linux-system-libraries>`.
-
-`ethograph check` reports missing libraries; `ethograph launch` warns before opening a window.
+**Linux/WSL:** missing system libraries can cause a black or failed launch. Run `ethograph check` to see what you need to install. See further {ref}`Linux: system libraries <linux-system-libraries>`.
+```
 
 First `ethograph launch` may fail with *"not recognized"* (Windows) or *"command not found"* (macOS/Linux) — uv hasn't added its bin dir to `PATH` yet. Fix once with:
 
