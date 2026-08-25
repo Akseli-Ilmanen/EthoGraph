@@ -7,8 +7,7 @@ from tqdm.autonotebook import tqdm
 from .dynamic_thresholding import dynamic_threshold_segmentation
 from .utils import plot_spec
 
-cmap = matplotlib.colors.ListedColormap(np.random.rand(256, 3))
-cmap.set_bad(color=(0, 0, 0, 0))
+cmap = matplotlib.colors.ListedColormap(np.random.rand(256, 3)).with_extremes(bad=(0, 0, 0, 0))
 
 
 def continuity_segmentation(
