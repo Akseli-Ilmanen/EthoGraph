@@ -36,6 +36,7 @@ uv tool install --python 3.12 "ethograph[gui,audio]"
 Then launch it from any terminal:
 
 ```bash
+ethograph check # Linux only
 ethograph launch
 ```
 
@@ -201,7 +202,7 @@ can help here: it keeps all conda-installed packages on one channel, avoiding
 ABI conflicts between `defaults` and `conda-forge` builds of shared libraries
 that PyTorch/CUDA packages depend on.
 ```
-s
+
 
 (target-keypoint-fill)=
 ## Keypoint labelling backends (optional)
