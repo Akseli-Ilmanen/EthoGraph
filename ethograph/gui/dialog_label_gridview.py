@@ -981,6 +981,12 @@ def capture_panel_images(
             shots: list[tuple[str, QImage]] = []
             for title, widget in panels:
                 try:
+                    # repaint() forces the widget to redraw synchronously right
+                    # now, unlike update() (which only schedules one) — without
+                    # it grab() can catch the backing store between the marker
+                    # move and its next paint pass, capturing it without the
+                    # red time-marker line.
+                    widget.repaint()
                     shots.append((title, widget.grab().toImage().convertToFormat(QImage.Format_RGB888)))
                 except RuntimeError:
                     logger.warning("Panel %r was closed during capture — skipped.", title)

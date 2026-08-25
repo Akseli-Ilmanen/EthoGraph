@@ -2,7 +2,9 @@
 
 Qt clamps a dock-separator drag at the minimum size of the widgets on either
 side, so this is a test about minimums: the top area (video + space plots) and
-the central plot container must both be able to shrink to ~10% of the window.
+the central plot container must both be able to shrink to ~10% of the space
+the separator actually controls — the window height minus the menu bar and
+the bottom playback bar, which are fixed chrome the separator never touches.
 """
 
 from __future__ import annotations
@@ -12,12 +14,33 @@ from qtpy.QtCore import Qt
 from ethograph.gui.app_constants import PANEL_MIN_HEIGHT
 
 
+def _splittable_height(shell) -> int:
+    """Height available to the video/plots split, excluding fixed chrome
+    (menu bar, bottom playback bar) the separator does not resize."""
+    menu_h = shell.menuBar().height() if shell.menuBar() else 0
+    return shell.height() - menu_h - shell._bottom_bar_dock.height()
+
+
 def _drag_video_dock_to(shell, qtbot, fraction: float) -> float:
-    """Resize the video dock to *fraction* of the window and return the
-    fraction it actually got (what a separator drag to that point yields)."""
-    height = shell.height()
+    """Resize the video dock to *fraction* of the splittable height and
+    return the fraction it actually got (what a separator drag to that point
+    yields)."""
+    height = _splittable_height(shell)
     shell.resizeDocks([shell._video_dock], [int(height * fraction)], Qt.Vertical)
-    qtbot.wait(50)
+    # resizeDocks only schedules the layout pass; under load the dock's height
+    # can still be mid-transition after a single fixed wait, so poll until two
+    # consecutive reads agree instead of guessing a sleep long enough.
+    qtbot.wait(10)
+    last = None
+
+    def _has_settled():
+        nonlocal last
+        current = shell._video_dock.height()
+        stable = current == last
+        last = current
+        return stable
+
+    qtbot.waitUntil(_has_settled, timeout=2000)
     return shell._video_dock.height() / height
 
 

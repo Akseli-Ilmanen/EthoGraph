@@ -732,6 +732,7 @@ class EphysWidget(QWidget):
         self._filter_header.setStretchLastSection(False)
         self._filter_header.filter_requested.connect(self._on_filter_header_clicked)
         self.cluster_table.setHorizontalHeader(self._filter_header)
+        self._filter_header.setSortIndicator(-1, Qt.AscendingOrder)
         self.cluster_table.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
 
         self.cluster_table.setStyleSheet("""

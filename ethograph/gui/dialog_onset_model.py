@@ -190,9 +190,24 @@ def predict_onsets(
 
     Each class is filled independently and a trial already carrying one is
     never overridden for it. Returns ``None`` when the model cannot be
-    loaded — the reason is notified.
+    loaded, or when *individual* names somebody this session does not have —
+    the reason is notified.
     """
     app_state = meta.app_state
+    known = app_state.label_individuals()
+    if individual not in known:
+        # A label belongs to one (actor, recipient) pair and the overlay draws
+        # only the selected pair, so an event written for somebody this
+        # session has never heard of is stored and never seen. Say so instead
+        # of producing invisible labels — the usual cause is a workflow copied
+        # between animals with its predict step's individual left behind.
+        notify(
+            f"The model would write its events for {individual!r}, but this session labels "
+            f"{', '.join(known)} — those events would never be drawn. "
+            "Set the individual in the Predict dialog, or in the workflow's Predict onsets step.",
+            severity="warning",
+        )
+        return None
     try:
         bundle = om.load_bundle(name)
     except ValueError as e:
@@ -467,6 +482,27 @@ class TrainOnsetDialog(QDialog):
         model_row.addWidget(self.name_edit, stretch=1)
         layout.addLayout(model_row)
 
+        self.copy_widget = QGroupBox()
+        self.copy_widget.setFlat(True)
+        copy_row = QHBoxLayout(self.copy_widget)
+        copy_row.setContentsMargins(0, 0, 0, 0)
+        copy_row.addWidget(QLabel("Copy config from:"))
+        self.copy_combo = QComboBox()
+        self.copy_combo.addItem("")
+        for name in om.list_models():
+            self.copy_combo.addItem(name)
+        copy_row.addWidget(self.copy_combo, stretch=1)
+        self.copy_btn = QPushButton("Copy")
+        self.copy_btn.setAutoDefault(False)
+        self.copy_btn.setToolTip(
+            "Load another model's targets, features and parameters as a\n"
+            "starting point for this new model — freely editable afterwards,\n"
+            "since nothing is saved until Add training data or Train runs."
+        )
+        self.copy_btn.clicked.connect(self._copy_config)
+        copy_row.addWidget(self.copy_btn)
+        layout.addWidget(self.copy_widget)
+
         target_group = QGroupBox("1 — Point events to predict")
         target_lay = QVBoxLayout(target_group)
         self.target_list = QListWidget()
@@ -544,7 +580,7 @@ class TrainOnsetDialog(QDialog):
         self.status_label.setWordWrap(True)
         layout.addWidget(self.status_label)
 
-        self.resize(460, 640)
+        self.resize(640, 780)
         self._on_model_changed(self.model_combo.currentText())
 
     # ------------------------------------------------------------------
@@ -567,6 +603,7 @@ class TrainOnsetDialog(QDialog):
         is_new = self.model_combo.currentIndex() == 0
         for widget in self._config_widgets():
             widget.setEnabled(is_new)
+        self.copy_widget.setVisible(is_new)
         self._config = None
         self.session_list.clear()
         if is_new:
@@ -611,6 +648,35 @@ class TrainOnsetDialog(QDialog):
         for session, meta_dict in om.list_sessions(self._config.name).items():
             n = meta_dict.get("n_trials", "?")
             self.session_list.addItem(QListWidgetItem(f"{session} — {n} trials"))
+
+    def _copy_config(self):
+        """Load another model's targets/features/parameters as an editable
+        starting point for this *new* model. Nothing is saved until Add
+        training data or Train runs, so the copy can be freely reshaped."""
+        name = self.copy_combo.currentText()
+        if not name:
+            return
+        try:
+            source = om.load_config(name)
+        except ValueError as e:
+            notify(str(e), severity="warning")
+            return
+
+        available = {int(self.target_list.item(i).data(Qt.UserRole)): i for i in range(self.target_list.count())}
+        for label_id, i in available.items():
+            self.target_list.item(i).setCheckState(Qt.Checked if label_id in source.targets else Qt.Unchecked)
+        missing = [n for label_id, n in source.targets.items() if label_id not in available]
+
+        self.tree.populate_from_config(source)
+        self.window_spin.setValue(source.window_s)
+        self.tolerance_spin.setValue(source.tolerance_s)
+        self.max_iter_spin.setValue(source.max_iter)
+        self.lr_spin.setValue(source.learning_rate)
+
+        msg = f"Copied config from {name!r} — edit freely, then Train to save as a new model."
+        if missing:
+            msg += f" Not available in this session's point events: {', '.join(missing)}."
+        self.status_label.setText(msg)
 
     def _ensure_config(self) -> om.OnsetModelConfig | None:
         """The active config, creating + saving a new model's on first use."""

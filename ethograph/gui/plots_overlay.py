@@ -65,6 +65,32 @@ class OverlayManager:
         self._rescaling = False
 
     # ------------------------------------------------------------------
+    # Host liveness
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _host_gone(host_plot) -> bool:
+        """Whether *host_plot*'s Qt object has been destroyed.
+
+        An overlay outlives its host whenever the panel it hangs on is closed
+        while the overlay is still registered — an onset-curve review whose
+        feature panel the user closes mid-session. Every later access then
+        raises ``RuntimeError: wrapped C/C++ object ... has been deleted``, so
+        the entry is dropped instead of touching the corpse.
+        """
+        try:
+            host_plot.plot_item.getAxis("right")
+        except (RuntimeError, AttributeError):
+            return True
+        return False
+
+    def _drop_dead_hosts(self) -> None:
+        """Forget every overlay whose panel has been closed."""
+        for store in (self._entries, self._vb_entries):
+            for name in [n for n, e in store.items() if self._host_gone(e.host_plot)]:
+                del store[name]
+
+    # ------------------------------------------------------------------
     # Scaled overlays (existing API)
     # ------------------------------------------------------------------
 
@@ -107,6 +133,9 @@ class OverlayManager:
 
     def rescale_for_plot(self, host_plot):
         if self._rescaling:
+            return
+        if self._host_gone(host_plot):
+            self._drop_dead_hosts()
             return
         self._rescaling = True
         try:
@@ -201,7 +230,8 @@ class OverlayManager:
                 scaled.host_plot.vb.removeItem(scaled.item)
             except (RuntimeError, AttributeError, ValueError):
                 pass
-            self._update_right_axis(scaled.host_plot)
+            if not self._host_gone(scaled.host_plot):
+                self._update_right_axis(scaled.host_plot)
             return
 
         vb_entry = self._vb_entries.pop(name, None)
@@ -209,6 +239,8 @@ class OverlayManager:
             return
 
         host = vb_entry.host_plot
+        if self._host_gone(host):
+            return
 
         if vb_entry.geometry_updater:
             try:

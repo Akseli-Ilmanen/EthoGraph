@@ -413,19 +413,22 @@ class XarrayLoader(_CatalogMixin):
             color_var = ds[color_variable]
             color_kwargs = {k: v for k, v in _selections_for_var(selections, color_var).items() if k != "RGB"}
             # The panel's selections are sanitized against its FEATURE's dims
-            # only, so a multi-value dim the colour var alone carries (or one
-            # whose pinned value the colour var lacks — e.g. a stale saved
-            # layout) would reach sel_valid free and blow its (time,)/(time, D)
-            # shape assertion. Pin such dims to their first value, the same
-            # rule _sanitize_selections applies to extra feature dims.
+            # only, so a dim the colour var alone carries reaches here unjudged:
+            # free (blowing sel_valid's (time,)/(time, D) shape assertion) or
+            # pinned to a value from another dataset (a KeyError out of .sel).
+            # Both are settled the way _sanitize_selections settles extra feature
+            # dims — pin to the first value. A value the colour var does not have
+            # is stale whatever the dim's size: a session with a single individual
+            # is exactly where another dataset's name lands.
             for d in color_var.dims:
-                if "time" in str(d).lower() or d == "RGB" or color_var.sizes[d] <= 1:
+                if "time" in str(d).lower() or d == "RGB":
                     continue
                 if d in color_var.coords:
                     coord_vals = color_var.coords[d].values
-                    if d not in color_kwargs or color_kwargs[d] not in coord_vals:
+                    stale = d in color_kwargs and color_kwargs[d] not in coord_vals
+                    if stale or (d not in color_kwargs and color_var.sizes[d] > 1):
                         color_kwargs[d] = coord_vals[0]
-                elif d not in color_kwargs:
+                elif d not in color_kwargs and color_var.sizes[d] > 1:
                     color_kwargs[d] = 0
             color_data, _ = eto.sel_valid(color_var, color_kwargs)
 

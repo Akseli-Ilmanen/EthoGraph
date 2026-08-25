@@ -1,5 +1,5 @@
 diff --git a/dataset/frame.py b/dataset/frame.py
-index d927a57..35d970a 100644
+index d927a57..8330139 100644
 --- a/dataset/frame.py
 +++ b/dataset/frame.py
 @@ -125,7 +125,7 @@ def _get_deferred_rgb_transform():
@@ -38,6 +38,17 @@ index d927a57..35d970a 100644
          for event in meta['events']:
              frame = event['frame']
              if frame < num_frames:
+@@ -526,6 +526,10 @@ class ActionSpotVideoDataset(Dataset):
+     def augment(self):
+         return self._flip or self._multi_crop
+ 
++    @property
++    def clip_len(self):
++        return self._clip_len
++
+     @property
+     def videos(self):
+         return sorted([
 diff --git a/model/shift.py b/model/shift.py
 index 182517f..8122db4 100644
 --- a/model/shift.py
@@ -65,20 +76,52 @@ index c481e03..e0ec6f1 100755
      pred_file = None
      if save_as is not None:
 diff --git a/train_e2e.py b/train_e2e.py
-index 2e6c46d..97d4d6a 100755
+index 2e6c46d..5e22c39 100755
 --- a/train_e2e.py
 +++ b/train_e2e.py
-@@ -76,6 +76,8 @@ def get_args():
+@@ -35,6 +35,15 @@ BASE_NUM_VAL_EPOCHS = 20
+ 
+ INFERENCE_BATCH_SIZE = 4
+ 
++# Peak memory tracks frames per batch, not clips, so a batch of 4 clips means
++# 4 x clip_len frames — 800 at clip_len 200, which pages a 10 GB card. Size
++# the inference batch by frames instead; upstream's 4 x 100 is the ceiling.
++INFERENCE_BATCH_FRAMES = 400
++
++
++def inference_batch_size(clip_len):
++    return max(1, INFERENCE_BATCH_FRAMES // clip_len)
++
+ 
+ # Prevent the GRU params from going too big (cap it at a RegNet-Y 800MF)
+ MAX_GRU_HIDDEN_DIM = 768
+@@ -76,6 +85,11 @@ def get_args():
          help='Spotting architecture, after spatial pooling')
  
      parser.add_argument('--clip_len', type=int, default=100)
 +    parser.add_argument('--stride', type=int, default=1,
 +                        help='Read every k-th frame: k times the context per clip for the same compute, at k-frame resolution')
++    parser.add_argument('--epoch_num_frames', type=int, default=EPOCH_NUM_FRAMES,
++                        help='Frames per epoch, independent of dataset size. '
++                             'Halving it halves the wall clock of an epoch')
      parser.add_argument('--crop_dim', type=int, default=224)
      parser.add_argument('--batch_size', type=int, default=8)
      parser.add_argument('-ag', '--acc_grad_iter', type=int, default=1,
-@@ -411,7 +413,7 @@ def get_datasets(args):
-     dataset_len = EPOCH_NUM_FRAMES // args.clip_len
+@@ -312,7 +326,7 @@ def evaluate(model, dataset, split, classes, save_pred, calc_stats=True,
+             np.zeros(video_len, np.int32))
+ 
+     # Do not up the batch size if the dataset augments
+-    batch_size = 1 if dataset.augment else INFERENCE_BATCH_SIZE
++    batch_size = 1 if dataset.augment else inference_batch_size(dataset.clip_len)
+ 
+     for clip in tqdm(DataLoader(
+             dataset, num_workers=BASE_NUM_WORKERS * 2, pin_memory=True,
+@@ -408,10 +422,10 @@ def get_best_epoch_and_history(save_dir, criterion):
+ def get_datasets(args):
+     classes = load_classes(os.path.join('data', args.dataset, 'class.txt'))
+ 
+-    dataset_len = EPOCH_NUM_FRAMES // args.clip_len
++    dataset_len = args.epoch_num_frames // args.clip_len
      dataset_kwargs = {
          'crop_dim': args.crop_dim, 'dilate_len': args.dilate_len,
 -        'mixup': args.mixup
@@ -86,7 +129,7 @@ index 2e6c46d..97d4d6a 100755
      }
  
      if args.fg_upsample is not None:
-@@ -436,7 +438,7 @@ def get_datasets(args):
+@@ -436,7 +450,7 @@ def get_datasets(args):
          val_data_frames = ActionSpotVideoDataset(
              classes, os.path.join('data', args.dataset, 'val.json'),
              args.frame_dir, args.modality, args.clip_len,
@@ -95,7 +138,7 @@ index 2e6c46d..97d4d6a 100755
  
      return classes, train_data, val_data, val_data_frames
  
-@@ -473,6 +475,7 @@ def store_config(file_path, args, num_epochs, classes):
+@@ -473,6 +487,7 @@ def store_config(file_path, args, num_epochs, classes):
          'feature_arch': args.feature_arch,
          'temporal_arch': args.temporal_arch,
          'clip_len': args.clip_len,
@@ -103,7 +146,13 @@ index 2e6c46d..97d4d6a 100755
          'batch_size': args.batch_size,
          'crop_dim': args.crop_dim,
          'num_epochs': num_epochs,
-@@ -485,7 +488,23 @@ def store_config(file_path, args, num_epochs, classes):
+@@ -480,12 +495,28 @@ def store_config(file_path, args, num_epochs, classes):
+         'learning_rate': args.learning_rate,
+         'start_val_epoch': args.start_val_epoch,
+         'gpu_parallel': args.gpu_parallel,
+-        'epoch_num_frames': EPOCH_NUM_FRAMES,
++        'epoch_num_frames': args.epoch_num_frames,
+         'dilate_len': args.dilate_len,
          'mixup': args.mixup,
          'fg_upsample': args.fg_upsample
      }
@@ -128,7 +177,7 @@ index 2e6c46d..97d4d6a 100755
  
  
  def get_num_train_workers(args):
-@@ -519,8 +538,7 @@ def main(args):
+@@ -519,8 +550,7 @@ def main(args):
  
      classes, train_data, val_data, val_data_frames = get_datasets(args)
  
@@ -138,7 +187,7 @@ index 2e6c46d..97d4d6a 100755
      loader_batch_size = args.batch_size // args.acc_grad_iter
      train_loader = DataLoader(
          train_data, shuffle=False, batch_size=loader_batch_size,
-@@ -553,9 +571,10 @@ def main(args):
+@@ -553,9 +583,10 @@ def main(args):
          epoch += 1
  
      # Write it to console
@@ -150,7 +199,7 @@ index 2e6c46d..97d4d6a 100755
          train_loss = model.epoch(
              train_loader, optimizer, scaler,
              lr_scheduler=lr_scheduler, acc_grad_iter=args.acc_grad_iter)
-@@ -624,6 +643,7 @@ def main(args):
+@@ -624,6 +655,7 @@ def main(args):
                  split_data = ActionSpotVideoDataset(
                      classes, split_path, args.frame_dir, args.modality,
                      args.clip_len, overlap_len=args.clip_len // 2,

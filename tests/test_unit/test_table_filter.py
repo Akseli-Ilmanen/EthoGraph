@@ -99,6 +99,18 @@ def test_the_category_dialog_reports_no_filter_when_all_are_checked(qapp):
     assert dialog.get_allowed() == set()
 
 
+def test_sorting_without_a_sort_role_is_natural_not_lexicographic(qapp):
+    """A header click on a text column (e.g. trial ids) must put 20 before 120."""
+    model = QStandardItemModel()
+    for trial in ("trial_120", "trial_2", "trial_20"):
+        model.appendRow([QStandardItem(trial)])
+    proxy = MultiColumnFilterProxy()
+    proxy.setSourceModel(model)
+    proxy.sort(0)
+
+    assert _column(proxy, 0) == ["trial_2", "trial_20", "trial_120"]
+
+
 def test_the_header_reserves_a_zone_only_for_filterable_columns(qapp):
     header = FilterHeaderView({0}, {1})
     assert header.filterable == {0, 1}

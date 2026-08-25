@@ -1301,7 +1301,6 @@ class DataWidget(QWidget):
             self._create_combo_widget(combo_name, list(combo_spec.values))
 
         self._create_colors_combo()
-        self._create_show_predictions_row()
         self.refresh_individual_choices()
 
         # Restore camera combos
@@ -1428,16 +1427,19 @@ class DataWidget(QWidget):
 
         # Overlays row 1 — label branches are shown/hidden via their own
         # checkboxes in the Labels panel (branch 0 = Full, 1 = Top1, 2 =
-        # Top2, fixed). This row only carries the Predictions overlay toggle,
-        # which occupies whichever of Top1/Top2 isn't already used by a
-        # shown branch.
+        # Top2, fixed). This row carries the one Predictions toggle: it both
+        # occupies whichever of Top1/Top2 isn't already used by a shown
+        # branch, and gates the dotted prediction-confidence curve on every
+        # feature plot (`PanelStateMixin.show_predictions_enabled`) — there is
+        # no separate per-panel predictions checkbox.
         row1 = self.overlays_row1_layout
         row1.setSpacing(2)
 
         self.show_predictions_overlay_checkbox = QCheckBox("Predictions")
         self.show_predictions_overlay_checkbox.setChecked(False)
         self.show_predictions_overlay_checkbox.setToolTip(
-            "Show imported predictions as a top strip (fills Top1, or Top2 if Top1 is used by a branch)"
+            "Show imported predictions: as a top strip on the labels track (fills Top1, or "
+            "Top2 if Top1 is used by a branch) and as the dotted confidence curve on feature plots"
         )
         self.show_predictions_overlay_checkbox.stateChanged.connect(self._on_show_predictions_overlay_changed)
         row1.addWidget(self.show_predictions_overlay_checkbox)
@@ -1508,10 +1510,13 @@ class DataWidget(QWidget):
     # the Labels panel (fixed position: branch 0 = Full, 1 = Top1, 2 = Top2).
 
     def _on_show_predictions_overlay_changed(self, qt_state):
-        """User toggled the Predictions overlay checkbox — persist + redraw."""
+        """User toggled the Predictions checkbox — the single control for both
+        the labels-track interval strip and every feature plot's dotted
+        prediction-confidence curve. Persist + redraw both."""
         self.app_state._show_predictions_overlay = Qt.CheckState(qt_state) == Qt.Checked
         if self.app_state.ready:
             self.update_label_plot()
+            self._update_confidence_overlay()
         if self.labels_widget is not None:
             self.labels_widget.refresh_labels_shapes_layer()
 
@@ -2172,26 +2177,6 @@ class DataWidget(QWidget):
         self.controls.append(combo)
         self.controls.append(rgb_checkbox)
 
-    def _create_show_predictions_row(self):
-        """Per-plot toggle for the dotted prediction-confidence curve."""
-        checkbox = QCheckBox("Show predictions")
-        checkbox.setObjectName("show_predictions_checkbox")
-        checkbox.setToolTip("Show the dotted prediction-confidence curve on this plot")
-        checkbox.setChecked(True)
-        checkbox.stateChanged.connect(self._on_show_predictions_changed)
-        self.show_predictions_checkbox = checkbox
-        self.coords_groupbox_layout.addRow("Predictions:", checkbox)
-        self.controls.append(checkbox)
-
-    def _on_show_predictions_changed(self, _state):
-        if not self.app_state.ready:
-            return
-        checked = self.show_predictions_checkbox.isChecked()
-        active = getattr(self.plot_container, "active_feature_plot", None)
-        if active is not None and hasattr(active, "set_panel_control"):
-            active.set_panel_control("show_predictions", checked)
-        self._update_confidence_overlay()
-
     def _populate_colors_combo(self, combo: QComboBox, features: list[str], rgb_filter: bool):
         prev = get_combo_value(combo) if combo.count() > 0 else "None"
         combo.blockSignals(True)
@@ -2407,12 +2392,6 @@ class DataWidget(QWidget):
             combo = self.combos.get(akey)
             if combo is not None:
                 combo.setEnabled(not is_all)
-
-        pred_cb = getattr(self, "show_predictions_checkbox", None)
-        if pred_cb is not None and hasattr(plot, "show_predictions_enabled"):
-            pred_cb.blockSignals(True)
-            pred_cb.setChecked(plot.show_predictions_enabled())
-            pred_cb.blockSignals(False)
 
     def apply_panel_control(self, key: str, value):
         """Generic entry point for EVERY data-panel selection control (feature
@@ -3207,6 +3186,9 @@ class DataWidget(QWidget):
         SharedAudioCache.clear_cache()
         if getattr(self.app_state, "video", None):
             self.app_state.video.stop()
+        dt = getattr(self.app_state, "dt", None)
+        if dt is not None:
+            dt.close()
         # A closed window's widgets, plots and buffers reference each other, so
         # refcounting alone frees none of them — a session that builds and
         # closes windows grows by ~80 MB each time until a large native (HDF5)

@@ -59,6 +59,23 @@ def test_color_var_with_stale_pinned_value_repins():
     assert np.allclose(pd.color_data, 0.25)
 
 
+def test_color_var_stale_value_on_single_value_dim_repins():
+    """The stale value can name a dim the colour var has only ONE of.
+
+    A session recorded on one animal, replayed on another: the layout (or a
+    curation workflow copied between animals) still pins ``individual`` to a
+    name this session's colour var does not carry, and the dim is size 1
+    because there is only the one animal. Skipping single-value dims left that
+    name to reach ``.sel`` and raise KeyError.
+    """
+    ds = _make_ds().sel(individual=["b"])
+    loader = XarrayLoader(ds)
+    pd = loader.select("speed", {"individual": "a"}, color_variable="rgb_state")
+    assert pd is not None
+    assert pd.color_data is not None
+    assert np.allclose(pd.color_data, 0.75)  # the one individual present
+
+
 def test_color_var_valid_pinned_value_is_respected():
     loader = XarrayLoader(_make_ds())
     pd = loader.select("speed", {"individual": "b"}, color_variable="rgb_state")

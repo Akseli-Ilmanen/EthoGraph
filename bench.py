@@ -187,7 +187,7 @@ VARIANTS: dict[str, dict] = {
 N_TRIALS = 8
 
 #: Appended to every variant name, so one feature set's runs stay together.
-SUFFIX = "kin_v1"
+SUFFIX = "model_comp"
 
 logger = logging.getLogger("bench")
 
@@ -309,7 +309,7 @@ def main() -> None:
     rows = []
     winners: dict[str, dict[str, Any]] = {}
     for variant, spec in VARIANTS.items():
-        space = {**SHARED_SPACE, **spec["space"]}
+        space: dict[str, dict] = {}  # {} -> no Optuna,  {**SHARED_SPACE, **spec["space"]} -> Optuna
         exhaustible = is_exhaustible(space)
         if exhaustible:
             params, score = sweep(variant, spec, space, select_on)

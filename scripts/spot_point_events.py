@@ -426,11 +426,16 @@ def score(predictions_path: Path, truth_path: Path) -> None:
             continue
         rates.append(float(gt["fps"]))
         # A strided run predicts on a downsampled clock and says so through
-        # its fps; its frame indices come back to the truth's clock here.
+        # its fps; its frame indices come back to the truth's clock here. The
+        # dataset bins a truth frame as floor(frame / k), so the expected
+        # full-rate frame for a bin is its centre, not its first frame —
+        # without the (k - 1) / 2 every strided run reads as systematically
+        # early by half a stride.
         stride = float(gt["fps"]) / float(entry["fps"])
         if abs(stride - round(stride)) > 1e-6:
             raise ValueError(f"{entry['video']}: predicted at {entry['fps']} fps, truth at {gt['fps']} — not a stride")
-        best = {label: frame * int(round(stride)) for label, frame in best_per_class(entry).items()}
+        k = int(round(stride))
+        best = {label: int(round(frame * k + (k - 1) / 2)) for label, frame in best_per_class(entry).items()}
         for gt_event in gt["events"]:
             label = gt_event["label"]
             if label in best:

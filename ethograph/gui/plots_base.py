@@ -232,8 +232,6 @@ class PanelStateMixin:
             self.panel_state["selections"] = self._sanitize_selections(self._effective_selections())
         elif key == "colors":
             self.panel_state["color"] = value
-        elif key == "show_predictions":
-            self.panel_state["show_predictions"] = bool(value)
         else:
             sels = dict(self.panel_state.get("selections") or self.app_state.get_selections())
             if value in (None, "", "None"):
@@ -247,8 +245,9 @@ class PanelStateMixin:
             self.panel_state["selections"] = self._sanitize_selections(sels)
 
     def show_predictions_enabled(self) -> bool:
-        """Whether this panel shows the dotted prediction-confidence curve."""
-        return bool(self.panel_state.get("show_predictions", True))
+        """Whether the dotted prediction-confidence curve is shown, per the
+        single global "Predictions" toggle in the Labels widget."""
+        return bool(getattr(self.app_state, "_show_predictions_overlay", False))
 
     def panel_settings(self) -> dict:
         """This panel's coords-section settings in serializable form (used by
@@ -264,8 +263,6 @@ class PanelStateMixin:
         color = self.panel_state.get("color")
         if color and color != "None":
             settings["color"] = str(color)
-        if not self.panel_state.get("show_predictions", True):
-            settings["show_predictions"] = False
         return settings
 
     def apply_panel_settings(self, settings: dict) -> None:
@@ -277,8 +274,6 @@ class PanelStateMixin:
             self.panel_state["selections"] = self._sanitize_selections(settings["selections"])
         if settings.get("color"):
             self.panel_state["color"] = settings["color"]
-        if "show_predictions" in settings:
-            self.panel_state["show_predictions"] = bool(settings["show_predictions"])
 
     def _sanitize_selections(self, selections: dict) -> dict:
         """Make *selections* valid for this panel's feature.

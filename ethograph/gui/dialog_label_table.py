@@ -211,6 +211,7 @@ class LabelTableDialog(QDialog):
         self._header.setStretchLastSection(True)
         self._header.filter_requested.connect(self._on_filter_requested)
         self.table.setHorizontalHeader(self._header)
+        self._header.setSortIndicator(-1, Qt.AscendingOrder)
         layout.addWidget(self.table, stretch=1)
 
         self._status = QLabel("")

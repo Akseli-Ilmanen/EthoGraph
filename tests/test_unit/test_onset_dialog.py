@@ -274,3 +274,35 @@ class TestDerivativeTick:
         tree = FeatureTree()
         tree.populate_from_config(_frozen_config(derivatives=["speed"]))
         assert tree.itemWidget(tree.topLevelItem(0), 1).isChecked()
+
+
+class TestIndividualGuard:
+    """A label belongs to one (actor, recipient) pair and the overlay draws only
+    the selected pair, so events written for somebody this session has never
+    heard of are stored and never seen. The usual cause is a workflow copied
+    between animals with its Predict onsets step's individual left behind.
+    """
+
+    def _capture(self, monkeypatch):
+        from ethograph.gui import dialog_onset_model as mod
+
+        messages: list[str] = []
+        monkeypatch.setattr(mod, "notify", lambda msg, **kw: messages.append(msg))
+        return mod, messages
+
+    def test_an_individual_this_session_does_not_have_is_refused(self, predict_dialog, monkeypatch):
+        mod, messages = self._capture(monkeypatch)
+        assert predict_dialog.app_state.label_individuals() == ["default"]
+
+        outcome = mod.predict_onsets(predict_dialog.meta, "m", individual="Poppy", min_confidence=0.0)
+
+        assert outcome is None
+        assert "Poppy" in messages[0] and "default" in messages[0]
+        assert predict_dialog.app_state._all_labels_df is None
+
+    def test_a_known_individual_gets_past_the_guard(self, predict_dialog, monkeypatch):
+        mod, messages = self._capture(monkeypatch)
+
+        mod.predict_onsets(predict_dialog.meta, "m", individual="default", min_confidence=0.0)
+
+        assert not any("never be drawn" in msg for msg in messages)

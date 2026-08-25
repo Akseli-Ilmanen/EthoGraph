@@ -158,6 +158,7 @@ beside the checkpoint); an unpatched upstream crashes there on `np.int`
 | `train_e2e.py` | `worker_init_fn` closure → module-level `_WorkerSeed` callable, `.epoch` set per epoch | same spawn pickling: a closure over `main()`'s locals cannot be sent to a worker |
 | `dataset/frame.py` | `np.int` → `int` in `get_labels` | removed in numpy 1.24; the val-mAP pass crashed on it |
 | `train_e2e.py`, `test_e2e.py` | `--stride` exposed, passed to every dataset, recorded in `config.json` | upstream's loaders had it, its CLI did not |
+| `train_e2e.py` | `--epoch_num_frames` exposed (default unchanged), read by `get_datasets` and `store_config` | the epoch size was a module constant, and it is the only knob that shortens an epoch — the dataset's size does not enter `dataset_len` |
 
 The whole patch is `scripts/spot_windows_compat.patch` (`git -C spot diff`
 regenerates it); `spot/` and `spot_mod/` are gitignored, so the clone is
@@ -215,6 +216,93 @@ serves frames returns source frame *i* for index *i*, and a proxy must be
 CFR with the same frame count — the test to write is proxy frame i ==
 source frame i on a real file.
 
+## 200 fps is not 25 fps
+
+The first complete run (`spot/runs/overnight2`, 15 epochs, stride 1, clip
+200) did not merely score badly — it **stopped predicting anything**. Max
+prediction score per val trial, `label_31`:
+
+| epoch | median peak score | trials with no candidate ≥ 0.01 | misses /54 |
+|---|---|---|---|
+| 3 | 0.044 | 6 / 27 | 11 |
+| 6 | 0.111 | 9 / 27 | 20 |
+| 9 | **0.000** | **22 / 27** | 35 |
+
+Train loss fell 0.055 → 0.0069 across the same epochs. That is collapse to
+background under a 0.152 % positive rate, not mislocalisation: the median
+error of the events it still fires on barely moves. `fg_weight=5` (hard-coded
+in `E2EModel.epoch`) does not hold the background prior off when each of the
+306 training events is seen ~25 times.
+
+**Every temporal hyperparameter in E2E-Spot is written in frames and was
+tuned at 25 fps.** Running the same numbers at 200 fps shrinks all of them
+by 8x in real time:
+
+| knob | upstream default | seconds @ 25 fps | ours | seconds @ 200 fps |
+|---|---|---|---|---|
+| `clip_len` | 100 | **4.0 s** | 200 | **1.0 s** |
+| GSM shift | ±1 frame | ±40 ms | ±1 frame | ±5 ms |
+| eval tolerance | ±1-2 fr | ±40-80 ms | ±1-2 fr | ±5-10 ms |
+
+So the model is asked to call the moment of a reach from a one-second
+window — a quarter of the context its authors gave it, through a backbone
+whose aperture is an eighth of theirs. Much of a trial genuinely does look
+like nothing happening at that scale; widening the aperture is what makes
+the question answerable, and it is what `--stride` does.
+
+**`--stride k` is the one knob that widens all three at once** — clip, GRU
+and GSM all step k source frames — at the price of k-frame label
+quantisation. Three arithmetic facts govern its use:
+
+- **An epoch does not get cheaper.** `dataset_len = epoch_num_frames //
+  clip_len` never looks at how many trials exist, so an epoch always pushes
+  `epoch_num_frames` through the model. Stride makes each epoch cover
+  `epoch_num_frames × k / n_train_frames` **passes** over the data — 2.48 × k
+  here. At stride 4 the default `--warm_up_epochs 3` is 30 passes of warm-up
+  alone. Scale epochs down by roughly 1/k, and cut `--epoch_num_frames` (not
+  the dataset) to shorten an epoch.
+- **`dilate_len` is in strided frames**, so stride and dilation multiply:
+  `--dilate_len 2` at stride 4 is a ±40 ms positive window, four times the
+  precision target. Choose it to hold the window fixed in *milliseconds*.
+- **`--fg_upsample` has an inverted sense** (`random() >= p` selects
+  foreground, `dataset/frame.py`), and it *forces* a fixed foreground
+  fraction rather than raising it. A random clip already contains an event
+  ~30 % of the time at stride 1 and ~85 % at stride 4, so `0.5` helps the
+  first and actively hurts the second. It is stride-confounded; leave it off
+  while stride is being measured.
+
+### The ladder (2026-08-25)
+
+Five runs, 8 epochs each, `--epoch_num_frames 250000 --warm_up_epochs 1
+--criterion map --start_val_epoch 1`, everything else at the defaults above.
+Only stride and clip length vary; the positive window is held at ±10 ms real
+time by choosing `dilate_len` per stride, so dilation is not a confound.
+
+| run | stride | `clip_len` | context | quantisation | `dilate_len` | frames/batch | isolates |
+|---|---|---|---|---|---|---|---|
+| `A0` | 1 | 200 | 1.0 s | 5 ms | 2 | 200 | matched baseline |
+| `A1` | 2 | 100 | 1.0 s | 10 ms | 1 | 100 | **resolution cost alone** |
+| `A2` | 2 | 200 | 2.0 s | 10 ms | 1 | 200 | + context |
+| `A3` | 4 | 200 | 4.0 s | 20 ms | 0 | 200 | ++ context (the paper's regime) |
+| `A4` | 8 | 200 | 8.0 s | 40 ms | 0 | 200 | diagnostic — past the tolerance budget |
+
+`A0` vs `A1` prices the resolution loss at fixed context; `A0 → A2 → A3 → A4`
+is the context ladder, and subtracting the first from the second is what
+separates *context* from *resolution*. `clip_len 400` at stride 1 — the
+obvious full-resolution 2 s control — is not runnable here: minimum loader
+batch 1 forces 400 frames per batch, the 11.4 GB configuration below.
+
+Rank the runs on the `score` sweep, **not** on `val_mAP`. `val_mAP` is
+average precision over the high-recall candidates at frame tolerances
+`[0, 1, 2, 4]` = 0/5/10/20 ms, with no NMS, over 54 events; it moved 0.074 →
+0.054 → 0.078 → 0.021 across consecutive epochs of one run. Read `miss`
+first (the failure that killed the baseline), then `<=4`, then `<=2`.
+
+Note that a strided run is scored on a downsampled clock: `score()` maps a
+predicted bin back as `bin × k + (k-1)/2`, the bin's **centre**. Mapping to
+`bin × k` reads every strided run as early by half a stride — 7.5 ms at
+stride 4, against a 20 ms budget.
+
 ## Next steps
 
 ```bash
@@ -258,6 +346,31 @@ the full second of context, ~780 frames/s → **~11 min of compute per
 `git -C spot diff` shows the same; `spot_mod/` is a snapshot from before
 the fix and can be deleted once its `runs/overnight` (one epoch: train loss
 0.055, val loss 0.039) is no longer wanted.
+
+### The other rule: the card must be empty
+
+The 200-frame ceiling is necessary, not sufficient — it is a budget against
+*free* VRAM, and anything else resident eats it. `runs/overnight2` ran its
+last epochs at **0.15 it/s instead of 3.4** (a 23x penalty) with a correct
+config, because the NVIDIA App overlay held 4.1 GB and the desktop
+compositor 2.6 GB, leaving too little for a 200-frame batch; 2.4 GB of the
+model was paged into system RAM.
+
+`nvidia-smi` cannot see this — it reports `[N/A]` per process on WDDM and a
+flat ~9.9 GB total whatever is running. The Windows performance counters
+can, and this is the diagnostic to reach for:
+
+```powershell
+(Get-Counter '\GPU Process Memory(*)\Dedicated Usage','\GPU Process Memory(*)\Shared Usage').CounterSamples |
+  Where-Object { $_.CookedValue -gt 100MB } |
+  ForEach-Object { '{0,-20} {1,-46} {2,8:N0} MB' -f $_.Path.Split('\')[-1], $_.InstanceName, ($_.CookedValue/1MB) }
+```
+
+**Non-zero *Shared Usage* on the training process is the paging, directly
+observed** — that is the number to drive to zero. Freeing VRAM mid-run does
+not help: PyTorch never migrates an already-paged allocation back, so the
+run must be restarted after the card is cleared. Check the card is quiet
+*before* launching, not after.
 
 ### Running overnight
 

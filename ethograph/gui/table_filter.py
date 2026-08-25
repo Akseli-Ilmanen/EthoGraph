@@ -17,6 +17,8 @@ so a formatted cell ("12.3 ms") still filters and sorts by its real value.
 
 from __future__ import annotations
 
+import re
+
 from qtpy.QtCore import QRect, QSortFilterProxyModel, Qt, Signal
 from qtpy.QtGui import QColor, QPen
 from qtpy.QtWidgets import (
@@ -32,6 +34,20 @@ from qtpy.QtWidgets import (
 
 #: Role carrying a cell's sortable/comparable value, independent of its text.
 SORT_ROLE = Qt.UserRole + 1
+
+_DIGIT_RUN = re.compile(r"(\d+)")
+
+
+def _natural_key(text: str) -> tuple:
+    """Split *text* into alternating non-digit/digit chunks for natural sort.
+
+    ``re.split`` on a capturing group always alternates non-digit, digit,
+    non-digit, ... starting and ending on a (possibly empty) non-digit chunk,
+    so same-index chunks compare same-typed across two keys and "20" sorts
+    before "120" instead of after it.
+    """
+    parts = _DIGIT_RUN.split(text)
+    return tuple(int(part) if i % 2 else part.lower() for i, part in enumerate(parts))
 
 
 class MultiColumnFilterProxy(QSortFilterProxyModel):
@@ -98,6 +114,10 @@ class MultiColumnFilterProxy(QSortFilterProxyModel):
         left_val, right_val = left.data(SORT_ROLE), right.data(SORT_ROLE)
         if left_val is not None and right_val is not None:
             return float(left_val) < float(right_val)
+        left_text = left.data(Qt.DisplayRole)
+        right_text = right.data(Qt.DisplayRole)
+        if isinstance(left_text, str) and isinstance(right_text, str):
+            return _natural_key(left_text) < _natural_key(right_text)
         return super().lessThan(left, right)
 
 
