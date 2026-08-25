@@ -36,7 +36,7 @@ uv tool install --python 3.12 "ethograph[gui,audio]"
 Then launch it from any terminal:
 
 ```bash
-ethograph check # Linux only
+ethograph check # Linux only : Check for missing libraries 
 ethograph launch
 ```
 
@@ -45,28 +45,15 @@ ethograph launch
 projects and is always available without activating anything.
 
 ```{danger}
-**On Linux or WSL, install the system libraries before the first launch.** The
-wheels bring their own Qt, OpenGL bindings and wgpu, but they load a handful of
-shared libraries from the distribution — without those the GUI opens black, or
-does not open at all. It is one `apt`/`dnf` line, once per machine:
-{ref}`Linux: system libraries <linux-system-libraries>`.
+**On Linux/WSL, install the system libraries before first launch.** The wheels bundle Qt, OpenGL bindings and wgpu, but still load some shared libraries from the distro — without them the GUI opens black or not at all. One `apt`/`dnf` line, once per machine: {ref}`Linux: system libraries <linux-system-libraries>`.
 
-`ethograph check` reports which of them are still missing on your machine, and
-`ethograph launch` prints the same warning before it opens a window.
-```
+`ethograph check` reports missing libraries; `ethograph launch` warns before opening a window.
 
-```{important}
-On a fresh machine the first `ethograph launch` may fail with *"'ethograph' is
-not recognized as the name of a cmdlet..."* (Windows) or *"command not found"*
-(macOS/Linux). uv has not yet added its bin directory to your `PATH`. Fix it
-once with:
+First `ethograph launch` may fail with *"not recognized"* (Windows) or *"command not found"* (macOS/Linux) — uv hasn't added its bin dir to `PATH` yet. Fix once with:
 
     uv tool update-shell
 
-then **close the terminal and open a new one** — `PATH` is only read when a
-shell starts, so the window you ran it in will keep failing. See
-{ref}`command-not-found` for shortcut-based alternatives.
-```
+then **open a new terminal** (PATH is only read at shell start). See {ref}`command-not-found` for alternatives.
 
 ```{tip}
 To update later, run `uv tool upgrade ethograph`; to remove it,
