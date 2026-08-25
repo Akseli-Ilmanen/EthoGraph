@@ -1,6 +1,6 @@
 """Draw the comparison figures over runs that already finished.
 
-``bench.py`` compares architectures by training them; this compares them by
+``scripts/bench.py`` compares architectures by training them; this compares them by
 *reading what they wrote*. Every run writes ``test_metrics.yaml`` (the scalars
 and class-wise F1) and ``test_eval.npz`` (the matched-segment IoUs and
 onset/offset deltas) the moment it finishes, so a bench that crashed — or one
@@ -30,7 +30,7 @@ trials and folds (``searches/{name}/eval_comparison.pdf``,
 else: a search's winner against another search's winner, a hand-trained run
 against a swept cell, whatever finished before the crash.
 
-    python compare.py
+    python scripts/compare.py
 """
 
 from __future__ import annotations

@@ -51,7 +51,7 @@ finishes, so an interrupted bench loses nothing already trained: point
 (they are in ``bench_cells.tsv`` / ``searches/{name}/trials.tsv``) to draw the
 comparison afterwards.
 
-    python bench.py
+    python scripts/bench.py
 """
 
 from __future__ import annotations

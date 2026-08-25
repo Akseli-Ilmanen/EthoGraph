@@ -9,6 +9,10 @@ repos:
       rev: v6.0.0
       hooks:
           - id: check-docstring-first
+            # PEP 258 attribute docstrings — a string documenting a module-level
+            # constant, which Sphinx renders — read as a second module docstring
+            # to this hook. dlc2action is vendored and never edited (NOTICE.md).
+            exclude: '^(ethograph/segment/|tests/test_unit/test_segment_)'
           - id: check-executables-have-shebangs
           - id: check-merge-conflict
           - id: check-toml
