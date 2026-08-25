@@ -78,9 +78,7 @@ def preprocess(frames: np.ndarray, device: torch.device) -> torch.Tensor:
 # ----------------------------------------------------------------------
 
 
-def window_features(
-    embed: Embed, chunks: Iterator[torch.Tensor], stack: int, batch: int
-) -> Iterator[torch.Tensor]:
+def window_features(embed: Embed, chunks: Iterator[torch.Tensor], stack: int, batch: int) -> Iterator[torch.Tensor]:
     """Stream ``(N, 3, H, W)`` chunks in, yield ``(N, C)`` features out.
 
     Frame *t*'s feature is ``embed`` of the ``stack`` frames centred on it

@@ -16,8 +16,8 @@ they are scattered across sessions rather than making up one you can open.
 
 Everything is written under ``{root}/cross_validation/{name}/``::
 
-    folds.tsv           # one row per fold: session, run, test metrics, prediction path
-    eval_comparison.pdf # class-wise F1 / IoU / boundary deltas across folds, one dot per fold
+    folds.tsv  # one row per fold: session, run, test metrics, prediction path
+    eval_comparison.pdf  # class-wise F1 / IoU / boundary deltas across folds, one dot per fold
     crossval.log
 
 The folds themselves are ordinary runs, nested under ``runs/{name}/`` so they

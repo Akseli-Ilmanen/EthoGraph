@@ -225,7 +225,7 @@ def trials_matching_labels(
 
 
 def parse_label_pattern(text: str) -> list[int]:
-    """``"1-2-6-8"`` -> ``[1, 2, 6, 8]``; anything unparseable -> ``[]``.
+    """``"1-2-6-8"`` -> ``[1, 2, 6, 8]``; anything unparsable -> ``[]``.
 
     The same spelling the Sequence navigate mode takes, so one habit serves
     both. Repeats are kept: ``"6-6"`` asks about two occurrences.

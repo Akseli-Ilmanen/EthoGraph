@@ -136,7 +136,6 @@ class TestBirdParkLoading:
         assert meta.plot_container.is_lineplot()
 
 
-
 # ===================================================================
 # Trial navigation
 # ===================================================================

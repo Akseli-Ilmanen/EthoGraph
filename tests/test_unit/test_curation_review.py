@@ -377,8 +377,15 @@ class TestFrameReview:
 
     def test_start_review_at_enters_frame_mode_at_that_label(self, panel):
         assert panel.mode() == "manual"
-        inst = {"trial": "0", "labels": 6, "onset_s": 2.5, "offset_s": float("nan"), "individual": "a",
-                "individual_rec": "", "event_type": "point"}
+        inst = {
+            "trial": "0",
+            "labels": 6,
+            "onset_s": 2.5,
+            "offset_s": float("nan"),
+            "individual": "a",
+            "individual_rec": "",
+            "event_type": "point",
+        }
         assert panel.start_review_at(inst, "point")
         assert panel.mode() == "frame"
         assert panel.session_active
@@ -386,8 +393,15 @@ class TestFrameReview:
 
     def test_start_review_at_a_label_outside_the_scope_reviews_just_it(self, panel):
         panel.app_state.curation_label_ids = [4]
-        inst = {"trial": "0", "labels": 6, "onset_s": 2.5, "offset_s": float("nan"), "individual": "a",
-                "individual_rec": "", "event_type": "point"}
+        inst = {
+            "trial": "0",
+            "labels": 6,
+            "onset_s": 2.5,
+            "offset_s": float("nan"),
+            "individual": "a",
+            "individual_rec": "",
+            "event_type": "point",
+        }
         panel.start_review_at(inst, "point")
         assert [t.inst["labels"] for t in panel.targets] == [6]
 

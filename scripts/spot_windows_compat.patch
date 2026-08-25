@@ -8,8 +8,8 @@ index d927a57..8330139 100644
      ]
 -    return torch.jit.script(nn.Sequential(*img_transforms))
 +    return nn.Sequential(*img_transforms)
- 
- 
+
+
  def _get_deferred_bw_transform():
 @@ -139,7 +139,7 @@ def _get_deferred_bw_transform():
          transforms.Normalize(mean=[0.5], std=[0.5]),
@@ -17,18 +17,18 @@ index d927a57..8330139 100644
      ]
 -    return torch.jit.script(nn.Sequential(*img_transforms))
 +    return nn.Sequential(*img_transforms)
- 
- 
+
+
  def _load_frame_deferred(gpu_transform, batch, device):
 @@ -261,7 +261,7 @@ def _get_img_transforms(
      else:
          raise NotImplementedError(modality)
- 
+
 -    img_transform = torch.jit.script(nn.Sequential(*img_transforms))
 +    img_transform = nn.Sequential(*img_transforms)
      return crop_transform, img_transform
- 
- 
+
+
 @@ -512,7 +512,7 @@ class ActionSpotVideoDataset(Dataset):
          num_labels = num_frames // self._stride
          if num_frames % self._stride != 0:
@@ -41,7 +41,7 @@ index d927a57..8330139 100644
 @@ -526,6 +526,10 @@ class ActionSpotVideoDataset(Dataset):
      def augment(self):
          return self._flip or self._multi_crop
- 
+
 +    @property
 +    def clip_len(self):
 +        return self._clip_len
@@ -72,7 +72,7 @@ index c481e03..e0ec6f1 100755
          overlap_len=0 if no_overlap else config['clip_len'] // 2,
 -        crop_dim=config['crop_dim'])
 +        crop_dim=config['crop_dim'], stride=config.get('stride', 1))
- 
+
      pred_file = None
      if save_as is not None:
 diff --git a/train_e2e.py b/train_e2e.py
@@ -80,9 +80,9 @@ index 2e6c46d..5e22c39 100755
 --- a/train_e2e.py
 +++ b/train_e2e.py
 @@ -35,6 +35,15 @@ BASE_NUM_VAL_EPOCHS = 20
- 
+
  INFERENCE_BATCH_SIZE = 4
- 
+
 +# Peak memory tracks frames per batch, not clips, so a batch of 4 clips means
 +# 4 x clip_len frames — 800 at clip_len 200, which pages a 10 GB card. Size
 +# the inference batch by frames instead; upstream's 4 x 100 is the ceiling.
@@ -92,12 +92,12 @@ index 2e6c46d..5e22c39 100755
 +def inference_batch_size(clip_len):
 +    return max(1, INFERENCE_BATCH_FRAMES // clip_len)
 +
- 
+
  # Prevent the GRU params from going too big (cap it at a RegNet-Y 800MF)
  MAX_GRU_HIDDEN_DIM = 768
 @@ -76,6 +85,11 @@ def get_args():
          help='Spotting architecture, after spatial pooling')
- 
+
      parser.add_argument('--clip_len', type=int, default=100)
 +    parser.add_argument('--stride', type=int, default=1,
 +                        help='Read every k-th frame: k times the context per clip for the same compute, at k-frame resolution')
@@ -109,17 +109,17 @@ index 2e6c46d..5e22c39 100755
      parser.add_argument('-ag', '--acc_grad_iter', type=int, default=1,
 @@ -312,7 +326,7 @@ def evaluate(model, dataset, split, classes, save_pred, calc_stats=True,
              np.zeros(video_len, np.int32))
- 
+
      # Do not up the batch size if the dataset augments
 -    batch_size = 1 if dataset.augment else INFERENCE_BATCH_SIZE
 +    batch_size = 1 if dataset.augment else inference_batch_size(dataset.clip_len)
- 
+
      for clip in tqdm(DataLoader(
              dataset, num_workers=BASE_NUM_WORKERS * 2, pin_memory=True,
 @@ -408,10 +422,10 @@ def get_best_epoch_and_history(save_dir, criterion):
  def get_datasets(args):
      classes = load_classes(os.path.join('data', args.dataset, 'class.txt'))
- 
+
 -    dataset_len = EPOCH_NUM_FRAMES // args.clip_len
 +    dataset_len = args.epoch_num_frames // args.clip_len
      dataset_kwargs = {
@@ -127,7 +127,7 @@ index 2e6c46d..5e22c39 100755
 -        'mixup': args.mixup
 +        'mixup': args.mixup, 'stride': args.stride
      }
- 
+
      if args.fg_upsample is not None:
 @@ -436,7 +450,7 @@ def get_datasets(args):
          val_data_frames = ActionSpotVideoDataset(
@@ -135,9 +135,9 @@ index 2e6c46d..5e22c39 100755
              args.frame_dir, args.modality, args.clip_len,
 -            crop_dim=args.crop_dim, overlap_len=0)
 +            crop_dim=args.crop_dim, overlap_len=0, stride=args.stride)
- 
+
      return classes, train_data, val_data, val_data_frames
- 
+
 @@ -473,6 +487,7 @@ def store_config(file_path, args, num_epochs, classes):
          'feature_arch': args.feature_arch,
          'temporal_arch': args.temporal_arch,
@@ -174,13 +174,13 @@ index 2e6c46d..5e22c39 100755
 +
 +    def __call__(self, id):
 +        random.seed(id + self.epoch * 100)
- 
- 
+
+
  def get_num_train_workers(args):
 @@ -519,8 +550,7 @@ def main(args):
- 
+
      classes, train_data, val_data, val_data_frames = get_datasets(args)
- 
+
 -    def worker_init_fn(id):
 -        random.seed(id + epoch * 100)
 +    worker_init_fn = _WorkerSeed()
@@ -189,11 +189,11 @@ index 2e6c46d..5e22c39 100755
          train_data, shuffle=False, batch_size=loader_batch_size,
 @@ -553,9 +583,10 @@ def main(args):
          epoch += 1
- 
+
      # Write it to console
 -    store_config('/dev/stdout', args, num_epochs, classes)
 +    store_config(None, args, num_epochs, classes)
- 
+
      for epoch in range(epoch, num_epochs):
 +        worker_init_fn.epoch = epoch
          train_loss = model.epoch(
@@ -206,7 +206,7 @@ index 2e6c46d..5e22c39 100755
 +                    stride=args.stride,
                      crop_dim=args.crop_dim)
                  split_data.print_info()
- 
+
 diff --git a/util/dataset.py b/util/dataset.py
 index e433c78..6ee39e0 100644
 --- a/util/dataset.py
@@ -219,5 +219,5 @@ index e433c78..6ee39e0 100644
 +    'soccernet_ball',
 +    'crow_pellet',
  ]
- 
- 
+
+

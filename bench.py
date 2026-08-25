@@ -88,7 +88,6 @@ SHARED_SPACE: dict[str, dict] = {
 #: key must come from `eto.segment.tunable_params(arch)` — anything else is
 #: refused before training starts, naming what that architecture does take.
 VARIANTS: dict[str, dict] = {
-
     "mstcn": {
         "architecture": "mstcn",
         "params": {},
@@ -113,7 +112,6 @@ VARIANTS: dict[str, dict] = {
         "params": {},
         "space": {"model.params.dropout_rates": {"type": "float", "low": 0.1, "high": 0.7}},
     },
-
     # ASFormer's encoder (num_decoders=0, the same backbone `asformer_enc_alpha`
     # below tunes) plus ASRF's boundary branch. `backbone_params` is pinned,
     # not searched — the encoder axis is what `asformer_enc_alpha` already
@@ -143,9 +141,7 @@ VARIANTS: dict[str, dict] = {
             "model.params.num_layers": {"type": "int", "low": 6, "high": 12},
         },
     },
-
     # ASFormer - slower, run at end
-
     # ASFormer, encoder only: no refinement decoders, one output stage.
     # An all-categorical space, so this one is swept: 3 values of tau, 3 runs.
     "asformer_enc_alpha": {
@@ -154,7 +150,7 @@ VARIANTS: dict[str, dict] = {
         "space": {
             "model.params.num_f_maps": {"type": "categorical", "choices": [64, 128, 256]},
             "model.params.num_layers": {"type": "int", "low": 6, "high": 12},
-            #"model.params.channel_masking_rate": {"type": "float", "low": 0.0, "high": 0.5},
+            # "model.params.channel_masking_rate": {"type": "float", "low": 0.0, "high": 0.5},
         },
     },
     # # ASFormer as published: the encoder's prediction refined by `num_decoders`
@@ -169,10 +165,9 @@ VARIANTS: dict[str, dict] = {
             "model.params.num_decoders": {"type": "int", "low": 1, "high": 3},
             "model.params.num_f_maps": {"type": "categorical", "choices": [64, 128, 256]},
             "model.params.num_layers": {"type": "int", "low": 6, "high": 12},
-            #"model.params.channel_masking_rate": {"type": "float", "low": 0.0, "high": 0.5},
+            # "model.params.channel_masking_rate": {"type": "float", "low": 0.0, "high": 0.5},
         },
     },
-
 }
 
 #: How many configurations Optuna draws — for a *searched* variant only. A
@@ -285,9 +280,7 @@ def sweep(variant: str, spec: dict, space: dict[str, dict], select_on: str) -> t
                 **params,
             }
         )
-        logger.info(
-            "[%s] %s val %s = %.4f at epoch %d", variant, tag, select_on, result.best_score, result.best_epoch
-        )
+        logger.info("[%s] %s val %s = %.4f at epoch %d", variant, tag, select_on, result.best_score, result.best_epoch)
         scored.append((params, result.best_score))
 
     return max(scored, key=lambda item: item[1])

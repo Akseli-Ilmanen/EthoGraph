@@ -26,7 +26,7 @@ class TestPattern:
         assert parse_label_pattern(" 1 , 2 ") == [1, 2]
 
     def test_repeats_are_kept(self):
-        """"6-6" asks about two occurrences, not one."""
+        """ "6-6" asks about two occurrences, not one."""
         assert parse_label_pattern("6-6") == [6, 6]
 
     def test_nonsense_is_no_pattern(self):

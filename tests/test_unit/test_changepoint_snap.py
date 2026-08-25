@@ -121,7 +121,7 @@ class TestSelectionsPinTheMarks:
         np.testing.assert_allclose(beak, TIME[[20, 60]])
 
     def test_a_free_dim_is_ored_across(self):
-        """"All" keypoints (the dim absent from the selections) shows every mark."""
+        """ "All" keypoints (the dim absent from the selections) shows every mark."""
         ds = _moll_like({0: (20,), 1: (90,), 2: (170,)})
         every = XarrayLoader(ds).get_cp_times("speed", {"individual": "bird_0"})
         np.testing.assert_allclose(every, TIME[[20, 90, 170]])

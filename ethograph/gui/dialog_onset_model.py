@@ -267,9 +267,7 @@ def predict_onsets(
             if not wanted:
                 continue
             try:
-                time, data = om.extract_model_features(
-                    loader, read_config, t0, t1, labels=trial_rows, shift=shift
-                )
+                time, data = om.extract_model_features(loader, read_config, t0, t1, labels=trial_rows, shift=shift)
                 trial_time = time - shift
                 result = om.predict_trial(bundle, trial_time, data)
                 predictions = result.events
@@ -997,6 +995,7 @@ class TrainOnsetDialog(QDialog):
             f"Trained {config.name!r} on {summary['n_trials']} trials "
             f"from {summary['n_sessions']} session(s) — {per_target}."
         )
+
         # The held-out record is what every predicted confidence is scaled by,
         # so it belongs in the one message the user reads after training.
         def _held_out(label: int, cal: dict) -> str:
@@ -1070,7 +1069,6 @@ class PredictOnsetDialog(QDialog):
             "rig, not per animal — as long as the feature layout is the same."
         )
         form.addRow("Individual:", self.individual_combo)
-
 
         self.min_conf_edit = ConfidenceEdit(DEFAULT_CONFIDENCE)
         self.min_conf_edit.setToolTip(

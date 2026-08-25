@@ -13,9 +13,7 @@ from ethograph.video_features.select import FeatureRanking, cohens_d, rank_featu
 INFORMATIVE = (1, 4)
 
 
-def reference_cohens_d(
-    values: np.ndarray, labels: np.ndarray, class_ids: np.ndarray
-) -> np.ndarray:
+def reference_cohens_d(values: np.ndarray, labels: np.ndarray, class_ids: np.ndarray) -> np.ndarray:
     """Literal transcription of the notebook loop: ``(F, C)`` effect sizes."""
     n_features = values.shape[1]
     out = np.zeros((n_features, len(class_ids)))

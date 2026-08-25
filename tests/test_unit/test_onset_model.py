@@ -551,7 +551,6 @@ def test_predict_rejects_rate_mismatch():
         om.predict_events(bundle, time_other, data_other)
 
 
-
 # ---------------------------------------------------------------------------
 # Existing labels as inputs
 # ---------------------------------------------------------------------------

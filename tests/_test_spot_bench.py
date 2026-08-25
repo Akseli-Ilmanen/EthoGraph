@@ -1,4 +1,5 @@
 """Where does an E2E-Spot training step spend its time? Run with cwd=spot*/."""
+
 import os
 import sys
 import time
@@ -35,8 +36,11 @@ def bench_model(clip):
         scaler.update()
     torch.cuda.synchronize()
     dt = (time.perf_counter() - t0) / STEPS
-    print(f"MODEL clip={clip}: {dt:.2f} s/step  {BATCH * clip / dt:.0f} frames/s  "
-          f"peak {torch.cuda.max_memory_allocated() / 1e9:.2f} GB", flush=True)
+    print(
+        f"MODEL clip={clip}: {dt:.2f} s/step  {BATCH * clip / dt:.0f} frames/s  "
+        f"peak {torch.cuda.max_memory_allocated() / 1e9:.2f} GB",
+        flush=True,
+    )
     del model, net, opt, x, out, loss
     torch.cuda.empty_cache()
 
@@ -46,8 +50,18 @@ def bench_loader(workers, clip):
     from util.dataset import load_classes
 
     classes = load_classes("data/crow_pellet/class.txt")
-    ds = ActionSpotDataset(classes, "data/crow_pellet/train.json", sys.argv[1], "rgb", clip, 40,
-                           is_eval=False, crop_dim=224, dilate_len=0, mixup=True)
+    ds = ActionSpotDataset(
+        classes,
+        "data/crow_pellet/train.json",
+        sys.argv[1],
+        "rgb",
+        clip,
+        40,
+        is_eval=False,
+        crop_dim=224,
+        dilate_len=0,
+        mixup=True,
+    )
     loader = DataLoader(ds, batch_size=BATCH, num_workers=workers, pin_memory=True, prefetch_factor=1)
     t0 = time.perf_counter()
     it = iter(loader)
@@ -61,8 +75,11 @@ def bench_loader(workers, clip):
     frame = ds.load_frame_gpu(batch, "cuda")
     torch.cuda.synchronize()
     gpu = time.perf_counter() - t0
-    print(f"LOADER {workers}w clip={clip}: {dt:.2f} s/batch  {BATCH * clip / dt:.0f} frames/s; "
-          f"gpu transform {gpu:.2f} s; frame {tuple(frame.shape)} {frame.dtype}", flush=True)
+    print(
+        f"LOADER {workers}w clip={clip}: {dt:.2f} s/batch  {BATCH * clip / dt:.0f} frames/s; "
+        f"gpu transform {gpu:.2f} s; frame {tuple(frame.shape)} {frame.dtype}",
+        flush=True,
+    )
 
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 #
 # Copyright 2020-present by A. Mathis Group and contributors. All rights reserved.
 #
-# This project and all its files are licensed under GNU AGPLv3 or later version. 
+# This project and all its files are licensed under GNU AGPLv3 or later version.
 # A copy is included in dlc2action/LICENSE.AGPL.
 #
 # Vendored from DLC2Action — see NOTICE.md
@@ -881,7 +881,7 @@ class SpatialFeatures(nn.Module):
             self.conv_1x1_in = nn.Conv1d(dim, num_f_maps, 1)
         else:
             raise NotImplementedError("Graph not implemented")
-        
+
         self.num_layers = num_layers
         self.block_size = block_size
         self.layers = nn.ModuleList([module(**pars) for _ in range(num_layers)])

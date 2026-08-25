@@ -174,7 +174,7 @@ def test_ablation_drops_the_video_columns(project):
     from ethograph.segment.infer import load_run
 
     project.materialise()
-    result = project.update("train.drop_kinds=[video_feature]", "train.run_name=abl").train()
+    result = project.update("train.drop_kinds=[video_feature]", "train.run_name=able").train()
     run = load_run(result.run_dir)
     assert run.keep is not None
     assert int(run.keep.sum()) == 2  # speed + heading_angle

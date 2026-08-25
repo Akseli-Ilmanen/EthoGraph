@@ -552,8 +552,7 @@ def make_targets(
     y = (np.abs(delta) <= tolerance_s).astype(np.int8)
     if not y.any():
         raise ValueError(
-            f"The event at {y_time:.3f} s falls outside the feature time base "
-            f"({time[0]:.3f}–{time[-1]:.3f} s)."
+            f"The event at {y_time:.3f} s falls outside the feature time base ({time[0]:.3f}–{time[-1]:.3f} s)."
         )
     sigma = tolerance_s / 2.0
     weights = np.ones_like(time)

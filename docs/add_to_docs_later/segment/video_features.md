@@ -163,7 +163,7 @@ ignore.
 ```python
 ranking, names = project.rank_video_features()
 # the 20 most discriminating dims
-print([names[i] for i in ranking.top(20)] )    
+print([names[i] for i in ranking.top(20)] )
 ```
 
 This reads the **materialised dataset**, so it ranks exactly the columns a

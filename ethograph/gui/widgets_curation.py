@@ -1006,9 +1006,11 @@ class CurationPanel(QGroupBox):
             return
         entry = self._load_curves().get(str(self._targets[self._idx].inst["trial"]))
         scope = self.scope()
-        wanted = {} if entry is None else {
-            label: curve for label, curve in entry[1].items() if scope is None or label in scope
-        }
+        wanted = (
+            {}
+            if entry is None
+            else {label: curve for label, curve in entry[1].items() if scope is None or label in scope}
+        )
         if not wanted:
             container.hide_onset_curves()
             return
@@ -1018,8 +1020,7 @@ class CurationPanel(QGroupBox):
         offset = float(self.app_state.to_display(trial, 0.0))
         if not container.show_onset_curves(entry[0] + offset, wanted, colors):
             logger.info(
-                "Onset curves exist for trial %s but no open panel can host them — "
-                "open a feature panel to see them.",
+                "Onset curves exist for trial %s but no open panel can host them — open a feature panel to see them.",
                 trial,
             )
 

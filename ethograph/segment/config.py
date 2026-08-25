@@ -949,7 +949,7 @@ def _dump_value(value: Any) -> str:
 
     PyYAML ends a scalar *document* with a ``...`` marker on its own line
     (``1e-05`` dumps as ``"1.0e-05\\n...\\n"``), which would travel into the
-    override string and out again into anything that prints or re-uses it.
+    override string and out again into anything that prints or reuses it.
     """
     text = yaml.safe_dump(value, default_flow_style=True).strip()
     lines = [line for line in text.splitlines() if line.strip() != "..."]

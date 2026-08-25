@@ -68,4 +68,3 @@ session must have the same number of individuals. When the cast varies,
 `merge_video_features` writes the `s3d` variable into an xarray session. For
 pynapple and NWB sessions the sidecar `.nc` exists but the merge is by hand
 (a `TsdFrame` on the trial's time axis, or an NWB `TimeSeries`).
-

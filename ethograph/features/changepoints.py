@@ -289,8 +289,7 @@ def merge_changepoints(ds, vars: Sequence[str] | None = None, keep_dims: Sequenc
         unknown = [v for v in vars if v not in ds.data_vars or not schema.is_changepoint(ds[v])]
         if unknown:
             raise ValueError(
-                f"{unknown} are not changepoint masks in this dataset "
-                f"(available: {schema.changepoint_vars(ds)})"
+                f"{unknown} are not changepoint masks in this dataset (available: {schema.changepoint_vars(ds)})"
             )
         cp_ds = ds[list(vars)]
 
@@ -501,8 +500,7 @@ def add_changepoint_features(
     for var in cp_vars:
         if var not in ds.data_vars or not schema.is_changepoint(ds[var]):
             raise ValueError(
-                f"{var!r} is not a changepoint mask in this dataset "
-                f"(available: {schema.changepoint_vars(ds)})"
+                f"{var!r} is not a changepoint mask in this dataset (available: {schema.changepoint_vars(ds)})"
             )
 
     for var in cp_vars:

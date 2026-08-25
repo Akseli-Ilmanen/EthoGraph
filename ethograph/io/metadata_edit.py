@@ -118,9 +118,7 @@ def ensure_tabular_target(
     existing file is never overwritten. Returns ``None`` when there is no data
     source to hang a metadata file off.
     """
-    target = resolve_metadata_target(
-        source_path, metadata_path=metadata_path, alignment_path=alignment_path
-    )
+    target = resolve_metadata_target(source_path, metadata_path=metadata_path, alignment_path=alignment_path)
     if target is None:
         return None
     if target.kind == TARGET_NWB:
