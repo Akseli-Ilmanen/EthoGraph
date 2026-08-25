@@ -289,7 +289,6 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         self.audio_overlay_type = None
         self.audio_cp_items: list = []
         self.osc_event_items: list = []
-        self.dataset_cp_items: list = []
         self._pending_label_items: list = []
         self._pending_label_regions: list = []
         self._pending_hover_conns: list = []

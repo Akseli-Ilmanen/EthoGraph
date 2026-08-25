@@ -1,6 +1,7 @@
 data/
 !data/model/project.yaml
 logging/
+spot_frames/
 result/
 configs/crowlab/model/
 *.mp4
@@ -112,3 +113,7 @@ ethograph-*/
 
 # Local archive of superseded code (never committed)
 .archive/
+
+# E2E-Spot clone (+ snapshot) used by scripts/spot_point_events.py; patch kept in scripts/
+spot/
+spot_mod/

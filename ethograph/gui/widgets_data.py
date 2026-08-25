@@ -1,5 +1,6 @@
 """Widget for selecting start/stop times and playing a segment."""
 
+import gc
 import logging
 import os
 from dataclasses import dataclass, field
@@ -3196,13 +3197,25 @@ class DataWidget(QWidget):
             return
         self.pose_mgr.update_pose(self.get_hidden_keypoints())
 
-    def closeEvent(self, event):
-        SharedAudioCache.clear_cache()
-        from .plots_ephystrace import clear_loader_cache
+    def cleanup(self) -> None:
+        """Release what a loaded session holds: caches, the video, the cycles.
 
-        clear_loader_cache()
+        Qt delivers ``closeEvent`` only to the window, never to its children,
+        so this has to be driven from :meth:`EthographMainWindow.closeEvent`.
+        Covered by tests/test_unit/test_session_cleanup.py.
+        """
+        SharedAudioCache.clear_cache()
         if getattr(self.app_state, "video", None):
             self.app_state.video.stop()
+        # A closed window's widgets, plots and buffers reference each other, so
+        # refcounting alone frees none of them — a session that builds and
+        # closes windows grows by ~80 MB each time until a large native (HDF5)
+        # allocation fails with an access violation. Only a generational pass
+        # breaks those cycles.
+        gc.collect()
+
+    def closeEvent(self, event):
+        self.cleanup()
         super().closeEvent(event)
 
     def _on_space_view_changed(self, text):

@@ -38,19 +38,10 @@ How often the model is *right* is a property of the model, not of one label:
 :func:`fit_confidence_calibration` scores every training trial with
 classifiers that never saw it, and training reports that hit rate.
 
-Expectations (optional): a user who knows the classes run A then B, and that
-a trial with one has the other, says so when creating the model
-(``expected_order``, ``expect_together``). Nothing about the prediction
-changes — every class still lands on its own curve's tallest peak. What the
-declaration buys is a **flag**: :func:`check_expectations` reports the trials
-that came out in another order or got only part of the set, and those are the
-trials worth a human's attention first.
-
-That is deliberately a flag and not a correction. A model that jointly decoded
-the order (this module used to fit a linear-chain CRF) can move an event away
-from its own evidence to satisfy the sequence — which is invisible on the
-curve, and unarguable when it is wrong. Predicting from the curve and flagging
-the surprise keeps both halves legible.
+Every class lands on its own curve's tallest peak, independent of every other
+class. A model that jointly decoded the order (this module used to fit a
+linear-chain CRF) can move an event away from its own evidence to satisfy the
+sequence — which is invisible on the curve, and unarguable when it is wrong.
 
 Model layout (``~/.ethograph/models/{name}/``)::
 
@@ -97,7 +88,6 @@ from ethograph.features.columns import (
     extract_features,
     sampling_rate,
 )
-from ethograph.labels.curation import EXPECTATION_COLUMN, EXPECTED_OK
 from ethograph.utils.paths import ethograph_home
 
 logger = logging.getLogger(__name__)
@@ -161,24 +151,12 @@ class OnsetModelConfig:
     #: Negative frames kept per positive frame (hard negatives near the event
     #: are always kept; the rest are subsampled deterministically).
     neg_per_pos: int = 20
-    #: The order the user expects these classes to occur in, by label id — a
-    #: declaration, not something learnt. A trial whose predictions come out
-    #: in another order is *flagged*, never moved: see
-    #: :func:`check_expectations`. Classes left out are unconstrained; an
-    #: empty list expects nothing.
-    expected_order: list[int] = field(default_factory=list)
-    #: Whether the classes in :attr:`expected_order` come as a set: if a trial
-    #: has **one** of them it should have the others. A trial with none of
-    #: them is not surprising — the behaviour simply did not happen there —
-    #: so only a *partial* set is flagged.
-    expect_together: bool = False
 
     def __post_init__(self) -> None:
         # YAML round-trips keys as ints already, but a config built from GUI
         # widgets may carry numpy ints or strings.
         self.targets = {int(label): str(name) for label, name in self.targets.items()}
         self.derivatives = [str(feature) for feature in self.derivatives]
-        self.expected_order = [int(label) for label in self.expected_order]
 
     def columns(self) -> list[FeatureColumn]:
         """This model's input layout: one column per pinned combination, plus
@@ -194,13 +172,6 @@ class OnsetModelConfig:
 
     def describe_targets(self) -> str:
         return ", ".join(f"{name} ({label})" for label, name in self.targets.items())
-
-    def describe_expectations(self) -> str:
-        """The declared expectations in words, or "" when nothing is declared."""
-        if not self.expected_order:
-            return ""
-        chain = " → ".join(self.target_name(label) for label in self.expected_order)
-        return f"{chain}, one implies the rest" if self.expect_together else chain
 
 
 def models_root() -> Path:
@@ -239,9 +210,11 @@ def _upgrade_config_dict(raw: dict) -> dict:
         raw["targets"] = {int(raw.pop("target_label")): str(raw.pop("target_name", ""))}
     raw.pop("target_label", None)
     raw.pop("target_name", None)
-    # The sequence CRF was replaced by declared expectations: a config that
-    # asked for one still loads, it just no longer decides anything.
+    # A config that asked for the removed sequence CRF, or declared an
+    # expected event order, still loads — those keys just no longer exist.
     raw.pop("use_crf", None)
+    raw.pop("expected_order", None)
+    raw.pop("expect_together", None)
     return raw
 
 
@@ -578,12 +551,9 @@ def train_model(name: str) -> dict:
     """Fit one classifier per target.
 
     Returns a summary dict: ``n_sessions``, ``n_trials``, ``targets`` (each
-    label's ``n_trials``/``n_frames``/``n_positive`` plus its held-out record)
-    and ``sequences`` — how often each event order appeared in the training
-    trials, which is how a user checks a declared ``expected_order`` against
-    what the data actually did. Raises ``ValueError`` when there is no training
-    data, a target has no labelled trial, or the stored trials disagree on
-    sampling rate.
+    label's ``n_trials``/``n_frames``/``n_positive`` plus its held-out record).
+    Raises ``ValueError`` when there is no training data, a target has no
+    labelled trial, or the stored trials disagree on sampling rate.
     """
     config = load_config(name)
     if not config.targets:
@@ -614,14 +584,12 @@ def train_model(name: str) -> dict:
         "n_trials": len(trials),
         "targets": per_target,
         "calibration": {label: cal.to_dict() for label, cal in calibration.items()},
-        "sequences": observed_sequences(trials, config),
     }
     for label, stats in per_target.items():
         cal = calibration.get(label)
         if cal is not None:
             stats["held_out"] = f"{cal.n_hits}/{cal.n_trials}"
             stats["confidence_ceiling"] = cal.hit_rate
-    logger.info("Event orders seen in training: %s", summary["sequences"] or "none")
     joblib.dump(bundle, model_dir(name) / _MODEL_FILE)
     logger.info("Training done: %r", name)
     return summary
@@ -800,8 +768,7 @@ def predict_trial(
     Times are on *time*'s clock. Every target is read independently off its
     own smoothed probability curve: the tallest peak is the event, and that
     peak's height is the confidence. No class's evidence is allowed to move
-    another's — an order the user did not expect is reported by
-    :func:`check_expectations`, never corrected here.
+    another's.
     """
     config = bundle_config(bundle)
     fs = sampling_rate(time)
@@ -821,76 +788,6 @@ def predict_trial(
             confidence=height,
         )
     return TrialPrediction(events, curves)
-
-
-# ---------------------------------------------------------------------------
-# Expectations — what the user says the classes do, checked afterwards
-# ---------------------------------------------------------------------------
-
-
-#: Flags :func:`check_expectations` can raise for one trial.
-FLAG_ORDER = "order"
-FLAG_MISSING = "missing"
-
-#: Re-exported: the metadata column a run writes its verdict to, and the value
-#: meaning "nothing surprising". Defined in :mod:`ethograph.labels.curation`
-#: beside the curation verdict, because both are derived per-trial state that
-#: ``io/metadata_edit`` must keep out of a recording — and that module cannot
-#: import this one.
-__all__ = ["EXPECTATION_COLUMN", "EXPECTED_OK"]
-
-
-def check_expectations(times: dict[int, float], config: OnsetModelConfig) -> list[str]:
-    """Which declared expectations one trial's predictions broke.
-
-    *times* is what the run actually wrote for this trial, ``{label: time}`` —
-    a class dropped for low confidence is simply absent, which is what gives
-    the coupling check something to see.
-
-    Returns :data:`FLAG_ORDER` when the classes present came out in an order
-    other than the declared one, and :data:`FLAG_MISSING` when a trial got
-    **some but not all** of a coupled set. A trial that got *none* of them is
-    never flagged: the coupling says "one implies the others", not "every
-    trial has them", and a trial where the behaviour did not happen is not a
-    surprise. Nothing here changes a prediction: the flag says *look at this
-    trial*, and the trials table's filter is how a user acts on it.
-    """
-    if not config.expected_order:
-        return []
-    flags: list[str] = []
-    present = [label for label in config.expected_order if label in times]
-    if present != sorted(present, key=lambda label: times[label]):
-        flags.append(FLAG_ORDER)
-    if config.expect_together and 0 < len(present) < len(config.expected_order):
-        flags.append(FLAG_MISSING)
-    return flags
-
-
-def expectation_verdict(flags: list[str]) -> str:
-    """One trial's flags as the string written to :data:`EXPECTATION_COLUMN`."""
-    return "+".join(flags) if flags else EXPECTED_OK
-
-
-def observed_sequences(trials: list[TrainingTrial], config: OnsetModelConfig) -> dict[str, int]:
-    """How often each event order appears in the training trials.
-
-    ``{"3-4-5": 18, "3-5": 2}`` reads as "18 trials ran 3 then 4 then 5". This
-    This is how a user checks a declared ``expected_order`` against what the
-    trials actually did: training reports it, and an order that dominates here
-    but is not the one declared is worth a second look at the declaration.
-    """
-    counts: dict[str, int] = {}
-    for trial in trials:
-        present = {
-            label: t
-            for label in config.targets
-            if (t := _resolve_y_time(trial.y_times, label, config)) is not None
-        }
-        if not present:
-            continue
-        key = "-".join(str(label) for label, _ in sorted(present.items(), key=lambda item: item[1]))
-        counts[key] = counts.get(key, 0) + 1
-    return dict(sorted(counts.items(), key=lambda item: -item[1]))
 
 
 def _cross_fit_curves(

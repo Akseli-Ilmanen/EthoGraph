@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import logging
 import shutil
-import tempfile
 from pathlib import Path
 from uuid import uuid4
 
@@ -56,6 +55,7 @@ from ethograph.io.validation import (
     POSE_EXTENSIONS,
     VIDEO_EXTENSIONS,
 )
+from ethograph.utils.paths import tmp_alignment_base
 
 # POSE_SOFTWARES is shared with the pose-overlay prompt in pose_render.
 from .app_constants import POSE_SOFTWARES
@@ -1285,7 +1285,7 @@ class CoverPage(QDialog):
         would silently fail to appear. Older drop dirs are removed best-effort;
         a dir whose files are still open (Windows locks HDF5) is simply left.
         """
-        base = Path(tempfile.gettempdir()) / "ethograph_tmp_alignment"
+        base = tmp_alignment_base()
         base.mkdir(parents=True, exist_ok=True)
         for stale in base.iterdir():
             try:

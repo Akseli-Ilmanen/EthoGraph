@@ -100,36 +100,6 @@ survives that session moving or going offline.
 
 ---
 
-(target-onset-model-sequence)=
-## Saying what you expect
-
-You usually know things about your classes that the model does not: that the
-bird pecks *before* it lands, that a trial with one has the other. Say so when
-you create the model, and EthoGraph will tell you which trials disagreed.
-
-In the Train dialog, **drag the ticked classes into the order you expect** —
-the list is the declaration — then tick:
-
-| | |
-|---|---|
-| **Expect them in the order they are listed above** | flags a trial whose predicted events came out in another order |
-| **…and if a trial has one of them, expect the rest** | flags a trial that got only *part* of the set, because the rest fell below the confidence floor. A trial with **none** of them is not flagged — the behaviour did not happen there, which is no surprise |
-
-```{important}
-A declaration **never changes a prediction** — every event still lands on its
-own curve's tallest peak. A model that moved an event to satisfy a sequence
-would be putting the label somewhere the curve never suggested, invisibly.
-```
-
-Training reports the orders the trials actually ran in (`peck → land ×18,
-land → peck ×2`), so you can check a declaration against your own data.
-Predictions then write a **`prediction_check`** column into the {doc}`trials
-table <../metadata>` — `ok`, `order`, `missing` or `order+missing` per trial.
-Filter it to the flagged values and every downstream operation narrows to
-those trials: review queue, grids, navigation.
-
----
-
 ## Predicting
 
 Pick a trained model, choose which **individual** the predicted labels belong

@@ -17,13 +17,17 @@
 
     add_NaN_boundaries
 
+    changepoint_fired
+
+    changepoint_mask_times
+
     correct_changepoints
 
     correct_changepoints_automatic
 
     correct_changepoints_dense
 
-    extract_cp_times
+    dataset_changepoint_times
 
     find_nearest_turning_points_binary
 
@@ -34,5 +38,3 @@
     merge_changepoints
 
     more_changepoint_features
-
-    snap_to_nearest_changepoint_time

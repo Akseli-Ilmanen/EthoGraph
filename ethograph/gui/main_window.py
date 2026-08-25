@@ -437,7 +437,9 @@ class EthographMainWindow(QMainWindow):
             if hasattr(self.meta_widget.app_state, "stop_auto_save"):
                 self.meta_widget.app_state.stop_auto_save()
             data_widget = getattr(self.meta_widget, "data_widget", None)
-            if data_widget is not None and getattr(data_widget, "video_mgr", None) is not None:
-                data_widget.video_mgr.cleanup()
+            if data_widget is not None:
+                if getattr(data_widget, "video_mgr", None) is not None:
+                    data_widget.video_mgr.cleanup()
+                data_widget.cleanup()
         set_toast_host(None)
         super().closeEvent(event)

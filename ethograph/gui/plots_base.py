@@ -604,13 +604,16 @@ class BasePlot(pg.PlotWidget):
 
         from qtpy.QtCore import Qt
 
-        if event.double() and event.button() == Qt.LeftButton:
+        # A left double-click autoscales — unless a label is being drawn, when
+        # the "double" click is its closing boundary (two quick clicks inside
+        # the system's double-click time and distance) and must be delivered.
+        if event.double() and event.button() == Qt.LeftButton and not self.app_state.label_drawing_armed:
             self.autoscale()
             return
 
         pos = self.plot_item.vb.mapSceneToView(event.scenePos())
 
-        click_info = {"x": pos.x(), "button": event.button()}
+        click_info = {"x": pos.x(), "button": event.button(), "plot": self}
         self.plot_clicked.emit(click_info)
 
     def autoscale(self):

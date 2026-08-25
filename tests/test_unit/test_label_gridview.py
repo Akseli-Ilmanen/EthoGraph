@@ -8,6 +8,7 @@ from qtpy.QtCore import Qt
 from qtpy.QtGui import QImage
 from qtpy.QtWidgets import QApplication, QCheckBox, QLabel, QListWidget, QListWidgetItem, QWidget
 
+from ethograph.gui import dialog_label_gridview as gv
 from ethograph.gui.app_state import ObservableAppState
 from ethograph.gui.dialog_label_gridview import (
     DEFAULT_CONFIDENCE,
@@ -1193,3 +1194,61 @@ class TestHistogramBarColor:
     def test_a_reddish_colour_falls_back_to_neutral(self):
         assert histogram_bar_color("#ff5555") != "#ff5555"
         assert histogram_bar_color(LOW_CONFIDENCE_COLOR) != LOW_CONFIDENCE_COLOR
+
+
+class _SortStub:
+    """The fields sort_entries reads, off both grids' entry types."""
+
+    def __init__(self, trial, onset_s, confidence, duration=0.0):
+        self.trial = trial
+        self.onset_s = onset_s
+        self.confidence = confidence
+        self.duration = duration
+
+
+class TestSortEntries:
+    """Ordering is a review strategy: by confidence, the doubtful labels land
+    on the first screens instead of scattered through the trials."""
+
+    ENTRIES = [
+        _SortStub("2", 1.0, 0.9, duration=5.0),
+        _SortStub("10", 0.0, 0.1, duration=1.0),
+        _SortStub("1", 3.0, 0.5, duration=9.0),
+    ]
+
+    def _trials(self, order):
+        return [e.trial for e in gv.sort_entries(self.ENTRIES, order)]
+
+    def test_trial_order_is_numeric_not_textual(self):
+        """Trial 10 comes after trial 2, not between 1 and 2."""
+        assert self._trials("trial") == ["1", "2", "10"]
+
+    def test_confidence_ascending_puts_the_doubtful_first(self):
+        assert self._trials("confidence_asc") == ["10", "1", "2"]
+
+    def test_confidence_descending_reverses_it(self):
+        assert self._trials("confidence_desc") == ["2", "1", "10"]
+
+    def test_duration_is_the_video_grids_own_order(self):
+        assert self._trials("duration") == ["10", "2", "1"]
+
+    def test_ties_fall_back_to_trial_and_time(self):
+        tied = [_SortStub("2", 0.0, 0.5), _SortStub("1", 9.0, 0.5), _SortStub("1", 0.0, 0.5)]
+        assert [(e.trial, e.onset_s) for e in gv.sort_entries(tied, "confidence_asc")] == [
+            ("1", 0.0),
+            ("1", 9.0),
+            ("2", 0.0),
+        ]
+
+    def test_sorting_never_drops_or_adds_an_entry(self):
+        for order in gv.VIDEO_GRID_SORT_ORDERS:
+            assert len(gv.sort_entries(self.ENTRIES, order)) == len(self.ENTRIES)
+
+    def test_an_unknown_order_is_refused(self):
+        with pytest.raises(ValueError, match="Unknown grid sort order"):
+            gv.sort_entries(self.ENTRIES, "sideways")
+
+    def test_duration_is_offered_only_by_the_video_grid(self):
+        """The frame grid shows one frame per label — length means nothing there."""
+        assert "duration" not in gv.GRID_SORT_ORDERS
+        assert "duration" in gv.VIDEO_GRID_SORT_ORDERS

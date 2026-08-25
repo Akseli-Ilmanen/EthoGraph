@@ -424,7 +424,7 @@ class CurationPanel(QGroupBox):
         frame_lay.addLayout(win_row)
 
         review_opts_row = QHBoxLayout()
-        self.next_curates_cb = QCheckBox("N = mark curated")
+        self.next_curates_cb = QCheckBox("N = Next (and mark current curated)")
         self.next_curates_cb.setToolTip(
             "Moving on with N means you looked at the boundary and it is fine:\n"
             "an automated label becomes curated. Untick to only browse."
@@ -433,7 +433,7 @@ class CurationPanel(QGroupBox):
         self.next_curates_cb.toggled.connect(lambda v: setattr(self.app_state, "curation_next_curates", v))
         review_opts_row.addWidget(self.next_curates_cb)
 
-        self.automated_only_cb = QCheckBox("Automated only")
+        self.automated_only_cb = QCheckBox("Show automated only")
         self.automated_only_cb.setToolTip(
             "A human already vouched for a manual or curated label, so the queue\n"
             "leaves those out — only automated boundaries need a first look.\n"

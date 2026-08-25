@@ -187,10 +187,10 @@ def _expand_changepoint_features(session: Session, config: SegmentConfig) -> Non
     from ethograph.features.changepoints import add_changepoint_features, merge_changepoints
 
     def _expand(ds):
-        # A file written before the variable-schema convention still carries
-        # the legacy `attrs["type"] = "changepoints"` spelling, which nothing
-        # migrates automatically on load (see schema.migrate_legacy_attrs) —
-        # do it here so add_changepoint_features recognises the mask.
+        # add_changepoint_features already recognises the legacy
+        # `attrs["type"] = "changepoints"` spelling without migration (see
+        # schema.kind_of/is_changepoint); migrate here anyway to normalise
+        # the attrs and drop any other stale `type` value the file carries.
         ds = schema.migrate_legacy_attrs(ds)
         vars = list(cfg.inputs)
         if cfg.merge:
@@ -348,16 +348,9 @@ def changepoint_times(session: Session, trial: int | str, selections: dict[str, 
 
 
 def _changepoint_times_xarray(ds, selections: dict[str, str]) -> np.ndarray:
-    from ethograph.features.changepoints import extract_cp_times
-    from ethograph.utils.xr_utils import get_time_coord
+    from ethograph.features.changepoints import dataset_changepoint_times
 
-    names = schema.changepoint_vars(ds)
-    if not names:
-        return np.array([], dtype=np.float64)
-    first = ds[names[0]]
-    time = get_time_coord(first).values
-    valid = {k: v for k, v in selections.items() if k in first.dims}
-    return extract_cp_times(ds, time, **valid)
+    return dataset_changepoint_times(ds, selections=selections)
 
 
 def _changepoint_times_pynapple(session: Session, trial: int | str, selections: dict[str, str]) -> np.ndarray:

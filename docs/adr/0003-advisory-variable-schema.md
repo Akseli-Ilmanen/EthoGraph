@@ -4,10 +4,18 @@ Date: 2026-08-23
 
 ## Status
 
-Accepted, with one clause amended: the legacy `type="changepoints"` spelling
-is no longer read (see "Both spellings are read" below). A raw mask is marked
-by `changepoint_mask`, and an old file is converted once with
-`ethograph.io.schema.migrate_legacy_attrs`.
+Accepted. `type="changepoints"` and `kind="changepoint_feature"` are both
+read as equivalent spellings for a raw changepoint mask (see "Both spellings
+are read" below); a raw mask is additionally marked by `changepoint_mask` so
+the mask predicate does not depend on which spelling a file uses.
+`ethograph.io.schema.migrate_legacy_attrs` still exists to normalise an old
+file onto the full stamp and to drop other stale `type` values, but is no
+longer required for a changepoint mask to be recognised.
+
+*History:* this clause was briefly amended (2026-08-23) to drop the legacy
+spelling entirely — one spelling, migrate-on-read. That traded a live
+fallback for a migration step, which turned out to be the wrong trade for a
+file nobody had migrated yet; the amendment was reverted the same day.
 
 ## Context
 
@@ -45,14 +53,15 @@ today only `normalise`, read where normalisation happens.
 
 **Both spellings are read; both are written for changepoints.** `kind_of()`
 maps the legacy `type="changepoints"` onto `changepoint_feature`, and
-changepoint producers write both, so no file needs migrating.
-
-*Amended:* keeping two spellings alive turned out to be the layer this ADR
-set out to avoid, and it left `kind` doing a mask's job. There is now one
-spelling — `kind="changepoint_feature"` labels the family, `changepoint_mask`
-marks the mask — and `type="changepoints"` is neither written nor read. A
-file from before is converted once with `migrate_legacy_attrs`; until then
-its changepoints read as ordinary variables.
+`is_changepoint()` maps it onto the mask predicate too — every historical use
+of that attr marked a raw mask, never an expansion, so the one legacy value
+carries both meanings at once. Changepoint producers write both spellings
+(`changepoint_attrs()` sets `kind`, `changepoint_mask` *and* `type`), so no
+file needs migrating for either direction: an old file is read correctly
+with no migration, and a new file is read correctly by legacy-only code.
+`changepoint_mask` still exists as its own attr — it is what `kind` doing a
+mask's job would have meant to avoid — so the mask predicate has one home
+regardless of which spelling produced it.
 
 `units` is deliberately **not** adopted: we wrote it in three places and read
 it nowhere, and the one plausible consumer (`plots_radial.angular_unit`)

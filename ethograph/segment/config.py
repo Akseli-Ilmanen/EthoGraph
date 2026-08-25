@@ -43,6 +43,73 @@ run ours. Only the settings that carry over unchanged are read from it — see
 """
 
 
+GUI_SETTINGS_FILENAME = "gui_settings.yaml"
+"""The GUI's global settings file, under :func:`~ethograph.utils.paths.ethograph_home`."""
+
+GUI_POSTPROCESS_KEYS: dict[str, tuple[str, Any]] = {
+    "min_duration_s": ("cp_min_label_length_s", 0.05),
+    "label_thresholds": ("cp_label_thresholds", {}),
+    "stitch_gap_s": ("cp_stitch_gap_len_s", 0.015),
+    "max_expansion_s": ("cp_max_expansion_s", 0.05),
+    "max_shrink_s": ("cp_max_shrink_s", 0.05),
+}
+"""``PostprocessConfig`` field → (``gui_settings.yaml`` key, the GUI's default).
+
+The GUI's changepoint-correction section and ``infer.postprocess`` are the
+same four steps under different names; this is the translation, and the one
+place it is written. The defaults are the GUI's own (``AppStateSpec.VARS``)
+for a key the file has not saved yet — covered by
+``tests/test_unit/test_segment_gui_postprocess.py``, which checks both
+against the spec.
+"""
+
+GUI_POSTPROCESS_STEPS: dict[str, tuple[str, bool]] = {
+    "cp_step_purge": ("cp_step_purge", True),
+    "cp_step_stitch": ("cp_step_stitch", True),
+    "cp_step_snap": ("cp_step_snap", True),
+    "cp_step_purge_after": ("cp_step_purge_after", True),
+}
+"""The GUI's step checkboxes. The pipeline derives its steps from the values
+(``postprocess.py``), so an unticked step reads as its parameter zeroed:
+purge (either box) off → ``min_duration_s = 0`` and no thresholds, stitch off
+→ ``stitch_gap_s = 0``, snap off → ``changepoint_correction: false``."""
+
+
+def gui_settings_path(value: str | bool, base_dir: Path) -> Path:
+    """Where ``infer.postprocess.gui_settings`` points: ``true`` = the ethograph home's file."""
+    if value is True:
+        return ethograph_home() / GUI_SETTINGS_FILENAME
+    p = Path(str(value)).expanduser()
+    return p if p.is_absolute() else (base_dir / p).resolve()
+
+
+def read_gui_postprocess(path: Path) -> dict[str, Any]:
+    """The ``infer.postprocess`` values the GUI's ``gui_settings.yaml`` at *path* expresses.
+
+    Only the correction keys (:data:`GUI_POSTPROCESS_KEYS` + the step boxes);
+    the boundary-head settings and the ``changepoints`` selection have no GUI
+    counterpart and are left to the config. Missing: a config that asks for
+    a GUI file that is not there is an error, not a silent default.
+    """
+    if not path.is_file():
+        raise FileNotFoundError(
+            f"infer.postprocess.gui_settings points at {path}, which does not exist — "
+            "open the GUI once (it writes the file) or spell the postprocess values in the config"
+        )
+    saved = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    if not isinstance(saved, dict):
+        raise ValueError(f"{path} is not a mapping")
+    values = {field_name: saved.get(key, default) for field_name, (key, default) in GUI_POSTPROCESS_KEYS.items()}
+    steps = {name: bool(saved.get(key, default)) for name, (key, default) in GUI_POSTPROCESS_STEPS.items()}
+    if not (steps["cp_step_purge"] or steps["cp_step_purge_after"]):
+        values["min_duration_s"] = 0.0
+        values["label_thresholds"] = {}
+    if not steps["cp_step_stitch"]:
+        values["stitch_gap_s"] = 0.0
+    values["changepoint_correction"] = steps["cp_step_snap"]
+    return values
+
+
 def upstream_training_defaults() -> dict[str, Any]:
     """DLC2Action's own training defaults, straight from ``config/training.yaml``."""
     if not TRAINING_CONFIG.is_file():
@@ -564,8 +631,20 @@ class PostprocessConfig:
         predicted                            snap to the model's own peaks
         hybrid    + changepoint_correction   the model's peaks, restricted to
                                              the detected changepoints
+
+    The interval steps are the GUI's changepoint correction, and
+    ``gui_settings`` lets a config *take* the GUI's numbers instead of
+    spelling them: ``true`` reads ``gui_settings.yaml`` from the ethograph
+    home, a path reads that file (see :data:`GUI_POSTPROCESS_KEYS` for which
+    keys). Anything spelled explicitly beside it still wins, so an override
+    such as ``infer.postprocess.max_shrink_s=0.1`` composes with it. The
+    values are resolved when the config is loaded, and a saved run config
+    carries them explicitly — the run does not change when the GUI does.
     """
 
+    #: ``true`` / a path: read the correction settings from the GUI's
+    #: ``gui_settings.yaml`` (:func:`read_gui_postprocess`); ``None``: as spelled.
+    gui_settings: str | bool | None = None
     min_duration_s: float = 0.0
     label_thresholds: dict[int, float] = field(default_factory=dict)
     stitch_gap_s: float = 0.0
@@ -895,8 +974,27 @@ def apply_overrides(data: dict, overrides: list[str]) -> dict:
     return out
 
 
+def _resolve_gui_postprocess(data: dict, base_dir: Path) -> dict:
+    """Fill ``infer.postprocess`` from the GUI's settings file when it asks for that.
+
+    The GUI's values are the base; every key spelled in the config beside
+    ``gui_settings`` (or arriving as an override) wins over them. The path
+    is recorded in place of ``true`` so a saved run config says where the
+    numbers came from — and, carrying them explicitly, no longer depends on
+    that file.
+    """
+    infer = data.get("infer")
+    postprocess = infer.get("postprocess") if isinstance(infer, dict) else None
+    if not isinstance(postprocess, dict) or not postprocess.get("gui_settings"):
+        return data
+    path = gui_settings_path(postprocess["gui_settings"], base_dir)
+    explicit = {k: v for k, v in postprocess.items() if k != "gui_settings"}
+    resolved = {**read_gui_postprocess(path), **explicit, "gui_settings": str(path)}
+    return {**data, "infer": {**infer, "postprocess": resolved}}
+
+
 def config_from_dict(data: dict, base_dir: Path, config_path: Path | None = None) -> SegmentConfig:
-    data = dict(data)
+    data = _resolve_gui_postprocess(dict(data), base_dir)
     data.setdefault("root", ".")
     cfg = _build(SegmentConfig, data, "config", base_dir)
     cfg.config_path = config_path

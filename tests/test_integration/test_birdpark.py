@@ -136,43 +136,6 @@ class TestBirdParkLoading:
         assert meta.plot_container.is_lineplot()
 
 
-# ===================================================================
-# Combo interactions
-# ===================================================================
-
-
-class TestComboInteractions:
-    def test_change_feature_selection(self, birdpark_gui):
-        _, meta = birdpark_gui
-        features_combo = meta.data_widget.combos["features"]
-        if features_combo.count() < 2:
-            pytest.skip("Need at least 2 features to test switching")
-        features_combo.setCurrentIndex(1)
-        QApplication.processEvents()
-        expected = features_combo.currentText()
-        assert meta.app_state.features_sel == expected
-
-    def test_change_individual_selection(self, birdpark_gui):
-        _, meta = birdpark_gui
-        combo = meta.data_widget.combos.get("individuals")
-        if combo is None or combo.count() < 2:
-            pytest.skip("Need at least 2 individuals in data_widget.combos")
-        combo.setCurrentIndex(1)
-        QApplication.processEvents()
-        expected = combo.currentText()
-        assert meta.app_state.individuals_sel == expected
-
-    def test_cycle_all_features(self, birdpark_gui):
-        _, meta = birdpark_gui
-        features_combo = meta.data_widget.combos["features"]
-        for i in range(features_combo.count()):
-            text = features_combo.itemText(i)
-            if text in ("Spectrogram", "Waveform"):
-                continue
-            features_combo.setCurrentIndex(i)
-            QApplication.processEvents()
-            assert meta.app_state.features_sel == text
-
 
 # ===================================================================
 # Trial navigation

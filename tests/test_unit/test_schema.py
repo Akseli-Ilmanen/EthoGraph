@@ -83,9 +83,15 @@ class TestKindOf:
     def test_reads_the_new_attr(self):
         assert schema.kind_of(schema.describe(_plain(), schema.NEURAL_FEATURE)) == schema.NEURAL_FEATURE
 
-    def test_no_legacy_type_is_a_kind(self):
-        """`type` in any spelling is dead metadata until migrated."""
-        for stale in ("changepoints", "audio_changepoints", "pca", "features"):
+    def test_legacy_changepoints_type_is_a_kind(self):
+        """`type="changepoints"` is read as a synonym for `kind="changepoint_feature"`."""
+        da = _plain()
+        da.attrs["type"] = "changepoints"
+        assert schema.kind_of(da) == schema.CHANGEPOINT_FEATURE
+
+    def test_other_legacy_types_are_dead(self):
+        """Every other stale `type` value is dead metadata until migrated."""
+        for stale in ("audio_changepoints", "pca", "features"):
             da = _plain()
             da.attrs["type"] = stale
             assert schema.kind_of(da) is None
@@ -107,19 +113,20 @@ class TestIsChangepoint:
         assert schema.is_changepoint(cp)
         assert schema.kind_of(cp) == schema.CHANGEPOINT_FEATURE
         assert cp.attrs["target_feature"] == "speed"
-        assert "type" not in cp.attrs
+        # Written alongside the new attrs so a legacy-only reader still recognises it.
+        assert cp.attrs["type"] == "changepoints"
 
     def test_the_label_alone_is_not_a_mask(self):
         labelled = schema.describe(_plain("cp_sigma3"), schema.CHANGEPOINT_FEATURE)
         assert schema.kind_of(labelled) == schema.CHANGEPOINT_FEATURE
         assert not schema.is_changepoint(labelled)
 
-    def test_the_legacy_attr_is_not_read(self):
-        """`type="changepoints"` means nothing now — migrate_legacy_attrs converts it."""
+    def test_the_legacy_attr_is_read(self):
+        """`type="changepoints"` alone is a synonym for the full mask stamp — no migration needed."""
         old = _plain("cp_old")
         old.attrs["type"] = "changepoints"
-        assert schema.kind_of(old) is None
-        assert not schema.is_changepoint(old)
+        assert schema.kind_of(old) == schema.CHANGEPOINT_FEATURE
+        assert schema.is_changepoint(old)
 
     def test_dataset_helpers_find_masks_only(self):
         cp = _plain("cp")
@@ -152,7 +159,8 @@ class TestMigrateLegacyAttrs:
         assert schema.is_changepoint(out["cp"])
         assert schema.kind_of(out["cp"]) == schema.CHANGEPOINT_FEATURE
         assert out["cp"].attrs["target_feature"] == "speed"
-        assert "type" not in out["cp"].attrs
+        # Normalised back onto the full stamp, so the legacy spelling is still there.
+        assert out["cp"].attrs["type"] == "changepoints"
         # A stale type nothing ever read is dropped, and invents no kind.
         assert "type" not in out["pca"].attrs
         assert schema.kind_of(out["pca"]) is None
@@ -281,7 +289,7 @@ class TestChangepointProducers:
         attrs = ds["speed_troughs"].attrs
         assert attrs[schema.KIND] == schema.CHANGEPOINT_FEATURE
         assert attrs[schema.CHANGEPOINT_MASK] == 1
-        assert "type" not in attrs
+        assert attrs["type"] == "changepoints"
         assert schema.is_changepoint(ds["speed_troughs"])
         assert schema.changepoint_vars(ds) == ["speed_troughs"]
 
@@ -324,15 +332,18 @@ class TestAdvisory:
         # The only difference is that a described mask is known to be a mask.
         assert stamped.changepoints == ["speed_troughs"]
 
-    def test_an_unmigrated_legacy_mask_is_an_ordinary_feature(self):
-        """Dropping legacy support has one visible cost, and migration pays it."""
+    def test_an_unmigrated_legacy_mask_is_already_recognised(self):
+        """`type="changepoints"` alone is enough — no migration required."""
         legacy = self._ds(described=False, legacy_cp=True)
-        assert self._catalog(legacy).changepoints == []
-
-        schema.migrate_legacy_attrs(legacy)
         catalog = self._catalog(legacy)
         assert catalog.changepoints == ["speed_troughs"]
         assert catalog.feature_choices() == ["speed", "heading_angle"]
+
+        # migrate_legacy_attrs is still safe to run — it normalises, not required.
+        schema.migrate_legacy_attrs(legacy)
+        migrated = self._catalog(legacy)
+        assert migrated.changepoints == ["speed_troughs"]
+        assert migrated.feature_choices() == ["speed", "heading_angle"]
 
 
 class TestChangepointLabelVsPredicate:

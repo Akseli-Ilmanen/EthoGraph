@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import os
-
 import numpy as np
 import pytest
 import xarray as xr
@@ -340,11 +338,8 @@ class TestPlacement:
         assert height == pytest.approx(curve[640])
 
     def test_no_class_moves_another(self):
-        """Every target is read off its own curve, in isolation.
-
-        A surprising order is reported by check_expectations, never fixed by
-        pulling an event away from its own evidence.
-        """
+        """Every target is read off its own curve, in isolation — no class's
+        evidence is allowed to pull another's event toward it."""
         time = np.arange(0, 10, 0.01)
         curves = {3: _bump(len(time), 700), 4: _bump(len(time), 300)}
         placed = {label: float(time[om.tallest_peak(curve)[0]]) for label, curve in curves.items()}
@@ -432,168 +427,3 @@ def test_predict_rejects_rate_mismatch():
     with pytest.raises(ValueError, match="[Ss]ampling-rate mismatch"):
         om.predict_events(bundle, time_other, data_other)
 
-
-# ---------------------------------------------------------------------------
-# Sequence model (CRF)
-# ---------------------------------------------------------------------------
-#
-# Fitting is the expensive part of these tests: scikit-learn's boosting is an
-# order of magnitude slower with sample weights, and cross-fitting refits every
-# target once per fold. So the A-B-C model is trained once for the whole module
-# and the tests work off the returned bundle, which needs no model store.
-
-#: Three classes, each with its own signal channel.
-SEQ_FEATURES = {"signal": {"chan": ["a", "b", "c"]}}
-SEQ_TARGETS = {1: "A", 2: "B", 3: "C"}
-SEQ_FS = 50.0
-
-
-def _make_seq_ds(times, seed=0, dur=9.0, decoy=None) -> xr.Dataset:
-    """A trial whose channel *k* carries a bump at ``times[k]``.
-
-    *decoy* is ``(channel, time, amplitude)`` — an extra bump on one channel,
-    used to build a trial where reading each channel on its own goes wrong.
-    """
-    rng = np.random.default_rng(seed)
-    t = np.arange(0.0, dur, 1.0 / SEQ_FS)
-    columns = [5.0 * np.exp(-0.5 * ((t - te) / 0.06) ** 2) + rng.normal(0, 0.3, t.size) for te in times]
-    if decoy is not None:
-        channel, t_decoy, amplitude = decoy
-        columns[channel] = columns[channel] + amplitude * np.exp(-0.5 * ((t - t_decoy) / 0.06) ** 2)
-    return xr.Dataset(
-        {"signal": (("time", "chan"), np.column_stack(columns))},
-        coords={"time": t, "chan": ["a", "b", "c"]},
-    )
-
-
-def _seq_config(name: str, use_crf: bool = True) -> om.OnsetModelConfig:
-    return om.OnsetModelConfig(
-        name=name,
-        targets=SEQ_TARGETS,
-        features=SEQ_FEATURES,
-        window_s=0.2,
-        tolerance_s=0.1,
-        max_iter=40,
-        use_crf=use_crf,
-    )
-
-
-def _write_seq_trials(name: str, n_trials: int, seed: int = 0) -> None:
-    """Trials whose events always run A → B → C, at jittered times."""
-    config = om.load_config(name)
-    rng = np.random.default_rng(seed)
-    for i in range(n_trials):
-        base = 0.8 + rng.uniform(0.0, 0.8)
-        times = [base, base + 2.5 + rng.uniform(0, 0.4), base + 5.0 + rng.uniform(0, 0.4)]
-        loader = XarrayLoader(_make_seq_ds(times, seed=i))
-        time, data = om.extract_features(loader, config.features)
-        om.write_trial_training_data(name, "sess-a", i, time, data, dict(zip(SEQ_TARGETS, times)))
-    om.write_session_meta(name, "sess-a", {"n_trials": n_trials})
-
-
-@pytest.fixture(scope="module")
-def sequence_model(tmp_path_factory):
-    """The A→B→C model, trained once: ``(bundle, summary)``.
-
-    Returns the loaded bundle rather than a model name, so the tests using it
-    are independent of which store the per-test fixture points at.
-    """
-    home = tmp_path_factory.mktemp("seq-home")
-    previous = os.environ.get("ETHOGRAPH_HOME")
-    os.environ["ETHOGRAPH_HOME"] = str(home)
-    try:
-        om.save_config(_seq_config("seq"))
-        _write_seq_trials("seq", n_trials=8)
-        summary = om.train_model("seq")
-        return om.load_bundle("seq"), summary
-    finally:
-        if previous is None:
-            del os.environ["ETHOGRAPH_HOME"]
-        else:
-            os.environ["ETHOGRAPH_HOME"] = previous
-
-
-def _seq_features(bundle: dict, times, seed: int, decoy=None):
-    """Assemble one test trial the way the predict path does."""
-    loader = XarrayLoader(_make_seq_ds(times, seed=seed, decoy=decoy))
-    return om.extract_features(loader, om.bundle_config(bundle).features)
-
-
-class TestObservedSequences:
-    def test_counts_orders_by_event_time(self):
-        config = om.OnsetModelConfig(name="m", targets={1: "A", 2: "B"})
-        trials = [
-            om.TrainingTrial(np.arange(3.0), np.zeros((3, 1)), {1: 0.0, 2: 1.0}, 1.0),
-            om.TrainingTrial(np.arange(3.0), np.zeros((3, 1)), {1: 0.0, 2: 1.0}, 1.0),
-            om.TrainingTrial(np.arange(3.0), np.zeros((3, 1)), {2: 0.0, 1: 1.0}, 1.0),
-        ]
-        assert om.observed_sequences(trials, config) == {"1-2": 2, "2-1": 1}
-
-
-class TestExpectations:
-    """What the user declared, checked after the fact — never enforced.
-
-    The model has no idea what order things come in; the user does. Declaring
-    it turns a surprise into a flag on the trial, which the trials table can
-    filter on, instead of silently moving an event.
-    """
-
-    def _config(self, order, together=False):
-        config = _make_config(targets={3: "peck", 4: "land"})
-        config.expected_order = order
-        config.expect_together = together
-        return config
-
-    def test_nothing_declared_flags_nothing(self):
-        config = _make_config(targets={3: "peck", 4: "land"})
-        assert om.check_expectations({3: 5.0, 4: 1.0}, config) == []
-
-    def test_the_declared_order_passes(self):
-        assert om.check_expectations({3: 1.0, 4: 5.0}, self._config([3, 4])) == []
-
-    def test_the_wrong_order_is_flagged(self):
-        assert om.check_expectations({3: 5.0, 4: 1.0}, self._config([3, 4])) == [om.FLAG_ORDER]
-
-    def test_a_class_left_out_is_not_an_order_problem(self):
-        """One class present cannot be out of order with anything."""
-        assert om.check_expectations({3: 5.0}, self._config([3, 4])) == []
-
-    def test_one_of_a_coupled_set_implies_the_rest(self):
-        config = self._config([3, 4], together=True)
-        assert om.check_expectations({3: 1.0}, config) == [om.FLAG_MISSING]
-        assert om.check_expectations({3: 1.0, 4: 5.0}, config) == []
-
-    def test_a_trial_with_none_of_them_is_not_flagged(self):
-        """Coupling says "one implies the rest", not "every trial has them".
-
-        A trial where the behaviour did not happen at all is not a surprise,
-        and flagging it would bury the trials that are.
-        """
-        assert om.check_expectations({}, self._config([3, 4], together=True)) == []
-
-    def test_both_flags_can_land_together(self):
-        config = _make_config(targets={3: "a", 4: "b", 5: "c"})
-        config.expected_order = [3, 4, 5]
-        config.expect_together = True
-        flags = om.check_expectations({3: 5.0, 4: 1.0}, config)
-        assert flags == [om.FLAG_ORDER, om.FLAG_MISSING]
-        assert om.expectation_verdict(flags) == "order+missing"
-
-    def test_the_verdict_is_a_string_the_funnel_filter_can_group(self):
-        assert om.expectation_verdict([]) == om.EXPECTED_OK
-        assert om.expectation_verdict([om.FLAG_ORDER]) == "order"
-
-    def test_a_config_asking_for_the_old_sequence_model_still_loads(self):
-        """`use_crf` was replaced by declarations; a stored config survives."""
-        config = _make_config()
-        om.save_config(config)
-        path = om.model_dir(config.name) / "config.yaml"
-        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
-        raw["use_crf"] = True
-        path.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
-        assert om.load_config(config.name).expected_order == []
-
-    def test_describe_reads_back_what_was_declared(self):
-        assert self._config([3, 4]).describe_expectations() == "peck → land"
-        assert self._config([3, 4], True).describe_expectations() == "peck → land, one implies the rest"
-        assert _make_config().describe_expectations() == ""

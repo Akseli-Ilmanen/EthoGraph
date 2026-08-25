@@ -47,15 +47,6 @@ CURATED_COLUMN = "curated"
 CURATED_YES = "yes"
 CURATED_NO = "no"
 
-#: Metadata-table column holding a prediction run's verdict on each trial:
-#: whether its predicted events matched what the model's config declared it
-#: expects (:func:`~ethograph.labels.onset_model.check_expectations`).
-#: String-valued for the same reason :data:`CURATED_COLUMN` is, and derived
-#: state like it — both live here so ``io/metadata_edit.DERIVED_COLUMNS`` can
-#: keep them out of a recording without importing the model stack.
-EXPECTATION_COLUMN = "prediction_check"
-EXPECTED_OK = "ok"
-
 #: Visit order of the boundaries of one label: START before END.
 FIELD_RANK = {"point": 0, "start": 0, "end": 1}
 

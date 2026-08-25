@@ -20,7 +20,7 @@ from ethograph.io.metadata_edit import (
     write_metadata,
     write_trials_metadata,
 )
-from ethograph.labels.curation import CURATED_COLUMN, EXPECTATION_COLUMN
+from ethograph.labels.curation import CURATED_COLUMN
 
 
 @pytest.fixture
@@ -236,13 +236,6 @@ def test_nwb_write_refuses_the_curated_column(trials_nwb):
     trials = _read_trials(trials_nwb)
     assert CURATED_COLUMN not in trials.columns
     assert list(trials["condition"]) == ["a", "b", "c"]
-
-
-def test_nwb_write_refuses_the_prediction_check_column(trials_nwb):
-    """A prediction run's expectation verdict is ours, like the curation one."""
-    df = pd.DataFrame({"trial": [1, 2, 3], EXPECTATION_COLUMN: ["ok", "order", "ok"]})
-    assert write_trials_metadata(trials_nwb, df, columns=[EXPECTATION_COLUMN]) == []
-    assert EXPECTATION_COLUMN not in _read_trials(trials_nwb).columns
 
 
 def test_ensure_tabular_target_copies_an_nwb_table_to_the_sidecar(tmp_path, trials_nwb):

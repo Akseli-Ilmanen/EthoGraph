@@ -449,6 +449,51 @@ def filter_entries(entries: list[FrameEntry], label_id: int | None) -> list[Fram
     return [entry for entry in entries if entry.label_id == label_id]
 
 
+#: How a grid can order what it shows, key -> combo text. Reviewing a model's
+#: output, the useful order is by confidence: it puts every doubtful label on
+#: one screen instead of scattering them through the trials.
+GRID_SORT_ORDERS = {
+    "trial": "Trial, then time",
+    "confidence_asc": "Confidence: lowest first",
+    "confidence_desc": "Confidence: highest first",
+}
+
+#: The video grid's own list — its clips play together, so their length is an
+#: order in its own right (clips of a similar length end around the same time).
+VIDEO_GRID_SORT_ORDERS = {"duration": "Duration: shortest first", **GRID_SORT_ORDERS}
+
+
+def _trial_key(entry):
+    """Trial id sorted numerically where it can be, textually otherwise."""
+    trial = str(getattr(entry, "trial", ""))
+    try:
+        return (0, int(trial), "")
+    except ValueError:
+        return (1, 0, trial)
+
+
+def sort_entries(entries: list, order: str) -> list:
+    """*entries* in the order *order* names, stably.
+
+    Works on a frame grid's entries and a video grid's clips alike — both
+    carry ``confidence``, ``trial`` and ``onset_s``. Ties always fall back to
+    (trial, time), so a screenful of equal confidences still reads in a
+    sensible order rather than an arbitrary one.
+    """
+    if order not in (GRID_SORT_ORDERS | VIDEO_GRID_SORT_ORDERS):
+        raise ValueError(f"Unknown grid sort order {order!r} (expected one of {', '.join(VIDEO_GRID_SORT_ORDERS)}).")
+
+    def fallback(entry):
+        return (_trial_key(entry), float(getattr(entry, "onset_s", 0.0)))
+
+    if order == "trial":
+        return sorted(entries, key=fallback)
+    if order == "duration":
+        return sorted(entries, key=lambda e: (float(getattr(e, "duration", 0.0)), fallback(e)))
+    signed = 1.0 if order == "confidence_asc" else -1.0
+    return sorted(entries, key=lambda e: (signed * float(e.confidence), fallback(e)))
+
+
 class TileVerdicts:
     """Which labels were clicked in a curate/uncurate mode, and what Done does.
 
@@ -1411,6 +1456,22 @@ class LabelGridView(QWidget):
         # Nothing to choose between when the grid holds a single class.
         self._filter_row.setVisible(len(choices) > 2)
         bar.addSpacing(12)
+        bar.addWidget(QLabel("Sort:"))
+        self.sort_combo = QComboBox()
+        for key, text in GRID_SORT_ORDERS.items():
+            self.sort_combo.addItem(text, key)
+        saved = str(self.app_state.get_with_default("label_grid_sort"))
+        self.sort_combo.setCurrentIndex(max(0, self.sort_combo.findData(saved)))
+        self.sort_combo.setToolTip(
+            "The order the tiles are laid out in.\n"
+            "\n"
+            "By confidence puts the doubtful labels together on the first screens\n"
+            "instead of scattering them through the trials — the fastest way to\n"
+            "review what a model was least sure about."
+        )
+        self.sort_combo.currentIndexChanged.connect(self._on_sort_changed)
+        bar.addWidget(self.sort_combo)
+        bar.addSpacing(12)
         bar.addWidget(QLabel("Columns:"))
         self.columns_spin = QSpinBox()
         self.columns_spin.setRange(1, 12)
@@ -1480,8 +1541,26 @@ class LabelGridView(QWidget):
         return self._entries
 
     def visible_entries(self) -> list[FrameEntry]:
-        """The entries the label filter shows — what every operation acts on."""
-        return filter_entries(self._entries, self._filter_label_id)
+        """The entries the label filter shows, in the chosen order.
+
+        What every operation acts on — the grid, Done, the flag count and the
+        PDF — so the sort is applied here rather than at layout time.
+        """
+        return sort_entries(filter_entries(self._entries, self._filter_label_id), self._sort_order())
+
+    def _sort_order(self) -> str:
+        combo = getattr(self, "sort_combo", None)
+        return combo.currentData() if combo is not None else "trial"
+
+    def _on_sort_changed(self, *_args) -> None:
+        """Re-lay the grid in the new order; the clicks survive it.
+
+        Verdicts are keyed by label, not by position, so reordering never
+        moves a verdict onto a different tile.
+        """
+        self.app_state.label_grid_sort = self._sort_order()
+        self._relayout()
+        self._apply_styles()
 
     def _on_filter_changed(self, *_args) -> None:
         """Re-show the grid under the new filter. The clicks are kept: a
@@ -1636,17 +1715,21 @@ class LabelGridView(QWidget):
         thumb_w = max(100, (viewport_w - spacing * (columns + 1)) // columns)
         while self._grid.count():
             self._grid.takeAt(0)
-        i = 0
-        for cell, entry in zip(self._cells, self._entries):
-            if self._filter_label_id is not None and entry.label_id != self._filter_label_id:
-                cell.setVisible(False)
+        # Laid out in visible_entries() order — the same list Done, the flag
+        # count and the PDF read, so the sort and the filter are decided in
+        # exactly one place and the screen cannot disagree with them.
+        cells = {id(entry): cell for entry, cell in zip(self._entries, self._cells)}
+        for cell in self._cells:
+            cell.setVisible(False)
+        for i, entry in enumerate(self.visible_entries()):
+            cell = cells.get(id(entry))
+            if cell is None:
                 continue
             cell.setVisible(True)
             for label, pixmap in cell._pix_labels:
                 if not pixmap.isNull():
                     label.setPixmap(pixmap.scaledToWidth(min(thumb_w, pixmap.width()), Qt.SmoothTransformation))
             self._grid.addWidget(cell, i // columns, i % columns, alignment=Qt.AlignTop)
-            i += 1
 
     def _on_tile_clicked(self, entry: FrameEntry):
         """A single click is the verdict the mode names."""

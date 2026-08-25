@@ -165,6 +165,10 @@ DATASETS: dict[str, dict] = {
             },
         ],
         "release_tag": "birdpark",
+        # Ship the authored alignment.nwb as a release asset instead of
+        # rebuilding it locally — it carries the real per-trial timing, which
+        # probing the media cannot reproduce.
+        "download_alignment": True,
         "size_mb": 76,
     },
     "philodoptera": {

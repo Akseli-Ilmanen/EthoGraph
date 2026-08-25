@@ -431,13 +431,15 @@ class XarrayLoader(_CatalogMixin):
 
         changepoints = None
         if data.ndim == 1:
-            cp_ds = schema.filter_changepoints(ds)
-            cp_dict: dict[str, np.ndarray] = {}
-            for cp_name in cp_ds.data_vars:
-                cp_var = cp_ds[cp_name]
-                cp_data, _ = eto.sel_valid(cp_var, selections)
-                if cp_var.attrs.get("target_feature") == feature and not np.isnan(cp_data).all():
-                    cp_dict[cp_name] = cp_data
+            # The same reading a click snaps to (get_cp_times): the masks
+            # targeting this feature, at this panel's selections.
+            from ethograph.features.changepoints import changepoint_fired
+
+            cp_dict: dict[str, np.ndarray] = {
+                cp_name: changepoint_fired(ds[cp_name], selections)
+                for cp_name in schema.changepoint_vars(ds)
+                if ds[cp_name].attrs.get("target_feature") == feature
+            }
             if cp_dict:
                 changepoints = cp_dict
 
@@ -475,24 +477,28 @@ class XarrayLoader(_CatalogMixin):
         vals = tc.values
         return (float(vals[0]), float(vals[-1]))
 
-    def get_cp_times(self, feature: str | None = None, **kwargs) -> np.ndarray:
-        import ethograph as eto
-        from ethograph.features.changepoints import extract_cp_times
+    def get_cp_times(
+        self,
+        feature: str | None = None,
+        selections: dict[str, Any] | None = None,
+        t0: float | None = None,
+        t1: float | None = None,
+    ) -> np.ndarray:
+        """Changepoint times of *feature*'s masks at *selections*, in display coordinates.
+
+        Exactly the marks :meth:`select` draws for that feature at those
+        selections — both read :func:`~ethograph.features.changepoints.changepoint_fired`.
+        ``t0``/``t1`` (display clock) restrict the answer to a window.
+        """
+        from ethograph.features.changepoints import dataset_changepoint_times
 
         if self._ds is None:
             return np.array([], dtype=np.float64)
-        tc = eto.get_time_coord(next(iter(self._ds.data_vars.values()), None))
-        if tc is None:
-            return np.array([], dtype=np.float64)
-        cp_times = extract_cp_times(self._ds, tc.values)
-
-        all_cp_times = [cp_times]
-        if "audio_cp_onsets" in self._ds.data_vars and "audio_cp_offsets" in self._ds.data_vars:
-            all_cp_times.append(self._ds["audio_cp_onsets"].values.astype(np.float64))
-            all_cp_times.append(self._ds["audio_cp_offsets"].values.astype(np.float64))
-        if len(all_cp_times) > 1:
-            cp_times = np.unique(np.concatenate(all_cp_times))
-        return cp_times - self.display_offset()
+        offset = self.display_offset()
+        cp_times = dataset_changepoint_times(self._ds, feature, selections) - offset
+        if t0 is not None and t1 is not None:
+            cp_times = cp_times[(cp_times >= t0) & (cp_times <= t1)]
+        return cp_times
 
 
 # ---------------------------------------------------------------------------
@@ -761,14 +767,24 @@ class PynappleLoader(_CatalogMixin):
     def get_cp_times(
         self,
         feature: str | None = None,
-        t0: float = 0.0,
-        t1: float = 0.0,
+        selections: dict[str, Any] | None = None,
+        t0: float | None = None,
+        t1: float | None = None,
     ) -> np.ndarray:
+        """Changepoint event times of *feature*'s ``TsGroup``s, in display coordinates.
+
+        *selections* is accepted for parity with :class:`XarrayLoader` — a
+        ``TsGroup`` has no keypoint/individual dims to pin. ``t0``/``t1``
+        (display clock) restrict the answer to a window; without them the
+        whole session is returned.
+        """
         import pynapple as nap
 
         offset = self.display_offset()
-        t0 += offset
-        t1 += offset
+        windowed = t0 is not None and t1 is not None
+        if windowed:
+            t0 += offset
+            t1 += offset
 
         all_times: list[np.ndarray] = []
         for key, obj in self._data.items():
@@ -785,7 +801,8 @@ class PynappleLoader(_CatalogMixin):
                     continue
             for uid in cp_units:
                 ts_obj = obj[uid]
-                ts_obj = self._restrict(ts_obj, t0, t1)
+                if windowed:
+                    ts_obj = self._restrict(ts_obj, t0, t1)
                 if len(ts_obj) == 0:
                     continue
                 if isinstance(ts_obj, nap.Tsd):

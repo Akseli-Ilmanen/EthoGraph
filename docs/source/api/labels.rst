@@ -31,8 +31,6 @@ Interval operations
 
 .. autofunction:: snap_boundaries
 
-.. autofunction:: find_blocks
-
 .. autofunction:: load_label_mapping
 
 .. autofunction:: save_label_mapping
@@ -50,15 +48,7 @@ Dense ↔ interval conversion (ML)
 
 .. autofunction:: intervals_to_dense
 
-.. autofunction:: find_blocks
-
 .. autofunction:: get_labels_start_end_indices
-
-.. autofunction:: purge_small_blocks
-
-.. autofunction:: stitch_gaps
-
-.. autofunction:: fix_endings
 
 ----
 

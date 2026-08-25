@@ -11,10 +11,11 @@ The clips are arranged for comparison, not for browsing:
   Next label** switch the class (greyed out with a single class). Comparing
   twelve different behaviours at once tells you nothing; twelve instances of
   the same one do.
-* Within a class the clips are **sorted by duration**, so clips of similar
-  length share a screen and end around the same time. **Previous / Next
-  clips** page through the class a screenful at a time (greyed out when it
-  fits on one).
+* Within a class the clips are ordered by **Sort**: by *duration* (the
+  default — clips of a similar length share a screen and end around the same
+  time) or by *confidence*, which puts the doubtful ones on the first page.
+  **Previous / Next clips** page through the class a screenful at a time
+  (greyed out when it fits on one).
 * A screenful is **not scrollable** — every tile is always visible, because
   playback starts and stops for all of them at once: one Play button, one
   slider spanning the **longest clip on screen** (shorter clips hold their
@@ -46,6 +47,7 @@ from qtpy.QtCore import Qt, QTimer, Signal
 from qtpy.QtGui import QBrush, QColor, QImage, QKeySequence, QPainter, QPixmap, QShortcut
 from qtpy.QtWidgets import (
     QApplication,
+    QComboBox,
     QDialog,
     QDoubleSpinBox,
     QFrame,
@@ -67,6 +69,7 @@ from ethograph.gui.dialog_label_gridview import (
     CURATE_COLOR,
     LOW_CONFIDENCE_COLOR,
     UNCURATE_COLOR,
+    VIDEO_GRID_SORT_ORDERS,
     ConfidenceEdit,
     ConfidenceHistogramsDialog,
     GridModeBar,
@@ -83,6 +86,7 @@ from ethograph.gui.dialog_label_gridview import (
     keep_method,
     resolve_video_jobs,
     settle,
+    sort_entries,
 )
 from ethograph.gui.notify import notify
 from ethograph.gui.pose_fill import VideoFrameSource
@@ -218,19 +222,20 @@ def build_clip_entries(
     return entries
 
 
-def group_clips(entries: list[ClipEntry]) -> list[list[ClipEntry]]:
-    """One group per label class (by id), each sorted by duration, then trial.
+def group_clips(entries: list[ClipEntry], order: str = "duration") -> list[list[ClipEntry]]:
+    """One group per label class (by id), each ordered by *order*.
 
-    Clips of one behaviour are what is worth seeing together, and sorting by
-    length puts the ones that end together on the same page.
+    Clips of one behaviour are what is worth seeing together; how they are
+    ordered *within* the class is the user's choice
+    (:data:`~ethograph.gui.dialog_label_gridview.VIDEO_GRID_SORT_ORDERS`).
+    **Duration** is the default because the clips play together: ones of a
+    similar length share a screen and end around the same time. **Confidence**
+    trades that away to put the doubtful ones on the first page.
     """
     groups: dict[int, list[ClipEntry]] = {}
     for entry in entries:
         groups.setdefault(entry.label_id, []).append(entry)
-    return [
-        sorted(groups[label_id], key=lambda e: (e.duration, str(e.trial), e.onset_s, str(e.camera)))
-        for label_id in sorted(groups)
-    ]
+    return [sort_entries(groups[label_id], order) for label_id in sorted(groups)]
 
 
 def paginate(group: list[ClipEntry], per_page: int) -> list[list[ClipEntry]]:
@@ -522,7 +527,8 @@ class VideoGridPlayer(QWidget):
         self.meta = meta
         self.app_state = meta.app_state
         self._all_entries = entries
-        self._groups = group_clips(entries)
+        self._sort_order = str(self.app_state.get_with_default("video_grid_sort"))
+        self._groups = group_clips(entries, self._sort_order)
         self._columns = max(1, columns)
         self._per_page = max(1, per_page)
         self._decode_fn = decode_fn
@@ -558,6 +564,21 @@ class VideoGridPlayer(QWidget):
             flagged_fn=self._flagged_entries,
         )
         top.addWidget(self.mode_bar, stretch=1)
+        top.addWidget(QLabel("Sort:"))
+        self.sort_combo = QComboBox()
+        for key, text in VIDEO_GRID_SORT_ORDERS.items():
+            self.sort_combo.addItem(text, key)
+        self.sort_combo.setCurrentIndex(max(0, self.sort_combo.findData(self._sort_order)))
+        self.sort_combo.setToolTip(
+            "How the clips of a label class are ordered.\n"
+            "\n"
+            "Duration keeps clips of a similar length on one screen, so they end\n"
+            "around the same time. Confidence puts the doubtful ones on the first\n"
+            "page instead — the fastest way to review what a model was least sure of."
+        )
+        self.sort_combo.currentIndexChanged.connect(self._on_sort_changed)
+        top.addWidget(self.sort_combo)
+        top.addSpacing(12)
         top.addWidget(QLabel("Flag confidence below:"))
         top.addWidget(self.threshold_edit)
         self.histogram_btn = QPushButton("Histogram…")
@@ -915,6 +936,18 @@ class VideoGridPlayer(QWidget):
 
     def _on_threshold_changed(self, value: float) -> None:
         self.app_state.grid_confidence_threshold = float(value)
+
+    def _on_sort_changed(self, *_args) -> None:
+        """Regroup and show the first page of the class that was on screen.
+
+        Reordering moves clips between pages, so keeping the page number would
+        land somewhere arbitrary; the class is what the user was looking at,
+        so that is what is kept.
+        """
+        self._sort_order = self.sort_combo.currentData()
+        self.app_state.video_grid_sort = self._sort_order
+        self._groups = group_clips(self._all_entries, self._sort_order)
+        self.show_page(min(self._group_idx, max(0, len(self._groups) - 1)), 0)
 
     def _apply_styles(self, *_args) -> None:
         threshold = self.threshold_edit.value()

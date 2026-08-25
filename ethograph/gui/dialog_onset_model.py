@@ -20,13 +20,6 @@ Both dialogs run over **the trials the trials table shows** — its filters are
 the one place trials are included or excluded for every operation (see
 ``docs/source/advanced/metadata.md``); neither dialog has filters of its own.
 
-A user who knows the classes run in a stereotypic order says so when
-creating the model: tick them, drag them into that order, and Predict then
-*flags* the trials that came out otherwise (or got only part of the set)
-instead of correcting them. The flag lands in the trials table's
-``prediction_check`` column, so filtering there scopes a review to exactly the
-trials worth a second look.
-
 Extraction runs per trial through the same ``DataLoader.select`` path the
 plots use, but on throwaway loaders holding no display offset, so it never
 disturbs the GUI's navigation state.
@@ -149,10 +142,6 @@ class PredictionOutcome:
     n_absent: int = 0
     trials: set[str] = field(default_factory=set)
     errors: list[str] = field(default_factory=list)
-    #: trial -> the declared expectations it broke (see
-    #: :func:`~ethograph.labels.onset_model.check_expectations`). Only trials
-    #: that broke one are listed; the column records every trial's verdict.
-    flagged: dict[str, list[str]] = field(default_factory=dict)
 
     def label_ids(self) -> list[int]:
         """The classes this run actually wrote at least one event for."""
@@ -166,13 +155,7 @@ class PredictionOutcome:
         if self.n_low:
             parts.append(f"{self.n_low} below the confidence threshold.")
         if self.n_absent:
-            parts.append(f"{self.n_absent} left out by the decoded event order.")
-        if self.flagged:
-            listed = ", ".join(sorted(self.flagged)[:5])
-            parts.append(
-                f"{len(self.flagged)} trial(s) did not match what the model expects "
-                f"({listed}) — filter the trials table on '{om.EXPECTATION_COLUMN}' to review them."
-            )
+            parts.append(f"{self.n_absent} the model produced no prediction for.")
         if self.errors:
             parts.append(f"{len(self.errors)} trials failed — first: {self.errors[0]}")
         return " ".join(parts)
@@ -194,23 +177,6 @@ def _save_curves(app_state, curves_by_trial: dict) -> Path | None:
     except OSError as exc:
         logger.warning("Could not write onset curves to %s: %s", folder, exc)
         return None
-
-
-def _write_expectation_column(meta, verdicts: dict[str, str]) -> None:
-    """Record each trial's expectation verdict in the metadata table.
-
-    A string per trial ("ok", "order", "order+missing"), so the trials
-    table's funnel filter reads it as a categorical checklist — the same
-    reason ``curated`` is "yes"/"no" — and filtering to the flagged trials
-    scopes every downstream operation to them, review included.
-    """
-    if not verdicts:
-        return
-    trials_widget = getattr(meta, "trials_widget", None)
-    if trials_widget is None:
-        return
-    trials_widget.ensure_tabular_metadata_file()
-    trials_widget.set_column_values(om.EXPECTATION_COLUMN, verdicts)
 
 
 def predict_onsets(
@@ -243,9 +209,6 @@ def predict_onsets(
     #: Every trial's probability curves, written beside the labels once the
     #: run is over — what frame-by-frame review draws under each label.
     curves_by_trial: dict[object, tuple[np.ndarray, dict[int, np.ndarray]]] = {}
-    #: Every trial's expectation verdict, written to the metadata table at the
-    #: end so a filter can scope a review to the surprising ones.
-    verdicts: dict[str, str] = {}
     QApplication.setOverrideCursor(Qt.WaitCursor)
     try:
         for tid, loader, t0, t1, shift in _iter_trial_windows(app_state):
@@ -266,10 +229,6 @@ def predict_onsets(
                 continue
             curves_by_trial[tid] = (trial_time, result.curves)
             written = False
-            #: What this trial ended up with, which is what the declared
-            #: expectations are checked against — a class dropped for low
-            #: confidence is absent here, and that absence is the point.
-            trial_times: dict[int, float] = {}
             for label in wanted:
                 prediction = predictions.get(label)
                 if prediction is None:
@@ -289,7 +248,6 @@ def predict_onsets(
                     labeling_method=LABELING_AUTOMATED,
                 )
                 app_state.set_trial_intervals(tid, trial_df)
-                trial_times[label] = prediction.time
                 outcome.per_target[label] += 1
                 outcome.n_predicted += 1
                 written = True
@@ -297,16 +255,10 @@ def predict_onsets(
                 df = app_state._all_labels_df
             if written:
                 app_state.set_trial_meta_attr(tid, "prediction_source", f"lightgbm:{name}")
-            if config.expected_order:
-                flags = om.check_expectations(trial_times, config)
-                verdicts[str(tid)] = om.expectation_verdict(flags)
-                if flags:
-                    outcome.flagged[str(tid)] = flags
     finally:
         QApplication.restoreOverrideCursor()
 
     _save_curves(app_state, curves_by_trial)
-    _write_expectation_column(meta, verdicts)
     if outcome.n_predicted:
         refresh_after_prediction(meta)
     if outcome.errors:
@@ -519,10 +471,7 @@ class TrainOnsetDialog(QDialog):
         target_lay = QVBoxLayout(target_group)
         self.target_list = QListWidget()
         self.target_list.setMaximumHeight(110)
-        # Dragging reorders: the ticked classes, top to bottom, ARE the order
-        # the expectation below is declared in — one list, not two.
-        self.target_list.setDragDropMode(QListWidget.InternalMove)
-        self.target_list.setToolTip("Tick the classes to predict; drag them into the order you expect them in.")
+        self.target_list.setToolTip("Tick the classes to predict.")
         for label_id, name in _point_mappings(self.app_state).items():
             item = QListWidgetItem(f"{name} ({label_id})")
             item.setData(Qt.UserRole, label_id)
@@ -572,26 +521,6 @@ class TrainOnsetDialog(QDialog):
         self.lr_spin.setSingleStep(0.05)
         self.lr_spin.setValue(0.1)
         params_lay.addRow("Learning rate:", self.lr_spin)
-        self.order_check = QCheckBox("Expect them in the order they are listed above")
-        self.order_check.setToolTip(
-            "Tick when the classes follow a stereotypic order in a trial (A then B\n"
-            "then C), and drag the list above into that order.\n"
-            "\n"
-            "This never changes a prediction — every event still lands on its own\n"
-            "curve's tallest peak. A trial whose events come out in another order is\n"
-            "flagged in the trials table's 'prediction_check' column, so you can\n"
-            "filter to those trials and look at them first."
-        )
-        params_lay.addRow("Expect:", self.order_check)
-        self.together_check = QCheckBox("…and if a trial has one of them, expect the rest")
-        self.together_check.setToolTip(
-            "Tick when the classes come as a set: a trial with one has the others.\n"
-            "\n"
-            "A trial that ends up with only SOME of them — because the rest fell\n"
-            "below the confidence floor — is flagged. A trial with NONE of them is\n"
-            "not: the behaviour simply did not happen there, which is no surprise."
-        )
-        params_lay.addRow("", self.together_check)
         layout.addWidget(params_group)
 
         data_group = QGroupBox("4 — Training data")
@@ -629,8 +558,6 @@ class TrainOnsetDialog(QDialog):
             self.tolerance_spin,
             self.max_iter_spin,
             self.lr_spin,
-            self.order_check,
-            self.together_check,
         )
 
     def _on_model_changed(self, text: str):
@@ -654,18 +581,14 @@ class TrainOnsetDialog(QDialog):
         self.tolerance_spin.setValue(self._config.tolerance_s)
         self.max_iter_spin.setValue(self._config.max_iter)
         self.lr_spin.setValue(self._config.learning_rate)
-        self.order_check.setChecked(bool(self._config.expected_order))
-        self.together_check.setChecked(self._config.expect_together)
         self._refresh_sessions()
         trained = "trained" if om.is_trained(text) else "not trained yet"
         self.status_label.setText(f"Config is frozen for an existing model ({trained}).")
 
     def _show_config_targets(self, config: om.OnsetModelConfig):
-        """Read-only view of a frozen model's targets, in its declared order."""
+        """Read-only view of a frozen model's targets."""
         self.target_list.clear()
-        ordered = [label for label in config.expected_order if label in config.targets]
-        ordered += [label for label in config.targets if label not in ordered]
-        for label_id, name in ((label, config.targets[label]) for label in ordered):
+        for label_id, name in config.targets.items():
             item = QListWidgetItem(f"{name} ({label_id})")
             item.setData(Qt.UserRole, label_id)
             item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
@@ -722,8 +645,6 @@ class TrainOnsetDialog(QDialog):
             tolerance_s=float(self.tolerance_spin.value()),
             max_iter=int(self.max_iter_spin.value()),
             learning_rate=float(self.lr_spin.value()),
-            expected_order=list(targets) if self.order_check.isChecked() else [],
-            expect_together=self.together_check.isChecked(),
         )
         om.save_config(self._config)
         self.model_combo.addItem(name)
@@ -794,11 +715,6 @@ class TrainOnsetDialog(QDialog):
         self.status_label.setText(msg)
         notify(msg)
 
-    @staticmethod
-    def _named_order(config: om.OnsetModelConfig, key: str) -> str:
-        """``"3-4"`` as the class names the user knows, ``"peck→land"``."""
-        return "→".join(config.target_name(int(label)) for label in key.split("-"))
-
     def _train(self):
         config = self._ensure_config()
         if config is None:
@@ -831,13 +747,6 @@ class TrainOnsetDialog(QDialog):
         held_out = ", ".join(_held_out(label, cal) for label, cal in summary.get("calibration", {}).items())
         if held_out:
             msg += f" On trials it did not see — {held_out}."
-        orders = summary.get("sequences") or {}
-        if orders:
-            shown = ", ".join(f"{self._named_order(config, key)} ×{n}" for key, n in list(orders.items())[:3])
-            msg += f" Orders seen in the training trials: {shown}."
-        expected = config.describe_expectations()
-        if expected:
-            msg += f" Expecting {expected}."
         self.status_label.setText(msg)
         notify(msg)
 
@@ -963,9 +872,7 @@ class PredictOnsetDialog(QDialog):
         self.info_label.setText(
             f"Predicts {config.describe_targets()} · "
             f"{len(config.columns())} feature columns · "
-            f"{n_sessions} training session(s) · {trained}"
-            + (f" · expects {config.describe_expectations()}" if config.expected_order else "")
-            + "."
+            f"{n_sessions} training session(s) · {trained}."
         )
         self.run_btn.setEnabled(om.is_trained(name))
 

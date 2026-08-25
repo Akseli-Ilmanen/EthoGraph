@@ -140,7 +140,6 @@ def save_metadata_tsv(path: str | Path, df: pd.DataFrame) -> None:
     tmp = path.with_suffix(".tsv.tmp")
     df.to_csv(tmp, sep="\t", index=False)
     tmp.replace(path)
-    logger.info("Saved metadata table to %s", path.name)
 
 
 def condition_columns(df: pd.DataFrame) -> list[str]:

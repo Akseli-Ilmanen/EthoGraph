@@ -46,6 +46,11 @@ ethograph launch
 > **`ethograph` not recognized?** uv has not added its bin directory to your
 > `PATH` yet. Run `uv tool update-shell`, then open a **new** terminal.
 
+> **Linux / WSL:** the wheels need a few system libraries (OpenGL, Qt's xcb
+> plugin, Vulkan). Run `ethograph check` to see which are missing and the
+> `apt`/`dnf` line that installs them — see the
+> [installation guide](https://akseli-ilmanen.github.io/ethograph/getting_started/installation.html#linux-system-libraries).
+
 For installing into a dedicated virtual environment, optional extras, and
 troubleshooting, see the
 [installation guide](https://akseli-ilmanen.github.io/ethograph/getting_started/installation.html).

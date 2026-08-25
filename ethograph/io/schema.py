@@ -20,10 +20,14 @@ Three rules keep this cheap:
   ``speed`` and ``heading`` are both kinematic features, but z-scoring a
   unit vector is wrong. Anything that changes maths reads a *behavioural*
   attr instead (:data:`NORMALISE`).
-* **One spelling.** ``attrs["type"] = "changepoints"``, the convention this
-  replaces, is neither written nor read. A dataset built before this module
-  is converted once with :func:`migrate_legacy_attrs`; until then its
-  changepoints are simply ordinary variables.
+* **Two spellings for changepoints.** ``attrs["type"] = "changepoints"``, the
+  convention this replaces, is still read as a synonym for
+  ``kind="changepoint_feature"`` plus :data:`CHANGEPOINT_MASK` — a dataset
+  built before this module needs no migration. Changepoint producers write
+  both spellings (:func:`changepoint_attrs`), so a reader that only knows the
+  legacy convention keeps working. :func:`migrate_legacy_attrs` still exists
+  to normalise an old file's attrs and to drop other stale ``type`` values
+  (``"pca"``, ``"audio_changepoints"``, ``"features"``) that nothing reads.
 """
 
 from __future__ import annotations
@@ -53,8 +57,11 @@ NORMALISE = "normalise"
 #: model inputs, so the two questions need two attrs (see :func:`is_changepoint`).
 CHANGEPOINT_MASK = "changepoint_mask"
 
-#: The attr this convention replaced. Never written, never read — only
-#: recognised by :func:`migrate_legacy_attrs` when converting an old file.
+#: The attr this convention replaced. Written alongside the new spelling by
+#: :func:`changepoint_attrs`, and read live as a synonym by :func:`kind_of` /
+#: :func:`is_changepoint` — a file needs no migration for changepoints to be
+#: recognised. :func:`migrate_legacy_attrs` still normalises it away and
+#: drops stale non-changepoint ``type`` values.
 _LEGACY_TYPE = "type"
 _LEGACY_CHANGEPOINTS = "changepoints"
 
@@ -113,9 +120,18 @@ def attrs_of(var: Any) -> Mapping[str, Any]:
 
 
 def kind_of(var: xr.DataArray | xr.Dataset | Mapping[str, Any] | Any) -> str | None:
-    """The kind of *var*, or ``None`` when it does not say."""
-    kind = attrs_of(var).get(KIND)
-    return str(kind) if kind else None
+    """The kind of *var*, or ``None`` when it does not say.
+
+    ``attrs["type"] = "changepoints"`` is read as a synonym for
+    ``kind="changepoint_feature"`` — see the module docstring.
+    """
+    attrs = attrs_of(var)
+    kind = attrs.get(KIND)
+    if kind:
+        return str(kind)
+    if attrs.get(_LEGACY_TYPE) == _LEGACY_CHANGEPOINTS:
+        return CHANGEPOINT_FEATURE
+    return None
 
 
 def is_kind(var: Any, *kinds: str) -> bool:
@@ -135,13 +151,22 @@ def is_changepoint(var: Any) -> bool:
     them as masks would OR float curves into an all-True mask and hide them
     from the GUI. Giving the marker its own attr is what lets :data:`KIND`
     stay a pure label (see this module's docstring).
+
+    The legacy ``attrs["type"] = "changepoints"`` is read as a synonym: every
+    historical use of that attr marked a raw mask, never an expansion, so it
+    carries the same meaning as :data:`CHANGEPOINT_MASK` without migration.
     """
-    return bool(attrs_of(var).get(CHANGEPOINT_MASK))
+    attrs = attrs_of(var)
+    return bool(attrs.get(CHANGEPOINT_MASK)) or attrs.get(_LEGACY_TYPE) == _LEGACY_CHANGEPOINTS
 
 
 def changepoint_attrs(**extra: Any) -> dict[str, Any]:
-    """Attrs marking a raw changepoint mask: the family's label plus the marker."""
-    return {KIND: CHANGEPOINT_FEATURE, CHANGEPOINT_MASK: 1, **extra}
+    """Attrs marking a raw changepoint mask: the family's label, the marker, and the legacy spelling.
+
+    The legacy ``type="changepoints"`` is written alongside the new attrs so
+    a reader that only knows that convention still recognises the mask.
+    """
+    return {KIND: CHANGEPOINT_FEATURE, CHANGEPOINT_MASK: 1, _LEGACY_TYPE: _LEGACY_CHANGEPOINTS, **extra}
 
 
 def clear(attrs: dict[str, Any]) -> dict[str, Any]:
@@ -205,11 +230,14 @@ def write_sidecar(source: str | Path, variables: Mapping[str, Mapping[str, Any]]
 def migrate_legacy_attrs(ds: xr.Dataset) -> xr.Dataset:
     """Convert a dataset written before this convention, in place.
 
-    Variables marked with the old ``attrs["type"] = "changepoints"`` become
-    proper changepoint masks (:func:`changepoint_attrs`); any other stale
-    ``type`` value (``"pca"``, ``"audio_changepoints"``, ``"features"``) is
-    dropped, since nothing ever read those. Everything else is untouched —
-    a variable that carries no ``type`` gets no ``kind`` invented for it.
+    ``attrs["type"] = "changepoints"`` is already read live as a synonym for
+    ``kind="changepoint_feature"`` (see :func:`kind_of` / :func:`is_changepoint`),
+    so this is no longer required for a changepoint mask to be recognised —
+    it exists to normalise old files onto the full :func:`changepoint_attrs`
+    stamp, and to drop other stale ``type`` values (``"pca"``,
+    ``"audio_changepoints"``, ``"features"``) that nothing ever read.
+    Everything else is untouched — a variable that carries no ``type`` gets
+    no ``kind`` invented for it.
 
     Returns *ds* so it can be chained onto a load::
 

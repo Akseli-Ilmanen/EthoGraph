@@ -123,6 +123,15 @@ mean a human vouched for the label, and which of the two it is says only how
 it got there. Like the rest of the grid setup the choice is remembered across
 sessions, and a {doc}`workflow <workflows>` step sets it per grid.
 
+Both grids take a **Sort**: by trial (the default in the label grid) or by
+**confidence**, lowest or highest first. Sorting by confidence is the point of
+having it — it puts every doubtful label on the first screens instead of
+scattering them through the trials, so a model review starts where it should.
+The video grid adds **duration** (its default), which keeps clips of a similar
+length together so they end around the same time when they play. The choice is
+remembered, and reordering never moves a verdict: clicks are keyed by label,
+not by position.
+
 **Label grid view…** shows the video frame at every boundary in scope — one
 tile per point event, a start and an end tile per state event, per camera —
 titled with label, trial, time, confidence and method, with **Flag confidence

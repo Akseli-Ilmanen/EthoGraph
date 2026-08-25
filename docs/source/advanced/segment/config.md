@@ -507,8 +507,29 @@ same functions as the GUI's changepoint correction; the optional first step is
 the one that is not about intervals at all, and it needs a boundary head. Also
 used for the *post-processed* numbers in `test_metrics.yaml`.
 
+The interval steps are the GUI's *CP Correction* section under other names,
+and the default way to fill them is to **take the GUI's numbers**:
+
+```yaml
+infer:
+  postprocess:
+    gui_settings: true          # ~/.ethograph/gui_settings.yaml (or a path)
+    max_shrink_s: 0.1           # anything spelled beside it still wins
+```
+
+`gui_settings` reads the file every time the config is loaded, so the
+pipeline stays in step with what you tune in the GUI; a saved run config
+carries the resolved values explicitly (plus the path they came from), so a
+finished run does not change when the GUI does. The GUI's step checkboxes
+read as zeroed parameters (purge off → `min_duration_s: 0`, stitch off →
+`stitch_gap_s: 0`, snap off → `changepoint_correction: false`). Spell the
+values instead when one project needs settings the GUI does not hold. The
+boundary-head keys and `changepoints` have no GUI counterpart and are always
+the config's. See `docs/adr/0006-postprocess-from-gui-settings.md`.
+
 | Key | Default | Meaning |
 |---|---|---|
+| `gui_settings` | `null` | `true` or a path: read the interval-step values below from the GUI's `gui_settings.yaml`; explicit keys override. |
 | `min_duration_s` | `0` | Drop predicted labels shorter than this (`0` = off). |
 | `label_thresholds` | `{}` | Per-label-id minimum durations overriding `min_duration_s`. |
 | `stitch_gap_s` | `0` | Merge same-label predictions separated by less than this. |

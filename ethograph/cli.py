@@ -50,6 +50,40 @@ def _fix_wayland_opengl():
     os.environ.setdefault("PYOPENGL_PLATFORM", "glx")
 
 
+def _linux_preflight() -> None:
+    """Name every missing system library up front, with the line that installs it.
+
+    The wheels fail one library at a time and each in its own words; the GUI
+    still tries to start afterwards, since some of them are only needed by
+    panels the user may never open.
+    """
+    if sys.platform != "linux":
+        return
+    from ethograph.utils.system_check import (
+        display_available,
+        install_hint,
+        is_wsl,
+        missing_system_libs,
+        package_manager,
+        wsl_notes,
+    )
+
+    log = logging.getLogger("ethograph")
+    missing = missing_system_libs()
+    if missing:
+        names = ", ".join(lib.soname for lib in missing)
+        log.warning(
+            "Missing Linux system libraries: %s\n    fix: %s\n    (details: `ethograph check`)",
+            names,
+            install_hint(missing, package_manager()),
+        )
+    if is_wsl():
+        for note in wsl_notes():
+            log.warning("WSL: %s", note)
+    if not display_available():
+        log.warning("No DISPLAY or WAYLAND_DISPLAY is set; Qt cannot open a window.")
+
+
 def _require_gui_extra(exc: ImportError) -> None:
     """Turn a missing GUI dependency into an actionable install hint."""
     sys.exit(
@@ -88,6 +122,7 @@ def launch():
         handler.setFormatter(_ConsoleFormatter())
     _fix_wayland_opengl()
     _ensure_qt_plugins()
+    _linux_preflight()
 
     from ethograph.utils.paths import ethograph_home
 
@@ -150,6 +185,7 @@ def main():
         print("Commands:")
         print("  launch    Launch the ethograph GUI")
         print("  shortcut  Install desktop/Start Menu shortcut")
+        print("  check     Check for missing Linux system libraries")
         sys.exit(1)
 
     command = sys.argv[1]
@@ -160,9 +196,13 @@ def main():
         from ethograph.shortcuts import install_shortcut
 
         sys.exit(install_shortcut())
+    elif command == "check":
+        from ethograph.utils.system_check import run_check
+
+        sys.exit(run_check())
     else:
         print(f"Unknown command: {command}")
-        print("Available commands: launch, shortcut")
+        print("Available commands: launch, shortcut, check")
         sys.exit(1)
 
 

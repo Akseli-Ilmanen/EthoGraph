@@ -9,8 +9,8 @@ NWB trials tables are written in append mode (``NWBHDF5IO(path, "a")``): the
 export path used by :func:`~ethograph.io.nwb_alignment.edit_nwb` copies
 already-written datasets verbatim, so a changed value never reaches the file.
 
-:data:`DERIVED_COLUMNS` — state EthoGraph works out for itself: the curation
-verdict and a prediction run's expectation check — never goes into an NWB. That write happens in place
+:data:`DERIVED_COLUMNS` — state EthoGraph works out for itself, the curation
+verdict — never goes into an NWB. That write happens in place
 (there is no atomic replace to fall back on), and for a non-NWB dataset the
 alignment NWB is the sole holder of the trial timing, so a crash mid-write
 would cost far more than the column. :func:`ensure_tabular_target` hands out a
@@ -32,7 +32,7 @@ from ethograph.io.metadata_table import (
     empty_metadata_df,
     metadata_tsv_path,
 )
-from ethograph.labels.curation import CURATED_COLUMN, EXPECTATION_COLUMN
+from ethograph.labels.curation import CURATED_COLUMN
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +41,7 @@ TARGET_NWB = "nwb"
 
 #: Columns EthoGraph derives rather than reads. Written to a tabular file
 #: only — see the module docstring.
-DERIVED_COLUMNS = frozenset({CURATED_COLUMN, EXPECTATION_COLUMN})
+DERIVED_COLUMNS = frozenset({CURATED_COLUMN})
 
 
 @dataclass(frozen=True)
@@ -193,7 +193,6 @@ def save_metadata_table(path: str | Path, df: pd.DataFrame) -> None:
     else:
         df.to_csv(tmp, sep="\t", index=False)
     tmp.replace(path)
-    logger.info("Saved metadata table to %s", path.name)
 
 
 def write_metadata(

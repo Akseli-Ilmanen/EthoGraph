@@ -13,6 +13,34 @@ logger = logging.getLogger(__name__)
 
 SETTINGS_DIR = ".ethograph"
 
+#: Base directory for per-drop throwaway alignment/.nc files. Anything under it
+#: is session-scratch: it is deleted on the next drop, so a path pointing into
+#: it must never be persisted as a setting (see :func:`is_throwaway_path`).
+TMP_ALIGNMENT_DIRNAME = "ethograph_tmp_alignment"
+
+
+def tmp_alignment_base() -> Path:
+    """Return the base directory holding per-drop throwaway alignment files."""
+    import tempfile
+
+    return Path(tempfile.gettempdir()) / TMP_ALIGNMENT_DIRNAME
+
+
+def is_throwaway_path(value: object) -> bool:
+    """True when *value* points inside :func:`tmp_alignment_base`.
+
+    Saving such a path would outlive the file it names: each drop wipes the
+    previous drop's directory, so a persisted reference either dangles or,
+    worse, resolves to a different session's alignment.
+    """
+    if not isinstance(value, (str, Path)):
+        return False
+    try:
+        return tmp_alignment_base().resolve() in Path(value).resolve().parents
+    except (OSError, ValueError):
+        return False
+
+
 #: Environment variable that overrides the location of the global settings
 #: directory.  When set, its value is used verbatim as the ``.ethograph``
 #: settings directory instead of ``~/.ethograph``.

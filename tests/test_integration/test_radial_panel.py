@@ -9,7 +9,6 @@ import numpy as np
 import pytest
 from qtpy.QtWidgets import QApplication
 
-from ethograph.gui.plots_console import to_identifier
 from ethograph.gui.source_popup import allowed_plot_types
 from ethograph.io.time_model import TimeRange
 
@@ -24,16 +23,20 @@ def _sampled(rp, n: int = 40):
 
 
 def _heading(meta) -> str:
-    """Derive a full-turn variable in the console and return its name."""
+    """Derive a full-turn variable in the console and return its name.
+
+    The sweep is built from the panel's own time vector rather than from its
+    feature: a feature can be constant over the window (its span is then 0 and
+    the mapping is all-NaN), and which feature a panel opens on is a property
+    of the dataset, not of what these tests are about. Time always sweeps.
+    """
     plot = meta.plot_container.line_plots[0]
     meta.plot_container.active_feature_plot = plot
     meta._add_console_panel()
     console = meta.plot_container.console_panel
-    name = to_identifier(plot._effective_feature())
-    # Map whatever the feature is onto a full 0…360 sweep.
-    console._on_submitted(f"lo = np.nanmin({name}) * np.ones_like({name})")
-    console._on_submitted(f"span = (np.nanmax({name}) - np.nanmin({name})) * np.ones_like({name})")
-    console._on_submitted(f"hd = ({name} - lo) / span * 360.0")
+    console._on_submitted("lo = np.nanmin(t) * np.ones_like(t)")
+    console._on_submitted("span = (np.nanmax(t) - np.nanmin(t)) * np.ones_like(t)")
+    console._on_submitted("hd = (t - lo) / span * 360.0")
     QApplication.processEvents()
     assert meta.app_state.data_loader.is_derived("hd"), console.output.toPlainText()
     return "hd"
