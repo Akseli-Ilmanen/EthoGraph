@@ -19,8 +19,11 @@ docs/build_preview/
 *.tsv
 *.npz
 *paper.pdf
+
+# Upstream repos cloned for reference only — never committed (they carry their
+# own .git, so `git add` would record them as submodule gitlinks). Anything we
+# actually ship from them is vendored under ethograph/segment/dlc2action/.
 repos/
-# Upstream reference clones for the vendored asrf/baformer heads
 BaFormer/
 asrf/
 
