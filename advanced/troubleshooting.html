@@ -552,6 +552,62 @@ launched with, not from <code class="docutils literal notranslate"><span class="
 <p>Keeping a single install avoids the confusion entirely.</p>
 </div>
 </section>
+<section id="linux-libopengl-so-0-could-not-load-the-qt-platform-plugin-black-video">
+<span id="linux-missing-libraries"></span><h3>Linux: <code class="docutils literal notranslate"><span class="pre">libOpenGL.so.0</span></code>, “could not load the Qt platform plugin”, black video<a class="headerlink" href="#linux-libopengl-so-0-could-not-load-the-qt-platform-plugin-black-video" title="Link to this heading">#</a></h3>
+<p>On Linux the pip wheels load a handful of shared libraries from the
+distribution, and each one that is missing fails in its own words:</p>
+<div class="pst-scrollable-table-container"><table class="table">
+<thead>
+<tr class="row-odd"><th class="head"><p>You see</p></th>
+<th class="head"><p>What is missing</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">OpenGL.platform.ctypesloader</span> <span class="pre">|</span> <span class="pre">Failed</span> <span class="pre">to</span> <span class="pre">load</span> <span class="pre">library</span> <span class="pre">(</span> <span class="pre">'libOpenGL.so.0'</span> <span class="pre">)</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">libopengl0</span></code> (and usually <code class="docutils literal notranslate"><span class="pre">libgl1</span></code>) — PyOpenGL’s GLVND dispatch</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">qt.qpa.plugin:</span> <span class="pre">Could</span> <span class="pre">not</span> <span class="pre">load</span> <span class="pre">the</span> <span class="pre">Qt</span> <span class="pre">platform</span> <span class="pre">plugin</span> <span class="pre">&quot;xcb&quot;</span></code></p></td>
+<td><p>the xcb libraries (<code class="docutils literal notranslate"><span class="pre">libxcb-cursor0</span></code>, <code class="docutils literal notranslate"><span class="pre">libxkbcommon-x11-0</span></code>, …)</p></td>
+</tr>
+<tr class="row-even"><td><p>The GUI opens but the video panel stays black, or wgpu reports no adapter</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">libvulkan1</span></code> + <code class="docutils literal notranslate"><span class="pre">mesa-vulkan-drivers</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">OSError:</span> <span class="pre">PortAudio</span> <span class="pre">library</span> <span class="pre">not</span> <span class="pre">found</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">libportaudio2</span></code> (audio extra)</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>Run the preflight — it checks all of them at once and prints the install
+line for your distribution:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>ethograph<span class="w"> </span>check
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">ethograph</span> <span class="pre">launch</span></code> prints the same warning at startup, so if a launch ends
+in one of the errors above, scroll up: the fix is already on screen. The full
+list, per distribution, is in <a class="reference internal" href="../getting_started/installation.html#linux-system-libraries"><span class="std std-ref">Linux: system libraries</span></a>.</p>
+</section>
+<section id="windows-subsystem-for-linux-wsl">
+<span id="wsl"></span><h3>Windows Subsystem for Linux (WSL)<a class="headerlink" href="#windows-subsystem-for-linux-wsl" title="Link to this heading">#</a></h3>
+<p>The GUI runs under WSL through <strong>WSLg</strong> (Windows 11, or <code class="docutils literal notranslate"><span class="pre">wsl</span> <span class="pre">--update</span></code> from
+PowerShell on Windows 10), which provides the display. A WSL distro is a
+minimal install, so start with the system libraries above — every one of them
+is typically missing — then <code class="docutils literal notranslate"><span class="pre">ethograph</span> <span class="pre">check</span></code>.</p>
+<p>Two things to know:</p>
+<ul class="simple">
+<li><p><strong>Video rendering is best-effort.</strong> The video canvas is drawn with wgpu,
+which does not officially support WSL. It works through mesa’s software
+(lavapipe) or Microsoft’s <code class="docutils literal notranslate"><span class="pre">dzn</span></code> Vulkan driver, both in <code class="docutils literal notranslate"><span class="pre">mesa-vulkan-drivers</span></code>,
+but slower than native. If the video panel stays black after installing
+them, run ethograph natively on Windows — the data on <code class="docutils literal notranslate"><span class="pre">/mnt/c/...</span></code> is the
+same data, and <code class="docutils literal notranslate"><span class="pre">uv</span> <span class="pre">tool</span> <span class="pre">install</span></code> works the same way in PowerShell.</p></li>
+<li><p><strong>Qt runs on Wayland there, and that is fine.</strong> WSLg advertises both a
+Wayland and an X11 display; Qt takes Wayland, which needs none of the
+<code class="docutils literal notranslate"><span class="pre">libxcb-*</span></code> libraries. Only if you set <code class="docutils literal notranslate"><span class="pre">QT_QPA_PLATFORM=xcb</span></code> yourself does
+the xcb list from <a class="reference internal" href="../getting_started/installation.html#linux-system-libraries"><span class="std std-ref">Linux: system libraries</span></a> become mandatory —
+<code class="docutils literal notranslate"><span class="pre">ethograph</span> <span class="pre">check</span></code> reads that variable and adjusts what it asks for.</p></li>
+</ul>
+</section>
 <section id="silent-audio-on-linux">
 <span id="no-audio-device"></span><h3>Silent audio on Linux<a class="headerlink" href="#silent-audio-on-linux" title="Link to this heading">#</a></h3>
 <p>If playback is silent, check what PortAudio sees:</p>
@@ -711,6 +767,8 @@ audio track”</em>) rather than a stream of errors.</p>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#what-does-this-button-do">What does this button do?</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#installation-fails-with-resolution-too-deep">Installation fails with “resolution-too-deep”</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph-is-not-recognized-as-a-command"><code class="docutils literal notranslate"><span class="pre">ethograph</span></code> is not recognized as a command</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#linux-libopengl-so-0-could-not-load-the-qt-platform-plugin-black-video">Linux: <code class="docutils literal notranslate"><span class="pre">libOpenGL.so.0</span></code>, “could not load the Qt platform plugin”, black video</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#windows-subsystem-for-linux-wsl">Windows Subsystem for Linux (WSL)</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#silent-audio-on-linux">Silent audio on Linux</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#supported-audio-formats">Supported audio formats</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#opening-tsv-label-files-in-excel">Opening <code class="docutils literal notranslate"><span class="pre">.tsv</span></code> label files in Excel</a></li>

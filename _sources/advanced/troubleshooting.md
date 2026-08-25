@@ -85,6 +85,52 @@ launched with, not from `uv tool list`:
 Keeping a single install avoids the confusion entirely.
 ```
 
+(linux-missing-libraries)=
+### Linux: `libOpenGL.so.0`, "could not load the Qt platform plugin", black video
+
+On Linux the pip wheels load a handful of shared libraries from the
+distribution, and each one that is missing fails in its own words:
+
+| You see | What is missing |
+|---------|-----------------|
+| `OpenGL.platform.ctypesloader \| Failed to load library ( 'libOpenGL.so.0' )` | `libopengl0` (and usually `libgl1`) — PyOpenGL's GLVND dispatch |
+| `qt.qpa.plugin: Could not load the Qt platform plugin "xcb"` | the xcb libraries (`libxcb-cursor0`, `libxkbcommon-x11-0`, …) |
+| The GUI opens but the video panel stays black, or wgpu reports no adapter | `libvulkan1` + `mesa-vulkan-drivers` |
+| `OSError: PortAudio library not found` | `libportaudio2` (audio extra) |
+
+Run the preflight — it checks all of them at once and prints the install
+line for your distribution:
+
+```bash
+ethograph check
+```
+
+`ethograph launch` prints the same warning at startup, so if a launch ends
+in one of the errors above, scroll up: the fix is already on screen. The full
+list, per distribution, is in {ref}`linux-system-libraries`.
+
+(wsl)=
+### Windows Subsystem for Linux (WSL)
+
+The GUI runs under WSL through **WSLg** (Windows 11, or `wsl --update` from
+PowerShell on Windows 10), which provides the display. A WSL distro is a
+minimal install, so start with the system libraries above — every one of them
+is typically missing — then `ethograph check`.
+
+Two things to know:
+
+- **Video rendering is best-effort.** The video canvas is drawn with wgpu,
+  which does not officially support WSL. It works through mesa's software
+  (lavapipe) or Microsoft's `dzn` Vulkan driver, both in `mesa-vulkan-drivers`,
+  but slower than native. If the video panel stays black after installing
+  them, run ethograph natively on Windows — the data on `/mnt/c/...` is the
+  same data, and `uv tool install` works the same way in PowerShell.
+- **Qt runs on Wayland there, and that is fine.** WSLg advertises both a
+  Wayland and an X11 display; Qt takes Wayland, which needs none of the
+  `libxcb-*` libraries. Only if you set `QT_QPA_PLATFORM=xcb` yourself does
+  the xcb list from {ref}`linux-system-libraries` become mandatory —
+  `ethograph check` reads that variable and adjusts what it asks for.
+
 (no-audio-device)=
 ### Silent audio on Linux
 

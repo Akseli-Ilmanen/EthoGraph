@@ -411,25 +411,34 @@
 <tr class="row-odd"><td><p><a class="reference internal" href="ethograph.features.changepoints.add_NaN_boundaries.html#ethograph.features.changepoints.add_NaN_boundaries" title="ethograph.features.changepoints.add_NaN_boundaries"><code class="xref py py-obj docutils literal notranslate"><span class="pre">add_NaN_boundaries</span></code></a></p></td>
 <td><p>Merge NaN-transition boundaries with other changepoints -&gt; binary mask.</p></td>
 </tr>
+<tr class="row-even"><td><p><a class="reference internal" href="ethograph.features.changepoints.changepoint_fired.html#ethograph.features.changepoints.changepoint_fired" title="ethograph.features.changepoints.changepoint_fired"><code class="xref py py-obj docutils literal notranslate"><span class="pre">changepoint_fired</span></code></a></p></td>
+<td><p>Where <em>mask</em> fires at <em>selections</em>: a boolean <code class="docutils literal notranslate"><span class="pre">(T,)</span></code> array on the mask's own time axis.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="ethograph.features.changepoints.changepoint_mask_times.html#ethograph.features.changepoints.changepoint_mask_times" title="ethograph.features.changepoints.changepoint_mask_times"><code class="xref py py-obj docutils literal notranslate"><span class="pre">changepoint_mask_times</span></code></a></p></td>
+<td><p>Times at which <em>mask</em> fires at <em>selections</em>, read off the mask's own time coordinate.</p></td>
+</tr>
 <tr class="row-even"><td><p><a class="reference internal" href="ethograph.features.changepoints.correct_changepoints.html#ethograph.features.changepoints.correct_changepoints" title="ethograph.features.changepoints.correct_changepoints"><code class="xref py py-obj docutils literal notranslate"><span class="pre">correct_changepoints</span></code></a></p></td>
 <td><p>Full interval-native correction pipeline.</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="ethograph.features.changepoints.correct_changepoints_automatic.html#ethograph.features.changepoints.correct_changepoints_automatic" title="ethograph.features.changepoints.correct_changepoints_automatic"><code class="xref py py-obj docutils literal notranslate"><span class="pre">correct_changepoints_automatic</span></code></a></p></td>
 <td><p>Lightweight cleanup used while manually creating labels.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="ethograph.features.changepoints.find_nearest_turning_points_binary.html#ethograph.features.changepoints.find_nearest_turning_points_binary" title="ethograph.features.changepoints.find_nearest_turning_points_binary"><code class="xref py py-obj docutils literal notranslate"><span class="pre">find_nearest_turning_points_binary</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="ethograph.features.changepoints.dataset_changepoint_times.html#ethograph.features.changepoints.dataset_changepoint_times" title="ethograph.features.changepoints.dataset_changepoint_times"><code class="xref py py-obj docutils literal notranslate"><span class="pre">dataset_changepoint_times</span></code></a></p></td>
+<td><p>Sorted, unique times of every changepoint mask in <em>ds</em> — of <em>feature</em> only when given.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="ethograph.features.changepoints.find_nearest_turning_points_binary.html#ethograph.features.changepoints.find_nearest_turning_points_binary" title="ethograph.features.changepoints.find_nearest_turning_points_binary"><code class="xref py py-obj docutils literal notranslate"><span class="pre">find_nearest_turning_points_binary</span></code></a></p></td>
 <td><p>Convert a 1D signal into a binary mask marking boundaries of peak regions.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="ethograph.features.changepoints.find_peaks_binary.html#ethograph.features.changepoints.find_peaks_binary" title="ethograph.features.changepoints.find_peaks_binary"><code class="xref py py-obj docutils literal notranslate"><span class="pre">find_peaks_binary</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="ethograph.features.changepoints.find_peaks_binary.html#ethograph.features.changepoints.find_peaks_binary" title="ethograph.features.changepoints.find_peaks_binary"><code class="xref py py-obj docutils literal notranslate"><span class="pre">find_peaks_binary</span></code></a></p></td>
 <td><p>scipy.signal.find_peaks + NaN boundaries -&gt; binary mask.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="ethograph.features.changepoints.find_troughs_binary.html#ethograph.features.changepoints.find_troughs_binary" title="ethograph.features.changepoints.find_troughs_binary"><code class="xref py py-obj docutils literal notranslate"><span class="pre">find_troughs_binary</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="ethograph.features.changepoints.find_troughs_binary.html#ethograph.features.changepoints.find_troughs_binary" title="ethograph.features.changepoints.find_troughs_binary"><code class="xref py py-obj docutils literal notranslate"><span class="pre">find_troughs_binary</span></code></a></p></td>
 <td><p>Find troughs (local minima) + NaN boundaries -&gt; binary mask.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="ethograph.features.changepoints.merge_changepoints.html#ethograph.features.changepoints.merge_changepoints" title="ethograph.features.changepoints.merge_changepoints"><code class="xref py py-obj docutils literal notranslate"><span class="pre">merge_changepoints</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="ethograph.features.changepoints.merge_changepoints.html#ethograph.features.changepoints.merge_changepoints" title="ethograph.features.changepoints.merge_changepoints"><code class="xref py py-obj docutils literal notranslate"><span class="pre">merge_changepoints</span></code></a></p></td>
 <td><p>Merge changepoint variables in a dataset into a single boolean mask.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="ethograph.features.changepoints.more_changepoint_features.html#ethograph.features.changepoints.more_changepoint_features" title="ethograph.features.changepoints.more_changepoint_features"><code class="xref py py-obj docutils literal notranslate"><span class="pre">more_changepoint_features</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="ethograph.features.changepoints.more_changepoint_features.html#ethograph.features.changepoints.more_changepoint_features" title="ethograph.features.changepoints.more_changepoint_features"><code class="xref py py-obj docutils literal notranslate"><span class="pre">more_changepoint_features</span></code></a></p></td>
 <td><p>Create changepoint-based features from a binary changepoint array.</p></td>
 </tr>
 </tbody>

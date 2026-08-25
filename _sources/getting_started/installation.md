@@ -24,6 +24,43 @@ Works from both PowerShell and Command Prompt. `winget` is built into Windows 11
 
 ::::
 
+(linux-system-libraries)=
+### Linux: system libraries
+
+The Python wheels bring their own Qt, OpenGL bindings and wgpu, but on Linux
+they load a few shared libraries from the distribution. A desktop install
+usually has them; a minimal container, a lab server or a fresh WSL distro
+usually does not. Install them once, before the first launch:
+
+::::{tab-set}
+
+:::{tab-item} Debian / Ubuntu / WSL
+```bash
+sudo apt install libgl1 libopengl0 libegl1 libxcb-cursor0 libxkbcommon-x11-0 \
+    libxcb-icccm4 libxcb-keysyms1 libxcb-image0 libxcb-render-util0 \
+    libxcb-shape0 libxcb-xinerama0 libfontconfig1 libdbus-1-3 \
+    libvulkan1 mesa-vulkan-drivers
+```
+:::
+
+:::{tab-item} Fedora / RHEL
+```bash
+sudo dnf install mesa-libGL libglvnd-opengl mesa-libEGL xcb-util-cursor \
+    libxkbcommon-x11 xcb-util-wm xcb-util-keysyms xcb-util-image \
+    xcb-util-renderutil libxcb fontconfig dbus-libs vulkan-loader mesa-vulkan-drivers
+```
+:::
+
+::::
+
+`ethograph check` reports which of these are still missing on your machine,
+with the exact install line for your distribution, and `ethograph launch`
+prints the same warning before it opens a window. (The `libxcb-*` entries are
+only needed when Qt runs on X11 — on a Wayland desktop or WSLg the check
+leaves them out.) See
+{ref}`linux-missing-libraries` for what each failure looks like, and
+{ref}`wsl` for Windows Subsystem for Linux.
+
 ## Quick install
 
 Use this if you just want to **run the ethograph GUI** — for teaching, for

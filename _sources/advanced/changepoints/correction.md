@@ -36,7 +36,7 @@ using frames for kinematics and seconds for audio data.
 ## Automatic vs manual correction
 
 **Automatic (during labelling):**
-- **Checkbox "Changepoint correction"**: When enabled, label boundaries are snapped to changepoints as you draw them. This keeps hand-drawn annotations consistent in real time.
+- **Checkbox "Changepoint correction"**: When enabled, each click you make while drawing a label snaps to the nearest changepoint **drawn on the panel you clicked** — a feature panel's masks for its feature at its own keypoint / individual selection, an audio panel's audio changepoints — however far away that is. A mark you cannot see on that panel is never a snap target. This keeps hand-drawn annotations consistent in real time.
 
 **Manual (post-hoc, bulk application):**
 Manual correction is especially useful for cleaning up model predictions in bulk — run the detector once, then snap all predicted boundaries to changepoints across the dataset in one step.

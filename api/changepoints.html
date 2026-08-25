@@ -600,9 +600,10 @@ binary indicator of the same length).</p></li>
 <hr class="docutils" />
 <section id="merging-and-time-extraction">
 <h2>Merging and time extraction<a class="headerlink" href="#merging-and-time-extraction" title="Link to this heading">#</a></h2>
-<p>Changepoints stored as multiple <code class="docutils literal notranslate"><span class="pre">kind=&quot;changepoint_feature&quot;</span></code> (legacy: <code class="docutils literal notranslate"><span class="pre">attrs[&quot;type&quot;]</span> <span class="pre">==</span> <span class="pre">&quot;changepoints&quot;</span></code>)
-DataArrays can be merged into a single boolean mask, or converted directly
-to absolute times (seconds) for use by the GUI and correction pipeline.</p>
+<p>Changepoints stored as <code class="docutils literal notranslate"><span class="pre">kind=&quot;changepoint_feature&quot;</span></code> masks can be merged into
+a single boolean mask, or read as times (seconds) at a given keypoint /
+individual selection. <code class="docutils literal notranslate"><span class="pre">changepoint_fired</span></code> is the one reading the GUI has:
+the lineplot draws it and a click snaps to it, so drawn and snapped agree.</p>
 <dl class="py function">
 <dt class="sig sig-object py" id="ethograph.features.changepoints.merge_changepoints">
 <span class="sig-prename descclassname"><span class="pre">ethograph.features.changepoints.</span></span><span class="sig-name descname"><span class="pre">merge_changepoints</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ds</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">vars</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">keep_dims</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/features/changepoints.html#merge_changepoints"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.features.changepoints.merge_changepoints" title="Link to this definition">#</a></dt>
@@ -634,6 +635,49 @@ another’s. Default collapses every non-time dim.</p></li>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If changepoint variables reference different target features.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="ethograph.features.changepoints.changepoint_fired">
+<span class="sig-prename descclassname"><span class="pre">ethograph.features.changepoints.</span></span><span class="sig-name descname"><span class="pre">changepoint_fired</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mask</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">selections</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/features/changepoints.html#changepoint_fired"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.features.changepoints.changepoint_fired" title="Link to this definition">#</a></dt>
+<dd><p>Where <em>mask</em> fires at <em>selections</em>: a boolean <code class="docutils literal notranslate"><span class="pre">(T,)</span></code> array on the mask’s own time axis.</p>
+<p>This is the one reading of a changepoint mask the GUI has. The lineplot
+draws it (<code class="docutils literal notranslate"><span class="pre">XarrayLoader.select</span></code>) and a click snaps to it
+(<code class="docutils literal notranslate"><span class="pre">XarrayLoader.get_cp_times</span></code>), so what is drawn and what is snapped to
+are the same set by construction.</p>
+<p>A selection key that is a dim of the mask pins that dim — <code class="docutils literal notranslate"><span class="pre">.sel</span></code> where
+the dim has a coordinate, <code class="docutils literal notranslate"><span class="pre">.isel</span></code> where it does not (the rule of
+<a class="reference internal" href="xr_utils.html#ethograph.utils.xr_utils.sel_valid" title="ethograph.utils.xr_utils.sel_valid"><code class="xref py py-func docutils literal notranslate"><span class="pre">ethograph.utils.xr_utils.sel_valid()</span></code></a>). Every other key is ignored,
+and every non-time dim left free is OR’d across.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code></a></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="ethograph.features.changepoints.changepoint_mask_times">
+<span class="sig-prename descclassname"><span class="pre">ethograph.features.changepoints.</span></span><span class="sig-name descname"><span class="pre">changepoint_mask_times</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mask</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">selections</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/features/changepoints.html#changepoint_mask_times"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.features.changepoints.changepoint_mask_times" title="Link to this definition">#</a></dt>
+<dd><p>Times at which <em>mask</em> fires at <em>selections</em>, read off the mask’s own time coordinate.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code></a></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="ethograph.features.changepoints.dataset_changepoint_times">
+<span class="sig-prename descclassname"><span class="pre">ethograph.features.changepoints.</span></span><span class="sig-name descname"><span class="pre">dataset_changepoint_times</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ds</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">feature</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">selections</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/features/changepoints.html#dataset_changepoint_times"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.features.changepoints.dataset_changepoint_times" title="Link to this definition">#</a></dt>
+<dd><p>Sorted, unique times of every changepoint mask in <em>ds</em> — of <em>feature</em> only when given.</p>
+<p>Masks that target different features are simply unioned; there is no
+merge step to refuse them. Empty when nothing matches.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code></a></span></p>
 </dd>
 </dl>
 </dd></dl>
@@ -841,6 +885,9 @@ prohibitively large at audio sample rates, are stored instead as
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#merging-and-time-extraction">Merging and time extraction</a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.features.changepoints.merge_changepoints"><code class="docutils literal notranslate"><span class="pre">merge_changepoints()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.features.changepoints.changepoint_fired"><code class="docutils literal notranslate"><span class="pre">changepoint_fired()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.features.changepoints.changepoint_mask_times"><code class="docutils literal notranslate"><span class="pre">changepoint_mask_times()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.features.changepoints.dataset_changepoint_times"><code class="docutils literal notranslate"><span class="pre">dataset_changepoint_times()</span></code></a></li>
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#label-correction">Label correction</a><ul class="nav section-nav flex-column">

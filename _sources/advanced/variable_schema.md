@@ -39,7 +39,7 @@ group to drop in an ablation. If your files predate this convention, you can
 add it whenever you like, or never.
 
 The one exception is **changepoints**, which had a convention before this one;
-see the migration note below.
+see the note below.
 
 **A label, not a switch.** No arithmetic is ever chosen by `kind`. A category
 says what a thing is; it cannot say how to treat it. `speed` and `heading` are
@@ -47,9 +47,11 @@ both `kinematic_feature`, but z-scoring a unit vector is wrong — so
 normalisation reads `normalise`, not `kind`. This is why the two attrs exist
 separately, and it is the main thing worth saying back to movement's proposal.
 
-**One spelling.** `attrs["type"] = "changepoints"`, the ad-hoc convention this
-replaces, is neither written nor read any more. There is one way to mark a
-changepoint, and it is the pair of attrs below.
+**Two spellings for changepoints.** `attrs["type"] = "changepoints"`, the
+ad-hoc convention this replaces, is still read as a synonym for the pair of
+attrs below — a file that predates this schema needs no migration for its
+changepoints to be recognised. Changepoint producers write both spellings, so
+code that only knows the old convention keeps working too.
 
 ```{admonition} Changepoints: the label covers the family, the marker means "mask"
 :class: note
@@ -63,8 +65,11 @@ So the two jobs use two attrs. `kind="changepoint_feature"` labels the whole
 family — mask and expansions alike — which is what makes
 `drop_kinds=[changepoint_feature]` remove every changepoint column at once.
 `changepoint_mask=1` marks only the masks, and is what `is_changepoint()`
-reads. {func}`~ethograph.io.schema.changepoint_attrs` writes both, so a mask
-you make yourself is stamped the same way ethograph's own are.
+reads — alongside the legacy `type="changepoints"`, since every historical
+use of that attr marked a mask and never an expansion.
+{func}`~ethograph.io.schema.changepoint_attrs` writes `kind`, `changepoint_mask`
+*and* the legacy `type`, so a mask you make yourself is stamped the same way
+ethograph's own are, and is recognisable to old and new readers alike.
 ```
 
 ## Pynapple: a sidecar, because there is nowhere else
@@ -121,19 +126,20 @@ group.set_info(
 schema.changepoint_units(group.metadata)   # [0, 1]
 ```
 
-## Migrating a file written before this convention
+## Normalising a file written before this convention
 
-Support for the old `attrs["type"] = "changepoints"` has been **removed**, so
-a file that predates this schema no longer has recognisable changepoints: its
-masks read as ordinary features. They will plot, and they can be named in a
-config, but the changepoint machinery — merging, range-checking, hiding them
-from the feature list, the GUI's changepoint correction — will not see them.
+A file that predates this schema does not need converting: its
+`attrs["type"] = "changepoints"` masks are already recognised — merging,
+range-checking, hiding them from the feature list, the GUI's changepoint
+correction all see them, with no read required first.
 
-{func}`~ethograph.io.schema.migrate_legacy_attrs` converts a dataset once, in
-place: variables carrying the old marker become proper changepoint masks, any
-other stale `type` value (`"pca"`, `"audio_changepoints"`, `"features"`) is
-dropped, and everything else is untouched — a variable with no `type` gets no
-`kind` invented for it.
+What that file is still missing is the *label*, `changepoint_mask` marker and
+smooth-expansion grouping a freshly-produced file carries — so
+{func}`~ethograph.io.schema.migrate_legacy_attrs` is worth running once to
+normalise onto the full stamp, and to drop any other stale `type` value
+(`"pca"`, `"audio_changepoints"`, `"features"`) that nothing ever read.
+Everything else is untouched — a variable with no `type` gets no `kind`
+invented for it.
 
 ```python
 import ethograph as eto
@@ -146,9 +152,9 @@ dt.save("Trial_data.nc")
 ```
 
 ```{note}
-Nothing migrates on load, and nothing warns. A dataset built by a current
-version of ethograph is already correct; this is only for files on disk from
-before.
+Nothing migrates on load, and nothing warns — nothing needs to, since the
+legacy spelling is read live. A dataset built by a current version of
+ethograph already writes both spellings.
 ```
 
 ## What it buys

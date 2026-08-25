@@ -42,15 +42,18 @@ To attach detectors to a :class:`xarray.Dataset` or a pynapple object:
 Merging and time extraction
 ---------------------------
 
-Changepoints stored as multiple ``kind="changepoint_feature"`` (legacy: ``attrs["type"] == "changepoints"``)
-DataArrays can be merged into a single boolean mask, or converted directly
-to absolute times (seconds) for use by the GUI and correction pipeline.
+Changepoints stored as ``kind="changepoint_feature"`` masks can be merged into
+a single boolean mask, or read as times (seconds) at a given keypoint /
+individual selection. ``changepoint_fired`` is the one reading the GUI has:
+the lineplot draws it and a click snaps to it, so drawn and snapped agree.
 
 .. autofunction:: merge_changepoints
 
-.. autofunction:: extract_cp_times
+.. autofunction:: changepoint_fired
 
-.. autofunction:: snap_to_nearest_changepoint_time
+.. autofunction:: changepoint_mask_times
+
+.. autofunction:: dataset_changepoint_times
 
 ----
 
@@ -64,8 +67,6 @@ Snap interval-based labels to nearby changepoints. The full pipeline
 .. autofunction:: correct_changepoints
 
 .. autofunction:: correct_changepoints_automatic
-
-.. autofunction:: correct_changepoints_dense
 
 ----
 

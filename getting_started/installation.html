@@ -453,6 +453,41 @@ Windows</label><div class="sd-tab-content docutils">
 </div>
 </div>
 </section>
+<section id="linux-system-libraries">
+<span id="id1"></span><h2>Linux: system libraries<a class="headerlink" href="#linux-system-libraries" title="Link to this heading">#</a></h2>
+<p>The Python wheels bring their own Qt, OpenGL bindings and wgpu, but on Linux
+they load a few shared libraries from the distribution. A desktop install
+usually has them; a minimal container, a lab server or a fresh WSL distro
+usually does not. Install them once, before the first launch:</p>
+<div class="sd-tab-set docutils">
+<input checked="checked" id="sd-tab-item-2" name="sd-tab-set-1" type="radio">
+<label class="sd-tab-label" for="sd-tab-item-2">
+Debian / Ubuntu / WSL</label><div class="sd-tab-content docutils">
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>sudo<span class="w"> </span>apt<span class="w"> </span>install<span class="w"> </span>libgl1<span class="w"> </span>libopengl0<span class="w"> </span>libegl1<span class="w"> </span>libxcb-cursor0<span class="w"> </span>libxkbcommon-x11-0<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>libxcb-icccm4<span class="w"> </span>libxcb-keysyms1<span class="w"> </span>libxcb-image0<span class="w"> </span>libxcb-render-util0<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>libxcb-shape0<span class="w"> </span>libxcb-xinerama0<span class="w"> </span>libfontconfig1<span class="w"> </span>libdbus-1-3<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>libvulkan1<span class="w"> </span>mesa-vulkan-drivers
+</pre></div>
+</div>
+</div>
+<input id="sd-tab-item-3" name="sd-tab-set-1" type="radio">
+<label class="sd-tab-label" for="sd-tab-item-3">
+Fedora / RHEL</label><div class="sd-tab-content docutils">
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>sudo<span class="w"> </span>dnf<span class="w"> </span>install<span class="w"> </span>mesa-libGL<span class="w"> </span>libglvnd-opengl<span class="w"> </span>mesa-libEGL<span class="w"> </span>xcb-util-cursor<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>libxkbcommon-x11<span class="w"> </span>xcb-util-wm<span class="w"> </span>xcb-util-keysyms<span class="w"> </span>xcb-util-image<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>xcb-util-renderutil<span class="w"> </span>libxcb<span class="w"> </span>fontconfig<span class="w"> </span>dbus-libs<span class="w"> </span>vulkan-loader<span class="w"> </span>mesa-vulkan-drivers
+</pre></div>
+</div>
+</div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">ethograph</span> <span class="pre">check</span></code> reports which of these are still missing on your machine,
+with the exact install line for your distribution, and <code class="docutils literal notranslate"><span class="pre">ethograph</span> <span class="pre">launch</span></code>
+prints the same warning before it opens a window. (The <code class="docutils literal notranslate"><span class="pre">libxcb-*</span></code> entries are
+only needed when Qt runs on X11 — on a Wayland desktop or WSLg the check
+leaves them out.) See
+<a class="reference internal" href="../advanced/troubleshooting.html#linux-missing-libraries"><span class="std std-ref">Linux: libOpenGL.so.0, “could not load the Qt platform plugin”, black video</span></a> for what each failure looks like, and
+<a class="reference internal" href="../advanced/troubleshooting.html#wsl"><span class="std std-ref">Windows Subsystem for Linux (WSL)</span></a> for Windows Subsystem for Linux.</p>
+</section>
 <section id="quick-install">
 <h2>Quick install<a class="headerlink" href="#quick-install" title="Link to this heading">#</a></h2>
 <p>Use this if you just want to <strong>run the ethograph GUI</strong> — for teaching, for
@@ -496,16 +531,16 @@ else you import, rather than as a standalone tool.</p>
 <p>You can use either conda or uv to create the environment — conda is only
 used for environment creation, not for installing ethograph itself.</p>
 <div class="sd-tab-set docutils">
-<input checked="checked" id="sd-tab-item-2" name="sd-tab-set-1" type="radio">
-<label class="sd-tab-label" for="sd-tab-item-2">
+<input checked="checked" id="sd-tab-item-4" name="sd-tab-set-2" type="radio">
+<label class="sd-tab-label" for="sd-tab-item-4">
 conda</label><div class="sd-tab-content docutils">
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>conda<span class="w"> </span>create<span class="w"> </span>-y<span class="w"> </span>-n<span class="w"> </span>ethograph<span class="w"> </span><span class="nv">python</span><span class="o">=</span><span class="m">3</span>.12
 conda<span class="w"> </span>activate<span class="w"> </span>ethograph
 </pre></div>
 </div>
 </div>
-<input id="sd-tab-item-3" name="sd-tab-set-1" type="radio">
-<label class="sd-tab-label" for="sd-tab-item-3">
+<input id="sd-tab-item-5" name="sd-tab-set-2" type="radio">
+<label class="sd-tab-label" for="sd-tab-item-5">
 uv</label><div class="sd-tab-content docutils">
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>venv<span class="w"> </span>--python<span class="o">=</span><span class="m">3</span>.12
 </pre></div>
@@ -539,15 +574,15 @@ terminal prompt.</p>
 <h4>Adding audio support<a class="headerlink" href="#adding-audio-support" title="Link to this heading">#</a></h4>
 <p>Audio support (waveform display, spectrogram, vocalisation analysis) is an optional extra.</p>
 <div class="sd-tab-set docutils">
-<input checked="checked" id="sd-tab-item-4" name="sd-tab-set-2" type="radio">
-<label class="sd-tab-label" for="sd-tab-item-4">
+<input checked="checked" id="sd-tab-item-6" name="sd-tab-set-3" type="radio">
+<label class="sd-tab-label" for="sd-tab-item-6">
 macOS / Windows</label><div class="sd-tab-content docutils">
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">"ethograph[gui,audio]"</span>
 </pre></div>
 </div>
 </div>
-<input id="sd-tab-item-5" name="sd-tab-set-2" type="radio">
-<label class="sd-tab-label" for="sd-tab-item-5">
+<input id="sd-tab-item-7" name="sd-tab-set-3" type="radio">
+<label class="sd-tab-label" for="sd-tab-item-7">
 Linux</label><div class="sd-tab-content docutils">
 <p>First install the PortAudio system library <strong>and the ALSA plugins</strong>, then
 install the audio extra:</p>
@@ -692,19 +727,19 @@ video and fill the rest automatically.</p>
 </thead>
 <tbody>
 <tr class="row-even"><td><p><strong>Spline</strong> (default)</p></td>
-<td><p>Monotone piecewise cubic (PCHIP) interpolation per keypoint, over that keypoint’s own labelled frames<a class="footnote-reference brackets" href="#pchip" id="id1" role="doc-noteref"><span class="fn-bracket">[</span>1<span class="fn-bracket">]</span></a></p></td>
+<td><p>Monotone piecewise cubic (PCHIP) interpolation per keypoint, over that keypoint’s own labelled frames<a class="footnote-reference brackets" href="#pchip" id="id2" role="doc-noteref"><span class="fn-bracket">[</span>1<span class="fn-bracket">]</span></a></p></td>
 <td><p>No — geometry only</p></td>
 <td><p>Instant; nothing is decoded</p></td>
 <td><p>CPU</p></td>
 </tr>
 <tr class="row-odd"><td><p><strong>Optical flow</strong></p></td>
-<td><p>Pyramidal Lucas-Kanade sparse tracking, run forward and backward across each gap<a class="footnote-reference brackets" href="#lk" id="id2" role="doc-noteref"><span class="fn-bracket">[</span>2<span class="fn-bracket">]</span></a></p></td>
+<td><p>Pyramidal Lucas-Kanade sparse tracking, run forward and backward across each gap<a class="footnote-reference brackets" href="#lk" id="id3" role="doc-noteref"><span class="fn-bracket">[</span>2<span class="fn-bracket">]</span></a></p></td>
 <td><p>Yes</p></td>
 <td><p>Roughly real-time</p></td>
 <td><p>CPU</p></td>
 </tr>
 <tr class="row-even"><td><p><strong>PosePAL (CoTracker3 + refinement)</strong></p></td>
-<td><p>A transformer point tracker<a class="footnote-reference brackets" href="#cotracker" id="id3" role="doc-noteref"><span class="fn-bracket">[</span>3<span class="fn-bracket">]</span></a> whose per-keypoint appearance features are first fitted to the frames you labelled<a class="footnote-reference brackets" href="#posepal" id="id4" role="doc-noteref"><span class="fn-bracket">[</span>4<span class="fn-bracket">]</span></a>, then run forward and backward across each gap</p></td>
+<td><p>A transformer point tracker<a class="footnote-reference brackets" href="#cotracker" id="id4" role="doc-noteref"><span class="fn-bracket">[</span>3<span class="fn-bracket">]</span></a> whose per-keypoint appearance features are first fitted to the frames you labelled<a class="footnote-reference brackets" href="#posepal" id="id5" role="doc-noteref"><span class="fn-bracket">[</span>4<span class="fn-bracket">]</span></a>, then run forward and backward across each gap</p></td>
 <td><p>Yes</p></td>
 <td><p>A few minutes for the fit, once; seconds per fill after that</p></td>
 <td><p><strong>GPU only</strong> — CUDA or Apple Silicon</p></td>
@@ -756,19 +791,19 @@ that PyTorch/CUDA packages depend on.</p>
 <hr class="footnotes docutils" />
 <aside class="footnote-list brackets">
 <aside class="footnote brackets" id="pchip" role="doc-footnote">
-<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id1">1</a><span class="fn-bracket">]</span></span>
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id2">1</a><span class="fn-bracket">]</span></span>
 <p>Fritsch, F. N. &amp; Carlson, R. E. (1980). <a class="reference external" href="https://doi.org/10.1137/0717021">Monotone Piecewise Cubic Interpolation</a>. <em>SIAM Journal on Numerical Analysis</em>, 17(2), 238–246. Implemented by <a class="reference external" href="https://docs.scipy.org/doc/scipy/reference/generated/scipy.interpolate.PchipInterpolator.html"><code class="docutils literal notranslate"><span class="pre">scipy.interpolate.PchipInterpolator</span></code></a>.</p>
 </aside>
 <aside class="footnote brackets" id="lk" role="doc-footnote">
-<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id2">2</a><span class="fn-bracket">]</span></span>
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id3">2</a><span class="fn-bracket">]</span></span>
 <p>Lucas, B. D. &amp; Kanade, T. (1981). <a class="reference external" href="https://www.ri.cmu.edu/pub_files/pub3/lucas_bruce_d_1981_1/lucas_bruce_d_1981_1.pdf">An Iterative Image Registration Technique with an Application to Stereo Vision</a>. <em>IJCAI</em>, 674–679. The pyramidal form used here is Bouguet, J.-Y. (2001), <a class="reference external" href="https://robots.stanford.edu/cs223b04/algo_tracking.pdf">Pyramidal Implementation of the Lucas Kanade Feature Tracker</a>, via <a class="reference external" href="https://docs.opencv.org/4.x/dc/d6b/group__video__track.html#ga473e4b886d0bcc6b65831eb88ed93323"><code class="docutils literal notranslate"><span class="pre">cv2.calcOpticalFlowPyrLK</span></code></a>.</p>
 </aside>
 <aside class="footnote brackets" id="cotracker" role="doc-footnote">
-<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id3">3</a><span class="fn-bracket">]</span></span>
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id4">3</a><span class="fn-bracket">]</span></span>
 <p>Karaev, N., Makarov, I., Wang, J., Neverova, N., Vedaldi, A. &amp; Rupprecht, C. (2024). <a class="reference external" href="https://arxiv.org/abs/2410.11831">CoTracker3: Simpler and Better Point Tracking by Pseudo-Labelling Real Videos</a>. <a class="reference external" href="https://cotracker3.github.io/">Project page</a> · <a class="reference external" href="https://github.com/facebookresearch/co-tracker">GitHub</a></p>
 </aside>
 <aside class="footnote brackets" id="posepal" role="doc-footnote">
-<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id4">4</a><span class="fn-bracket">]</span></span>
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id5">4</a><span class="fn-bracket">]</span></span>
 <p>Pan, Z., Pan, B., Yang, G., Harley, A. W. &amp; Guibas, L. (2025). <a class="reference external" href="https://arxiv.org/abs/2506.03868">Animal Pose Labeling Using General-Purpose Point Trackers</a>. Reference implementation: <a class="reference external" href="https://github.com/Zhuoyang-Pan/PosePAL">PosePAL</a>. EthoGraph implements the method against upstream CoTracker3 rather than the authors’ fork; the optimiser settings follow the paper (Adam, 1e-3 → 1e-5, Huber tracking loss, L1 pull-back weighted 0.01).</p>
 </aside>
 </aside>
@@ -821,6 +856,7 @@ that PyTorch/CUDA packages depend on.</p>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#install-uv">Install uv</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#linux-system-libraries">Linux: system libraries</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#quick-install">Quick install</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#create-a-virtual-environment">Create a virtual environment</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#install-the-package">Install the package</a><ul class="nav section-nav flex-column">
