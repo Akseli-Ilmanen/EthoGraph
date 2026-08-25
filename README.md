@@ -23,7 +23,7 @@ Note this GUI is still in development. I welcome people testing it and
 First install [uv](https://docs.astral.sh/uv/), a fast Python package manager:
 
 ```bash
-# macOS / Linux
+# macOS / Linux (except WSL)
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # Windows
@@ -40,18 +40,14 @@ uv tool install --python 3.12 "ethograph[gui,audio]"
 To open the GUI, run:
 
 ```bash
+ethograph check # Linux: Check for missing libraries 
 ethograph launch
 ```
 
 > **`ethograph` not recognized?** uv has not added its bin directory to your
 > `PATH` yet. Run `uv tool update-shell`, then open a **new** terminal.
 
-> **Linux / WSL:** the wheels need a few system libraries (OpenGL, Qt's xcb
-> plugin, Vulkan). Run `ethograph check` to see which are missing and the
-> `apt`/`dnf` line that installs them, see
-> [linux troubleshooting](https://akseli-ilmanen.github.io/ethograph/advanced/troubleshooting.html#linux-system-libraries).
-
-For installing into a dedicated virtual environment and optional extras, see
+For installing into a dedicated virtual environment and optional extras, and troubleshooting, see
 [installation guide](https://akseli-ilmanen.github.io/ethograph/getting_started/installation.html).
 
 After launching, there are some
