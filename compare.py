@@ -1,4 +1,4 @@
-"""Draw the comparison figure over runs that already finished.
+"""Draw the comparison figures over runs that already finished.
 
 ``bench.py`` compares architectures by training them; this compares them by
 *reading what they wrote*. Every run writes ``test_metrics.yaml`` (the scalars
@@ -7,14 +7,24 @@ onset/offset deltas) the moment it finishes, so a bench that crashed — or one
 still running in another terminal — has already left everything this needs on
 disk. Nothing is retrained.
 
-The figure is ``segment/plotting.py``'s ``write_comparison_pdf``: the IoU
-illustration, overall metrics, IoU distribution with a TP/FP/FN inset, the
-boundary-delta histogram, and class-wise F1 raw vs post-processed. It is the
-successor to the archived ``segment/archive/eval_plotting.py``'s
-``plot_metrics_best_model``, reading a run directory instead of that script's
-``test_results_epoch{N}.npy``.
+Runs are grouped by **architecture** (each run's ``config.yaml`` says which),
+and each architecture contributes its single best run — the one scoring
+highest on :data:`SELECT_ON` — so a sweep of ten mstcn cells shows up as one
+mstcn. It all lands in one timestamped ``compare.pdf``:
 
-``search()`` and ``cross_validate()`` draw the same figure over their own
+*page 1*
+    The models against each other: segmental F1 at every IoU threshold they
+    evaluated (``f1@50 … f1@90``), post-processed solid and raw dashed, beside
+    the frame-level scores that curve leaves out.
+
+*one page per model, titled with it*
+    That model's own evaluation — the IoU illustration, its overall metrics,
+    its IoU distribution with a TP/FP/FN inset, its boundary-delta histogram,
+    and its class-wise F1 raw vs post-processed. It is the successor to the
+    archived ``segment/archive/eval_plotting.py``'s ``plot_metrics_best_model``,
+    reading a run directory instead of that script's ``test_results_epoch{N}.npy``.
+
+``search()`` and ``cross_validate()`` draw the comparison figure over their own
 trials and folds (``searches/{name}/eval_comparison.pdf``,
 ``cross_validation/{name}/eval_comparison.pdf``). This one is for everything
 else: a search's winner against another search's winner, a hand-trained run
@@ -32,19 +42,22 @@ import yaml
 
 import ethograph as eto
 from ethograph.segment.metrics import EVAL_ARRAYS_FILE
-from ethograph.segment.plotting import load_run_eval, write_comparison_pdf
+from ethograph.segment.plotting import RunEval, load_run_eval, write_model_report_pdf
 from ethograph.segment.samples import ClassTable
 
 CONFIG = Path(r"C:\Users\aksel\Documents\Code\ethograph\data\model\project.yaml")
 
-#: Which runs to compare, as paths relative to ``runs/`` — a run trained by
+#: Which runs to consider, as paths relative to ``runs/`` — a run trained by
 #: hand is one level deep (``asformer_kin_v1_20260824_1200``), a search trial
 #: or a swept cell two (``asformer_enc_alpha_kin_v1/trial003_…``). Empty
-#: compares **every** run that wrote ``test_eval.npz``, which for a finished
-#: bench is every trial of every variant — informative but crowded, so name
-#: the winners here once you know them (``searches/{name}/trials.tsv`` has
-#: each trial's score and run dir; ``bench_cells.tsv`` has each swept cell's).
+#: considers **every** run that wrote ``test_eval.npz``; grouping by
+#: architecture keeps that readable, since only the best run of each survives.
 RUNS: list[str] = []
+
+#: Which metric picks an architecture's best run, read off the post-processed
+#: test scores. ``f1@50`` is the loosest segmental threshold every run
+#: evaluates; ``f1@90``, ``frame_f1`` or ``acc`` work the same way.
+SELECT_ON = "f1@50"
 
 OUTPUT = CONFIG.with_name("compare.pdf")
 
@@ -52,7 +65,7 @@ logger = logging.getLogger("compare")
 
 
 def run_dirs(runs_dir: Path) -> list[Path]:
-    """The run directories to compare — :data:`RUNS` if it names any, else all of them."""
+    """The run directories to consider — :data:`RUNS` if it names any, else all of them."""
     if RUNS:
         chosen = [runs_dir / name for name in RUNS]
         missing = [d for d in chosen if not (d / EVAL_ARRAYS_FILE).is_file()]
@@ -65,20 +78,40 @@ def run_dirs(runs_dir: Path) -> list[Path]:
     return sorted(p.parent for p in runs_dir.rglob(EVAL_ARRAYS_FILE))
 
 
+def architecture(run_dir: Path) -> str:
+    """The architecture a run trained, from its own saved config."""
+    return yaml.safe_load((run_dir / "config.yaml").read_text(encoding="utf-8"))["model"]["architecture"]
+
+
+def best_per_architecture(dirs: list[Path]) -> list[tuple[str, Path, RunEval]]:
+    """One ``(architecture, run_dir, eval)`` per architecture — its highest :data:`SELECT_ON` scorer."""
+    best: dict[str, tuple[Path, RunEval]] = {}
+    for d in dirs:
+        arch = architecture(d)
+        e = load_run_eval(d, name=arch)
+        current = best.get(arch)
+        if current is None or e.processed[SELECT_ON] > current[1].processed[SELECT_ON]:
+            best[arch] = (d, e)
+    return [(arch, *best[arch]) for arch in sorted(best)]
+
+
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     config = eto.segment.Project(CONFIG).config
     dirs = run_dirs(config.runs_dir)
-    if len(dirs) < 2:
-        raise SystemExit(f"Need at least two finished runs to compare, found {len(dirs)} under {config.runs_dir}.")
+    if not dirs:
+        raise SystemExit(f"No finished runs under {config.runs_dir}.")
 
-    classes = ClassTable.from_dict(yaml.safe_load((dirs[0] / "classes.yaml").read_text(encoding="utf-8")))
-    evals = [load_run_eval(d, name=str(d.relative_to(config.runs_dir))) for d in dirs]
-    for e in evals:
-        logger.info("%-50s %s", e.name, {k: round(v, 2) for k, v in e.processed.items() if k != "classwise"})
+    chosen = best_per_architecture(dirs)
+    logger.info("%d runs → %d architectures (best on postprocessed %s)", len(dirs), len(chosen), SELECT_ON)
+    for arch, run_dir, e in chosen:
+        scalars = {k: round(v, 2) for k, v in e.processed.items() if k != "classwise"}
+        logger.info("%-12s %-50s %s", arch, str(run_dir.relative_to(config.runs_dir)), scalars)
 
-    path = write_comparison_pdf(OUTPUT, evals, classes, title=f"{len(evals)} runs compared")
-    logger.info("Wrote %s", path)
+    evals = [e for _, _, e in chosen]
+    classes = ClassTable.from_dict(yaml.safe_load((chosen[0][1] / "classes.yaml").read_text(encoding="utf-8")))
+    title = f"{len(evals)} architectures compared — best run of each on postprocessed {SELECT_ON}"
+    logger.info("Wrote %s", write_model_report_pdf(OUTPUT, evals, classes, title=title))
 
 
 if __name__ == "__main__":

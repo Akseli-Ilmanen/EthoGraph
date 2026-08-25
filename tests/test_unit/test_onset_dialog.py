@@ -15,10 +15,11 @@ from qtpy.QtWidgets import QApplication
 
 from ethograph.gui.app_state import ObservableAppState
 from ethograph.gui.dialog_label_gridview import LabelGridViewDialog
-from ethograph.gui.dialog_onset_model import FeatureTree, PredictOnsetDialog
+from ethograph.gui.dialog_onset_model import FeatureTree, LabelInputTree, PredictOnsetDialog
 from ethograph.gui.widgets_curation import CurationPanel
 from ethograph.io.catalog import XarrayLoader
 from ethograph.labels import onset_model as om
+from ethograph.labels.label_inputs import LabelInput
 
 MAPPINGS = {
     1: {"name": "approach", "event_type": "point", "color": (1.0, 0.0, 0.0)},
@@ -234,12 +235,17 @@ class TestFeatureTree:
         assert item.child(0).text(0) == "keypoint"
 
 
-def _frozen_config(derivatives=()):
+def _approach_input() -> LabelInput:
+    return LabelInput(label=5, name="approach", event_type="state", individuals=["Freddy"])
+
+
+def _frozen_config(derivatives=(), label_inputs=()):
     return om.OnsetModelConfig(
         name="frozen",
         targets={1: "approach"},
         features={"speed": {"individual": ["a"], "keypoint": ["nose", "tail"]}},
         derivatives=list(derivatives),
+        label_inputs=list(label_inputs),
     )
 
 
@@ -306,3 +312,76 @@ class TestIndividualGuard:
         mod.predict_onsets(predict_dialog.meta, "m", individual="default", min_confidence=0.0)
 
         assert not any("never be drawn" in msg for msg in messages)
+
+
+class _LabelStateStub:
+    """Enough app_state for LabelInputTree.populate: the mapping and the
+    individuals the labels name."""
+
+    def __init__(self, mappings, individuals):
+        self._label_mappings = mappings
+        self._individuals = individuals
+
+    def label_individuals(self):
+        return self._individuals
+
+
+INPUT_MAPPINGS = {
+    1: {"name": "approach", "event_type": "state"},
+    2: {"name": "cue", "event_type": "point"},
+}
+
+
+class TestLabelInputTree:
+    """Existing labels are ticked like features — and a class the model
+    predicts is greyed out, because it cannot be its own input."""
+
+    def _tree(self, individuals=("Freddy",)):
+        tree = LabelInputTree()
+        tree.populate(_LabelStateStub(INPUT_MAPPINGS, list(individuals)))
+        return tree
+
+    def test_one_individual_draws_no_children(self, qapp):
+        tree = self._tree()
+        assert tree.topLevelItemCount() == 2
+        assert tree.topLevelItem(0).childCount() == 0
+
+    def test_several_individuals_become_rows(self, qapp):
+        tree = self._tree(["Freddy", "Ivy"])
+        item = tree.topLevelItem(0)
+        assert [item.child(i).text(0) for i in range(item.childCount())] == ["Freddy", "Ivy"]
+
+    def test_the_class_row_is_that_class_all_toggle(self, qapp):
+        tree = self._tree(["Freddy", "Ivy"])
+        tree.topLevelItem(0).setCheckState(0, Qt.Checked)
+        assert tree.selected_inputs()[0].individuals == ["Freddy", "Ivy"]
+
+    def test_one_individual_ticked_is_one_column(self, qapp):
+        tree = self._tree(["Freddy", "Ivy"])
+        tree.topLevelItem(0).child(1).setCheckState(0, Qt.Checked)
+        assert tree.selected_inputs()[0].individuals == ["Ivy"]
+
+    def test_the_event_type_comes_from_the_mapping(self, qapp):
+        tree = self._tree()
+        tree.set_all_checked(True)
+        assert [(i.label, i.event_type) for i in tree.selected_inputs()] == [(1, "state"), (2, "point")]
+
+    def test_a_target_is_unticked_and_greyed_out(self, qapp):
+        tree = self._tree()
+        tree.set_all_checked(True)
+        tree.set_excluded({1})
+        assert tree.topLevelItem(0).isDisabled()
+        assert tree.topLevelItem(0).checkState(0) == Qt.Unchecked
+        assert [i.label for i in tree.selected_inputs()] == [2]
+
+    def test_select_all_leaves_the_targets_alone(self, qapp):
+        tree = self._tree()
+        tree.set_excluded({1})
+        tree.set_all_checked(True)
+        assert [i.label for i in tree.selected_inputs()] == [2]
+
+    def test_a_frozen_config_shows_the_inputs_it_was_created_with(self, qapp):
+        tree = LabelInputTree()
+        tree.populate_from_config(_frozen_config(label_inputs=[_approach_input()]))
+        assert tree.topLevelItemCount() == 1
+        assert tree.selected_inputs() == [_approach_input()]

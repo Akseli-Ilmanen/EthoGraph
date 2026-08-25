@@ -48,11 +48,10 @@ ethograph launch
 
 > **Linux / WSL:** the wheels need a few system libraries (OpenGL, Qt's xcb
 > plugin, Vulkan). Run `ethograph check` to see which are missing and the
-> `apt`/`dnf` line that installs them — see the
-> [installation guide](https://akseli-ilmanen.github.io/ethograph/getting_started/installation.html#linux-system-libraries).
+> `apt`/`dnf` line that installs them, see 
+> [linux troubleshooting](https://akseli-ilmanen.github.io/ethograph/advanced/troubleshooting.html#linux-system-libraries).
 
-For installing into a dedicated virtual environment, optional extras, and
-troubleshooting, see the
+For installing into a dedicated virtual environment and optional extras, see
 [installation guide](https://akseli-ilmanen.github.io/ethograph/getting_started/installation.html).
 
 After launching, there are some

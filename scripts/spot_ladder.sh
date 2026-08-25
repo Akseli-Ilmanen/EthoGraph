@@ -12,7 +12,20 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
-PY=${PY:-$HOME/anaconda3/envs/ethograph/python.exe}
+# The interpreter, not $HOME: WSL's bash and Git bash disagree about what
+# $HOME is, and only one of them can see the Windows conda env.
+if [ -z "${PY:-}" ]; then
+  for candidate in \
+      "${USERPROFILE:-/nonexistent}/anaconda3/envs/ethograph/python.exe" \
+      "$HOME/anaconda3/envs/ethograph/python.exe" \
+      "$HOME/anaconda3/envs/ethograph/bin/python"; do
+    [ -x "$candidate" ] && { PY=$candidate; break; }
+  done
+fi
+if [ -z "${PY:-}" ] || [ ! -x "$PY" ]; then
+  echo "no ethograph python found; set PY=/path/to/python" >&2
+  exit 1
+fi
 export PYTHONUTF8=1 PYTHONIOENCODING=utf-8
 
 # name  stride  clip_len  acc_grad  dilate_len   (dilate holds the positive
@@ -26,6 +39,7 @@ declare -A LADDER=(
 )
 ORDER=(A0 A3 A2 A1 A4)
 [ $# -gt 0 ] && ORDER=("$@")
+failed=()
 
 for name in "${ORDER[@]}"; do
   read -r stride clip acc dilate <<<"${LADDER[$name]}"
@@ -35,6 +49,16 @@ for name in "${ORDER[@]}"; do
     --epochs 8 --retries 2 -- \
     --epoch_num_frames 250000 --warm_up_epochs 1 \
     --criterion map --start_val_epoch 1 --dilate_len "$dilate"
-  echo "=== $(date +%H:%M) finished $name ==="
+  status=$?
+  if [ $status -ne 0 ]; then
+    failed+=("$name")
+    echo "=== $(date +%H:%M) FAILED $name (exit $status) ==="
+  else
+    echo "=== $(date +%H:%M) finished $name ==="
+  fi
 done
+if [ ${#failed[@]} -gt 0 ]; then
+  echo "=== LADDER INCOMPLETE: ${failed[*]} failed ==="
+  exit 1
+fi
 echo "=== LADDER COMPLETE ==="

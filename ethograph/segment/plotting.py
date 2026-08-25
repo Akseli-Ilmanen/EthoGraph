@@ -9,6 +9,7 @@ probability against the true transitions, sample by sample.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -21,8 +22,8 @@ from ethograph.segment.samples import ClassTable
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
+from matplotlib.backends.backend_pdf import PdfPages  # noqa: E402
 from matplotlib.patches import Patch  # noqa: E402
-from mpl_toolkits.axes_grid1.inset_locator import inset_axes  # noqa: E402
 
 _THRESHOLD_COLOURS = ["#9467bd", "#2ecc71", "#e377c2", "#ff7f0e", "#17becf"]
 _STAGE_COLOURS = {"raw": "#1f77b4", "processed": "#d62728"}
@@ -179,6 +180,7 @@ class RunEval:
     processed_ious: np.ndarray
     raw_deltas_s: np.ndarray
     processed_deltas_s: np.ndarray
+    run_dir: Path | None = None
 
 
 def load_run_eval(run_dir: Path, name: str | None = None) -> RunEval:
@@ -194,6 +196,7 @@ def load_run_eval(run_dir: Path, name: str | None = None) -> RunEval:
         processed_ious=arrays["post_ious"],
         raw_deltas_s=np.concatenate([arrays["raw_start_deltas_s"], arrays["raw_end_deltas_s"]]),
         processed_deltas_s=np.concatenate([arrays["post_start_deltas_s"], arrays["post_end_deltas_s"]]),
+        run_dir=run_dir,
     )
 
 
@@ -206,6 +209,21 @@ def write_comparison_pdf(path: Path, evals: list[RunEval], classes: ClassTable, 
     """
     if len(evals) < 2:
         raise ValueError(f"write_comparison_pdf needs at least two runs to compare, got {len(evals)}.")
+    fig = _eval_figure()
+    _eval_panels(fig, evals, classes)
+    fig.suptitle(title or f"{len(evals)} runs compared", fontsize=15, fontweight="bold")
+    fig.savefig(path)
+    plt.close(fig)
+    return path
+
+
+def _eval_figure():
+    """A constrained-layout figure sized for :func:`_eval_panels`' six panels."""
+    return plt.figure(figsize=(18, 17), layout="constrained")
+
+
+def _eval_panels(fig, evals: list[RunEval], classes: ClassTable) -> None:
+    """The six evaluation panels — over one run, or over a whole set of them."""
     thresholds = evals[0].thresholds
     mosaic = [
         ["A", "A", "B", "B", "B"],
@@ -215,18 +233,13 @@ def write_comparison_pdf(path: Path, evals: list[RunEval], classes: ClassTable, 
         ["E", "E", "E", "E", "E"],
         ["F", "F", "F", "F", "F"],
     ]
-    fig, axes = plt.subplot_mosaic(mosaic, figsize=(18, 16))
+    axes = fig.subplot_mosaic(mosaic)
     _iou_illustration(axes["A"], thresholds)
     _overall_comparison(axes["B"], evals, thresholds)
     _iou_distribution(axes["C"], evals, thresholds)
     _deltas_comparison(axes["D"], evals)
     _classwise_comparison(axes["E"], evals, classes, thresholds, "raw", "Class-wise F1 (raw)")
     _classwise_comparison(axes["F"], evals, classes, thresholds, "processed", "Class-wise F1 (post-processed)")
-    fig.suptitle(title or f"{len(evals)} runs compared")
-    # Not `fig.tight_layout()`: the IoU-inset axes (C) aren't tight_layout-compatible.
-    fig.savefig(path, bbox_inches="tight")
-    plt.close(fig)
-    return path
 
 
 def _iou_illustration(ax, thresholds: list[float]) -> None:
@@ -271,12 +284,13 @@ def _overall_comparison(ax, evals: list[RunEval], thresholds: list[float]) -> No
     for offset, stage in ((-width / 2, "raw"), (width / 2, "processed")):
         values = [[getattr(e, stage)[k] for e in evals] for k in keys]
         ax.bar(x + offset, [np.mean(v) for v in values], width, label=stage, alpha=0.85, color=_STAGE_COLOURS[stage])
-        for i, v in enumerate(values):
-            ax.scatter([x[i] + offset] * len(v), v, color=_DOT_COLOUR, s=_DOT_SIZE, alpha=0.6, zorder=3)
+        if len(evals) > 1:
+            for i, v in enumerate(values):
+                ax.scatter([x[i] + offset] * len(v), v, color=_DOT_COLOUR, s=_DOT_SIZE, alpha=0.6, zorder=3)
     ax.set_xticks(x, labels, rotation=30)
     ax.set_ylabel("Score (%)")
     ax.set_ylim(0, 100)
-    ax.set_title(f"Overall ({len(evals)} runs)")
+    ax.set_title("Overall" if len(evals) == 1 else f"Overall ({len(evals)} runs)")
     ax.legend()
 
 
@@ -298,8 +312,9 @@ def _classwise_comparison(
         offset = (t_idx - (n - 1) / 2) * width
         points = [[getattr(e, stage)["classwise"].get(cid, {}).get(key, 0.0) for e in evals] for cid in ids]
         ax.bar(x + offset, [np.mean(p) for p in points], width, label=f"f1@{int(thr * 100)}", alpha=0.85, color=colour)
-        for i, p in enumerate(points):
-            ax.scatter([x[i] + offset] * len(p), p, color=_DOT_COLOUR, s=_DOT_SIZE, alpha=0.6, zorder=3)
+        if len(evals) > 1:
+            for i, p in enumerate(points):
+                ax.scatter([x[i] + offset] * len(p), p, color=_DOT_COLOUR, s=_DOT_SIZE, alpha=0.6, zorder=3)
     ax.set_xticks(x, names, rotation=45, ha="right")
     ax.set_ylabel("F1 (%)")
     ax.set_ylim(0, 100)
@@ -321,7 +336,7 @@ def _iou_distribution(ax, evals: list[RunEval], thresholds: list[float]) -> None
     ax.set_title("IoU distribution")
     ax.legend(loc="upper right")
 
-    axins = inset_axes(ax, width="32%", height="32%", loc="upper left", borderpad=3)
+    axins = ax.inset_axes([0.34, 0.58, 0.30, 0.36])
     metrics = ["tp", "fp", "fn"]
     x = np.arange(len(metrics))
     width = 0.35
@@ -373,3 +388,98 @@ def _deltas_comparison(ax, evals: list[RunEval]) -> None:
     ax.set_ylabel("matched segments")
     ax.set_title("Boundary deltas")
     ax.legend()
+
+
+def write_model_report_pdf(
+    path: Path,
+    evals: list[RunEval],
+    classes: ClassTable,
+    title: str = "",
+    stamp: str | None = None,
+) -> Path:
+    """One PDF to review a whole comparison in: an overview page, then a page per run.
+
+    Page 1 ranks the runs against each other — segmental F1 at every IoU
+    threshold, plus the scalars that curve leaves out. Every page after it is
+    one run's own evaluation, drawn by the same :func:`_eval_panels` the
+    cross-run figure uses, titled with the run it belongs to: the IoU
+    distribution, the boundary deltas and the class-wise F1 of *that model*,
+    rather than one bar among five. Every page carries *stamp* (default: now),
+    so a printed page says which comparison it came from.
+    """
+    if not evals:
+        raise ValueError("write_model_report_pdf needs at least one run.")
+    stamp = stamp or datetime.now().strftime("%Y-%m-%d %H:%M")
+    title = title or f"{len(evals)} runs compared"
+    with PdfPages(path) as pdf:
+        fig = plt.figure(figsize=(18, 7), layout="constrained")
+        axes = fig.subplot_mosaic([["lines", "lines", "scalars"]])
+        _threshold_lines(axes["lines"], evals)
+        _scalar_comparison(axes["scalars"], evals)
+        _save_page(pdf, fig, title, stamp)
+
+        for e in evals:
+            fig = _eval_figure()
+            _eval_panels(fig, [e], classes)
+            _save_page(pdf, fig, e.name, stamp, note=str(e.run_dir) if e.run_dir else "")
+        pdf.infodict()["Title"] = f"{title} — {stamp}"
+    return path
+
+
+def _save_page(pdf: PdfPages, fig, title: str, stamp: str, note: str = "") -> None:
+    fig.suptitle(title, fontsize=15, fontweight="bold")
+    fig.text(0.995, 0.004, stamp, ha="right", va="bottom", fontsize=8, color="gray")
+    if note:
+        fig.text(0.005, 0.004, note, ha="left", va="bottom", fontsize=8, color="gray")
+    pdf.savefig(fig)
+    plt.close(fig)
+
+
+def _run_colour(i: int) -> tuple[float, float, float]:
+    """One colour per run, the same in every panel that draws runs side by side."""
+    colours = plt.get_cmap("tab10").colors
+    return colours[i % len(colours)]
+
+
+def _threshold_lines(ax, evals: list[RunEval], stage: str = "processed") -> None:
+    """Every run's segmental F1 across every IoU threshold — one line each.
+
+    The comparison figure's ``Overall`` panel averages runs into one bar per
+    metric; this keeps them apart, which is how a model that only wins at the
+    loose threshold gives itself away. *stage* solid, the other stage dashed
+    in the same colour.
+    """
+    other = "raw" if stage == "processed" else "processed"
+    keys = [metric_key(t) for t in evals[0].thresholds]
+    x = np.arange(len(keys))
+    for i, e in enumerate(evals):
+        colour = _run_colour(i)
+        values = [getattr(e, stage)[k] for k in keys]
+        # The numbers ride in the legend, not on the points: runs that tie at the
+        # loose threshold sit on top of one another and annotations would overlap.
+        label = f"{e.name} — " + " / ".join(f"{v:.1f}" for v in values)
+        ax.plot(x, values, marker="o", color=colour, label=label)
+        ax.plot(x, [getattr(e, other)[k] for k in keys], marker=".", linestyle="--", color=colour, alpha=0.4)
+    ax.set_xticks(x, keys)
+    ax.set_xlabel("segmental IoU threshold")
+    ax.set_ylabel("F1 (%)")
+    ax.set_ylim(0, 100)
+    ax.grid(axis="y", alpha=0.3)
+    ax.set_title("Segmental F1 across thresholds")
+    ax.legend(title=f"{' / '.join(keys)}   (solid = {stage}, dashed = {other})", loc="lower left", fontsize=9)
+
+
+def _scalar_comparison(ax, evals: list[RunEval], stage: str = "processed") -> None:
+    """What the threshold curve leaves out: frame accuracy, edit score, frame F1."""
+    keys = ["acc", "edit", "frame_f1"]
+    x = np.arange(len(keys))
+    width = 0.8 / len(evals)
+    for i, e in enumerate(evals):
+        offset = (i - (len(evals) - 1) / 2) * width
+        ax.bar(x + offset, [getattr(e, stage)[k] for k in keys], width, color=_run_colour(i), label=e.name)
+    ax.set_xticks(x, keys)
+    ax.set_ylabel("Score (%)")
+    ax.set_ylim(0, 100)
+    ax.grid(axis="y", alpha=0.3)
+    ax.set_title(f"Frame-level scores ({stage})")
+    ax.legend(fontsize=9)

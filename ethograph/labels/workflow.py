@@ -196,7 +196,9 @@ STEP_KINDS: dict[str, StepKind] = {
                     "Individual",
                     "text",
                     "",
-                    "Who the predicted events belong to. Empty = whichever individual the GUI has selected.",
+                    "Whose data the model reads and who the predicted events belong to — a model "
+                    "trained on another animal is re-pointed at this one. Empty = whichever "
+                    "individual the GUI has selected.",
                 ),
                 ParamSpec(
                     "min_confidence",

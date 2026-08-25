@@ -46,10 +46,19 @@ sequence — which is invisible on the curve, and unarguable when it is wrong.
 Model layout (``~/.ethograph/models/{name}/``)::
 
     config.yaml                 # frozen at creation: targets, features, params
-    model.joblib                # trained bundle: one clf per target
+    model.joblib                # trained bundle: one clf per target, plus the
+                                #   config it was fitted with
     train_data/{session}/       # one folder per contributing session
-        meta.yaml               # source path, columns, fs, trials
+        meta.yaml               # source path, columns, trials (provenance)
         trial_{id}.npz          # time (T,), data (T, D), y_labels, y_times, fs
+
+**Prediction reads the bundle and nothing else.** ``model.joblib`` carries its
+own copy of the config, because that is the layout the classifiers were fitted
+on: editing ``config.yaml`` afterwards changes what Train would do next, never
+what a trained model reads (:func:`config_drifted` says so out loud).
+``train_data`` is training input plus provenance — :func:`train_model` and the
+held-out scoring read the ``.npz`` files, inference reads none of them, and
+``meta.yaml`` is a summary for the dialogs.
 
 Feature selection reuses the catalog's dim logic: the config stores, per
 feature, the explicit values chosen for each of its dims; every combination is
@@ -63,6 +72,15 @@ A feature can also contribute its **time derivative** as an extra column
 derivative peaks at the frame the signal turned). Boosted trees see each tap
 of the window in isolation and cannot difference them, so "how fast is this
 changing" has to be handed to them as its own input.
+
+The session's **own labels** can be inputs too (``config.label_inputs``,
+:mod:`ethograph.labels.label_inputs`): a state class becomes its on/off
+indicator, a point class a Laplacian bump centred on it. They are rendered onto
+the feature time base and appended after every feature column, so the input
+layout stays one ordered list. A class the model predicts can never be one of
+its own inputs — at training the label is there and at inference it is not, by
+construction, which is the one way to hand a classifier a column that means
+opposite things on the two sides.
 """
 
 from __future__ import annotations
@@ -70,12 +88,13 @@ from __future__ import annotations
 import hashlib
 import logging
 import re
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import NamedTuple
 
 import joblib
 import numpy as np
+import pandas as pd
 import yaml
 from scipy.signal import find_peaks
 from sklearn.ensemble import HistGradientBoostingClassifier
@@ -85,9 +104,12 @@ from ethograph.features.columns import (
     FeatureColumn,
     check_same_fs,
     enumerate_columns,
+    expand_dim_values,
     extract_features,
     sampling_rate,
 )
+from ethograph.io.catalog import INDIVIDUAL_DIMS
+from ethograph.labels.label_inputs import LabelInput, label_columns, render_label_inputs
 from ethograph.utils.paths import ethograph_home
 
 logger = logging.getLogger(__name__)
@@ -144,6 +166,10 @@ class OnsetModelConfig:
     #: Features whose time derivative is included as an extra column beside
     #: every value column they produce (see :func:`.columns.time_derivative`).
     derivatives: list[str] = field(default_factory=list)
+    #: Existing label classes fed to the classifier as extra input columns,
+    #: appended after every feature column (see
+    #: :mod:`ethograph.labels.label_inputs`).
+    label_inputs: list[LabelInput] = field(default_factory=list)
     window_s: float = 0.5
     tolerance_s: float = 0.05
     max_iter: int = 200
@@ -157,11 +183,40 @@ class OnsetModelConfig:
         # widgets may carry numpy ints or strings.
         self.targets = {int(label): str(name) for label, name in self.targets.items()}
         self.derivatives = [str(feature) for feature in self.derivatives]
+        # A YAML round trip hands back plain dicts; the GUI hands back the
+        # dataclass. One shape reaches the rest of the module either way.
+        self.label_inputs = [i if isinstance(i, LabelInput) else LabelInput(**i) for i in self.label_inputs]
+        self.validate()
+
+    def validate(self) -> None:
+        """Raise unless this config describes a model that can exist.
+
+        Called on construction and again by :func:`save_config`, so a config
+        assembled field by field is refused before it reaches disk rather than
+        at the first trial it trains on.
+        """
+        clash = [i.name for i in self.label_inputs if i.label in self.targets]
+        if clash:
+            # At training the class is labelled and at inference it is not —
+            # prediction only ever runs on trials that lack the target. Such a
+            # column means opposite things on the two sides.
+            raise ValueError(
+                f"Model {self.name!r}: {', '.join(clash)} is both predicted and fed back as an input. "
+                "A model cannot read the class it is asked to place."
+            )
 
     def columns(self) -> list[FeatureColumn]:
-        """This model's input layout: one column per pinned combination, plus
-        the derivative columns the config asks for."""
+        """The catalog columns: one per pinned combination, plus the
+        derivative columns the config asks for."""
         return enumerate_columns(self.features, self.derivatives)
+
+    def label_columns(self) -> list[str]:
+        """The label-input columns, appended after every catalog column."""
+        return label_columns(self.label_inputs)
+
+    def column_names(self) -> list[str]:
+        """This model's whole input layout, in the order it is assembled."""
+        return [c.name for c in self.columns()] + self.label_columns()
 
     @property
     def target_labels(self) -> list[int]:
@@ -192,6 +247,7 @@ def list_models() -> list[str]:
 
 
 def save_config(config: OnsetModelConfig) -> Path:
+    config.validate()
     d = model_dir(config.name)
     d.mkdir(parents=True, exist_ok=True)
     path = d / _CONFIG_FILE
@@ -221,6 +277,81 @@ def _upgrade_config_dict(raw: dict) -> dict:
 def load_config(name: str) -> OnsetModelConfig:
     raw = yaml.safe_load((model_dir(name) / _CONFIG_FILE).read_text(encoding="utf-8"))
     return OnsetModelConfig(**_upgrade_config_dict(raw))
+
+
+def individual_dim(config: OnsetModelConfig) -> str | None:
+    """The individual dim this config pins, in the spelling it was frozen with.
+
+    ``None`` when no feature selects along one — a session with a single
+    individual has nothing to choose, so the dim never reaches the config.
+    """
+    for dims in config.features.values():
+        for dim in dims:
+            if dim in INDIVIDUAL_DIMS:
+                return dim
+    return None
+
+
+def config_individuals(config: OnsetModelConfig) -> list[str]:
+    """Every individual *config* reads features from, in config order."""
+    dim = individual_dim(config)
+    if dim is None:
+        return []
+    out: list[str] = []
+    for dims in config.features.values():
+        for value in expand_dim_values(dims.get(dim, [])):
+            if value not in out:
+                out.append(value)
+    return out
+
+
+def retarget_individual(config: OnsetModelConfig, individual: str | None) -> OnsetModelConfig:
+    """*config* with its individual dim re-pinned to *individual*.
+
+    A classifier is fitted on numbers; the individual in ``features`` is only
+    the key that selects those numbers out of a session. Re-pinning it is what
+    lets a model trained on one animal read another's session, as long as the
+    rig and the feature layout are the same — the column *order* is untouched,
+    so the classifier still sees its own input layout.
+
+    Its :attr:`~OnsetModelConfig.label_inputs` are re-pointed by the same
+    rule, so a model that reads one animal's approach to time its peck reads
+    the other animal's approach when run on them.
+
+    Returns *config* unchanged when it pins no individual dim, when
+    *individual* is empty, or when it **already reads** that individual — a
+    model built on two animals at once (an actor and a partner) keeps reading
+    both when asked for one of them, because that is the model it is; the
+    combo then only says whose labels these are.
+
+    Raises ``ValueError`` only for the undecidable case: a model reading
+    several individuals, asked for one it does not read. Collapsing two
+    columns onto one animal would hand the classifier the same data in the
+    slots it learned as two different animals — wrong, and invisibly so.
+    """
+    if not individual:
+        return config
+    features = config.features
+    dim = individual_dim(config)
+    if dim is not None:
+        pinned = config_individuals(config)
+        if individual not in pinned:
+            if len(pinned) > 1:
+                raise ValueError(
+                    f"Model {config.name!r} reads {len(pinned)} individuals ({', '.join(pinned)}), "
+                    f"so it cannot be re-pinned to {individual!r} alone. "
+                    "Train a model on this session instead."
+                )
+            features = {
+                feature: {
+                    d: ([individual] if d == dim else list(expand_dim_values(values))) for d, values in dims.items()
+                }
+                for feature, dims in config.features.items()
+            }
+    label_inputs = [inp.retarget(individual) for inp in config.label_inputs]
+    if features is config.features and label_inputs == config.label_inputs:
+        return config
+    return replace(config, features=features, label_inputs=label_inputs)
 
 
 def session_id(source_path: str | Path) -> str:
@@ -274,14 +405,30 @@ def extract_model_features(
     config: OnsetModelConfig,
     t0: float | None = None,
     t1: float | None = None,
+    *,
+    labels: pd.DataFrame | None = None,
+    shift: float = 0.0,
 ) -> tuple[np.ndarray, np.ndarray]:
     """One trial's design inputs as *config* defines them: ``(time, (T, D))``.
 
-    The one way a model's features are read — training-data collection and
-    inference both go through it, so the derivative columns cannot be present
-    on one side and missing on the other.
+    The one way a model's inputs are assembled — training-data collection and
+    inference both go through it, so neither the derivative columns nor the
+    label columns can be present on one side and missing on the other.
+
+    *time* is on the loader's own clock. *labels* is this trial's label rows
+    and *shift* the offset from that clock to the trial clock labels are stored
+    on (``0`` for xarray, the trial start for pynapple), so the label columns
+    are drawn where the events actually are.
     """
-    return extract_features(loader, config.features, t0, t1, config.derivatives)
+    time, data = extract_features(loader, config.features, t0, t1, config.derivatives)
+    if not config.label_inputs:
+        return time, data
+    if labels is None:
+        raise ValueError(
+            f"Model {config.name!r} reads existing labels as inputs "
+            f"({', '.join(i.name for i in config.label_inputs)}), but none were passed."
+        )
+    return time, np.column_stack([data, render_label_inputs(config.label_inputs, labels, time - shift)])
 
 
 # ---------------------------------------------------------------------------
@@ -575,7 +722,7 @@ def train_model(name: str) -> dict:
     bundle = {
         "models": models,
         "fs": fs_ref,
-        "columns": [c.name for c in config.columns()],
+        "columns": config.column_names(),
         "config": asdict(config),
         "calibration": {label: cal.to_dict() for label, cal in calibration.items()},
     }
@@ -626,6 +773,38 @@ def load_bundle(name: str) -> dict:
 def bundle_config(bundle: dict) -> OnsetModelConfig:
     """The config a trained bundle was fitted with."""
     return OnsetModelConfig(**_upgrade_config_dict(bundle["config"]))
+
+
+def _predictive_config(config: OnsetModelConfig) -> tuple:
+    """The parts of a config that decide what a *trained* model reads.
+
+    The name is left out on purpose: a model folder copied under a new name
+    predicts exactly as its original did.
+    """
+    return (
+        config.features,
+        config.derivatives,
+        config.label_inputs,
+        config.targets,
+        config.window_s,
+        config.tolerance_s,
+    )
+
+
+def config_drifted(name: str) -> OnsetModelConfig | None:
+    """The trained bundle's config, when ``config.yaml`` no longer matches it.
+
+    ``None`` when the model is untrained or the two agree. Hand-editing
+    ``config.yaml`` is the obvious-looking way to point a model at another
+    animal's session and it does nothing — the bundle carries the layout the
+    classifiers were fitted on. Returning the trained config lets the Predict
+    dialog say which layout will actually be read, instead of leaving the run
+    to fail once per trial.
+    """
+    if not is_trained(name):
+        return None
+    trained = bundle_config(load_bundle(name))
+    return trained if _predictive_config(trained) != _predictive_config(load_config(name)) else None
 
 
 def _smoothing_kernel(tolerance_s: float, fs: float) -> np.ndarray:

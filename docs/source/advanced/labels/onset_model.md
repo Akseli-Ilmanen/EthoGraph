@@ -59,10 +59,12 @@ predicting five classes costs barely more than predicting one.
    each tap of the window on its own and cannot difference them, so *how fast
    is this changing* has to be handed to it as its own input — worth a tick
    when the event is a change of speed or direction rather than a level.
-4. **Set the parameters.** `Window size` is how much context the classifier
+4. **Tick the existing labels to read as inputs** (optional) — see
+   {ref}`below <target-onset-model-label-inputs>`.
+5. **Set the parameters.** `Window size` is how much context the classifier
    sees around each frame; `Tolerance` is how precisely you believe your own
    labels.
-5. **Add current session's events**, then **Train**.
+6. **Add current session's events**, then **Train**.
 
 Only trials **visible in the trials table** contribute, so the table's filters
 double as a training-set selector. A trial carrying none of the ticked events
@@ -70,11 +72,51 @@ is skipped, and one carrying only some contributes only to those — an
 unlabelled trial is not evidence that the event never happened, so it is never
 used as a negative example for that class.
 
-Once a model exists its targets, features, window and tolerance are
-**read-only**: they define the classifier's input columns, so editing them
+Once a model exists its targets, features, label inputs, window and tolerance
+are **read-only**: they define the classifier's input columns, so editing them
 would invalidate every training trial already stored. To change them, make a
 new model. To add more sessions, open the dialog there, pick the model, and
 press **Add current session's events**.
+
+(target-onset-model-label-inputs)=
+### Existing labels as inputs
+
+What a session already knows about *when* is often the strongest evidence
+there is: a peck rarely happens before the head has turned, a landing never
+before the approach. **3 — Existing labels as inputs** lets the classifier read
+those classes as ordinary input columns.
+
+Each class is one row, ticked like a feature; its children are the
+individuals, so ticking the class row is that class's "all individuals"
+toggle, and **Select all** / **Clear** do the same for the whole list. A
+single-individual session draws no children at all — there is nothing to
+choose. How a class is rendered follows its type in {doc}`mapping.txt
+<mapping>`, frozen into the model at creation so a later edit to the mapping
+cannot change the model's input layout:
+
+* a **state** class becomes its **on/off indicator** — `1` inside every
+  interval of that class, `0` outside. That is the whole of what a state says.
+* a **point** class becomes a **Laplacian bump** centred on the event, at two
+  hard-coded widths (0.1 s and 1 s), one column each — the same kernel
+  EthoGraph puts on {doc}`changepoints <../changepoints>`, for the same reason:
+  the narrow peak points straight at the moment while the long tails stay
+  readable from far away, so one column carries both *it is here* and *it was
+  a while ago*.
+
+A class the trial does not carry renders as zeros, which is the honest reading
+— the column says "no such label here", exactly the state a trial is in when
+the model runs on it.
+
+```{important}
+**A class the model predicts cannot be one of its own inputs.** Its row is
+greyed out the moment you tick it as a target. At training the label is there
+and at inference it is not — prediction only ever runs on trials that lack the
+target — so such a column would mean opposite things on the two sides.
+```
+
+Predicted (`automated`) labels count as inputs like any other, so a model that
+reads a class you have not curated yet is learning from whatever the last run
+wrote. Curate first if that matters.
 
 ```{warning}
 **Every chosen feature must share one sampling rate.** Windows are
@@ -87,23 +129,56 @@ pick features from one stream.
 
 ```
 ~/.ethograph/models/{name}/
-├── config.yaml                 # frozen: targets, features (+ d/dt), window, tolerance
-├── model.joblib                # one trained classifier per target
+├── config.yaml                 # frozen: targets, features (+ d/dt), label inputs, window, tolerance
+├── model.joblib                # one trained classifier per target, and a copy
+│                               #   of the config they were fitted with
 └── train_data/
     └── {session}-{hash}/
-        ├── meta.yaml           # source path, columns, trial count
+        ├── meta.yaml           # source path, columns, trial count (provenance)
         └── trial_7.npz         # time, features, the events' times
 ```
 
 The features are stored, not the source data — training data from a session
 survives that session moving or going offline.
 
+**Predicting reads `model.joblib` and nothing else.** The bundle carries its
+own copy of the config because that is the layout the classifiers were fitted
+on: `config.yaml` is what *Train* reads next time, and `train_data/` is what it
+fits from. Neither is consulted at prediction time — a trained model is
+self-contained, and `train_data/` can be deleted once you are sure you will not
+extend or retrain that model (it is the bulk of the folder). Editing
+`config.yaml` by hand therefore changes nothing about what a trained model
+reads, and the Predict dialog says so when the two have drifted apart.
+
+### Using one animal's model on another animal
+
+A classifier is fitted on numbers. The individual in `config.yaml` is only the
+key that selects those numbers out of a session, so a model trained on one
+animal runs on another's — same rig, same feature layout — with nothing copied
+and nothing retrained: **pick the model, pick the other individual, predict.**
+The model's individual pinning is re-pointed at whoever the *Individual* combo
+names, giving the classifier the same columns in the same order from the other
+animal's data, and the events are written for that individual too. Its
+{ref}`label inputs <target-onset-model-label-inputs>` are re-pointed by the
+same rule, so a model that times a peck off the approach reads *this* animal's
+approach. The dialog says which animal the model was trained reading.
+
+A model whose features read *several* individuals at once — an actor and a
+partner — is a different thing, and it is left alone: asked for either animal
+it reads, it keeps reading both, and the combo only decides whose labels the
+events are. It is refused only for an animal it does **not** read, because
+collapsing two columns onto one would hand the classifier the same data in the
+slots it learned as two different animals. Train a model on that session
+instead, or build the features so they carry no individual at all — a distance
+or an egocentric feature travels between animals for free.
+
 ---
 
 ## Predicting
 
-Pick a trained model, choose which **individual** the predicted labels belong
-to, and press **Predict missing onsets**. Two things are never touched:
+Pick a trained model, choose the **individual** — whose data is read *and*
+whose labels these are — and press **Predict missing onsets**. Two things are
+never touched:
 
 * **Trials that already carry a class** keep what they have — the model fills
   gaps, it never overrides. A trial that already has *one* class can still

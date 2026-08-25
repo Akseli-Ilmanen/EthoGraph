@@ -6,7 +6,10 @@ Two non-modal dialogs around :mod:`ethograph.labels.onset_model`:
   to predict (state events are out of scope; the model assumes at most one
   event per class per trial), ticks features and, per dim (keypoints,
   individuals, space, …), which values to include — plus, per feature,
-  whether its rate of change comes along as an extra input. The current session's
+  whether its rate of change comes along as an extra input, and which of the
+  session's **existing label classes** are read as inputs too (a state class as
+  its on/off vector, a point class as a Laplacian bump; a class the model
+  predicts is greyed out, since it cannot be its own input). The current session's
   existing point events become training trials stored under
   ``~/.ethograph/models/{name}/train_data``; more sessions can be added by
   reopening the dialog there, and Train fits one classifier per class from
@@ -14,7 +17,11 @@ Two non-modal dialogs around :mod:`ethograph.labels.onset_model`:
 * **Predict** — pick a trained model and apply it to the current session. All
   of the model's classes are predicted in one pass; a trial that already
   carries a class is never overridden for that class. Each predicted event
-  carries the model's own confidence into the labels TSV.
+  carries the model's own confidence into the labels TSV. The chosen
+  **individual** is both whose data is read and whose events are written, so a
+  model trained on one animal runs on another's session with the same rig
+  (``onset_model.retarget_individual``) — the classifier is fitted on numbers,
+  and the individual is only the key that selects them.
 
 Both dialogs run over **the trials the trials table shows** — its filters are
 the one place trials are included or excluded for every operation (see
@@ -62,7 +69,14 @@ from ethograph.gui.notify import notify
 from ethograph.io.catalog import PynappleLoader, XarrayLoader
 from ethograph.labels import onset_curves
 from ethograph.labels import onset_model as om
-from ethograph.labels.intervals import EVENT_TYPE_POINT, LABELING_AUTOMATED, NO_RECIPIENT, add_point
+from ethograph.labels.intervals import (
+    EVENT_TYPE_POINT,
+    EVENT_TYPE_STATE,
+    LABELING_AUTOMATED,
+    NO_RECIPIENT,
+    add_point,
+)
+from ethograph.labels.label_inputs import POINT_SIGMAS_S, LabelInput
 from ethograph.labels.tsv_store import get_trial_from_tsv
 from ethograph.labels.workflow import DEFAULT_CONFIDENCE
 
@@ -142,6 +156,9 @@ class PredictionOutcome:
     n_absent: int = 0
     trials: set[str] = field(default_factory=set)
     errors: list[str] = field(default_factory=list)
+    #: Set only when the model was trained on a different individual than the
+    #: one it just read — worth saying, since it is the run's biggest caveat.
+    trained_on: str = ""
 
     def label_ids(self) -> list[int]:
         """The classes this run actually wrote at least one event for."""
@@ -158,6 +175,8 @@ class PredictionOutcome:
             parts.append(f"{self.n_absent} the model produced no prediction for.")
         if self.errors:
             parts.append(f"{len(self.errors)} trials failed — first: {self.errors[0]}")
+        if self.trained_on:
+            parts.append(f"The model was trained on {self.trained_on}.")
         return " ".join(parts)
 
 
@@ -188,10 +207,14 @@ def predict_onsets(
 ) -> PredictionOutcome | None:
     """Apply the trained model *name* to every trial the trials table shows.
 
-    Each class is filled independently and a trial already carrying one is
-    never overridden for it. Returns ``None`` when the model cannot be
-    loaded, or when *individual* names somebody this session does not have —
-    the reason is notified.
+    *individual* is both whose features are read and whose events are written:
+    the model's own individual pinning is re-pointed at them
+    (:func:`~ethograph.labels.onset_model.retarget_individual`), which is what
+    lets one animal's model run on another's session. Each class is filled
+    independently and a trial already carrying one is never overridden for it.
+    Returns ``None`` when the model cannot be loaded, when it reads several
+    individuals at once, or when *individual* names somebody this session does
+    not have — the reason is notified.
     """
     app_state = meta.app_state
     known = app_state.label_individuals()
@@ -214,10 +237,19 @@ def predict_onsets(
         notify(str(e), severity="warning")
         return None
     config = om.bundle_config(bundle)
+    trained_on = om.config_individuals(config)
+    try:
+        # The columns the classifier was fitted on, re-pointed at this
+        # session's individual — same features, same order, another animal.
+        read_config = om.retarget_individual(config, individual)
+    except ValueError as e:
+        notify(str(e), severity="warning")
+        return None
     outcome = PredictionOutcome(
         model=name,
         per_target={label: 0 for label in config.targets},
         target_names={label: config.target_name(label) for label in config.targets},
+        trained_on=trained_on[0] if trained_on and trained_on != [individual] else "",
     )
 
     df = getattr(app_state, "_all_labels_df", None)
@@ -235,7 +267,9 @@ def predict_onsets(
             if not wanted:
                 continue
             try:
-                time, data = om.extract_model_features(loader, config, t0, t1)
+                time, data = om.extract_model_features(
+                    loader, read_config, t0, t1, labels=trial_rows, shift=shift
+                )
                 trial_time = time - shift
                 result = om.predict_trial(bundle, trial_time, data)
                 predictions = result.events
@@ -299,13 +333,22 @@ def refresh_after_prediction(meta) -> None:
         labels_widget.refresh_labels_shapes_layer()
 
 
-def _point_mappings(app_state) -> dict[int, str]:
-    """Point-event label classes: ``{label_id: name}``."""
+def _all_mappings(app_state) -> dict[int, tuple[str, str]]:
+    """Every label class: ``{label_id: (name, event_type)}``."""
     mappings = getattr(app_state, "_label_mappings", None) or {}
     return {
-        int(label_id): str(info.get("name", label_id))
+        int(label_id): (str(info.get("name", label_id)), str(info.get("event_type", EVENT_TYPE_STATE)))
         for label_id, info in sorted(mappings.items())
-        if isinstance(label_id, int) and label_id != 0 and info.get("event_type", "state") == EVENT_TYPE_POINT
+        if isinstance(label_id, int) and label_id != 0
+    }
+
+
+def _point_mappings(app_state) -> dict[int, str]:
+    """Point-event label classes: ``{label_id: name}``."""
+    return {
+        label_id: name
+        for label_id, (name, event_type) in _all_mappings(app_state).items()
+        if event_type == EVENT_TYPE_POINT
     }
 
 
@@ -452,6 +495,106 @@ class FeatureTree(QTreeWidget):
 
 
 # ---------------------------------------------------------------------------
+# Label-input tree — label class ▸ individual, all checkable
+# ---------------------------------------------------------------------------
+
+
+#: Role holding a top-level item's ``(label_id, name, event_type)``.
+_LABEL_ROLE = Qt.UserRole
+
+_LABEL_INPUT_HINT = (
+    "Feed the classifier the labels this session already has: a state class as "
+    "its on/off vector, a point class as a Laplacian bump centred on it "
+    f"(sigma {', '.join(f'{s:g} s' for s in POINT_SIGMAS_S)} — one column each). "
+    "Tick the individuals whose labels count; a class the model predicts cannot "
+    "be one of its own inputs."
+)
+
+
+class LabelInputTree(QTreeWidget):
+    """Checkable tree of existing label classes and, per class, whose labels to read.
+
+    Same shape as :class:`FeatureTree`: the class row is auto-tristate, so it
+    doubles as that class's "all individuals" toggle, and its children are the
+    individuals. A single-individual session draws no children at all — there
+    is nothing to choose, exactly as a feature's single-valued dim is never
+    drawn as a row.
+
+    A class ticked as a **target** is unchecked and disabled here: at training
+    its label is present and at inference it is not, so feeding it back would
+    hand the classifier a column that means opposite things on the two sides.
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setHeaderHidden(True)
+
+    @staticmethod
+    def _row(parent, label: int, name: str, event_type: str, individuals: list[str], checked: bool) -> None:
+        state = Qt.Checked if checked else Qt.Unchecked
+        item = QTreeWidgetItem(parent, [f"{name} ({label}) — {event_type}"])
+        item.setData(0, _LABEL_ROLE, (label, name, event_type))
+        item.setFlags(item.flags() | Qt.ItemIsUserCheckable | Qt.ItemIsAutoTristate)
+        item.setCheckState(0, state)
+        for who in individuals:
+            child = QTreeWidgetItem(item, [who])
+            child.setFlags(child.flags() | Qt.ItemIsUserCheckable)
+            child.setCheckState(0, state)
+
+    def populate(self, app_state) -> None:
+        """One row per label class this session knows, nothing ticked."""
+        self.clear()
+        individuals = list(app_state.label_individuals())
+        nested = individuals if len(individuals) > 1 else []
+        for label, (name, event_type) in _all_mappings(app_state).items():
+            self._row(self, label, name, event_type, nested, checked=False)
+
+    def populate_from_config(self, config: om.OnsetModelConfig) -> None:
+        """Read-only view of a frozen config's label inputs."""
+        self.clear()
+        for inp in config.label_inputs:
+            self._row(self, inp.label, inp.name, inp.event_type, list(inp.individuals), checked=True)
+        self.expandAll()
+
+    def set_excluded(self, label_ids: set[int]) -> None:
+        """Uncheck and grey out the classes in *label_ids* (the model's targets)."""
+        for i in range(self.topLevelItemCount()):
+            item = self.topLevelItem(i)
+            label, name, event_type = item.data(0, _LABEL_ROLE)
+            excluded = label in label_ids
+            if excluded and item.checkState(0) != Qt.Unchecked:
+                item.setCheckState(0, Qt.Unchecked)
+            item.setDisabled(excluded)
+            suffix = "  (predicted — cannot be its own input)" if excluded else ""
+            item.setText(0, f"{name} ({label}) — {event_type}{suffix}")
+
+    def set_all_checked(self, checked: bool) -> None:
+        """Tick (or clear) every class that is not a target."""
+        state = Qt.Checked if checked else Qt.Unchecked
+        for i in range(self.topLevelItemCount()):
+            item = self.topLevelItem(i)
+            if not item.isDisabled():
+                item.setCheckState(0, state)
+
+    def selected_inputs(self) -> list[LabelInput]:
+        """The ticked classes as config entries. Raises ``ValueError`` when a
+        ticked class leaves no individual ticked."""
+        out: list[LabelInput] = []
+        for i in range(self.topLevelItemCount()):
+            item = self.topLevelItem(i)
+            if item.isDisabled() or item.checkState(0) == Qt.Unchecked:
+                continue
+            label, name, event_type = item.data(0, _LABEL_ROLE)
+            individuals = [
+                item.child(j).text(0) for j in range(item.childCount()) if item.child(j).checkState(0) == Qt.Checked
+            ]
+            if item.childCount() and not individuals:
+                raise ValueError(f"Label input {name!r}: no individuals ticked.")
+            out.append(LabelInput(label=label, name=name, event_type=event_type, individuals=individuals))
+        return out
+
+
+# ---------------------------------------------------------------------------
 # Train dialog
 # ---------------------------------------------------------------------------
 
@@ -503,6 +646,17 @@ class TrainOnsetDialog(QDialog):
         copy_row.addWidget(self.copy_btn)
         layout.addWidget(self.copy_widget)
 
+        # Two columns: what the model *is* on the left (what it predicts, what
+        # it reads), what the run *does* on the right (the extra inputs, the
+        # parameters, the sessions). The feature tree is the one control that
+        # wants all the height it can get, so it takes the left column's slack.
+        columns = QHBoxLayout()
+        left = QVBoxLayout()
+        right = QVBoxLayout()
+        columns.addLayout(left, stretch=1)
+        columns.addLayout(right, stretch=1)
+        layout.addLayout(columns, stretch=1)
+
         target_group = QGroupBox("1 — Point events to predict")
         target_lay = QVBoxLayout(target_group)
         self.target_list = QListWidget()
@@ -519,16 +673,43 @@ class TrainOnsetDialog(QDialog):
         caveat.setWordWrap(True)
         caveat.setStyleSheet("color: grey; font-size: 10px;")
         target_lay.addWidget(caveat)
-        layout.addWidget(target_group)
+        left.addWidget(target_group)
 
         feature_group = QGroupBox("2 — Features (tick dims/values; d/dt adds the rate of change)")
         feature_lay = QVBoxLayout(feature_group)
         self.tree = FeatureTree()
         self.tree.populate_from_loader(self.app_state)
         feature_lay.addWidget(self.tree)
-        layout.addWidget(feature_group)
+        left.addWidget(feature_group, stretch=1)
 
-        params_group = QGroupBox("3 — Parameters")
+        label_group = QGroupBox("3 — Existing labels as inputs (optional)")
+        label_lay = QVBoxLayout(label_group)
+        label_hint = QLabel(_LABEL_INPUT_HINT)
+        label_hint.setWordWrap(True)
+        label_hint.setStyleSheet("color: grey; font-size: 10px;")
+        label_lay.addWidget(label_hint)
+        self.label_tree = LabelInputTree()
+        self.label_tree.setMaximumHeight(140)
+        self.label_tree.populate(self.app_state)
+        label_lay.addWidget(self.label_tree)
+        label_buttons = QHBoxLayout()
+        self.label_all_btn = QPushButton("Select all")
+        self.label_all_btn.setAutoDefault(False)
+        self.label_all_btn.clicked.connect(lambda: self.label_tree.set_all_checked(True))
+        label_buttons.addWidget(self.label_all_btn)
+        self.label_none_btn = QPushButton("Clear")
+        self.label_none_btn.setAutoDefault(False)
+        self.label_none_btn.clicked.connect(lambda: self.label_tree.set_all_checked(False))
+        label_buttons.addWidget(self.label_none_btn)
+        label_buttons.addStretch(1)
+        label_lay.addLayout(label_buttons)
+        right.addWidget(label_group)
+        # A class cannot be both predicted and read back, so the target ticks
+        # drive what this tree offers.
+        self.target_list.itemChanged.connect(self._sync_label_inputs)
+        self._sync_label_inputs()
+
+        params_group = QGroupBox("4 — Parameters")
         params_lay = QFormLayout(params_group)
         self.window_spin = QDoubleSpinBox()
         self.window_spin.setRange(0.05, 30.0)
@@ -557,9 +738,9 @@ class TrainOnsetDialog(QDialog):
         self.lr_spin.setSingleStep(0.05)
         self.lr_spin.setValue(0.1)
         params_lay.addRow("Learning rate:", self.lr_spin)
-        layout.addWidget(params_group)
+        right.addWidget(params_group)
 
-        data_group = QGroupBox("4 — Training data")
+        data_group = QGroupBox("5 — Training data")
         data_lay = QVBoxLayout(data_group)
         self.session_list = QListWidget()
         self.session_list.setMaximumHeight(90)
@@ -569,7 +750,8 @@ class TrainOnsetDialog(QDialog):
         self.add_btn.setToolTip("Only trials visible in the trials table contribute.")
         self.add_btn.clicked.connect(self._add_session)
         data_lay.addWidget(self.add_btn)
-        layout.addWidget(data_group)
+        right.addWidget(data_group)
+        right.addStretch(1)
 
         self.train_btn = QPushButton("Train")
         self.train_btn.setAutoDefault(False)
@@ -580,7 +762,7 @@ class TrainOnsetDialog(QDialog):
         self.status_label.setWordWrap(True)
         layout.addWidget(self.status_label)
 
-        self.resize(640, 780)
+        self.resize(1040, 720)
         self._on_model_changed(self.model_combo.currentText())
 
     # ------------------------------------------------------------------
@@ -590,6 +772,9 @@ class TrainOnsetDialog(QDialog):
             self.name_edit,
             self.target_list,
             self.tree,
+            self.label_tree,
+            self.label_all_btn,
+            self.label_none_btn,
             self.window_spin,
             self.tolerance_spin,
             self.max_iter_spin,
@@ -608,12 +793,15 @@ class TrainOnsetDialog(QDialog):
         self.session_list.clear()
         if is_new:
             self.tree.populate_from_loader(self.app_state)
+            self.label_tree.populate(self.app_state)
+            self._sync_label_inputs()
             self.status_label.setText("")
             return
         self._config = om.load_config(text)
         self.name_edit.setText(self._config.name)
         self._show_config_targets(self._config)
         self.tree.populate_from_config(self._config)
+        self.label_tree.populate_from_config(self._config)
         self.window_spin.setValue(self._config.window_s)
         self.tolerance_spin.setValue(self._config.tolerance_s)
         self.max_iter_spin.setValue(self._config.max_iter)
@@ -631,6 +819,10 @@ class TrainOnsetDialog(QDialog):
             item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
             item.setCheckState(Qt.Checked)
             self.target_list.addItem(item)
+
+    def _sync_label_inputs(self, *_args):
+        """Keep the target ticks and the label-input tree consistent."""
+        self.label_tree.set_excluded(set(self._selected_targets()))
 
     def _selected_targets(self) -> dict[int, str]:
         """The ticked point-event classes as ``{label_id: name}``."""
@@ -668,6 +860,8 @@ class TrainOnsetDialog(QDialog):
         missing = [n for label_id, n in source.targets.items() if label_id not in available]
 
         self.tree.populate_from_config(source)
+        self.label_tree.populate_from_config(source)
+        self._sync_label_inputs()
         self.window_spin.setValue(source.window_s)
         self.tolerance_spin.setValue(source.tolerance_s)
         self.max_iter_spin.setValue(source.max_iter)
@@ -698,6 +892,7 @@ class TrainOnsetDialog(QDialog):
             return None
         try:
             features = self.tree.selected_features()
+            label_inputs = self.label_tree.selected_inputs()
         except ValueError as e:
             notify(str(e), severity="warning")
             return None
@@ -707,6 +902,7 @@ class TrainOnsetDialog(QDialog):
             targets=targets,
             features=features,
             derivatives=derivatives,
+            label_inputs=label_inputs,
             window_s=float(self.window_spin.value()),
             tolerance_s=float(self.tolerance_spin.value()),
             max_iter=int(self.max_iter_spin.value()),
@@ -751,7 +947,7 @@ class TrainOnsetDialog(QDialog):
                     per_target[label] += 1
                 if not y_times:
                     continue
-                time, data = om.extract_model_features(loader, config, t0, t1)
+                time, data = om.extract_model_features(loader, config, t0, t1, labels=trial_rows, shift=shift)
                 om.write_trial_training_data(config.name, session, tid, time - shift, data, y_times)
                 n_written += 1
         except ValueError as e:
@@ -769,7 +965,7 @@ class TrainOnsetDialog(QDialog):
             {
                 "source_path": str(source_path),
                 "n_trials": n_written,
-                "columns": [c.name for c in config.columns()],
+                "columns": config.column_names(),
                 "added": datetime.now().isoformat(timespec="seconds"),
             },
         )
@@ -866,7 +1062,13 @@ class PredictOnsetDialog(QDialog):
             idx = self.individual_combo.findText(current)
             if idx >= 0:
                 self.individual_combo.setCurrentIndex(idx)
-        self.individual_combo.setToolTip("Predicted events are written for this individual")
+        self.individual_combo.setToolTip(
+            "Whose events these are — and whose data the model reads.\n"
+            "\n"
+            "A model trained on another animal is re-pointed at this individual:\n"
+            "same features, same order, this session's columns. One model per\n"
+            "rig, not per animal — as long as the feature layout is the same."
+        )
         form.addRow("Individual:", self.individual_combo)
 
 
@@ -928,18 +1130,31 @@ class PredictOnsetDialog(QDialog):
     # ------------------------------------------------------------------
 
     def _refresh_info(self, name: str):
+        """Describe the config that will actually run — the trained one."""
         if not name:
             self.info_label.setText("No models found in ~/.ethograph/models.")
             self.run_btn.setEnabled(False)
             return
-        config = om.load_config(name)
+        drifted = om.config_drifted(name)
+        config = drifted if drifted is not None else om.load_config(name)
         trained = "trained" if om.is_trained(name) else "NOT trained yet"
         n_sessions = len(om.list_sessions(name))
-        self.info_label.setText(
+        text = (
             f"Predicts {config.describe_targets()} · "
-            f"{len(config.columns())} feature columns · "
+            f"{len(config.column_names())} input columns · "
             f"{n_sessions} training session(s) · {trained}."
         )
+        if config.label_inputs:
+            text += f" Reads existing {', '.join(i.name for i in config.label_inputs)} labels as inputs."
+        read_from = om.config_individuals(config)
+        if read_from:
+            text += f" Trained reading {', '.join(read_from)} — Individual below re-points it at this session."
+        if drifted is not None:
+            text += (
+                " NOTE: config.yaml has been edited since training and is not what runs — "
+                "a trained model reads the layout it was fitted on, shown here."
+            )
+        self.info_label.setText(text)
         self.run_btn.setEnabled(om.is_trained(name))
 
     def _refresh_trials_note(self, *_args):

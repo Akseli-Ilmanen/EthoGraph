@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import numpy as np
+import pandas as pd
 import pytest
 import xarray as xr
 import yaml
 
 from ethograph.io.catalog import XarrayLoader
+from ethograph.labels import label_inputs as li
 from ethograph.labels import onset_model as om
 
 
@@ -203,6 +205,127 @@ def test_a_config_written_before_derivatives_reads_back_with_none():
     del raw["derivatives"]
     path.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
     assert om.load_config(config.name).derivatives == []
+
+
+# ---------------------------------------------------------------------------
+# Re-pinning the individual: one animal's model on another animal's session
+# ---------------------------------------------------------------------------
+
+
+def _make_two_animal_ds(t_freddy: float, t_ivy: float, fs: float = 50.0, dur: float = 10.0, seed: int = 0):
+    """One trial holding both animals: each one's bump at its own time."""
+    rng = np.random.default_rng(seed)
+    t = np.arange(0.0, dur, 1.0 / fs)
+
+    def _pair(t_event: float) -> np.ndarray:
+        bump = np.exp(-0.5 * ((t - t_event) / 0.05) ** 2)
+        return np.column_stack([5.0 * bump + rng.normal(0, 0.1, t.size), -3.0 * bump + rng.normal(0, 0.1, t.size)])
+
+    data = np.stack([_pair(t_freddy), _pair(t_ivy)], axis=1)
+    return xr.Dataset(
+        {"signal": (("time", "individual", "space"), data)},
+        coords={"time": t, "individual": ["Freddy", "Ivy"], "space": ["x", "y"]},
+    )
+
+
+def _animal_config(individual: str = "Freddy", name: str = "two-animal") -> om.OnsetModelConfig:
+    return om.OnsetModelConfig(
+        name=name,
+        targets={3: "peck"},
+        features={"signal": {"individual": [individual], "space": ["x", "y"]}},
+        window_s=0.4,
+        tolerance_s=0.1,
+        max_iter=30,
+    )
+
+
+class TestRetarget:
+    """A classifier is fitted on numbers; the individual is only the key that
+    selects them. Re-pinning it is what lets a model trained on one animal run
+    on another's session in the same rig."""
+
+    def test_a_config_without_an_individual_dim_is_unchanged(self):
+        config = _make_config()
+        assert om.individual_dim(config) is None
+        assert om.retarget_individual(config, "Ivy") is config
+
+    def test_repinning_only_changes_the_individual(self):
+        config = _animal_config()
+        retargeted = om.retarget_individual(config, "Ivy")
+        assert om.config_individuals(retargeted) == ["Ivy"]
+        assert [c.name for c in retargeted.columns()] == [c.name.replace("Freddy", "Ivy") for c in config.columns()]
+
+    def test_the_same_individual_is_a_no_op(self):
+        config = _animal_config()
+        assert om.retarget_individual(config, "Freddy") is config
+        assert om.retarget_individual(config, "") is config
+
+    def test_a_two_animal_model_still_runs_on_its_own_session(self):
+        """A model built on an actor *and* a partner is not a single-animal
+        model with a name to swap: asked for one of the animals it reads, it
+        keeps reading both, and the combo only says whose labels these are."""
+        config = _animal_config()
+        config.features["signal"]["individual"] = ["Freddy", "Ivy"]
+        assert om.retarget_individual(config, "Freddy") is config
+        assert om.retarget_individual(config, "Ivy") is config
+
+    def test_a_two_animal_model_on_a_third_animal_is_refused(self):
+        """Collapsing two columns onto one animal would hand the classifier
+        the same data in the slots it learned as two different animals."""
+        config = _animal_config()
+        config.features["signal"]["individual"] = ["Freddy", "Ivy"]
+        with pytest.raises(ValueError, match="2 individuals"):
+            om.retarget_individual(config, "Poppy")
+
+    def test_the_repinned_columns_are_the_other_animal_s(self):
+        """The contract: re-pinning reads exactly what a config written for
+        that animal would, in the same order."""
+        loader = XarrayLoader(_make_two_animal_ds(2.0, 6.0))
+        retargeted = om.extract_model_features(loader, om.retarget_individual(_animal_config(), "Ivy"))
+        native = om.extract_model_features(loader, _animal_config("Ivy"))
+        assert np.array_equal(retargeted[1], native[1])
+        assert not np.array_equal(retargeted[1], om.extract_model_features(loader, _animal_config())[1])
+
+    def _train_on_freddy(self, name: str = "two-animal") -> om.OnsetModelConfig:
+        config = _animal_config(name=name)
+        om.save_config(config)
+        for i, (t_freddy, t_ivy) in enumerate([(1.5, 7.0), (3.2, 8.4), (5.0, 1.1), (6.7, 2.9), (2.4, 5.6), (7.3, 4.2)]):
+            loader = XarrayLoader(_make_two_animal_ds(t_freddy, t_ivy, seed=i))
+            time, data = om.extract_model_features(loader, config)
+            om.write_trial_training_data(config.name, "sess-freddy", i + 1, time, data, {3: t_freddy})
+        om.train_model(config.name)
+        return config
+
+    def test_a_model_trained_on_one_animal_finds_the_other_s_event(self):
+        config = self._train_on_freddy()
+        bundle = om.load_bundle(config.name)
+
+        loader = XarrayLoader(_make_two_animal_ds(1.0, 6.4, seed=99))
+        read_config = om.retarget_individual(om.bundle_config(bundle), "Ivy")
+        time, data = om.extract_model_features(loader, read_config)
+        prediction = om.predict_events(bundle, time, data)[3]
+
+        assert abs(prediction.time - 6.4) < 0.2
+
+    def test_config_yaml_edited_after_training_is_reported(self):
+        """The trap this guards: editing config.yaml to name another animal
+        looks like it retargets the model, and the bundle carries the layout
+        the classifiers were actually fitted on."""
+        config = self._train_on_freddy()
+        assert om.config_drifted(config.name) is None
+
+        om.save_config(_animal_config("Ivy", name=config.name))
+        trained = om.config_drifted(config.name)
+        assert trained is not None and om.config_individuals(trained) == ["Freddy"]
+
+    def test_a_copied_model_folder_is_not_drift(self):
+        """Only what a trained model reads counts — a rename does not."""
+        config = self._train_on_freddy()
+        renamed = om.load_config(config.name)
+        renamed.name = "copied"
+        om.save_config(renamed)
+        (om.model_dir(config.name) / "model.joblib").replace(om.model_dir("copied") / "model.joblib")
+        assert om.config_drifted("copied") is None
 
 
 # ---------------------------------------------------------------------------
@@ -427,3 +550,221 @@ def test_predict_rejects_rate_mismatch():
     with pytest.raises(ValueError, match="[Ss]ampling-rate mismatch"):
         om.predict_events(bundle, time_other, data_other)
 
+
+
+# ---------------------------------------------------------------------------
+# Existing labels as inputs
+# ---------------------------------------------------------------------------
+
+
+def _labels_df(rows: list[dict]) -> pd.DataFrame:
+    """A trial's label rows, in the columns the renderer reads."""
+    return pd.DataFrame(rows, columns=["labels", "onset_s", "offset_s", "event_type", "individual"])
+
+
+def _state_row(label: int, onset: float, offset: float, individual: str = "Freddy") -> dict:
+    return {
+        "labels": label,
+        "onset_s": onset,
+        "offset_s": offset,
+        "event_type": "state",
+        "individual": individual,
+    }
+
+
+def _point_row(label: int, onset: float, individual: str = "Freddy") -> dict:
+    return {
+        "labels": label,
+        "onset_s": onset,
+        "offset_s": np.nan,
+        "event_type": "point",
+        "individual": individual,
+    }
+
+
+class TestLabelInputs:
+    """What a class already tells you about *when* is evidence, and the
+    classifier gets it as columns like any other."""
+
+    TIME = np.arange(0.0, 10.0, 0.02)
+
+    def test_a_state_renders_its_on_off_vector(self):
+        inp = li.LabelInput(label=5, name="approach", event_type="state")
+        column = inp.render(_labels_df([_state_row(5, 2.0, 4.0)]), self.TIME)
+        assert column.shape == (self.TIME.size, 1)
+        inside = (self.TIME >= 2.0) & (self.TIME <= 4.0)
+        assert np.array_equal(column[:, 0] > 0, inside)
+        assert set(np.unique(column)) == {0.0, 1.0}
+
+    def test_a_point_renders_a_laplacian_at_each_sigma(self):
+        inp = li.LabelInput(label=6, name="cue", event_type="point")
+        columns = inp.render(_labels_df([_point_row(6, 5.0)]), self.TIME)
+        assert columns.shape == (self.TIME.size, len(li.POINT_SIGMAS_S))
+        for j, sigma in enumerate(li.POINT_SIGMAS_S):
+            assert np.isclose(columns[:, j].max(), 1.0)
+            assert abs(self.TIME[int(np.argmax(columns[:, j]))] - 5.0) < 0.02
+            assert np.allclose(columns[:, j], np.exp(-np.abs(self.TIME - 5.0) / sigma), atol=1e-9)
+
+    def test_two_events_never_push_the_channel_past_one(self):
+        """The maximum, not the sum: a value cannot depend on how many other
+        events the trial happens to contain."""
+        inp = li.LabelInput(label=6, name="cue", event_type="point")
+        columns = inp.render(_labels_df([_point_row(6, 5.0), _point_row(6, 5.05)]), self.TIME)
+        assert columns.max() <= 1.0
+
+    def test_a_class_the_trial_does_not_carry_is_zeros(self):
+        """Which is the state every trial the model runs on is in."""
+        inp = li.LabelInput(label=5, name="approach", event_type="state")
+        assert not inp.render(_labels_df([_state_row(9, 2.0, 4.0)]), self.TIME).any()
+        assert not inp.render(None, self.TIME).any()
+
+    def test_the_frozen_event_type_decides_what_is_read(self):
+        """A mapping edited after training must not change a column shape."""
+        rows = _labels_df([_state_row(5, 2.0, 4.0), _point_row(5, 8.0)])
+        assert li.LabelInput(label=5, name="a", event_type="state").render(rows, self.TIME).shape[1] == 1
+        point = li.LabelInput(label=5, name="a", event_type="point").render(rows, self.TIME)
+        assert abs(self.TIME[int(np.argmax(point[:, 0]))] - 8.0) < 0.02
+
+    def test_each_individual_is_its_own_column(self):
+        inp = li.LabelInput(label=5, name="approach", event_type="state", individuals=["Freddy", "Ivy"])
+        rows = _labels_df([_state_row(5, 2.0, 4.0, "Freddy"), _state_row(5, 6.0, 7.0, "Ivy")])
+        columns = inp.render(rows, self.TIME)
+        assert columns.shape == (self.TIME.size, 2)
+        assert np.array_equal(columns[:, 0] > 0, (self.TIME >= 2.0) & (self.TIME <= 4.0))
+        assert np.array_equal(columns[:, 1] > 0, (self.TIME >= 6.0) & (self.TIME <= 7.0))
+
+    def test_no_individual_pinned_reads_whoever_labelled_it(self):
+        """A single-individual session has nothing to choose, exactly as a
+        single-valued dim is never drawn as a row."""
+        inp = li.LabelInput(label=5, name="approach", event_type="state")
+        rows = _labels_df([_state_row(5, 2.0, 4.0, "Freddy"), _state_row(5, 6.0, 7.0, "Ivy")])
+        columns = inp.render(rows, self.TIME)
+        assert columns.shape == (self.TIME.size, 1)
+        assert columns[:, 0].sum() > 0
+
+    def test_column_names_line_up_with_what_is_rendered(self):
+        inputs = [
+            li.LabelInput(label=5, name="approach", event_type="state", individuals=["Freddy", "Ivy"]),
+            li.LabelInput(label=6, name="cue", event_type="point"),
+        ]
+        names = li.label_columns(inputs)
+        rendered = li.render_label_inputs(inputs, _labels_df([_state_row(5, 2.0, 4.0)]), self.TIME)
+        assert rendered.shape == (self.TIME.size, len(names))
+        assert names[0] == "label:approach(5)|individual=Freddy"
+        assert names[-1] == f"label:cue(6)|sigma={li.POINT_SIGMAS_S[-1]:g}"
+
+    def test_an_unknown_event_type_is_refused(self):
+        with pytest.raises(ValueError, match="unknown event type"):
+            li.LabelInput(label=5, name="approach", event_type="interval")
+
+
+class TestLabelInputConfig:
+    """The config is the one input layout, label columns included."""
+
+    def _config(self, **kwargs) -> om.OnsetModelConfig:
+        config = _make_config(**kwargs)
+        config.label_inputs = [li.LabelInput(label=5, name="approach", event_type="state")]
+        return config
+
+    def test_the_layout_is_features_then_labels(self):
+        config = self._config()
+        assert config.column_names() == ["signal|space=x", "signal|space=y", "label:approach(5)"]
+
+    def test_extraction_appends_the_label_columns(self):
+        config = self._config()
+        loader = XarrayLoader(_make_ds(3.0))
+        time, data = om.extract_model_features(loader, config, labels=_labels_df([_state_row(5, 2.0, 4.0)]))
+        assert data.shape == (time.size, len(config.column_names()))
+        assert np.array_equal(data[:, 2] > 0, (time >= 2.0) & (time <= 4.0))
+
+    def test_a_shift_puts_the_labels_where_the_events_are(self):
+        """Labels are trial-relative; a pynapple loader clock is not."""
+        config = self._config()
+        ds = _make_ds(3.0)
+        shifted = ds.assign_coords(time=ds["time"].values + 100.0)
+        time, data = om.extract_model_features(
+            XarrayLoader(shifted), config, labels=_labels_df([_state_row(5, 2.0, 4.0)]), shift=100.0
+        )
+        trial_time = time - 100.0
+        assert np.array_equal(data[:, 2] > 0, (trial_time >= 2.0) & (trial_time <= 4.0))
+
+    def test_labels_are_required_when_the_config_reads_them(self):
+        config = self._config()
+        with pytest.raises(ValueError, match="reads existing labels"):
+            om.extract_model_features(XarrayLoader(_make_ds(3.0)), config)
+
+    def test_a_target_cannot_be_its_own_input(self):
+        """At training the label is there; at inference it is not, because
+        prediction only ever runs on trials that lack the target."""
+        approach = li.LabelInput(label=5, name="approach", event_type="state")
+        with pytest.raises(ValueError, match="cannot read the class it is asked to place"):
+            om.OnsetModelConfig(name="clash", targets={5: "approach"}, label_inputs=[approach])
+
+    def test_a_clash_assembled_field_by_field_never_reaches_disk(self):
+        """A config built a field at a time skips __post_init__ — saving is the
+        second gate, so nothing trains on a column that means two things."""
+        config = self._config()
+        config.targets = {5: "approach"}
+        with pytest.raises(ValueError, match="cannot read the class it is asked to place"):
+            om.save_config(config)
+
+    def test_label_inputs_survive_a_yaml_round_trip(self):
+        config = self._config()
+        config.label_inputs.append(li.LabelInput(label=6, name="cue", event_type="point", individuals=["Ivy"]))
+        om.save_config(config)
+        assert om.load_config(config.name) == config
+
+    def test_a_config_written_before_label_inputs_reads_back_with_none(self):
+        om.save_config(_make_config())
+        path = om.model_dir("test-model") / "config.yaml"
+        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+        del raw["label_inputs"]
+        path.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
+        assert om.load_config("test-model").label_inputs == []
+
+    def test_retargeting_repoints_the_label_inputs_too(self):
+        """A model that times a peck off a partner approach reads the other
+        animal approach when it runs on them."""
+        config = _animal_config()
+        config.label_inputs = [li.LabelInput(label=5, name="approach", event_type="state", individuals=["Freddy"])]
+        retargeted = om.retarget_individual(config, "Ivy")
+        assert retargeted.label_inputs[0].individuals == ["Ivy"]
+        assert om.config_individuals(retargeted) == ["Ivy"]
+
+    def test_a_label_input_reading_two_animals_is_left_alone(self):
+        config = _make_config()
+        config.label_inputs = [
+            li.LabelInput(label=5, name="approach", event_type="state", individuals=["Freddy", "Ivy"])
+        ]
+        assert om.retarget_individual(config, "Poppy") is config
+
+
+def _noise_ds(seed: int, fs: float = 50.0, dur: float = 10.0) -> xr.Dataset:
+    """A trial whose features say nothing at all about when anything happened."""
+    rng = np.random.default_rng(seed)
+    t = np.arange(0.0, dur, 1.0 / fs)
+    return xr.Dataset(
+        {"signal": (("time", "space"), rng.normal(0, 1.0, (t.size, 2)))},
+        coords={"time": t, "space": ["x", "y"]},
+    )
+
+
+def test_a_model_can_time_an_event_off_a_label_alone():
+    """The end-to-end claim: with the features pure noise, an existing state
+    label that ends at the event is enough to place it."""
+    config = _make_config(targets={3: "peck"})
+    config.label_inputs = [li.LabelInput(label=5, name="approach", event_type="state")]
+    om.save_config(config)
+
+    for i, t_event in enumerate([1.5, 3.2, 5.0, 6.7, 8.1, 2.4, 4.9, 7.3]):
+        labels = _labels_df([_state_row(5, t_event - 1.0, t_event)])
+        time, data = om.extract_model_features(XarrayLoader(_noise_ds(i)), config, labels=labels)
+        om.write_trial_training_data(config.name, "sess-a", i + 1, time, data, {3: t_event})
+    om.train_model(config.name)
+
+    bundle = om.load_bundle(config.name)
+    assert bundle["columns"] == config.column_names()
+    t_true = 4.2
+    labels = _labels_df([_state_row(5, t_true - 1.0, t_true)])
+    time, data = om.extract_model_features(XarrayLoader(_noise_ds(99)), config, labels=labels)
+    assert abs(om.predict_events(bundle, time, data)[3].time - t_true) <= 0.2

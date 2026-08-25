@@ -397,6 +397,7 @@ def _fake_run_eval(name: str, seed: int):
     classwise = {1: {"f1@50": float(rng.uniform(40, 90))}, 2: {"f1@50": float(rng.uniform(40, 90))}}
     stage = lambda: {  # noqa: E731
         "acc": float(rng.uniform(50, 95)),
+        "edit": float(rng.uniform(50, 95)),
         "frame_f1": float(rng.uniform(50, 95)),
         "f1@50": float(rng.uniform(50, 95)),
         "tp": float(rng.integers(5, 20)),
@@ -423,6 +424,16 @@ def test_write_comparison_pdf_needs_two_runs():
     classes = ClassTable([0, 1, 2], ["background", "a", "b"])
     with pytest.raises(ValueError):
         write_comparison_pdf(Path("unused.pdf"), [_fake_run_eval("only", 0)], classes)
+
+
+def test_write_model_report_pdf_single_run(tmp_path: Path):
+    """The per-run report draws one run happily — the cross-run figure refuses to."""
+    from ethograph.segment.plotting import write_model_report_pdf
+    from ethograph.segment.samples import ClassTable
+
+    classes = ClassTable([0, 1, 2], ["background", "a", "b"])
+    path = write_model_report_pdf(tmp_path / "report.pdf", [_fake_run_eval("only", 0)], classes, stamp="stamp")
+    assert path.is_file() and path.stat().st_size > 0
 
 
 def test_write_comparison_pdf(tmp_path: Path):
