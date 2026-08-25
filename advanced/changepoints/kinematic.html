@@ -396,14 +396,6 @@
 <li class="toctree-l2"><a class="reference internal" href="../keypoint_labelling/refine_imported.html">Refining imported poses</a></li>
 </ul>
 </details></li>
-<li class="toctree-l1"><a class="reference internal" href="../variable_schema.html">Variable schema</a></li>
-<li class="toctree-l1 has-children"><a class="reference internal" href="../segment/index.html">Segmentation pipeline</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
-<li class="toctree-l2"><a class="reference internal" href="../segment/config.html">Config reference</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../segment/boundaries.html">Boundaries: heads that predict <em>where</em>, not just <em>what</em></a></li>
-<li class="toctree-l2"><a class="reference internal" href="../segment/video_features.html">S3D video features</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../segment/later.html">Decisions to revisit</a></li>
-</ul>
-</details></li>
 <li class="toctree-l1"><a class="reference internal" href="../playback.html">Video &amp; Audio playback</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../shortcuts.html">Keyboard Shortcuts</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../troubleshooting.html">Troubleshooting</a></li>
@@ -555,7 +547,7 @@ same time dimension as their target feature. They require:</p>
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">attrs[&quot;kind&quot;]</span> <span class="pre">=</span> <span class="pre">&quot;changepoint_feature&quot;</span></code> and <code class="docutils literal notranslate"><span class="pre">attrs[&quot;changepoint_mask&quot;]</span> <span class="pre">=</span> <span class="pre">1</span></code> —
 the label and the marker, both written by
-<code class="xref py py-func docutils literal notranslate"><span class="pre">changepoint_attrs()</span></code> (see <a class="reference internal" href="../variable_schema.html"><span class="doc">Variable schema</span></a>).
+<code class="xref py py-func docutils literal notranslate"><span class="pre">changepoint_attrs()</span></code> (see <span class="xref std std-doc">../variable_schema</span>).
 A file predating this needs <code class="xref py py-func docutils literal notranslate"><span class="pre">migrate_legacy_attrs()</span></code>.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">attrs[&quot;target_feature&quot;]</span></code> — name of the feature variable they annotate</p></li>
 </ul>
