@@ -453,43 +453,8 @@ Windows</label><div class="sd-tab-content docutils">
 </div>
 </div>
 </section>
-<section id="linux-system-libraries">
-<span id="id1"></span><h2>Linux: system libraries<a class="headerlink" href="#linux-system-libraries" title="Link to this heading">#</a></h2>
-<p>The Python wheels bring their own Qt, OpenGL bindings and wgpu, but on Linux
-they load a few shared libraries from the distribution. A desktop install
-usually has them; a minimal container, a lab server or a fresh WSL distro
-usually does not. Install them once, before the first launch:</p>
-<div class="sd-tab-set docutils">
-<input checked="checked" id="sd-tab-item-2" name="sd-tab-set-1" type="radio">
-<label class="sd-tab-label" for="sd-tab-item-2">
-Debian / Ubuntu / WSL</label><div class="sd-tab-content docutils">
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>sudo<span class="w"> </span>apt<span class="w"> </span>install<span class="w"> </span>libgl1<span class="w"> </span>libopengl0<span class="w"> </span>libegl1<span class="w"> </span>libxcb-cursor0<span class="w"> </span>libxkbcommon-x11-0<span class="w"> </span><span class="se">\</span>
-<span class="w">    </span>libxcb-icccm4<span class="w"> </span>libxcb-keysyms1<span class="w"> </span>libxcb-image0<span class="w"> </span>libxcb-render-util0<span class="w"> </span><span class="se">\</span>
-<span class="w">    </span>libxcb-shape0<span class="w"> </span>libxcb-xinerama0<span class="w"> </span>libfontconfig1<span class="w"> </span>libdbus-1-3<span class="w"> </span><span class="se">\</span>
-<span class="w">    </span>libvulkan1<span class="w"> </span>mesa-vulkan-drivers
-</pre></div>
-</div>
-</div>
-<input id="sd-tab-item-3" name="sd-tab-set-1" type="radio">
-<label class="sd-tab-label" for="sd-tab-item-3">
-Fedora / RHEL</label><div class="sd-tab-content docutils">
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>sudo<span class="w"> </span>dnf<span class="w"> </span>install<span class="w"> </span>mesa-libGL<span class="w"> </span>libglvnd-opengl<span class="w"> </span>mesa-libEGL<span class="w"> </span>xcb-util-cursor<span class="w"> </span><span class="se">\</span>
-<span class="w">    </span>libxkbcommon-x11<span class="w"> </span>xcb-util-wm<span class="w"> </span>xcb-util-keysyms<span class="w"> </span>xcb-util-image<span class="w"> </span><span class="se">\</span>
-<span class="w">    </span>xcb-util-renderutil<span class="w"> </span>libxcb<span class="w"> </span>fontconfig<span class="w"> </span>dbus-libs<span class="w"> </span>vulkan-loader<span class="w"> </span>mesa-vulkan-drivers
-</pre></div>
-</div>
-</div>
-</div>
-<p><code class="docutils literal notranslate"><span class="pre">ethograph</span> <span class="pre">check</span></code> reports which of these are still missing on your machine,
-with the exact install line for your distribution, and <code class="docutils literal notranslate"><span class="pre">ethograph</span> <span class="pre">launch</span></code>
-prints the same warning before it opens a window. (The <code class="docutils literal notranslate"><span class="pre">libxcb-*</span></code> entries are
-only needed when Qt runs on X11 — on a Wayland desktop or WSLg the check
-leaves them out.) See
-<a class="reference internal" href="../advanced/troubleshooting.html#linux-missing-libraries"><span class="std std-ref">Linux: libOpenGL.so.0, “could not load the Qt platform plugin”, black video</span></a> for what each failure looks like, and
-<a class="reference internal" href="../advanced/troubleshooting.html#wsl"><span class="std std-ref">Windows Subsystem for Linux (WSL)</span></a> for Windows Subsystem for Linux.</p>
-</section>
-<section id="quick-install">
-<h2>Quick install<a class="headerlink" href="#quick-install" title="Link to this heading">#</a></h2>
+<section id="install-ethograph">
+<h2>Install ethograph<a class="headerlink" href="#install-ethograph" title="Link to this heading">#</a></h2>
 <p>Use this if you just want to <strong>run the ethograph GUI</strong> — for teaching, for
 annotating data, or to try it out. It is one command, and there is no
 environment to create or activate.</p>
@@ -503,6 +468,16 @@ environment to create or activate.</p>
 <p><code class="docutils literal notranslate"><span class="pre">uv</span> <span class="pre">tool</span> <span class="pre">install</span></code> puts ethograph in its own isolated environment and adds the
 <code class="docutils literal notranslate"><span class="pre">ethograph</span></code> command to your PATH, so it never clashes with your other Python
 projects and is always available without activating anything.</p>
+<div class="admonition danger">
+<p class="admonition-title">Danger</p>
+<p><strong>On Linux or WSL, install the system libraries before the first launch.</strong> The
+wheels bring their own Qt, OpenGL bindings and wgpu, but they load a handful of
+shared libraries from the distribution — without those the GUI opens black, or
+does not open at all. It is one <code class="docutils literal notranslate"><span class="pre">apt</span></code>/<code class="docutils literal notranslate"><span class="pre">dnf</span></code> line, once per machine:
+<a class="reference internal" href="../advanced/troubleshooting.html#linux-system-libraries"><span class="std std-ref">Linux: system libraries</span></a>.</p>
+<p><code class="docutils literal notranslate"><span class="pre">ethograph</span> <span class="pre">check</span></code> reports which of them are still missing on your machine, and
+<code class="docutils literal notranslate"><span class="pre">ethograph</span> <span class="pre">launch</span></code> prints the same warning before it opens a window.</p>
+</div>
 <div class="admonition important">
 <p class="admonition-title">Important</p>
 <p>On a fresh machine the first <code class="docutils literal notranslate"><span class="pre">ethograph</span> <span class="pre">launch</span></code> may fail with <em>“‘ethograph’ is
@@ -519,11 +494,12 @@ shell starts, so the window you ran it in will keep failing. See
 <div class="admonition tip">
 <p class="admonition-title">Tip</p>
 <p>To update later, run <code class="docutils literal notranslate"><span class="pre">uv</span> <span class="pre">tool</span> <span class="pre">upgrade</span> <span class="pre">ethograph</span></code>; to remove it,
-<code class="docutils literal notranslate"><span class="pre">uv</span> <span class="pre">tool</span> <span class="pre">uninstall</span> <span class="pre">ethograph</span></code>.</p>
+<code class="docutils literal notranslate"><span class="pre">uv</span> <span class="pre">tool</span> <span class="pre">uninstall</span> <span class="pre">ethograph</span></code>. Global settings live in <code class="docutils literal notranslate"><span class="pre">~/.ethograph</span></code>
+(override with the <code class="docutils literal notranslate"><span class="pre">ETHOGRAPH_HOME</span></code> environment variable).</p>
 </div>
 </section>
-<section id="create-a-virtual-environment">
-<h2>Create a virtual environment<a class="headerlink" href="#create-a-virtual-environment" title="Link to this heading">#</a></h2>
+<section id="install-into-a-virtual-environment">
+<h2>Install into a virtual environment<a class="headerlink" href="#install-into-a-virtual-environment" title="Link to this heading">#</a></h2>
 <p>Use this approach instead if you want to <strong>write scripts or code against
 ethograph</strong> — import <code class="docutils literal notranslate"><span class="pre">TrialTree</span></code>, build pipelines, or develop the package. Here
 ethograph is installed <em>into an environment you activate</em>, alongside whatever
@@ -531,16 +507,16 @@ else you import, rather than as a standalone tool.</p>
 <p>You can use either conda or uv to create the environment — conda is only
 used for environment creation, not for installing ethograph itself.</p>
 <div class="sd-tab-set docutils">
-<input checked="checked" id="sd-tab-item-4" name="sd-tab-set-2" type="radio">
-<label class="sd-tab-label" for="sd-tab-item-4">
+<input checked="checked" id="sd-tab-item-2" name="sd-tab-set-1" type="radio">
+<label class="sd-tab-label" for="sd-tab-item-2">
 conda</label><div class="sd-tab-content docutils">
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>conda<span class="w"> </span>create<span class="w"> </span>-y<span class="w"> </span>-n<span class="w"> </span>ethograph<span class="w"> </span><span class="nv">python</span><span class="o">=</span><span class="m">3</span>.12
 conda<span class="w"> </span>activate<span class="w"> </span>ethograph
 </pre></div>
 </div>
 </div>
-<input id="sd-tab-item-5" name="sd-tab-set-2" type="radio">
-<label class="sd-tab-label" for="sd-tab-item-5">
+<input id="sd-tab-item-3" name="sd-tab-set-1" type="radio">
+<label class="sd-tab-label" for="sd-tab-item-3">
 uv</label><div class="sd-tab-content docutils">
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>venv<span class="w"> </span>--python<span class="o">=</span><span class="m">3</span>.12
 </pre></div>
@@ -555,106 +531,30 @@ uv</label><div class="sd-tab-content docutils">
 </div>
 </div>
 </div>
-</section>
-<section id="install-the-package">
-<h2>Install the package<a class="headerlink" href="#install-the-package" title="Link to this heading">#</a></h2>
-<div class="admonition important">
-<p class="admonition-title">Important</p>
-<p>Make sure your virtual environment is activated before running any install
-commands. You should see the environment name (e.g. <code class="docutils literal notranslate"><span class="pre">(ethograph)</span></code>) in your
-terminal prompt.</p>
-</div>
-<section id="with-the-gui-recommended">
-<h3>With the GUI (recommended)<a class="headerlink" href="#with-the-gui-recommended" title="Link to this heading">#</a></h3>
-<p>The GUI bundles PyQtGraph, pygfx (via pynaviz), and neural analysis tools:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">"ethograph[gui]"</span>
-</pre></div>
-</div>
-<section id="adding-audio-support">
-<h4>Adding audio support<a class="headerlink" href="#adding-audio-support" title="Link to this heading">#</a></h4>
-<p>Audio support (waveform display, spectrogram, vocalisation analysis) is an optional extra.</p>
-<div class="sd-tab-set docutils">
-<input checked="checked" id="sd-tab-item-6" name="sd-tab-set-3" type="radio">
-<label class="sd-tab-label" for="sd-tab-item-6">
-macOS / Windows</label><div class="sd-tab-content docutils">
+<p>With the environment activated — you should see its name (e.g. <code class="docutils literal notranslate"><span class="pre">(ethograph)</span></code>)
+in your prompt — install the package:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">"ethograph[gui,audio]"</span>
 </pre></div>
 </div>
+<p>Plain <code class="docutils literal notranslate"><span class="pre">ethograph</span></code>, with no extras, gives you the library alone: the <code class="docutils literal notranslate"><span class="pre">TrialTree</span></code>
+data structure, xarray utilities, feature extraction and label I/O, with no GUI
+and no audio. Upgrade later with <code class="docutils literal notranslate"><span class="pre">uv</span> <span class="pre">pip</span> <span class="pre">install</span> <span class="pre">-U</span> <span class="pre">&quot;ethograph[gui,audio]&quot;</span></code>.</p>
+<div class="admonition hint">
+<p class="admonition-title">Hint</p>
+<p>If an upgrade doesn’t seem to take effect, create a fresh environment and
+install from scratch.</p>
 </div>
-<input id="sd-tab-item-7" name="sd-tab-set-3" type="radio">
-<label class="sd-tab-label" for="sd-tab-item-7">
-Linux</label><div class="sd-tab-content docutils">
-<p>First install the PortAudio system library <strong>and the ALSA plugins</strong>, then
-install the audio extra:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>sudo<span class="w"> </span>apt<span class="w"> </span>install<span class="w"> </span>libportaudio2<span class="w"> </span>libasound2-plugins<span class="w">   </span><span class="c1"># Debian / Ubuntu</span>
-uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">"ethograph[gui,audio]"</span>
-</pre></div>
-</div>
-<p><code class="docutils literal notranslate"><span class="pre">libasound2-plugins</span></code> is the ALSA→PipeWire/PulseAudio bridge; without it
-PortAudio can’t reach a modern sound server. See <a class="reference internal" href="../advanced/troubleshooting.html#no-audio-device"><span class="std std-ref">Silent audio on Linux</span></a> if
-playback is still silent.</p>
-</div>
-</div>
-<p>If you are using a <strong>conda environment</strong>, optionally create a desktop shortcut:</p>
+<p>In a <strong>conda environment</strong> you can also create a desktop shortcut, which
+launches the GUI on double-click:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>ethograph<span class="w"> </span>shortcut
 </pre></div>
 </div>
-<div class="tip admonition">
-<p class="admonition-title">Launching the GUI</p>
-<p>After installation, launch ethograph from the terminal:</p>
-<div class="highlight-none notranslate"><div class="highlight"><pre><span></span>ethograph launch
-</pre></div>
-</div>
-<p>Or use the desktop/Start Menu shortcut created above.</p>
-</div>
-<p>Global settings live in <code class="docutils literal notranslate"><span class="pre">~/.ethograph</span></code> (override with the <code class="docutils literal notranslate"><span class="pre">ETHOGRAPH_HOME</span></code> environment variable).</p>
 </section>
-</section>
-<section id="core-only-library">
-<h3>Core only (library)<a class="headerlink" href="#core-only-library" title="Link to this heading">#</a></h3>
-<p>The core package includes the <code class="docutils literal notranslate"><span class="pre">TrialTree</span></code> data structure, xarray utilities,
-feature extraction, and label I/O — no GUI, no audio, no NWB. This is useful
-when you want to use <code class="docutils literal notranslate"><span class="pre">TrialTree</span></code> as a data structure in your own scripts or
-pipelines without pulling in GUI dependencies.</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>ethograph
-</pre></div>
-</div>
-</section>
-<section id="dandi-archive-downloads">
-<h3>DANDI archive downloads<a class="headerlink" href="#dandi-archive-downloads" title="Link to this heading">#</a></h3>
-<p>To browse and download datasets from the <a class="reference external" href="https://dandiarchive.org/">DANDI
-archive</a> via the GUI wizard:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">"ethograph[dandi]"</span>
-</pre></div>
-</div>
-</section>
-<section id="faster-scrubbing-in-long-videos-optional">
-<h3>Faster scrubbing in long videos (optional)<a class="headerlink" href="#faster-scrubbing-in-long-videos-optional" title="Link to this heading">#</a></h3>
-<p>EthoGraph works <strong>fully without ffmpeg</strong> — every feature is available, including
-video-motion extraction, which runs in-process through PyAV (bundled with the
-<code class="docutils literal notranslate"><span class="pre">gui</span></code> extra). The only thing ffmpeg adds is <em>proxy generation</em>: a low-resolution
-copy of a video that makes seeking through long, high-resolution recordings
-smoother. Video always plays at full resolution without it, so for short teaching
-clips it buys nothing.</p>
-<p>If you do work with long recordings, add ffmpeg with:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">"ethograph[proxy]"</span>
-</pre></div>
-</div>
-<p>This bundles a private ffmpeg binary (via <code class="docutils literal notranslate"><span class="pre">imageio-ffmpeg</span></code>) with no PATH setup.
-If you already have ffmpeg installed on your system, EthoGraph picks it up
-automatically — or point it at a specific executable with the <code class="docutils literal notranslate"><span class="pre">ETHOGRAPH_FFMPEG</span></code>
-environment variable.</p>
-<div class="admonition note">
-<p class="admonition-title">Note</p>
-<p>The bundled ffmpeg does <strong>not</strong> include NVENC, so GPU (<code class="docutils literal notranslate"><span class="pre">cuda</span></code>) proxy encoding
-falls back to software <code class="docutils literal notranslate"><span class="pre">libx264</span></code>. For NVENC, install ffmpeg from conda-forge
-(<code class="docutils literal notranslate"><span class="pre">conda</span> <span class="pre">install</span> <span class="pre">-c</span> <span class="pre">conda-forge</span> <span class="pre">ffmpeg</span></code>) or your system package manager.</p>
-</div>
-</section>
-<section id="optional-dependency-groups">
-<h3>Optional dependency groups<a class="headerlink" href="#optional-dependency-groups" title="Link to this heading">#</a></h3>
-<p>ethograph uses optional extras to keep the base install lightweight.
-You can combine them as needed:</p>
+<section id="optional-extras">
+<h2>Optional extras<a class="headerlink" href="#optional-extras" title="Link to this heading">#</a></h2>
+<p>ethograph uses optional extras to keep the base install lightweight. Combine
+them with commas — <code class="docutils literal notranslate"><span class="pre">uv</span> <span class="pre">pip</span> <span class="pre">install</span> <span class="pre">&quot;ethograph[gui,audio,dandi]&quot;</span></code>, or
+<code class="docutils literal notranslate"><span class="pre">uv</span> <span class="pre">tool</span> <span class="pre">install</span> <span class="pre">--python</span> <span class="pre">3.12</span> <span class="pre">&quot;ethograph[gui,audio,dandi]&quot;</span></code> for a tool install.</p>
 <div class="pst-scrollable-table-container"><table class="table">
 <thead>
 <tr class="row-odd"><th class="head"><p>Extra</p></th>
@@ -669,15 +569,18 @@ You can combine them as needed:</p>
 <td><p>Waveform, spectrogram, vocalisation analysis (<code class="docutils literal notranslate"><span class="pre">sounddevice</span></code> etc.)</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">dandi</span></code></p></td>
-<td><p>DANDI archive download client (heavy, opt-in)</p></td>
+<td><p>Download client for the <a class="reference external" href="https://dandiarchive.org/">DANDI archive</a></p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">proxy</span></code></p></td>
-<td><p>Bundled ffmpeg for faster scrubbing in long videos (optional)</p></td>
+<td><p>Bundled ffmpeg for faster scrubbing in long videos</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">dev</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">model</span></code></p></td>
+<td><p>Segmentation pipeline — model training (see below)</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">dev</span></code></p></td>
 <td><p>Testing and linting tools</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">docs</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">docs</span></code></p></td>
 <td><p>Documentation build dependencies</p></td>
 </tr>
 </tbody>
@@ -685,13 +588,25 @@ You can combine them as needed:</p>
 </div>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
-<p>Linux users adding <code class="docutils literal notranslate"><span class="pre">audio</span></code> must first install the PortAudio system library
-<strong>and the ALSA plugins</strong>:
-<code class="docutils literal notranslate"><span class="pre">sudo</span> <span class="pre">apt</span> <span class="pre">install</span> <span class="pre">libportaudio2</span> <span class="pre">libasound2-plugins</span></code></p>
+<p>On Linux, <code class="docutils literal notranslate"><span class="pre">audio</span></code> also needs PortAudio and the ALSA plugins from the
+distribution — both are part of the one system-library line in
+<a class="reference internal" href="../advanced/troubleshooting.html#linux-system-libraries"><span class="std std-ref">Linux: system libraries</span></a>. If playback stays
+silent afterwards, see
+<a class="reference internal" href="../advanced/troubleshooting.html#no-audio-device"><span class="std std-ref">Silent audio on Linux</span></a>.</p>
 </div>
-<p>Combine extras with commas:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">"ethograph[gui,audio,dandi,dev,docs]"</span>
-</pre></div>
+<section id="faster-scrubbing-in-long-videos-proxy">
+<h3>Faster scrubbing in long videos (<code class="docutils literal notranslate"><span class="pre">proxy</span></code>)<a class="headerlink" href="#faster-scrubbing-in-long-videos-proxy" title="Link to this heading">#</a></h3>
+<p>EthoGraph works <strong>fully without ffmpeg</strong> — every feature is available, video
+included. The only thing ffmpeg adds is <em>proxy generation</em>: a low-resolution
+copy that makes seeking through long, high-resolution recordings smoother.
+The <code class="docutils literal notranslate"><span class="pre">proxy</span></code> extra bundles a private ffmpeg binary (via <code class="docutils literal notranslate"><span class="pre">imageio-ffmpeg</span></code>) with
+no PATH setup; a system ffmpeg is picked up automatically, or point at one with
+the <code class="docutils literal notranslate"><span class="pre">ETHOGRAPH_FFMPEG</span></code> environment variable.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>The bundled ffmpeg has no NVENC, so GPU (<code class="docutils literal notranslate"><span class="pre">cuda</span></code>) proxy encoding falls back to
+software <code class="docutils literal notranslate"><span class="pre">libx264</span></code>. For NVENC, install ffmpeg from conda-forge
+(<code class="docutils literal notranslate"><span class="pre">conda</span> <span class="pre">install</span> <span class="pre">-c</span> <span class="pre">conda-forge</span> <span class="pre">ffmpeg</span></code>) or your system package manager.</p>
 </div>
 </section>
 </section>
@@ -699,18 +614,29 @@ You can combine them as needed:</p>
 <h2>For developers<a class="headerlink" href="#for-developers" title="Link to this heading">#</a></h2>
 <p>To install latest development version in editable mode see <a class="reference internal" href="../community/contributing.html"><span class="doc">Contributing</span></a>.</p>
 </section>
-<section id="update-the-package">
-<h2>Update the package<a class="headerlink" href="#update-the-package" title="Link to this heading">#</a></h2>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>-U<span class="w"> </span><span class="s2">"ethograph[gui]"</span>
-<span class="c1"># With audio:</span>
-uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>-U<span class="w"> </span><span class="s2">"ethograph[gui,audio]"</span>
+<section id="segmentation-pipeline-model-training">
+<h2>Segmentation pipeline (model training)<a class="headerlink" href="#segmentation-pipeline-model-training" title="Link to this heading">#</a></h2>
+<p>The segmentation pipeline learns your
+curated state labels and predicts them back into the GUI. It is scripted,
+not a command line: one config becomes a <code class="docutils literal notranslate"><span class="pre">Project</span></code> with a method per stage.
+It needs PyTorch; install a build matching your GPU first, then the extra:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>--torch-backend<span class="o">=</span>auto<span class="w"> </span>torch<span class="w"> </span>torchvision<span class="w"> </span><span class="c1"># --torch-backend=auto for windows</span>
+uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">"ethograph[model]"</span>
 </pre></div>
 </div>
-<div class="admonition hint">
-<p class="admonition-title">Hint</p>
-<p>If the update doesn’t seem to work, try creating a fresh environment
-and reinstalling from scratch.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">ethograph</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">eto</span>
+
+<span class="n">eto</span><span class="o">.</span><span class="n">segment</span><span class="o">.</span><span class="n">architectures</span><span class="p">()</span>         <span class="c1"># lists the available models</span>
+</pre></div>
 </div>
+<div class="admonition tip">
+<p class="admonition-title">Tip</p>
+<p>Using <code class="docutils literal notranslate"><span class="pre">conda-forge</span></code> (<code class="docutils literal notranslate"><span class="pre">conda</span> <span class="pre">create</span> <span class="pre">-y</span> <span class="pre">-n</span> <span class="pre">ethograph</span> <span class="pre">-c</span> <span class="pre">conda-forge</span> <span class="pre">python=3.12</span></code>)
+can help here: it keeps all conda-installed packages on one channel, avoiding
+ABI conflicts between <code class="docutils literal notranslate"><span class="pre">defaults</span></code> and <code class="docutils literal notranslate"><span class="pre">conda-forge</span></code> builds of shared libraries
+that PyTorch/CUDA packages depend on.</p>
+</div>
+<p>s</p>
 </section>
 <section id="keypoint-labelling-backends-optional">
 <span id="target-keypoint-fill"></span><h2>Keypoint labelling backends (optional)<a class="headerlink" href="#keypoint-labelling-backends-optional" title="Link to this heading">#</a></h2>
@@ -727,19 +653,19 @@ video and fill the rest automatically.</p>
 </thead>
 <tbody>
 <tr class="row-even"><td><p><strong>Spline</strong> (default)</p></td>
-<td><p>Monotone piecewise cubic (PCHIP) interpolation per keypoint, over that keypoint’s own labelled frames<a class="footnote-reference brackets" href="#pchip" id="id2" role="doc-noteref"><span class="fn-bracket">[</span>1<span class="fn-bracket">]</span></a></p></td>
+<td><p>Monotone piecewise cubic (PCHIP) interpolation per keypoint, over that keypoint’s own labelled frames<a class="footnote-reference brackets" href="#pchip" id="id1" role="doc-noteref"><span class="fn-bracket">[</span>1<span class="fn-bracket">]</span></a></p></td>
 <td><p>No — geometry only</p></td>
 <td><p>Instant; nothing is decoded</p></td>
 <td><p>CPU</p></td>
 </tr>
 <tr class="row-odd"><td><p><strong>Optical flow</strong></p></td>
-<td><p>Pyramidal Lucas-Kanade sparse tracking, run forward and backward across each gap<a class="footnote-reference brackets" href="#lk" id="id3" role="doc-noteref"><span class="fn-bracket">[</span>2<span class="fn-bracket">]</span></a></p></td>
+<td><p>Pyramidal Lucas-Kanade sparse tracking, run forward and backward across each gap<a class="footnote-reference brackets" href="#lk" id="id2" role="doc-noteref"><span class="fn-bracket">[</span>2<span class="fn-bracket">]</span></a></p></td>
 <td><p>Yes</p></td>
 <td><p>Roughly real-time</p></td>
 <td><p>CPU</p></td>
 </tr>
 <tr class="row-even"><td><p><strong>PosePAL (CoTracker3 + refinement)</strong></p></td>
-<td><p>A transformer point tracker<a class="footnote-reference brackets" href="#cotracker" id="id4" role="doc-noteref"><span class="fn-bracket">[</span>3<span class="fn-bracket">]</span></a> whose per-keypoint appearance features are first fitted to the frames you labelled<a class="footnote-reference brackets" href="#posepal" id="id5" role="doc-noteref"><span class="fn-bracket">[</span>4<span class="fn-bracket">]</span></a>, then run forward and backward across each gap</p></td>
+<td><p>A transformer point tracker<a class="footnote-reference brackets" href="#cotracker" id="id3" role="doc-noteref"><span class="fn-bracket">[</span>3<span class="fn-bracket">]</span></a> whose per-keypoint appearance features are first fitted to the frames you labelled<a class="footnote-reference brackets" href="#posepal" id="id4" role="doc-noteref"><span class="fn-bracket">[</span>4<span class="fn-bracket">]</span></a>, then run forward and backward across each gap</p></td>
 <td><p>Yes</p></td>
 <td><p>A few minutes for the fit, once; seconds per fill after that</p></td>
 <td><p><strong>GPU only</strong> — CUDA or Apple Silicon</p></td>
@@ -747,63 +673,28 @@ video and fill the rest automatically.</p>
 </tbody>
 </table>
 </div>
-<p>Spline and optical flow need <strong>nothing extra</strong>, and neither does the <strong>Detect</strong>
-tab, which reads AprilTag <code class="docutils literal notranslate"><span class="pre">tag36h11</span></code> markers and feeds them to whichever backend
-you fill with — OpenCV and <code class="docutils literal notranslate"><span class="pre">pupil-apriltags</span></code> both come with <code class="docutils literal notranslate"><span class="pre">ethograph[gui]</span></code>.</p>
-<p>Only PosePAL is a separate install — GPU only, and <code class="docutils literal notranslate"><span class="pre">--torch-backend=auto</span></code>
-matters since PyPI’s Windows torch wheels are CPU-only:</p>
+<p>Spline and optical come with <code class="docutils literal notranslate"><span class="pre">ethograph[gui]</span></code>. PosePAL (GPU only) reequires a separate install:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>--torch-backend<span class="o">=</span>auto<span class="w"> </span>torch<span class="w"> </span><span class="s2">"cotracker @ git+https://github.com/facebookresearch/co-tracker.git@82e02e8029753ad4ef13cf06be7f4fc5facdda4d"</span>
 </pre></div>
-</div>
-<div class="admonition seealso">
-<p class="admonition-title">See also</p>
-<p>This page covers <em>installing</em> the backends. Which one to reach for, how the
-labelling loop works, what the PosePAL fit costs and when to train a DeepLabCut
-detector instead are covered in <a class="reference internal" href="../advanced/keypoint_labelling/index.html"><span class="doc">Keypoint labelling</span></a>.</p>
-</div>
-</section>
-<section id="segmentation-pipeline-model-training">
-<h2>Segmentation pipeline (model training)<a class="headerlink" href="#segmentation-pipeline-model-training" title="Link to this heading">#</a></h2>
-<p>The <span class="xref std std-doc">segmentation pipeline</span> learns your
-curated state labels and predicts them back into the GUI. It is scripted,
-not a command line: one config becomes a <code class="docutils literal notranslate"><span class="pre">Project</span></code> with a method per stage.
-It needs PyTorch; install a build matching your GPU first, then the extra:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>--torch-backend<span class="o">=</span>auto<span class="w"> </span>torch<span class="w"> </span>torchvision
-uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">"ethograph[model]"</span>
-</pre></div>
-</div>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">ethograph</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">eto</span>
-
-<span class="n">eto</span><span class="o">.</span><span class="n">segment</span><span class="o">.</span><span class="n">architectures</span><span class="p">()</span>         <span class="c1"># lists the available models</span>
-</pre></div>
-</div>
-<p><code class="docutils literal notranslate"><span class="pre">--torch-backend=auto</span></code> matters on Windows, where PyPI’s default torch wheels
-are CPU-only. Training runs on CPU too, just slowly.</p>
-<div class="admonition tip">
-<p class="admonition-title">Tip</p>
-<p>Using <code class="docutils literal notranslate"><span class="pre">conda-forge</span></code> (<code class="docutils literal notranslate"><span class="pre">conda</span> <span class="pre">create</span> <span class="pre">-y</span> <span class="pre">-n</span> <span class="pre">ethograph</span> <span class="pre">-c</span> <span class="pre">conda-forge</span> <span class="pre">python=3.12</span></code>)
-can help here: it keeps all conda-installed packages on one channel, avoiding
-ABI conflicts between <code class="docutils literal notranslate"><span class="pre">defaults</span></code> and <code class="docutils literal notranslate"><span class="pre">conda-forge</span></code> builds of shared libraries
-that PyTorch/CUDA packages depend on.</p>
 </div>
 </section>
 </section>
 <hr class="footnotes docutils" />
 <aside class="footnote-list brackets">
 <aside class="footnote brackets" id="pchip" role="doc-footnote">
-<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id2">1</a><span class="fn-bracket">]</span></span>
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id1">1</a><span class="fn-bracket">]</span></span>
 <p>Fritsch, F. N. &amp; Carlson, R. E. (1980). <a class="reference external" href="https://doi.org/10.1137/0717021">Monotone Piecewise Cubic Interpolation</a>. <em>SIAM Journal on Numerical Analysis</em>, 17(2), 238–246. Implemented by <a class="reference external" href="https://docs.scipy.org/doc/scipy/reference/generated/scipy.interpolate.PchipInterpolator.html"><code class="docutils literal notranslate"><span class="pre">scipy.interpolate.PchipInterpolator</span></code></a>.</p>
 </aside>
 <aside class="footnote brackets" id="lk" role="doc-footnote">
-<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id3">2</a><span class="fn-bracket">]</span></span>
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id2">2</a><span class="fn-bracket">]</span></span>
 <p>Lucas, B. D. &amp; Kanade, T. (1981). <a class="reference external" href="https://www.ri.cmu.edu/pub_files/pub3/lucas_bruce_d_1981_1/lucas_bruce_d_1981_1.pdf">An Iterative Image Registration Technique with an Application to Stereo Vision</a>. <em>IJCAI</em>, 674–679. The pyramidal form used here is Bouguet, J.-Y. (2001), <a class="reference external" href="https://robots.stanford.edu/cs223b04/algo_tracking.pdf">Pyramidal Implementation of the Lucas Kanade Feature Tracker</a>, via <a class="reference external" href="https://docs.opencv.org/4.x/dc/d6b/group__video__track.html#ga473e4b886d0bcc6b65831eb88ed93323"><code class="docutils literal notranslate"><span class="pre">cv2.calcOpticalFlowPyrLK</span></code></a>.</p>
 </aside>
 <aside class="footnote brackets" id="cotracker" role="doc-footnote">
-<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id4">3</a><span class="fn-bracket">]</span></span>
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id3">3</a><span class="fn-bracket">]</span></span>
 <p>Karaev, N., Makarov, I., Wang, J., Neverova, N., Vedaldi, A. &amp; Rupprecht, C. (2024). <a class="reference external" href="https://arxiv.org/abs/2410.11831">CoTracker3: Simpler and Better Point Tracking by Pseudo-Labelling Real Videos</a>. <a class="reference external" href="https://cotracker3.github.io/">Project page</a> · <a class="reference external" href="https://github.com/facebookresearch/co-tracker">GitHub</a></p>
 </aside>
 <aside class="footnote brackets" id="posepal" role="doc-footnote">
-<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id5">4</a><span class="fn-bracket">]</span></span>
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id4">4</a><span class="fn-bracket">]</span></span>
 <p>Pan, Z., Pan, B., Yang, G., Harley, A. W. &amp; Guibas, L. (2025). <a class="reference external" href="https://arxiv.org/abs/2506.03868">Animal Pose Labeling Using General-Purpose Point Trackers</a>. Reference implementation: <a class="reference external" href="https://github.com/Zhuoyang-Pan/PosePAL">PosePAL</a>. EthoGraph implements the method against upstream CoTracker3 rather than the authors’ fork; the optimiser settings follow the paper (Adam, 1e-3 → 1e-5, Huber tracking loss, L1 pull-back weighted 0.01).</p>
 </aside>
 </aside>
@@ -856,24 +747,15 @@ that PyTorch/CUDA packages depend on.</p>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#install-uv">Install uv</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#linux-system-libraries">Linux: system libraries</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#quick-install">Quick install</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#create-a-virtual-environment">Create a virtual environment</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#install-the-package">Install the package</a><ul class="nav section-nav flex-column">
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#with-the-gui-recommended">With the GUI (recommended)</a><ul class="nav section-nav flex-column">
-<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#adding-audio-support">Adding audio support</a></li>
-</ul>
-</li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#core-only-library">Core only (library)</a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#dandi-archive-downloads">DANDI archive downloads</a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#faster-scrubbing-in-long-videos-optional">Faster scrubbing in long videos (optional)</a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#optional-dependency-groups">Optional dependency groups</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#install-ethograph">Install ethograph</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#install-into-a-virtual-environment">Install into a virtual environment</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#optional-extras">Optional extras</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#faster-scrubbing-in-long-videos-proxy">Faster scrubbing in long videos (<code class="docutils literal notranslate"><span class="pre">proxy</span></code>)</a></li>
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#for-developers">For developers</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#update-the-package">Update the package</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#keypoint-labelling-backends-optional">Keypoint labelling backends (optional)</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#segmentation-pipeline-model-training">Segmentation pipeline (model training)</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#keypoint-labelling-backends-optional">Keypoint labelling backends (optional)</a></li>
 </ul>
   </nav></div>
 

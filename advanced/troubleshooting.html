@@ -520,34 +520,50 @@ with your shell:</p>
 <p>Then <strong>close the terminal and open a new one</strong>. <code class="docutils literal notranslate"><span class="pre">PATH</span></code> is only read when a shell
 starts, so the current window will keep reporting the same error. After that,
 <code class="docutils literal notranslate"><span class="pre">ethograph</span> <span class="pre">launch</span></code> works from any directory.</p>
-<p>Two alternatives if you would rather not touch <code class="docutils literal notranslate"><span class="pre">PATH</span></code>:</p>
-<ul class="simple">
-<li><p><strong>A shortcut instead of a command.</strong> <code class="docutils literal notranslate"><span class="pre">ethograph</span> <span class="pre">shortcut</span></code> creates a
-desktop/Start Menu entry that launches the GUI on double-click. It writes the
-full interpreter path into the shortcut, so nothing needs to be activated or
-on <code class="docutils literal notranslate"><span class="pre">PATH</span></code>.</p></li>
-<li><p><strong>A one-off launch.</strong> <code class="docutils literal notranslate"><span class="pre">uvx</span> <span class="pre">--from</span> <span class="pre">&quot;ethograph[gui,audio]&quot;</span> <span class="pre">ethograph</span> <span class="pre">launch</span></code>
-runs the GUI without installing a command at all.</p></li>
-</ul>
-<div class="admonition warning">
-<p class="admonition-title">Warning</p>
-<p><code class="docutils literal notranslate"><span class="pre">uv</span> <span class="pre">tool</span> <span class="pre">list</span></code> reports only <strong>tool</strong> installs. If you have <em>also</em> installed
-ethograph into a virtual environment or a conda environment, that is a second,
-independent copy — often at a different version — and launching through that
-environment’s <code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">-m</span> <span class="pre">ethograph</span> <span class="pre">launch</span></code> runs it instead of the one
-<code class="docutils literal notranslate"><span class="pre">uv</span> <span class="pre">tool</span> <span class="pre">list</span></code> shows.</p>
-<p>When reporting a bug, take the version from the interpreter you actually
-launched with, not from <code class="docutils literal notranslate"><span class="pre">uv</span> <span class="pre">tool</span> <span class="pre">list</span></code>:</p>
-<div class="highlight-none notranslate"><div class="highlight"><pre><span></span>python -c "import ethograph, sys; print(ethograph.__version__, sys.prefix)"
+</section>
+<section id="linux-system-libraries-the-wheels-need">
+<span id="linux-system-libraries"></span><h3>Linux: system libraries the wheels need<a class="headerlink" href="#linux-system-libraries-the-wheels-need" title="Link to this heading">#</a></h3>
+<p>The Python wheels bring their own Qt, OpenGL bindings and wgpu, but on Linux
+they load a few shared libraries from the distribution. A desktop install
+usually has them; a minimal container, a lab server or a fresh WSL distro
+usually does not. <strong>Install them once, before the first launch:</strong></p>
+<div class="sd-tab-set docutils">
+<input checked="checked" id="sd-tab-item-0" name="sd-tab-set-0" type="radio">
+<label class="sd-tab-label" for="sd-tab-item-0">
+Debian / Ubuntu / WSL</label><div class="sd-tab-content docutils">
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>sudo<span class="w"> </span>apt<span class="w"> </span>install<span class="w"> </span>libgl1<span class="w"> </span>libopengl0<span class="w"> </span>libegl1<span class="w"> </span>libxcb-cursor0<span class="w"> </span>libxkbcommon-x11-0<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>libxcb-icccm4<span class="w"> </span>libxcb-keysyms1<span class="w"> </span>libxcb-image0<span class="w"> </span>libxcb-render-util0<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>libxcb-shape0<span class="w"> </span>libxcb-xinerama0<span class="w"> </span>libfontconfig1<span class="w"> </span>libdbus-1-3<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>libvulkan1<span class="w"> </span>mesa-vulkan-drivers<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>libportaudio2<span class="w"> </span>libasound2-plugins
 </pre></div>
 </div>
-<p>Keeping a single install avoids the confusion entirely.</p>
 </div>
-</section>
-<section id="linux-libopengl-so-0-could-not-load-the-qt-platform-plugin-black-video">
-<span id="linux-missing-libraries"></span><h3>Linux: <code class="docutils literal notranslate"><span class="pre">libOpenGL.so.0</span></code>, “could not load the Qt platform plugin”, black video<a class="headerlink" href="#linux-libopengl-so-0-could-not-load-the-qt-platform-plugin-black-video" title="Link to this heading">#</a></h3>
-<p>On Linux the pip wheels load a handful of shared libraries from the
-distribution, and each one that is missing fails in its own words:</p>
+<input id="sd-tab-item-1" name="sd-tab-set-0" type="radio">
+<label class="sd-tab-label" for="sd-tab-item-1">
+Fedora / RHEL</label><div class="sd-tab-content docutils">
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>sudo<span class="w"> </span>dnf<span class="w"> </span>install<span class="w"> </span>mesa-libGL<span class="w"> </span>libglvnd-opengl<span class="w"> </span>mesa-libEGL<span class="w"> </span>xcb-util-cursor<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>libxkbcommon-x11<span class="w"> </span>xcb-util-wm<span class="w"> </span>xcb-util-keysyms<span class="w"> </span>xcb-util-image<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>xcb-util-renderutil<span class="w"> </span>libxcb<span class="w"> </span>fontconfig<span class="w"> </span>dbus-libs<span class="w"> </span>vulkan-loader<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>mesa-vulkan-drivers<span class="w"> </span>portaudio<span class="w"> </span>alsa-plugins-pulseaudio
+</pre></div>
+</div>
+</div>
+</div>
+<p>The last line of each is only needed with the <code class="docutils literal notranslate"><span class="pre">audio</span></code> extra: PortAudio itself,
+plus the ALSA→PipeWire/PulseAudio bridge without which PortAudio cannot reach a
+modern sound server.</p>
+<p>Run the preflight to see which are still missing on <em>your</em> machine — it prints
+the exact install line for your distribution:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>ethograph<span class="w"> </span>check
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">ethograph</span> <span class="pre">launch</span></code> prints the same warning before it opens a window, so if a
+launch ends in one of the errors below, scroll up: the fix is already on
+screen. (The <code class="docutils literal notranslate"><span class="pre">libxcb-*</span></code> entries are only needed when Qt runs on X11 — on a
+Wayland desktop or WSLg the check leaves them out. The ALSA bridge is a plugin
+rather than a library, so it is the one item the check cannot see.)</p>
+<p>Each missing library fails in its own words:</p>
 <div class="pst-scrollable-table-container"><table class="table">
 <thead>
 <tr class="row-odd"><th class="head"><p>You see</p></th>
@@ -567,38 +583,26 @@ distribution, and each one that is missing fails in its own words:</p>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">OSError:</span> <span class="pre">PortAudio</span> <span class="pre">library</span> <span class="pre">not</span> <span class="pre">found</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">libportaudio2</span></code> (audio extra)</p></td>
 </tr>
+<tr class="row-even"><td><p>The GUI runs but playback is silent</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">libasound2-plugins</span></code> — see <a class="reference internal" href="#no-audio-device"><span class="std std-ref">Silent audio on Linux</span></a></p></td>
+</tr>
 </tbody>
 </table>
 </div>
-<p>Run the preflight — it checks all of them at once and prints the install
-line for your distribution:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>ethograph<span class="w"> </span>check
-</pre></div>
-</div>
-<p><code class="docutils literal notranslate"><span class="pre">ethograph</span> <span class="pre">launch</span></code> prints the same warning at startup, so if a launch ends
-in one of the errors above, scroll up: the fix is already on screen. The full
-list, per distribution, is in <a class="reference internal" href="../getting_started/installation.html#linux-system-libraries"><span class="std std-ref">Linux: system libraries</span></a>.</p>
+<p>See <a class="reference internal" href="#wsl"><span class="std std-ref">Windows Subsystem for Linux (WSL)</span></a> for Windows Subsystem for Linux.</p>
 </section>
 <section id="windows-subsystem-for-linux-wsl">
 <span id="wsl"></span><h3>Windows Subsystem for Linux (WSL)<a class="headerlink" href="#windows-subsystem-for-linux-wsl" title="Link to this heading">#</a></h3>
-<p>The GUI runs under WSL through <strong>WSLg</strong> (Windows 11, or <code class="docutils literal notranslate"><span class="pre">wsl</span> <span class="pre">--update</span></code> from
-PowerShell on Windows 10), which provides the display. A WSL distro is a
-minimal install, so start with the system libraries above — every one of them
-is typically missing — then <code class="docutils literal notranslate"><span class="pre">ethograph</span> <span class="pre">check</span></code>.</p>
-<p>Two things to know:</p>
-<ul class="simple">
-<li><p><strong>Video rendering is best-effort.</strong> The video canvas is drawn with wgpu,
-which does not officially support WSL. It works through mesa’s software
-(lavapipe) or Microsoft’s <code class="docutils literal notranslate"><span class="pre">dzn</span></code> Vulkan driver, both in <code class="docutils literal notranslate"><span class="pre">mesa-vulkan-drivers</span></code>,
-but slower than native. If the video panel stays black after installing
-them, run ethograph natively on Windows — the data on <code class="docutils literal notranslate"><span class="pre">/mnt/c/...</span></code> is the
-same data, and <code class="docutils literal notranslate"><span class="pre">uv</span> <span class="pre">tool</span> <span class="pre">install</span></code> works the same way in PowerShell.</p></li>
-<li><p><strong>Qt runs on Wayland there, and that is fine.</strong> WSLg advertises both a
-Wayland and an X11 display; Qt takes Wayland, which needs none of the
-<code class="docutils literal notranslate"><span class="pre">libxcb-*</span></code> libraries. Only if you set <code class="docutils literal notranslate"><span class="pre">QT_QPA_PLATFORM=xcb</span></code> yourself does
-the xcb list from <a class="reference internal" href="../getting_started/installation.html#linux-system-libraries"><span class="std std-ref">Linux: system libraries</span></a> become mandatory —
-<code class="docutils literal notranslate"><span class="pre">ethograph</span> <span class="pre">check</span></code> reads that variable and adjusts what it asks for.</p></li>
-</ul>
+<p>The GUI runs under WSLg (Windows 11, or <code class="docutils literal notranslate"><span class="pre">wsl</span> <span class="pre">--update</span></code> on Windows 10). A WSL
+distro is a minimal install, so start with the system libraries above — every
+one of them is typically missing — then <code class="docutils literal notranslate"><span class="pre">ethograph</span> <span class="pre">check</span></code>.</p>
+<p>Qt runs on Wayland there, which needs none of the <code class="docutils literal notranslate"><span class="pre">libxcb-*</span></code> libraries; only if
+you set <code class="docutils literal notranslate"><span class="pre">QT_QPA_PLATFORM=xcb</span></code> yourself do they become mandatory (the check
+reads that variable). Video is best-effort: wgpu does not officially support
+WSL and falls back to mesa’s software renderer or Microsoft’s <code class="docutils literal notranslate"><span class="pre">dzn</span></code> driver,
+both in <code class="docutils literal notranslate"><span class="pre">mesa-vulkan-drivers</span></code>. If the video panel stays black after installing
+them, run ethograph natively on Windows — the data on <code class="docutils literal notranslate"><span class="pre">/mnt/c/...</span></code> is the same
+data.</p>
 </section>
 <section id="silent-audio-on-linux">
 <span id="no-audio-device"></span><h3>Silent audio on Linux<a class="headerlink" href="#silent-audio-on-linux" title="Link to this heading">#</a></h3>
@@ -619,72 +623,26 @@ suitable for precise annotation.</p>
 </section>
 <section id="supported-audio-formats">
 <span id="audio-formats"></span><h3>Supported audio formats<a class="headerlink" href="#supported-audio-formats" title="Link to this heading">#</a></h3>
-<p>The waveform, spectrogram and playback all read audio through
-<a class="reference external" href="https://github.com/bendalab/audioio"><code class="docutils literal notranslate"><span class="pre">audioio</span></code></a> (libsndfile). Supported
-<strong>standalone</strong> audio files:</p>
-<div class="pst-scrollable-table-container"><table class="table">
-<thead>
-<tr class="row-odd"><th class="head"><p>Format</p></th>
-<th class="head"><p>Extension</p></th>
-<th class="head"><p>Notes</p></th>
-</tr>
-</thead>
-<tbody>
-<tr class="row-even"><td><p>WAV</p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">.wav</span></code></p></td>
-<td><p>Recommended — PCM <code class="docutils literal notranslate"><span class="pre">.wav</span></code> loads fastest and is the best-tested path.</p></td>
-</tr>
-<tr class="row-odd"><td><p>FLAC</p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">.flac</span></code></p></td>
-<td><p>Lossless, compact.</p></td>
-</tr>
-<tr class="row-even"><td><p>OGG</p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">.ogg</span></code></p></td>
-<td><p>Vorbis.</p></td>
-</tr>
-<tr class="row-odd"><td><p>MP3</p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">.mp3</span></code></p></td>
-<td><p>Requires a recent libsndfile (≥ 1.1).</p></td>
-</tr>
-</tbody>
-</table>
-</div>
+<p>The waveform, spectrogram and playback read audio through
+<a class="reference external" href="https://github.com/bendalab/audioio"><code class="docutils literal notranslate"><span class="pre">audioio</span></code></a> (libsndfile): <code class="docutils literal notranslate"><span class="pre">.wav</span></code>
+(recommended — fastest and best tested), <code class="docutils literal notranslate"><span class="pre">.flac</span></code>, <code class="docutils literal notranslate"><span class="pre">.ogg</span></code>, and <code class="docutils literal notranslate"><span class="pre">.mp3</span></code> with a
+recent libsndfile (&gt;= 1.1).</p>
 <p><strong>Audio embedded in a video (<code class="docutils literal notranslate"><span class="pre">.mp4</span></code>/<code class="docutils literal notranslate"><span class="pre">.mov</span></code>/<code class="docutils literal notranslate"><span class="pre">.avi</span></code>) is decoded to a WAV first,
-never read in place.</strong> libsndfile reads no video container, and a container’s
-AAC track has no sample-exact random access — which is exactly what the
-waveform, spectrogram and playback clock ask for, one window at a time. So the
-first time a video is used as an audio source, EthoGraph decodes its track once
-(through PyAV, bundled with the <code class="docutils literal notranslate"><span class="pre">gui</span></code> extra — no separate ffmpeg install) into a
-cached WAV under <code class="docutils literal notranslate"><span class="pre">~/.ethograph/audio_tracks/</span></code>, and every audio reader opens that
-file instead. This happens wherever the audio path points at a video:</p>
-<ul class="simple">
-<li><p><strong>Drag &amp; drop:</strong> dropping a video that has an audio track offers <strong>“extract
-audio”</strong> — ticking it registers that track as an <code class="docutils literal notranslate"><span class="pre">audio_mic-N</span></code> stream, so the
-clip loads with a waveform and spectrogram. Untick it and the video loads with
-no audio at all.</p></li>
-<li><p><strong>Your own alignment / <code class="docutils literal notranslate"><span class="pre">.nwb</span></code>:</strong> an audio stream may point straight at the
-<code class="docutils literal notranslate"><span class="pre">.mp4</span></code>. It is decoded on first use, with one log line naming the file, and
-reused from the cache on every later session.</p></li>
-</ul>
-<p>The cache is keyed by source identity (path, size, mtime), so a re-recorded or
-moved video is never served a stale extract. It is plain WAV — delete the folder
-any time to reclaim the space; the next load simply decodes again.</p>
-<p>Two reasons to still supply separate audio files when you can:</p>
-<ul>
-<li><p><strong>Sync.</strong> AAC carries encoder priming/padding, so an extracted track can start
-or end a few milliseconds off the container’s own timeline. For millisecond-
-accurate work, record or export the audio separately.</p></li>
-<li><p><strong>Disk and first-load time.</strong> The extract is uncompressed and decoding a long
-video’s track takes as long as decoding the audio. Converting in bulk up front
-is faster for a whole project:</p>
+never read in place</strong> — libsndfile reads no video container, and an AAC track
+has no sample-exact random access. The first time a video is used as an audio
+source, its track is decoded once (through PyAV, bundled with the <code class="docutils literal notranslate"><span class="pre">gui</span></code> extra)
+into <code class="docutils literal notranslate"><span class="pre">~/.ethograph/audio_tracks/</span></code> and every reader opens that file instead.
+This happens both when dropping a video with the <strong>“extract audio”</strong> box ticked
+and when an alignment or <code class="docutils literal notranslate"><span class="pre">.nwb</span></code> audio stream points at the video itself. The
+cache is keyed by path, size and mtime, so a re-recorded video is never served
+a stale extract; delete the folder any time to reclaim the space. A file that
+cannot be decoded produces one log line naming it and the reason.</p>
+<p>Separate audio files are still better when you can supply them: AAC encoder
+priming can shift an extracted track by a few milliseconds, and the extract is
+uncompressed. Converting in bulk up front is faster for a whole project:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="k">for</span><span class="w"> </span>f<span class="w"> </span><span class="k">in</span><span class="w"> </span>*.mp4<span class="p">;</span><span class="w"> </span><span class="k">do</span><span class="w"> </span>ffmpeg<span class="w"> </span>-i<span class="w"> </span><span class="s2">"</span><span class="nv">$f</span><span class="s2">"</span><span class="w"> </span>-vn<span class="w"> </span>-acodec<span class="w"> </span>pcm_s16le<span class="w"> </span><span class="s2">"</span><span class="si">${</span><span class="nv">f</span><span class="p">%.mp4</span><span class="si">}</span><span class="s2">.wav"</span><span class="p">;</span><span class="w"> </span><span class="k">done</span>
 </pre></div>
 </div>
-</li>
-</ul>
-<p>If a file cannot be decoded you get a single log line naming the file and the
-reason (e.g. <em>“Cannot use the audio track of … the container has no readable
-audio track”</em>) rather than a stream of errors.</p>
 </section>
 <section id="opening-tsv-label-files-in-excel">
 <h3>Opening <code class="docutils literal notranslate"><span class="pre">.tsv</span></code> label files in Excel<a class="headerlink" href="#opening-tsv-label-files-in-excel" title="Link to this heading">#</a></h3>
@@ -759,7 +717,7 @@ audio track”</em>) rather than a stream of errors.</p>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#what-does-this-button-do">What does this button do?</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#installation-fails-with-resolution-too-deep">Installation fails with “resolution-too-deep”</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph-is-not-recognized-as-a-command"><code class="docutils literal notranslate"><span class="pre">ethograph</span></code> is not recognized as a command</a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#linux-libopengl-so-0-could-not-load-the-qt-platform-plugin-black-video">Linux: <code class="docutils literal notranslate"><span class="pre">libOpenGL.so.0</span></code>, “could not load the Qt platform plugin”, black video</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#linux-system-libraries-the-wheels-need">Linux: system libraries the wheels need</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#windows-subsystem-for-linux-wsl">Windows Subsystem for Linux (WSL)</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#silent-audio-on-linux">Silent audio on Linux</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#supported-audio-formats">Supported audio formats</a></li>

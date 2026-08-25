@@ -78,7 +78,7 @@ same time dimension as their target feature. They require:
 
 - `attrs["kind"] = "changepoint_feature"` and `attrs["changepoint_mask"] = 1` —
   the label and the marker, both written by
-  {func}`~ethograph.io.schema.changepoint_attrs` (see {doc}`../variable_schema`).
+  {func}`~ethograph.io.schema.changepoint_attrs`.
   A file predating this needs {func}`~ethograph.io.schema.migrate_legacy_attrs`.
 - `attrs["target_feature"]` — name of the feature variable they annotate
 

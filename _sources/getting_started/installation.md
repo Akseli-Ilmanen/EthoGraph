@@ -1,8 +1,7 @@
 (target-installation)=
 # Installation
 
-
-### Install uv
+## Install uv
 
 [uv](https://docs.astral.sh/uv/) is a fast Python package manager.
 ethograph uses uv for installation.
@@ -24,44 +23,7 @@ Works from both PowerShell and Command Prompt. `winget` is built into Windows 11
 
 ::::
 
-(linux-system-libraries)=
-### Linux: system libraries
-
-The Python wheels bring their own Qt, OpenGL bindings and wgpu, but on Linux
-they load a few shared libraries from the distribution. A desktop install
-usually has them; a minimal container, a lab server or a fresh WSL distro
-usually does not. Install them once, before the first launch:
-
-::::{tab-set}
-
-:::{tab-item} Debian / Ubuntu / WSL
-```bash
-sudo apt install libgl1 libopengl0 libegl1 libxcb-cursor0 libxkbcommon-x11-0 \
-    libxcb-icccm4 libxcb-keysyms1 libxcb-image0 libxcb-render-util0 \
-    libxcb-shape0 libxcb-xinerama0 libfontconfig1 libdbus-1-3 \
-    libvulkan1 mesa-vulkan-drivers
-```
-:::
-
-:::{tab-item} Fedora / RHEL
-```bash
-sudo dnf install mesa-libGL libglvnd-opengl mesa-libEGL xcb-util-cursor \
-    libxkbcommon-x11 xcb-util-wm xcb-util-keysyms xcb-util-image \
-    xcb-util-renderutil libxcb fontconfig dbus-libs vulkan-loader mesa-vulkan-drivers
-```
-:::
-
-::::
-
-`ethograph check` reports which of these are still missing on your machine,
-with the exact install line for your distribution, and `ethograph launch`
-prints the same warning before it opens a window. (The `libxcb-*` entries are
-only needed when Qt runs on X11 — on a Wayland desktop or WSLg the check
-leaves them out.) See
-{ref}`linux-missing-libraries` for what each failure looks like, and
-{ref}`wsl` for Windows Subsystem for Linux.
-
-## Quick install
+## Install ethograph
 
 Use this if you just want to **run the ethograph GUI** — for teaching, for
 annotating data, or to try it out. It is one command, and there is no
@@ -81,6 +43,17 @@ ethograph launch
 `ethograph` command to your PATH, so it never clashes with your other Python
 projects and is always available without activating anything.
 
+```{danger}
+**On Linux or WSL, install the system libraries before the first launch.** The
+wheels bring their own Qt, OpenGL bindings and wgpu, but they load a handful of
+shared libraries from the distribution — without those the GUI opens black, or
+does not open at all. It is one `apt`/`dnf` line, once per machine:
+{ref}`Linux: system libraries <linux-system-libraries>`.
+
+`ethograph check` reports which of them are still missing on your machine, and
+`ethograph launch` prints the same warning before it opens a window.
+```
+
 ```{important}
 On a fresh machine the first `ethograph launch` may fail with *"'ethograph' is
 not recognized as the name of a cmdlet..."* (Windows) or *"command not found"*
@@ -96,10 +69,11 @@ shell starts, so the window you ran it in will keep failing. See
 
 ```{tip}
 To update later, run `uv tool upgrade ethograph`; to remove it,
-`uv tool uninstall ethograph`.
+`uv tool uninstall ethograph`. Global settings live in `~/.ethograph`
+(override with the `ETHOGRAPH_HOME` environment variable).
 ```
 
-## Create a virtual environment
+## Install into a virtual environment
 
 Use this approach instead if you want to **write scripts or code against
 ethograph** — import `TrialTree`, build pipelines, or develop the package. Here
@@ -135,158 +109,99 @@ source .venv/bin/activate
 
 ::::
 
-## Install the package
+With the environment activated — you should see its name (e.g. `(ethograph)`)
+in your prompt — install the package:
 
-```{important}
-Make sure your virtual environment is activated before running any install
-commands. You should see the environment name (e.g. `(ethograph)`) in your
-terminal prompt.
-```
-
-### With the GUI (recommended)
-
-The GUI bundles PyQtGraph, pygfx (via pynaviz), and neural analysis tools:
-
-```bash
-uv pip install "ethograph[gui]"
-```
-
-#### Adding audio support
-
-Audio support (waveform display, spectrogram, vocalisation analysis) is an optional extra.
-
-::::{tab-set}
-
-:::{tab-item} macOS / Windows
 ```bash
 uv pip install "ethograph[gui,audio]"
 ```
-:::
 
-:::{tab-item} Linux
-First install the PortAudio system library **and the ALSA plugins**, then
-install the audio extra:
-```bash
-sudo apt install libportaudio2 libasound2-plugins   # Debian / Ubuntu
-uv pip install "ethograph[gui,audio]"
+Plain `ethograph`, with no extras, gives you the library alone: the `TrialTree`
+data structure, xarray utilities, feature extraction and label I/O, with no GUI
+and no audio. Upgrade later with `uv pip install -U "ethograph[gui,audio]"`.
+
+```{hint}
+If an upgrade doesn't seem to take effect, create a fresh environment and
+install from scratch.
 ```
 
-`libasound2-plugins` is the ALSA→PipeWire/PulseAudio bridge; without it
-PortAudio can't reach a modern sound server. See {ref}`no-audio-device` if
-playback is still silent.
-:::
-
-::::
-
-If you are using a **conda environment**, optionally create a desktop shortcut:
+In a **conda environment** you can also create a desktop shortcut, which
+launches the GUI on double-click:
 
 ```bash
 ethograph shortcut
 ```
 
-```{admonition} Launching the GUI
-:class: tip
+## Optional extras
 
-After installation, launch ethograph from the terminal:
-
-    ethograph launch
-
-Or use the desktop/Start Menu shortcut created above.
-```
-
-Global settings live in `~/.ethograph` (override with the `ETHOGRAPH_HOME` environment variable).
-
-### Core only (library)
-
-The core package includes the `TrialTree` data structure, xarray utilities,
-feature extraction, and label I/O — no GUI, no audio, no NWB. This is useful
-when you want to use `TrialTree` as a data structure in your own scripts or
-pipelines without pulling in GUI dependencies.
-
-```bash
-uv pip install ethograph
-```
-
-
-### DANDI archive downloads
-
-To browse and download datasets from the [DANDI
-archive](https://dandiarchive.org/) via the GUI wizard:
-
-```bash
-uv pip install "ethograph[dandi]"
-```
-
-### Faster scrubbing in long videos (optional)
-
-EthoGraph works **fully without ffmpeg** — every feature is available, including
-video-motion extraction, which runs in-process through PyAV (bundled with the
-`gui` extra). The only thing ffmpeg adds is *proxy generation*: a low-resolution
-copy of a video that makes seeking through long, high-resolution recordings
-smoother. Video always plays at full resolution without it, so for short teaching
-clips it buys nothing.
-
-If you do work with long recordings, add ffmpeg with:
-
-```bash
-uv pip install "ethograph[proxy]"
-```
-
-This bundles a private ffmpeg binary (via `imageio-ffmpeg`) with no PATH setup.
-If you already have ffmpeg installed on your system, EthoGraph picks it up
-automatically — or point it at a specific executable with the `ETHOGRAPH_FFMPEG`
-environment variable.
-
-```{note}
-The bundled ffmpeg does **not** include NVENC, so GPU (`cuda`) proxy encoding
-falls back to software `libx264`. For NVENC, install ffmpeg from conda-forge
-(`conda install -c conda-forge ffmpeg`) or your system package manager.
-```
-
-### Optional dependency groups
-
-ethograph uses optional extras to keep the base install lightweight.
-You can combine them as needed:
+ethograph uses optional extras to keep the base install lightweight. Combine
+them with commas — `uv pip install "ethograph[gui,audio,dandi]"`, or
+`uv tool install --python 3.12 "ethograph[gui,audio,dandi]"` for a tool install.
 
 | Extra          | What it adds                                                        |
 |----------------|---------------------------------------------------------------------|
 | `gui`          | Full graphical interface (PyQtGraph, pygfx/pynaviz, neural tools)   |
 | `audio`        | Waveform, spectrogram, vocalisation analysis (`sounddevice` etc.)   |
-| `dandi`        | DANDI archive download client (heavy, opt-in)                       |
-| `proxy`        | Bundled ffmpeg for faster scrubbing in long videos (optional)       |
+| `dandi`        | Download client for the [DANDI archive](https://dandiarchive.org/)  |
+| `proxy`        | Bundled ffmpeg for faster scrubbing in long videos                  |
+| `model`        | Segmentation pipeline — model training (see below)                  |
 | `dev`          | Testing and linting tools                                            |
 | `docs`         | Documentation build dependencies                                    |
 
 ```{note}
-Linux users adding `audio` must first install the PortAudio system library
-**and the ALSA plugins**:
-`sudo apt install libportaudio2 libasound2-plugins`
+On Linux, `audio` also needs PortAudio and the ALSA plugins from the
+distribution — both are part of the one system-library line in
+{ref}`Linux: system libraries <linux-system-libraries>`. If playback stays
+silent afterwards, see
+{ref}`no-audio-device`.
 ```
 
-Combine extras with commas:
+### Faster scrubbing in long videos (`proxy`)
 
-```bash
-uv pip install "ethograph[gui,audio,dandi,dev,docs]"
+EthoGraph works **fully without ffmpeg** — every feature is available, video
+included. The only thing ffmpeg adds is *proxy generation*: a low-resolution
+copy that makes seeking through long, high-resolution recordings smoother.
+The `proxy` extra bundles a private ffmpeg binary (via `imageio-ffmpeg`) with
+no PATH setup; a system ffmpeg is picked up automatically, or point at one with
+the `ETHOGRAPH_FFMPEG` environment variable.
+
+```{note}
+The bundled ffmpeg has no NVENC, so GPU (`cuda`) proxy encoding falls back to
+software `libx264`. For NVENC, install ffmpeg from conda-forge
+(`conda install -c conda-forge ffmpeg`) or your system package manager.
 ```
-
 
 ## For developers
 
 To install latest development version in editable mode see {doc}`../community/contributing`.
 
 
-## Update the package
+## Segmentation pipeline (model training)
+
+The segmentation pipeline learns your
+curated state labels and predicts them back into the GUI. It is scripted,
+not a command line: one config becomes a `Project` with a method per stage.
+It needs PyTorch; install a build matching your GPU first, then the extra:
 
 ```bash
-uv pip install -U "ethograph[gui]"
-# With audio:
-uv pip install -U "ethograph[gui,audio]"
+uv pip install --torch-backend=auto torch torchvision # --torch-backend=auto for windows
+uv pip install "ethograph[model]"
 ```
 
-```{hint}
-If the update doesn't seem to work, try creating a fresh environment
-and reinstalling from scratch.
+```python
+import ethograph as eto
+
+eto.segment.architectures()         # lists the available models
 ```
+
+
+```{tip}
+Using `conda-forge` (`conda create -y -n ethograph -c conda-forge python=3.12`)
+can help here: it keeps all conda-installed packages on one channel, avoiding
+ABI conflicts between `defaults` and `conda-forge` builds of shared libraries
+that PyTorch/CUDA packages depend on.
+```
+s
 
 (target-keypoint-fill)=
 ## Keypoint labelling backends (optional)
@@ -300,50 +215,14 @@ video and fill the rest automatically.
 | **Optical flow** | Pyramidal Lucas-Kanade sparse tracking, run forward and backward across each gap[^lk] | Yes | Roughly real-time | CPU |
 | **PosePAL (CoTracker3 + refinement)** | A transformer point tracker[^cotracker] whose per-keypoint appearance features are first fitted to the frames you labelled[^posepal], then run forward and backward across each gap | Yes | A few minutes for the fit, once; seconds per fill after that | **GPU only** — CUDA or Apple Silicon |
 
-Spline and optical flow need **nothing extra**, and neither does the **Detect**
-tab, which reads AprilTag `tag36h11` markers and feeds them to whichever backend
-you fill with — OpenCV and `pupil-apriltags` both come with `ethograph[gui]`.
-
-Only PosePAL is a separate install — GPU only, and `--torch-backend=auto`
-matters since PyPI's Windows torch wheels are CPU-only:
+Spline and optical come with `ethograph[gui]`. PosePAL (GPU only) reequires a separate install:
 
 ```bash
 uv pip install --torch-backend=auto torch "cotracker @ git+https://github.com/facebookresearch/co-tracker.git@82e02e8029753ad4ef13cf06be7f4fc5facdda4d"
 ```
 
-```{seealso}
-This page covers *installing* the backends. Which one to reach for, how the
-labelling loop works, what the PosePAL fit costs and when to train a DeepLabCut
-detector instead are covered in {doc}`../advanced/keypoint_labelling/index`.
-```
 
-## Segmentation pipeline (model training)
 
-The {doc}`segmentation pipeline <../advanced/segment/index>` learns your
-curated state labels and predicts them back into the GUI. It is scripted,
-not a command line: one config becomes a `Project` with a method per stage.
-It needs PyTorch; install a build matching your GPU first, then the extra:
-
-```bash
-uv pip install --torch-backend=auto torch torchvision
-uv pip install "ethograph[model]"
-```
-
-```python
-import ethograph as eto
-
-eto.segment.architectures()         # lists the available models
-```
-
-`--torch-backend=auto` matters on Windows, where PyPI's default torch wheels
-are CPU-only. Training runs on CPU too, just slowly.
-
-```{tip}
-Using `conda-forge` (`conda create -y -n ethograph -c conda-forge python=3.12`)
-can help here: it keeps all conda-installed packages on one channel, avoiding
-ABI conflicts between `defaults` and `conda-forge` builds of shared libraries
-that PyTorch/CUDA packages depend on.
-```
 
 [^pchip]: Fritsch, F. N. & Carlson, R. E. (1980). [Monotone Piecewise Cubic Interpolation](https://doi.org/10.1137/0717021). *SIAM Journal on Numerical Analysis*, 17(2), 238–246. Implemented by [`scipy.interpolate.PchipInterpolator`](https://docs.scipy.org/doc/scipy/reference/generated/scipy.interpolate.PchipInterpolator.html).
 
