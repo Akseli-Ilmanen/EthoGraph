@@ -58,6 +58,7 @@ from __future__ import annotations
 
 import itertools
 import logging
+import os
 from pathlib import Path
 from typing import Any
 
@@ -65,7 +66,8 @@ import pandas as pd
 
 import ethograph as eto
 
-CONFIG = Path(r"C:\Users\aksel\Documents\Code\ethograph\data\model\project.yaml")
+#: The project config. Set BENCH_CONFIG to point at another machine's copy.
+CONFIG = Path(os.environ.get("BENCH_CONFIG") or Path(__file__).resolve().parent / "data" / "model" / "project.yaml")
 
 #: Append-only, one row per swept cell — what makes a sweep resumable.
 CELLS_FILE = CONFIG.with_name("bench_cells.tsv")
