@@ -55,10 +55,7 @@ predicting five classes costs barely more than predicting one.
 
    Ticking a feature's **d/dt** box adds its rate of change beside every column
    it produces (`np.gradient`: central differences, centred on the frame, so a
-   turn in the signal shows up at the frame it happened). The classifier sees
-   each tap of the window on its own and cannot difference them, so *how fast
-   is this changing* has to be handed to it as its own input — worth a tick
-   when the event is a change of speed or direction rather than a level.
+   turn in the signal shows up at the frame it happened). 
 4. **Tick the existing labels to read as inputs** (optional) — see
    {ref}`below <target-onset-model-label-inputs>`.
 5. **Set the parameters.** `Window size` is how much context the classifier
@@ -81,18 +78,8 @@ press **Add current session's events**.
 (target-onset-model-label-inputs)=
 ### Existing labels as inputs
 
-What a session already knows about *when* is often the strongest evidence
-there is: a peck rarely happens before the head has turned, a landing never
-before the approach. **3 — Existing labels as inputs** lets the classifier read
-those classes as ordinary input columns.
-
-Each class is one row, ticked like a feature; its children are the
-individuals, so ticking the class row is that class's "all individuals"
-toggle, and **Select all** / **Clear** do the same for the whole list. A
-single-individual session draws no children at all — there is nothing to
-choose. How a class is rendered follows its type in {doc}`mapping.txt
-<mapping>`, frozen into the model at creation so a later edit to the mapping
-cannot change the model's input layout:
+Besides behavioural features, you can also use existing (state/point) labels
+to predict new labels:
 
 * a **state** class becomes its **on/off indicator** — `1` inside every
   interval of that class, `0` outside. That is the whole of what a state says.
@@ -103,74 +90,12 @@ cannot change the model's input layout:
   readable from far away, so one column carries both *it is here* and *it was
   a while ago*.
 
-A class the trial does not carry renders as zeros, which is the honest reading
-— the column says "no such label here", exactly the state a trial is in when
-the model runs on it.
-
-```{important}
-**A class the model predicts cannot be one of its own inputs.** Its row is
-greyed out the moment you tick it as a target. At training the label is there
-and at inference it is not — prediction only ever runs on trials that lack the
-target — so such a column would mean opposite things on the two sides.
-```
-
-Predicted (`automated`) labels count as inputs like any other, so a model that
-reads a class you have not curated yet is learning from whatever the last run
-wrote. Curate first if that matters.
-
 ```{warning}
 **Every chosen feature must share one sampling rate.** Windows are
 index-based, so mixing a 30 Hz pose feature with a 44.1 kHz audio feature
 would silently misalign them. EthoGraph refuses instead — resample first, or
 pick features from one stream.
 ```
-
-### On disk
-
-```
-~/.ethograph/models/{name}/
-├── config.yaml                 # frozen: targets, features (+ d/dt), label inputs, window, tolerance
-├── model.joblib                # one trained classifier per target, and a copy
-│                               #   of the config they were fitted with
-└── train_data/
-    └── {session}-{hash}/
-        ├── meta.yaml           # source path, columns, trial count (provenance)
-        └── trial_7.npz         # time, features, the events' times
-```
-
-The features are stored, not the source data — training data from a session
-survives that session moving or going offline.
-
-**Predicting reads `model.joblib` and nothing else.** The bundle carries its
-own copy of the config because that is the layout the classifiers were fitted
-on: `config.yaml` is what *Train* reads next time, and `train_data/` is what it
-fits from. Neither is consulted at prediction time — a trained model is
-self-contained, and `train_data/` can be deleted once you are sure you will not
-extend or retrain that model (it is the bulk of the folder). Editing
-`config.yaml` by hand therefore changes nothing about what a trained model
-reads, and the Predict dialog says so when the two have drifted apart.
-
-### Using one animal's model on another animal
-
-A classifier is fitted on numbers. The individual in `config.yaml` is only the
-key that selects those numbers out of a session, so a model trained on one
-animal runs on another's — same rig, same feature layout — with nothing copied
-and nothing retrained: **pick the model, pick the other individual, predict.**
-The model's individual pinning is re-pointed at whoever the *Individual* combo
-names, giving the classifier the same columns in the same order from the other
-animal's data, and the events are written for that individual too. Its
-{ref}`label inputs <target-onset-model-label-inputs>` are re-pointed by the
-same rule, so a model that times a peck off the approach reads *this* animal's
-approach. The dialog says which animal the model was trained reading.
-
-A model whose features read *several* individuals at once — an actor and a
-partner — is a different thing, and it is left alone: asked for either animal
-it reads, it keeps reading both, and the combo only decides whose labels the
-events are. It is refused only for an animal it does **not** read, because
-collapsing two columns onto one would hand the classifier the same data in the
-slots it learned as two different animals. Train a model on that session
-instead, or build the features so they carry no individual at all — a distance
-or an egocentric feature travels between animals for free.
 
 ---
 
@@ -190,13 +115,6 @@ never touched:
   filters of its own; it says how many trials it will run over, read off the
   table.
 
-Predictions land in memory like any other label, stamped
-`labeling_method = automated` — they draw dotted on the plots until you
-{doc}`curate <curation>` them, and a trial holding one stays red in the trial
-list. **Review predictions…** at the bottom of the dialog opens the
-{ref}`label grid view <target-onset-model-confidence>` on exactly what the run
-just wrote — those classes, those trials — so you can check the video frame at
-each one and either click through to fix it or mark it curated.
 
 ---
 
@@ -212,10 +130,7 @@ axis. The peak's frame is where the label sits, so the number and the label
 point at the same place on the same curve.
 
 Set a threshold by looking: open a few reviews, see what a good curve peaks at
-and what a bad one peaks at, and put the threshold between them. Training
-separately reports what the model scored on trials it did not see (*peck: 6/8
-within 0.05 s*) — a verdict on the model, not on any one label, and folded
-into no confidence.
+and what a bad one peaks at, and put the threshold between them.
 
 ### Reviewing by confidence
 

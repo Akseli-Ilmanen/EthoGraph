@@ -50,8 +50,8 @@
     <link rel="canonical" href="https://Akseli-Ilmanen.github.io/ethograph/advanced/labels/curation.html" />
     <link rel="index" title="Index" href="../../genindex.html" />
     <link rel="search" title="Search" href="../../search.html" />
-    <link rel="next" title="Curation workflows" href="workflows.html" />
-    <link rel="prev" title="Labelling in the GUI" href="labelling_gui.html" />
+    <link rel="next" title="Predicting point events (LightGBM)" href="onset_model.html" />
+    <link rel="prev" title="Exporting labels" href="exporting.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="" />
@@ -369,13 +369,13 @@
 <li class="toctree-l1"><a class="reference internal" href="../time_slider_trial_session.html">Time slider &amp; trial/session</a></li>
 <li class="toctree-l1 current active has-children"><a class="reference internal" href="index.html">Labels</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
 <li class="toctree-l2"><a class="reference internal" href="labelling_gui.html">Labelling in the GUI</a></li>
-<li class="toctree-l2 current active"><a class="current reference internal" href="#">Curating labels</a></li>
-<li class="toctree-l2"><a class="reference internal" href="workflows.html">Curation workflows</a></li>
-<li class="toctree-l2"><a class="reference internal" href="onset_model.html">Predicting point events (LightGBM)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="mapping.html">Label mapping (<code class="docutils literal notranslate"><span class="pre">mapping.txt</span></code>)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="branches.html">Label branches</a></li>
 <li class="toctree-l2"><a class="reference internal" href="importing.html">Importing labels</a></li>
 <li class="toctree-l2"><a class="reference internal" href="exporting.html">Exporting labels</a></li>
+<li class="toctree-l2 current active"><a class="current reference internal" href="#">Curating labels</a></li>
+<li class="toctree-l2"><a class="reference internal" href="onset_model.html">Predicting point events (LightGBM)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="workflows.html">Curation workflows</a></li>
 </ul>
 </details></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="../changepoints/index.html">Changepoints</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
@@ -595,85 +595,7 @@ than either alone.</p>
 </section>
 <section id="the-grids">
 <span id="target-curation-grids"></span><h2>The grids<a class="headerlink" href="#the-grids" title="Link to this heading">#</a></h2>
-<p>Two buttons in the section open review grids on the scope; both come with the
-same <strong>mode</strong> combo and a <strong>Done</strong> button. Their <em>Setup</em> tab lists the labels
-in scope for clarity but cannot change them — the scope area is the one place
-labels are chosen, so close the grid, drag other rows in, and open it again.</p>
-<p>Setup’s <strong>Labeling method</strong> combo picks which labels of those classes the grid
-is about: <em>All labels</em>, <em>Automated only</em> — a model’s output that nobody has
-looked at, which is what a prediction review is for — or <em>Manual or curated</em>,
-for checking your own work. Manual and curated are one choice on purpose: both
-mean a human vouched for the label, and which of the two it is says only how
-it got there. Like the rest of the grid setup the choice is remembered across
-sessions, and a <a class="reference internal" href="workflows.html"><span class="doc">workflow</span></a> step sets it per grid.</p>
-<p>Both grids take a <strong>Sort</strong>: by trial (the default in the label grid) or by
-<strong>confidence</strong>, lowest or highest first. Sorting by confidence is the point of
-having it — it puts every doubtful label on the first screens instead of
-scattering them through the trials, so a model review starts where it should.
-The video grid adds <strong>duration</strong> (its default), which keeps clips of a similar
-length together so they end around the same time when they play. The choice is
-remembered, and reordering never moves a verdict: clicks are keyed by label,
-not by position.</p>
-<p><strong>Label grid view…</strong> shows the video frame at every boundary in scope — one
-tile per point event, a start and an end tile per state event, per camera —
-titled with label, trial, time, confidence and method, with <strong>Flag confidence
-below</strong> outlining doubtful tiles in red and <strong>Histogram…</strong> showing where the
-scores pile up (see <a class="reference internal" href="onset_model.html#target-onset-model-confidence"><span class="std std-ref">Confidence</span></a>). The grid exports to
-a paginated PDF.</p>
-<p>A <strong>double click</strong> always jumps the main GUI to that trial and time — in
-frame-by-frame mode, straight into the review at that boundary — whichever
-mode the grid is in, and it leaves the verdicts exactly as they were. So
-judging a batch and going to look at one of its labels are not two modes to
-switch between: click to judge, double-click to go and see.</p>
-<p>A <strong>single</strong> click is a verdict, and the mode says which:</p>
-<ul class="simple">
-<li><p><em>Click = curated</em> — click the tiles that are right (green); <strong>Done</strong> curates
-those labels.</p></li>
-<li><p><em>Click = uncurated, rest = curated</em> — for a batch that is mostly right:
-click only the bad ones (orange), <strong>Mark low-confidence as uncurated</strong>
-pre-clicks what the threshold outlines (it exists only in this mode — a low
-score is a reason to doubt a label, never to approve it), and <strong>Done</strong>
-curates every other label.</p></li>
-</ul>
-<p>When the scope holds more than one label class the grid gets a <strong>Label</strong>
-combo, which narrows it to one class at a time (each choice says how many
-tiles it has). It narrows the <em>operations</em> too, which is the point of it:
-<strong>Mark low-confidence as uncurated</strong>, <strong>Done</strong> and the PDF apply to the class
-on screen and to no other — so “rest = curated” means the rest of <em>that</em>
-class, and a scope of several classes is curated one class at a time without
-reopening the dialog. Clicks on a class you have filtered away are simply out
-of <strong>Done</strong>’s reach until you show it again.</p>
-<p><strong>Video grid…</strong> plays the labels instead of freezing them — a state event’s
-whole span, a point event’s window (<strong>Window around point events</strong>) with a
-red marker in the corner on the frame the event falls on. It is built for
-comparison: only clips of <strong>one label class</strong> are on screen at a time
-(<strong>Previous / Next label</strong> switch the class, greyed out when there is only
-one), they are <strong>sorted by duration</strong> so clips of similar length share a
-screen (<strong>Clips on screen</strong> sets how many; <strong>Previous / Next clips</strong> step
-through the rest), and the view never scrolls — one <strong>Play</strong> button and one
-slider spanning the longest clip on screen drive every tile at once, played
-once and stopped, shorter clips holding their last frame; <strong>←/→</strong> pause and
-step every tile one frame back or forward. The <strong>speed</strong> field
-next to Play opens at the GUI’s current playback speed and can be changed
-for the grid alone, as a percentage of real time. The layout choices —
-window around point events (0.5 s by default), clips on screen, columns —
-are remembered across sessions and datasets, like the label grid’s column
-count. Each tile’s caption says where in the
-trial the label sits (<code class="docutils literal notranslate"><span class="pre">at</span> <span class="pre">0.03</span> <span class="pre">s</span></code> for a point event, <code class="docutils literal notranslate"><span class="pre">1.20–1.85</span> <span class="pre">s</span></code> for a
-state) and whether the clip had to be cut at the video’s start or end — so a
-point event that seems to show “the start of the trial” can be told apart
-from one whose window was clipped. Clips decode a screenful at a time at a
-reduced size, so opening long events takes a moment; while a screenful is
-showing, the next one is already decoding in the background, so stepping on
-is quick. Clicks mean the same as in the label grid.</p>
-</section>
-<section id="doing-all-of-that-again-next-session">
-<h2>Doing all of that again next session<a class="headerlink" href="#doing-all-of-that-again-next-session" title="Link to this heading">#</a></h2>
-<p>Scope, mode, grid layout and review window are settings you will set the same
-way every time you review the same behaviour. <strong>Workflows…</strong> at the bottom of
-the section records that whole routine — filters, prediction, scope, grid,
-review, save — and replays it in one press. See
-<a class="reference internal" href="workflows.html"><span class="doc">Curation workflows</span></a>.</p>
+<p>TODO: Add visual guide.</p>
 </section>
 </section>
 
@@ -688,20 +610,20 @@ review, save — and replays it in one press. See
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="labelling_gui.html"
+       href="exporting.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">Labelling in the GUI</p>
+        <p class="prev-next-title">Exporting labels</p>
       </div>
     </a>
     <a class="right-next"
-       href="workflows.html"
+       href="onset_model.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">Curation workflows</p>
+        <p class="prev-next-title">Predicting point events (LightGBM)</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -728,7 +650,6 @@ review, save — and replays it in one press. See
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#scope-which-labels">Scope: which labels</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#modes-how-a-label-gets-curated">Modes: how a label gets curated</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#the-grids">The grids</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#doing-all-of-that-again-next-session">Doing all of that again next session</a></li>
 </ul>
   </nav></div>
 

@@ -50,8 +50,8 @@
     <link rel="canonical" href="https://Akseli-Ilmanen.github.io/ethograph/advanced/labels/workflows.html" />
     <link rel="index" title="Index" href="../../genindex.html" />
     <link rel="search" title="Search" href="../../search.html" />
-    <link rel="next" title="Predicting point events (LightGBM)" href="onset_model.html" />
-    <link rel="prev" title="Curating labels" href="curation.html" />
+    <link rel="next" title="Changepoints" href="../changepoints/index.html" />
+    <link rel="prev" title="Predicting point events (LightGBM)" href="onset_model.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="" />
@@ -369,13 +369,13 @@
 <li class="toctree-l1"><a class="reference internal" href="../time_slider_trial_session.html">Time slider &amp; trial/session</a></li>
 <li class="toctree-l1 current active has-children"><a class="reference internal" href="index.html">Labels</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
 <li class="toctree-l2"><a class="reference internal" href="labelling_gui.html">Labelling in the GUI</a></li>
-<li class="toctree-l2"><a class="reference internal" href="curation.html">Curating labels</a></li>
-<li class="toctree-l2 current active"><a class="current reference internal" href="#">Curation workflows</a></li>
-<li class="toctree-l2"><a class="reference internal" href="onset_model.html">Predicting point events (LightGBM)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="mapping.html">Label mapping (<code class="docutils literal notranslate"><span class="pre">mapping.txt</span></code>)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="branches.html">Label branches</a></li>
 <li class="toctree-l2"><a class="reference internal" href="importing.html">Importing labels</a></li>
 <li class="toctree-l2"><a class="reference internal" href="exporting.html">Exporting labels</a></li>
+<li class="toctree-l2"><a class="reference internal" href="curation.html">Curating labels</a></li>
+<li class="toctree-l2"><a class="reference internal" href="onset_model.html">Predicting point events (LightGBM)</a></li>
+<li class="toctree-l2 current active"><a class="current reference internal" href="#">Curation workflows</a></li>
 </ul>
 </details></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="../changepoints/index.html">Changepoints</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
@@ -570,22 +570,6 @@ second time over the same session simply falls through it.</p>
 </div>
 </section>
 </section>
-<section id="cameras">
-<h2>Cameras<a class="headerlink" href="#cameras" title="Link to this heading">#</a></h2>
-<p>Both grid steps carry their own <strong>Cameras</strong> list — each grid shows one tile
-per (label, camera), and which view a behaviour reads best from is part of the
-routine, not a passing preference. Tick the cameras that step should use.</p>
-<p>Like the trial filters, cameras are stored <strong>by name</strong>, so the step travels
-between sessions: a camera this dataset does not have is reported in the run
-log and skipped. Leave the list empty and the grid ticks cameras the way it
-would on its own — every camera, or the last selection you made there.</p>
-<p>A camera cropped in the GUI keeps its crop in the grid, so cropping a view
-first is how you zoom every tile onto the region of interest.</p>
-<p>Both grid steps also carry a <strong>Labeling method</strong> choice — <em>All labels</em>,
-<em>Manual or curated</em>, or <em>Automated only</em>. A prediction-review routine sets it
-to <em>Automated only</em>, so the grid holds what the model just wrote and nothing
-a human already vouched for (see <a class="reference internal" href="curation.html#target-curation-grids"><span class="std std-ref">the grids</span></a>).</p>
-</section>
 <section id="filters">
 <h2>Filters<a class="headerlink" href="#filters" title="Link to this heading">#</a></h2>
 <p>A <strong>Filter trials</strong> step stores its conditions by <em>column name</em>, not by column
@@ -625,20 +609,20 @@ trials table loaded — stops the workflow and says why.</p>
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="curation.html"
+       href="onset_model.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">Curating labels</p>
+        <p class="prev-next-title">Predicting point events (LightGBM)</p>
       </div>
     </a>
     <a class="right-next"
-       href="onset_model.html"
+       href="../changepoints/index.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">Predicting point events (LightGBM)</p>
+        <p class="prev-next-title">Changepoints</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -667,7 +651,6 @@ trials table loaded — stops the workflow and says why.</p>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#steps-that-wait-for-you">Steps that wait for you</a></li>
 </ul>
 </li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#cameras">Cameras</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#filters">Filters</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#running">Running</a></li>
 </ul>

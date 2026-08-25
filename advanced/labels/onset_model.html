@@ -50,8 +50,8 @@
     <link rel="canonical" href="https://Akseli-Ilmanen.github.io/ethograph/advanced/labels/onset_model.html" />
     <link rel="index" title="Index" href="../../genindex.html" />
     <link rel="search" title="Search" href="../../search.html" />
-    <link rel="next" title="Label mapping (mapping.txt)" href="mapping.html" />
-    <link rel="prev" title="Curation workflows" href="workflows.html" />
+    <link rel="next" title="Curation workflows" href="workflows.html" />
+    <link rel="prev" title="Curating labels" href="curation.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="" />
@@ -369,13 +369,13 @@
 <li class="toctree-l1"><a class="reference internal" href="../time_slider_trial_session.html">Time slider &amp; trial/session</a></li>
 <li class="toctree-l1 current active has-children"><a class="reference internal" href="index.html">Labels</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
 <li class="toctree-l2"><a class="reference internal" href="labelling_gui.html">Labelling in the GUI</a></li>
-<li class="toctree-l2"><a class="reference internal" href="curation.html">Curating labels</a></li>
-<li class="toctree-l2"><a class="reference internal" href="workflows.html">Curation workflows</a></li>
-<li class="toctree-l2 current active"><a class="current reference internal" href="#">Predicting point events (LightGBM)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="mapping.html">Label mapping (<code class="docutils literal notranslate"><span class="pre">mapping.txt</span></code>)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="branches.html">Label branches</a></li>
 <li class="toctree-l2"><a class="reference internal" href="importing.html">Importing labels</a></li>
 <li class="toctree-l2"><a class="reference internal" href="exporting.html">Exporting labels</a></li>
+<li class="toctree-l2"><a class="reference internal" href="curation.html">Curating labels</a></li>
+<li class="toctree-l2 current active"><a class="current reference internal" href="#">Predicting point events (LightGBM)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="workflows.html">Curation workflows</a></li>
 </ul>
 </details></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="../changepoints/index.html">Changepoints</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
@@ -511,10 +511,7 @@ frozen list <em>is</em> the model’s input layout, which is what lets the model
 on another session.</p>
 <p>Ticking a feature’s <strong>d/dt</strong> box adds its rate of change beside every column
 it produces (<code class="docutils literal notranslate"><span class="pre">np.gradient</span></code>: central differences, centred on the frame, so a
-turn in the signal shows up at the frame it happened). The classifier sees
-each tap of the window on its own and cannot difference them, so <em>how fast
-is this changing</em> has to be handed to it as its own input — worth a tick
-when the event is a change of speed or direction rather than a level.</p>
+turn in the signal shows up at the frame it happened).</p>
 </li>
 <li><p><strong>Tick the existing labels to read as inputs</strong> (optional) — see
 <a class="reference internal" href="#target-onset-model-label-inputs"><span class="std std-ref">below</span></a>.</p></li>
@@ -535,16 +532,8 @@ new model. To add more sessions, open the dialog there, pick the model, and
 press <strong>Add current session’s events</strong>.</p>
 <section id="existing-labels-as-inputs">
 <span id="target-onset-model-label-inputs"></span><h3>Existing labels as inputs<a class="headerlink" href="#existing-labels-as-inputs" title="Link to this heading">#</a></h3>
-<p>What a session already knows about <em>when</em> is often the strongest evidence
-there is: a peck rarely happens before the head has turned, a landing never
-before the approach. <strong>3 — Existing labels as inputs</strong> lets the classifier read
-those classes as ordinary input columns.</p>
-<p>Each class is one row, ticked like a feature; its children are the
-individuals, so ticking the class row is that class’s “all individuals”
-toggle, and <strong>Select all</strong> / <strong>Clear</strong> do the same for the whole list. A
-single-individual session draws no children at all — there is nothing to
-choose. How a class is rendered follows its type in <a class="reference internal" href="mapping.html"><span class="doc">mapping.txt</span></a>, frozen into the model at creation so a later edit to the mapping
-cannot change the model’s input layout:</p>
+<p>Besides behavioural features, you can also use existing (state/point) labels
+to predict new labels:</p>
 <ul class="simple">
 <li><p>a <strong>state</strong> class becomes its <strong>on/off indicator</strong> — <code class="docutils literal notranslate"><span class="pre">1</span></code> inside every
 interval of that class, <code class="docutils literal notranslate"><span class="pre">0</span></code> outside. That is the whole of what a state says.</p></li>
@@ -555,19 +544,6 @@ the narrow peak points straight at the moment while the long tails stay
 readable from far away, so one column carries both <em>it is here</em> and <em>it was
 a while ago</em>.</p></li>
 </ul>
-<p>A class the trial does not carry renders as zeros, which is the honest reading
-— the column says “no such label here”, exactly the state a trial is in when
-the model runs on it.</p>
-<div class="admonition important">
-<p class="admonition-title">Important</p>
-<p><strong>A class the model predicts cannot be one of its own inputs.</strong> Its row is
-greyed out the moment you tick it as a target. At training the label is there
-and at inference it is not — prediction only ever runs on trials that lack the
-target — so such a column would mean opposite things on the two sides.</p>
-</div>
-<p>Predicted (<code class="docutils literal notranslate"><span class="pre">automated</span></code>) labels count as inputs like any other, so a model that
-reads a class you have not curated yet is learning from whatever the last run
-wrote. Curate first if that matters.</p>
 <div class="admonition warning">
 <p class="admonition-title">Warning</p>
 <p><strong>Every chosen feature must share one sampling rate.</strong> Windows are
@@ -575,50 +551,6 @@ index-based, so mixing a 30 Hz pose feature with a 44.1 kHz audio feature
 would silently misalign them. EthoGraph refuses instead — resample first, or
 pick features from one stream.</p>
 </div>
-</section>
-<section id="on-disk">
-<h3>On disk<a class="headerlink" href="#on-disk" title="Link to this heading">#</a></h3>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>~/.ethograph/models/{name}/
-├── config.yaml                 # frozen: targets, features (+ d/dt), label inputs, window, tolerance
-├── model.joblib                # one trained classifier per target, and a copy
-│                               #   of the config they were fitted with
-└── train_data/
-    └── {session}-{hash}/
-        ├── meta.yaml           # source path, columns, trial count (provenance)
-        └── trial_7.npz         # time, features, the events' times
-</pre></div>
-</div>
-<p>The features are stored, not the source data — training data from a session
-survives that session moving or going offline.</p>
-<p><strong>Predicting reads <code class="docutils literal notranslate"><span class="pre">model.joblib</span></code> and nothing else.</strong> The bundle carries its
-own copy of the config because that is the layout the classifiers were fitted
-on: <code class="docutils literal notranslate"><span class="pre">config.yaml</span></code> is what <em>Train</em> reads next time, and <code class="docutils literal notranslate"><span class="pre">train_data/</span></code> is what it
-fits from. Neither is consulted at prediction time — a trained model is
-self-contained, and <code class="docutils literal notranslate"><span class="pre">train_data/</span></code> can be deleted once you are sure you will not
-extend or retrain that model (it is the bulk of the folder). Editing
-<code class="docutils literal notranslate"><span class="pre">config.yaml</span></code> by hand therefore changes nothing about what a trained model
-reads, and the Predict dialog says so when the two have drifted apart.</p>
-</section>
-<section id="using-one-animals-model-on-another-animal">
-<h3>Using one animal’s model on another animal<a class="headerlink" href="#using-one-animals-model-on-another-animal" title="Link to this heading">#</a></h3>
-<p>A classifier is fitted on numbers. The individual in <code class="docutils literal notranslate"><span class="pre">config.yaml</span></code> is only the
-key that selects those numbers out of a session, so a model trained on one
-animal runs on another’s — same rig, same feature layout — with nothing copied
-and nothing retrained: <strong>pick the model, pick the other individual, predict.</strong>
-The model’s individual pinning is re-pointed at whoever the <em>Individual</em> combo
-names, giving the classifier the same columns in the same order from the other
-animal’s data, and the events are written for that individual too. Its
-<a class="reference internal" href="#target-onset-model-label-inputs"><span class="std std-ref">label inputs</span></a> are re-pointed by the
-same rule, so a model that times a peck off the approach reads <em>this</em> animal’s
-approach. The dialog says which animal the model was trained reading.</p>
-<p>A model whose features read <em>several</em> individuals at once — an actor and a
-partner — is a different thing, and it is left alone: asked for either animal
-it reads, it keeps reading both, and the combo only decides whose labels the
-events are. It is refused only for an animal it does <strong>not</strong> read, because
-collapsing two columns onto one would hand the classifier the same data in the
-slots it learned as two different animals. Train a model on that session
-instead, or build the features so they carry no individual at all — a distance
-or an egocentric feature travels between animals for free.</p>
 </section>
 </section>
 <hr class="docutils" />
@@ -638,13 +570,6 @@ trains on and predicts into wild-type trials only. The dialog has no
 filters of its own; it says how many trials it will run over, read off the
 table.</p></li>
 </ul>
-<p>Predictions land in memory like any other label, stamped
-<code class="docutils literal notranslate"><span class="pre">labeling_method</span> <span class="pre">=</span> <span class="pre">automated</span></code> — they draw dotted on the plots until you
-<a class="reference internal" href="curation.html"><span class="doc">curate</span></a> them, and a trial holding one stays red in the trial
-list. <strong>Review predictions…</strong> at the bottom of the dialog opens the
-<a class="reference internal" href="#target-onset-model-confidence"><span class="std std-ref">label grid view</span></a> on exactly what the run
-just wrote — those classes, those trials — so you can check the video frame at
-each one and either click through to fix it or mark it curated.</p>
 <hr class="docutils" />
 </section>
 <section id="confidence">
@@ -657,10 +582,7 @@ is on, one per class in the class’s own colour, against a fixed 0–1 right-ha
 axis. The peak’s frame is where the label sits, so the number and the label
 point at the same place on the same curve.</p>
 <p>Set a threshold by looking: open a few reviews, see what a good curve peaks at
-and what a bad one peaks at, and put the threshold between them. Training
-separately reports what the model scored on trials it did not see (<em>peck: 6/8
-within 0.05 s</em>) — a verdict on the model, not on any one label, and folded
-into no confidence.</p>
+and what a bad one peaks at, and put the threshold between them.</p>
 <section id="reviewing-by-confidence">
 <h3>Reviewing by confidence<a class="headerlink" href="#reviewing-by-confidence" title="Link to this heading">#</a></h3>
 <p><strong>Label grid view…</strong> (Labels tab ▸ Curation) puts each label’s confidence and
@@ -690,20 +612,20 @@ right frame, <code class="docutils literal notranslate"><span class="pre">Backsp
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="workflows.html"
+       href="curation.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">Curation workflows</p>
+        <p class="prev-next-title">Curating labels</p>
       </div>
     </a>
     <a class="right-next"
-       href="mapping.html"
+       href="workflows.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">Label mapping (<code class="docutils literal notranslate"><span class="pre">mapping.txt</span></code>)</p>
+        <p class="prev-next-title">Curation workflows</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -729,8 +651,6 @@ right frame, <code class="docutils literal notranslate"><span class="pre">Backsp
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#how-it-works">How it works</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#training">Training</a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#existing-labels-as-inputs">Existing labels as inputs</a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#on-disk">On disk</a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#using-one-animals-model-on-another-animal">Using one animal’s model on another animal</a></li>
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#predicting">Predicting</a></li>
