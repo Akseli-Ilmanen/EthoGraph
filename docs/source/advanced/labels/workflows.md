@@ -90,24 +90,6 @@ already curated) is skipped rather than treated as an error — a workflow run a
 second time over the same session simply falls through it.
 ```
 
-## Cameras
-
-Both grid steps carry their own **Cameras** list — each grid shows one tile
-per (label, camera), and which view a behaviour reads best from is part of the
-routine, not a passing preference. Tick the cameras that step should use.
-
-Like the trial filters, cameras are stored **by name**, so the step travels
-between sessions: a camera this dataset does not have is reported in the run
-log and skipped. Leave the list empty and the grid ticks cameras the way it
-would on its own — every camera, or the last selection you made there.
-
-A camera cropped in the GUI keeps its crop in the grid, so cropping a view
-first is how you zoom every tile onto the region of interest.
-
-Both grid steps also carry a **Labeling method** choice — *All labels*,
-*Manual or curated*, or *Automated only*. A prediction-review routine sets it
-to *Automated only*, so the grid holds what the model just wrote and nothing
-a human already vouched for (see {ref}`the grids <target-curation-grids>`).
 
 ## Filters
 
