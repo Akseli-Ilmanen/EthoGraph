@@ -299,6 +299,17 @@ class AppStateSpec:
         "nwb_pose_keys": (list[str], [], True, SCOPE_LOCAL),
         "pose_hide_threshold": (float, 0.9, True),
         "pose_show_skeleton": (bool, False, True),
+        # Pose overlay design: how the markers, their text labels and the
+        # skeleton edges LOOK. A viewing habit, so SCOPE_GLOBAL — it carries
+        # from one dataset to the next.
+        "pose_show_keypoints": (bool, True, True),
+        "pose_show_text": (bool, False, True),
+        "pose_point_size": (float, 10.0, True),
+        "pose_text_size": (float, 12.0, True),
+        "pose_skeleton_width": (float, 2.0, True),
+        # WHICH keypoints are drawn, by name — SCOPE_LOCAL, since the keypoint
+        # schema belongs to one dataset and a name means nothing in the next.
+        "pose_hidden_keypoints": (list[str], [], True, SCOPE_LOCAL),
         # Which axis of the pose hierarchy colour encodes: "keypoint" (one hue
         # per body part, shared across animals) or "individual" (one hue per
         # animal, shared across its keypoints) — SLEAP's toggle. Read by the

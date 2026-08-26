@@ -46,7 +46,7 @@ from .app_constants import (
 from .audio_player import AudioPlayer
 from .label_drawing_mixin import LabelDrawingMixin
 from .plots_audiotrace import AudioTracePlot
-from .plots_base import ThrottleDebounce
+from .plots_base import ThrottleDebounce, right_gutter_width
 from .plots_console import ConsolePanel
 from .plots_ephystrace import EphysTracePlot
 from .plots_heatmap import HeatmapPlot
@@ -982,8 +982,11 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
             decimal places pushes the plot area right), so panels start at
             different x positions and, for the same time range, have different
             pixels-per-second;
-          * a colorbar (spectrogram, heatmap) reserves space on the right that
-            plain line/audio panels don't, so their right edges differ.
+          * a colorbar (heatmap) or a right axis (confidence / envelope scale)
+            takes space on the right that plain panels don't, so their right
+            edges differ. Every panel therefore keeps a fixed right gutter of
+            the colorbar's footprint (``PANEL_RIGHT_GUTTER_PX``), trimmed by
+            whatever its right axis already takes.
 
         Deferred (coalesced, next tick) because axis widths are only accurate
         after the pending content render + paint has updated the tick text.
@@ -999,11 +1002,11 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         panels = list(self._visible_plots())
         if len(panels) < 2:
             for plot in panels:
-                self._clear_right_reserve(plot)
                 plot.plotItem.getAxis("left").setWidth()
                 if getattr(plot, "_align_left_forced", False):
                     plot.plotItem.hideAxis("left")
                     plot._align_left_forced = False
+            QTimer.singleShot(0, self._align_axes_right)
             return
 
         naturals = []
@@ -1026,45 +1029,10 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         QTimer.singleShot(0, self._align_axes_right)
 
     def _align_axes_right(self) -> None:
-        """Pass 2: reserve matching right-side space so colorbar panels and
-        plain panels share the same right inset."""
-        panels = list(self._visible_plots())
-        if len(panels) < 2:
-            return
-
-        for plot in panels:
-            self._clear_right_reserve(plot)
-
-        insets = {plot: self._right_inset(plot) for plot in panels}
-        target = max(insets.values())
-        for plot in panels:
-            deficit = target - insets[plot]
-            if deficit < 1.0:
-                continue
-            axis = plot.plotItem.getAxis("right")
-            if axis.isVisible():
-                # An overlay (confidence/envelope scale) already owns the right
-                # axis — leave it; the panel still aligns on the left.
-                continue
-            plot.plotItem.showAxis("right")
-            axis.setStyle(showValues=False)
-            axis.setWidth(int(round(deficit)))
-            plot._align_right_reserved = True
-
-    def _clear_right_reserve(self, plot) -> None:
-        if getattr(plot, "_align_right_reserved", False):
-            axis = plot.plotItem.getAxis("right")
-            axis.setWidth()
-            plot.plotItem.hideAxis("right")
-            plot._align_right_reserved = False
-
-    @staticmethod
-    def _right_inset(plot) -> float:
-        """Pixels between the plotting rectangle's right edge and the widget's
-        right edge (captures a colorbar / right axis)."""
-        vb = plot.plotItem.getViewBox()
-        scene_rect = vb.mapRectToScene(vb.boundingRect())
-        return max(0.0, plot.width() - scene_rect.right())
+        """Pass 2: every panel ends its plotting rectangle ``PANEL_RIGHT_GUTTER_PX``
+        from its right edge — the gutter, less what a visible right axis takes."""
+        for plot in self._visible_plots():
+            plot.reserve_right_gutter(right_gutter_width(plot))
 
     def _setup_xlinks_from_visible(self, visible_names: list[str] | None = None):
         """Keep all panels' x-ranges in sync via explicit setXRange.

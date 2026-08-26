@@ -23,7 +23,7 @@ _GRID_COLS = 3
 
 # Short labels shown on the buttons; order must match add_widget call order in
 # widgets_meta.py.
-_SHORT_LABELS = ["Data", "Labels", "Nav"]
+_SHORT_LABELS = ["Data", "Labels", "Trials"]
 
 _STATUS_CHARS = set("✅❌🎯⭕")
 

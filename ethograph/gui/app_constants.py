@@ -89,6 +89,18 @@ MEDIA_VIEW_MIN_WIDTH = 60
 MEDIA_VIEW_MIN_HEIGHT = 40
 DOCK_WIDGET_BOTTOM_MARGIN = 50
 
+# Right gutter of every stacked panel (plots_base.BasePlot.reserve_right_gutter).
+# Each panel keeps this much empty space right of its plotting rectangle —
+# exactly the footprint of a heatmap's colorbar — so a colorbar panel and a
+# plain panel end their time axes on the same pixel whatever the colorbar's
+# tick labels say. A line plot parks its legend there. The numbers are
+# pyqtgraph's own: a ColorBarItem inserted into a PlotItem fixes a 5 px spacer
+# column and lays itself out as COLORBAR_WIDTH_PX of bar + a 45 px axis + its
+# frame. Covered by tests/test_unit/test_panel_gutter.py.
+COLORBAR_WIDTH_PX = 15
+PANEL_RIGHT_SPACER_PX = 5
+PANEL_RIGHT_GUTTER_PX = 62
+
 # Layout spacing (widgets_data.py, widgets_labels.py)
 DEFAULT_LAYOUT_SPACING = 2
 DEFAULT_LAYOUT_MARGIN = 2

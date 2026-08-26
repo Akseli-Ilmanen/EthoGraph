@@ -400,11 +400,11 @@ class DataPanel(QWidget):
         # Points row
         grid.addWidget(QLabel("Points"), 1, 0)
         self.pose_show_keypoints_checkbox = QCheckBox()
-        self.pose_show_keypoints_checkbox.setChecked(True)
+        self.pose_show_keypoints_checkbox.setChecked(self.app_state.pose_show_keypoints)
         self.pose_show_keypoints_checkbox.setToolTip("Show/hide keypoint markers (skeleton edges are unaffected)")
         grid.addWidget(self.pose_show_keypoints_checkbox, 1, 1)
         self.pose_show_text_checkbox = QCheckBox()
-        self.pose_show_text_checkbox.setChecked(False)
+        self.pose_show_text_checkbox.setChecked(self.app_state.pose_show_text)
         self.pose_show_text_checkbox.setToolTip("Show keypoint/individual labels on pose markers")
         grid.addWidget(self.pose_show_text_checkbox, 1, 2)
         self.pose_point_size_spin = QDoubleSpinBox()
@@ -413,7 +413,7 @@ class DataPanel(QWidget):
         self.pose_point_size_spin.setSingleStep(1.0)
         self.pose_point_size_spin.setDecimals(0)
         self.pose_point_size_spin.setFixedWidth(55)
-        self.pose_point_size_spin.setValue(10.0)
+        self.pose_point_size_spin.setValue(self.app_state.pose_point_size)
         grid.addWidget(self.pose_point_size_spin, 1, 3)
         points_color_cell = QHBoxLayout()
         points_color_cell.setSpacing(2)
@@ -445,7 +445,7 @@ class DataPanel(QWidget):
         self.pose_skeleton_width_spin.setSingleStep(0.5)
         self.pose_skeleton_width_spin.setDecimals(1)
         self.pose_skeleton_width_spin.setFixedWidth(55)
-        self.pose_skeleton_width_spin.setValue(2.0)
+        self.pose_skeleton_width_spin.setValue(self.app_state.pose_skeleton_width)
         grid.addWidget(self.pose_skeleton_width_spin, 2, 3)
         skeleton_color_cell = QHBoxLayout()
         skeleton_color_cell.setSpacing(2)
@@ -492,7 +492,7 @@ class DataPanel(QWidget):
         self.pose_text_size_spin.setSingleStep(1.0)
         self.pose_text_size_spin.setDecimals(0)
         self.pose_text_size_spin.setFixedWidth(55)
-        self.pose_text_size_spin.setValue(12.0)
+        self.pose_text_size_spin.setValue(self.app_state.pose_text_size)
         text_size_row.addWidget(self.pose_text_size_spin)
         text_size_row.addStretch()
         design_vbox.addLayout(text_size_row)
@@ -648,7 +648,6 @@ class DataWidget(QWidget):
         self.all_checkboxes = {}
         self.controls = []
         self._keypoint_names: list[str] = []
-        self._hidden_keypoints: set[str] = set()
 
         self.source_software = None
         self.file_path = None
@@ -783,13 +782,13 @@ class DataWidget(QWidget):
 
     def populate_keypoints(self, keypoint_names: list[str]) -> None:
         self._keypoint_names = [str(n) for n in keypoint_names]
-        self._hidden_keypoints &= set(self._keypoint_names)
         self.pose_groupbox.show()
 
     def get_hidden_keypoints(self) -> set[str]:
-        return set(self._hidden_keypoints)
+        return set(self.app_state.pose_hidden_keypoints)
 
     def _on_pose_show_keypoints_toggled(self, state: int):
+        self.app_state.pose_show_keypoints = self.pose_show_keypoints_checkbox.isChecked()
         self.pose_mgr.apply_pose_style()
 
     def _on_filter_keypoints_clicked(self):
@@ -797,12 +796,12 @@ class DataWidget(QWidget):
         if not names:
             notify("No pose keypoints loaded yet.", "warning")
             return
-        dialog = KeypointFilterDialog(names, self._hidden_keypoints, parent=self)
+        dialog = KeypointFilterDialog(names, self.get_hidden_keypoints(), parent=self)
         dialog.hidden_changed.connect(self._on_hidden_keypoints_changed)
         dialog.exec_()
 
     def _on_hidden_keypoints_changed(self, hidden: set):
-        self._hidden_keypoints = set(hidden)
+        self.app_state.pose_hidden_keypoints = sorted(str(n) for n in hidden)
         self.update_pose()
 
     def _on_pose_hide_threshold_changed(self, value: float):
@@ -810,6 +809,7 @@ class DataWidget(QWidget):
         self.update_pose()
 
     def _on_pose_text_toggled(self, state: int):
+        self.app_state.pose_show_text = self.pose_show_text_checkbox.isChecked()
         self.pose_mgr.apply_pose_style()
 
     def _on_pose_color_by_changed(self, _index: int):
@@ -825,9 +825,11 @@ class DataWidget(QWidget):
             dialog.apply_color_by()
 
     def _on_pose_point_size_changed(self, value: float):
+        self.app_state.pose_point_size = value
         self.pose_mgr.apply_pose_style()
 
     def _on_pose_text_size_changed(self, value: float):
+        self.app_state.pose_text_size = value
         self.pose_mgr.apply_pose_style()
 
     def _on_pose_show_skeleton_toggled(self, state: int):
@@ -835,6 +837,7 @@ class DataWidget(QWidget):
         self.update_pose()
 
     def _on_pose_skeleton_width_changed(self, value: float):
+        self.app_state.pose_skeleton_width = value
         self.pose_mgr.apply_skeleton_style()
 
     def _on_skeleton_color_clicked(self):
