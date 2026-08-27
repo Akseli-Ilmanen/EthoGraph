@@ -5,6 +5,7 @@ from typing import Optional, Tuple
 
 import pyqtgraph as pg
 from qtpy.QtCore import QObject, QRunnable, Qt, QThreadPool, QTimer, Signal
+from qtpy.QtWidgets import QGraphicsItem, QGraphicsWidget
 
 logger = logging.getLogger(__name__)
 
@@ -13,6 +14,8 @@ from .app_constants import (  # noqa: E402
     AXIS_LIMIT_PADDING_RATIO,
     LOCKED_RANGE_MAX_FACTOR,
     LOCKED_RANGE_MIN_FACTOR,
+    PANEL_RIGHT_GUTTER_PX,
+    PANEL_RIGHT_SPACER_PX,
     Z_INDEX_TIME_MARKER,
 )
 
@@ -329,6 +332,15 @@ class PanelStateMixin:
         ps.setdefault("color", getattr(self.app_state, "colors_sel", None))
 
 
+def right_gutter_width(plot: "BasePlot") -> int:
+    """The gutter a panel should reserve now: the colorbar footprint, less
+    what a visible right axis (confidence / envelope scale) already takes, so
+    every panel's plotting rectangle ends on the same pixel."""
+    axis = plot.plot_item.getAxis("right")
+    taken = axis.geometry().width() if axis.isVisible() else 0.0
+    return max(0, int(round(PANEL_RIGHT_GUTTER_PX - taken)))
+
+
 class BasePlot(pg.PlotWidget):
     """Base class for plot widgets with shared sync and marker functionality.
 
@@ -344,10 +356,17 @@ class BasePlot(pg.PlotWidget):
 
     plot_clicked = Signal(object)
 
+    #: PlotItem layout cell right of the right axis. A colorbar lands there
+    #: (``ColorBarItem.setImageItem(insert_in=)``); on every other panel the
+    #: legend host does.
+    _GUTTER_CELL = (2, 5)
+
     def __init__(self, app_state, parent=None, **kwargs):
         time_axis = TimeAxisItem(orientation="bottom")
         super().__init__(parent, background="white", axisItems={"bottom": time_axis}, **kwargs)
         self.app_state = app_state
+        self._gutter_host: QGraphicsWidget | None = None
+        self.reserve_right_gutter(PANEL_RIGHT_GUTTER_PX)
 
         self.setLabel("bottom", "Time")
 
@@ -369,6 +388,33 @@ class BasePlot(pg.PlotWidget):
 
         # Connect click handler
         self.scene().sigMouseClicked.connect(self._handle_click)
+
+    def reserve_right_gutter(self, width: int) -> None:
+        """Fix the empty space right of the plotting rectangle to ``width`` px.
+
+        Every stacked panel reserves the same gutter (a colorbar's footprint),
+        so their time axes end on one pixel; the container trims it by
+        whatever a visible right axis already takes.
+        """
+        layout = self.plotItem.layout
+        layout.setColumnFixedWidth(4, PANEL_RIGHT_SPACER_PX)
+        layout.setColumnFixedWidth(5, max(0, width))
+
+    def legend_host(self) -> QGraphicsWidget | None:
+        """The gutter item a legend anchors to; ``None`` when a colorbar holds
+        the cell. Created on first use, after a subclass has had its chance to
+        place a colorbar there."""
+        if self._gutter_host is not None:
+            return self._gutter_host
+        row, col = self._GUTTER_CELL
+        layout = self.plot_item.layout
+        if layout.itemAt(row, col) is not None:
+            return None
+        host = QGraphicsWidget()
+        host.setFlag(QGraphicsItem.ItemClipsChildrenToShape, True)
+        layout.addItem(host, row, col)
+        self._gutter_host = host
+        return host
 
     def update_plot_content(self, t0: Optional[float] = None, t1: Optional[float] = None):
         """Update the specific plot content (line plot, spectrogram, etc.).

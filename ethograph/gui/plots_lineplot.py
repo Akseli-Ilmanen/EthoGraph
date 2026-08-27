@@ -153,7 +153,9 @@ class LinePlot(PanelStateMixin, BasePlot):
             return
 
         self.app_state.plot_has_changepoints = bool(plot_data.changepoints)
-        self.plot_items = render_plot_data(self.plot_item, plot_data, show_changepoints=show_cp)
+        self.plot_items = render_plot_data(
+            self.plot_item, plot_data, show_changepoints=show_cp, legend_host=self.legend_host()
+        )
 
         for item in self.plot_items:
             if hasattr(item, "setDownsampling"):
@@ -425,11 +427,39 @@ def select_feature(ds, variable, ds_kwargs, color_variable=None) -> PlotData | N
     return XarrayLoader(ds).select(variable, ds_kwargs, color_variable=color_variable)
 
 
-def render_plot_data(plot_item, plot_data: PlotData, show_changepoints=True) -> list:
+def drop_legend(plot_item) -> None:
+    """Take the panel's legend out of the scene.
+
+    ``PlotItem.removeItem`` ignores the legend (it is a child of the viewbox,
+    never one of ``items``), so it has to be unparented by hand — otherwise
+    each render stacks a fresh legend on top of the last.
+    """
+    legend = getattr(plot_item, "legend", None)
+    if legend is None:
+        return
+    scene = legend.scene()
+    if scene is not None:
+        scene.removeItem(legend)  # detaches from its parent too (C++ side)
+    else:
+        pg.GraphicsWidget.setParentItem(legend, None)  # LegendItem's own override re-anchors
+    plot_item.legend = None
+
+
+def add_legend(plot_item, legend_host=None) -> pg.LegendItem:
+    """Give the panel a legend — in the right gutter when the panel offers
+    one (``BasePlot.legend_host``), else over the plotting rectangle."""
+    if legend_host is None:
+        plot_item.legend = plot_item.addLegend(offset=(10, 10))
+    else:
+        legend = pg.LegendItem(offset=(2, 2))
+        legend.setParentItem(legend_host)
+        plot_item.legend = legend
+    return plot_item.legend
+
+
+def render_plot_data(plot_item, plot_data: PlotData, show_changepoints=True, legend_host=None) -> list:
     """Render a PlotData to a pyqtgraph PlotItem. Source-agnostic."""
-    if hasattr(plot_item, "legend") and plot_item.legend is not None:
-        plot_item.removeItem(plot_item.legend)
-        plot_item.legend = None
+    drop_legend(plot_item)
 
     items = []
     dim_labels = plot_data.dim_labels
@@ -437,7 +467,7 @@ def render_plot_data(plot_item, plot_data: PlotData, show_changepoints=True) -> 
         dim_labels = clean_display_labels(dim_labels)
 
     if plot_data.data.ndim == 2:
-        plot_item.legend = plot_item.addLegend(offset=(10, 10))
+        add_legend(plot_item, legend_host)
         items = plot_multidim(
             plot_item,
             plot_data.time,
@@ -447,7 +477,7 @@ def render_plot_data(plot_item, plot_data: PlotData, show_changepoints=True) -> 
         )
     elif plot_data.data.ndim == 1:
         if plot_data.changepoints and show_changepoints:
-            plot_item.legend = plot_item.addLegend(offset=(10, 10))
+            add_legend(plot_item, legend_host)
 
         items = plot_singledim(
             plot_item,

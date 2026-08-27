@@ -10,6 +10,7 @@ from ethograph.features.preprocessing import z_normalize
 from ethograph.io.plot_sources import WindowedBuffer, XarraySource, audio_display_offset
 
 from .app_constants import (
+    COLORBAR_WIDTH_PX,
     DEFAULT_BUFFER_MULTIPLIER,
     HEATMAP_DEBOUNCE_MS,
     Z_INDEX_BACKGROUND,
@@ -109,11 +110,13 @@ class HeatmapPlot(PanelStateMixin, BasePlot):
         self.image_item.setColorMap(self._cmap)
 
     def _init_colorbar(self):
+        # Lands in the right gutter every panel reserves (BasePlot._GUTTER_CELL),
+        # so a heatmap's plotting rectangle ends where a line plot's does.
         self.colorbar = pg.ColorBarItem(
             values=(-1, 1),
             colorMap=self._cmap,
             interactive=False,
-            width=15,
+            width=COLORBAR_WIDTH_PX,
         )
         self.colorbar.setImageItem(self.image_item, insert_in=self.plot_item)
 

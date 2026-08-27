@@ -8,10 +8,11 @@ annotation tools, and exporting to TSV / Crowsetta formats.
 :maxdepth: 1
 
 labelling_gui
-curation
-workflows
 mapping
 branches
 importing
 exporting
+curation
+onset_model
+workflows
 ```

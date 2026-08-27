@@ -110,6 +110,7 @@ than either alone.
 (target-curation-grids)=
 ## The grids
 
+<<<<<<< HEAD
 Two buttons in the section open review grids on the scope; both come with the
 same **mode** combo and a **Done** button. Their *Setup* tab lists the labels
 in scope for clarity but cannot change them — the scope area is the one place
@@ -195,3 +196,6 @@ way every time you review the same behaviour. **Workflows…** at the bottom of
 the section records that whole routine — filters, prediction, scope, grid,
 review, save — and replays it in one press. See
 {doc}`workflows`.
+=======
+TODO: Add visual guide.
+>>>>>>> b5e49dad75c10cbaab9adb0b13f42c4012b844c9

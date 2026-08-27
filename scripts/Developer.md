@@ -105,6 +105,43 @@ Find an intersphinx target: `python -m sphinx.ext.intersphinx https://pynwb.read
 | Notebook execution | `nb_execution_mode = "off"` in `conf.py` |
 | Custom CSS | `docs/source/_static/css/custom.css` |
 
+## Screenshots for the docs
+
+`scripts/screenshot_gui.py` launches the GUI with two extra shortcuts bound, for capturing
+figures at a resolution the docs can actually use. Setting `QT_SCALE_FACTOR` is the wrong
+tool here — it lays the window out in bigger pixels, and the saved dock layout (sized in the
+old pixels) collapses into overlapping panels. This works the other way round: the window
+keeps its on-screen geometry and is *re-rendered* into a pixmap at N× the device pixel
+ratio, so text and plot curves are redrawn as vectors while every widget stays where it is.
+The pygfx video canvases live on the GPU and never appear in a Qt repaint, so each is
+snapshotted through its own renderer at the same scale and composited back into place.
+
+```powershell
+python scripts/screenshot_gui.py                                   # 3x into ./screenshots
+python scripts/screenshot_gui.py --scale 4 --out docs/source/_static/media
+python scripts/screenshot_gui.py --scale max                       # largest that fits
+```
+
+| Shortcut | What it does |
+|----------|--------------|
+| `Ctrl+Shift+S` | Capture the whole window to a timestamped PNG in `--out` |
+| `Ctrl+Shift+M` | Toggle minimal mode |
+
+**Minimal mode** strips the chrome a figure does not need and enlarges what a reader looks
+at: plot titles and axis label text go (tick labels stay — they are data), every panel
+header goes, the bottom bar's Proxy checkbox goes, and the menu bar, playback bar and the
+Data / Labels / Trials buttons all grow. It is a reversible view over the running session —
+every property is saved before it is touched and restored verbatim, no `app_state` is
+written, and nothing survives the toggle.
+
+`--scale` is bounded by `max_scale()`: Qt's raster limit, the GPU's maximum texture
+dimension (read off the renderer's own device) and a 512 MB RAM budget, which in practice
+binds first. An over-large request is clamped and reported rather than taking the process
+down — a maximised window at 20× wants ~2.5 GB. Past 4× the extra detail is mostly
+invisible, and screen-space-sized things (1 px gridlines, fixed markers) only get thinner;
+capture at 3–4× and downscale. For plot panels alone, prefer pyqtgraph's own vector export
+(right-click a plot → Export → SVG) over any raster capture.
+
 ## Release (PyPI)
 
 Publishing is `.github/workflows/test_and_deploy.yml`, triggered by a **`v*` git tag** — never by a plain push.
