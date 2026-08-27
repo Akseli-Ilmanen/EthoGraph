@@ -21,6 +21,12 @@ best = project.search()
 eto.segment.Project(best.config_path).cross_validate()
 ```
 
+```{tip}
+New here? {doc}`quickstart` is this page cut down to one architecture, three
+kinematic features and two sessions — a config you can copy and a model
+trained in four lines. Come back when you want the choices back.
+```
+
 ```{note}
 There is no command line. A run is a script, so it is diffable, re-runnable
 and reviewable next to the results it produced — and a setting has exactly
@@ -516,6 +522,7 @@ becomes *which* class, *which* trials and *how far off* the boundaries are.
 :maxdepth: 1
 :hidden:
 
+quickstart
 config
 video_features
 later
