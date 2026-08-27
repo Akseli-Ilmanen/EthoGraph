@@ -526,8 +526,29 @@ class TestCalibration:
         loader = XarrayLoader(_make_ds(4.2, seed=99))
         time, data = om.extract_features(loader, config.features)
         result = om.predict_trial(bundle, time, data)
-        # The label's number is a point on the curve that was drawn for it.
-        assert result.events[3].confidence == pytest.approx(om.tallest_peak(result.curves[3])[1])
+        # The label's number is the statistic the held-out record chose,
+        # read off the curve that was drawn for it.
+        cal = bundle["calibration"][3]
+        stats = om.read_curve(result.curves[3], 100.0, 0.05)
+        assert result.events[3].statistic == cal.statistic
+        assert result.events[3].confidence == pytest.approx(stats.statistic(cal.statistic))
+
+    def test_a_record_where_only_shape_tells_hits_apart_switches_the_statistic(self):
+        """Peak heights identical, misses ride on a rival bump: shape must win."""
+        config = _make_config()
+        time = np.arange(0, 10, 0.01)
+        trials = [om.TrainingTrial(time, np.zeros((len(time), 2)), {3: 5.0}, 100.0) for _ in range(8)]
+        curves = []
+        for i in range(8):
+            if i % 2 == 0:
+                curves.append({3: _bump(len(time), 500)})  # clean hit
+            else:
+                # the tallest bump is far off (a miss), a second one at the event
+                curves.append({3: _bump(len(time), 800) + 0.9 * _bump(len(time), 500)})
+        cal = om.fit_confidence_calibration(trials, curves, config)[3]
+        assert (cal.n_trials, cal.n_hits) == (8, 4)
+        assert cal.aucs["ratio"] > cal.aucs["peak"] + 0.05
+        assert cal.statistic != "peak"
 
 
 def test_train_without_data_raises():

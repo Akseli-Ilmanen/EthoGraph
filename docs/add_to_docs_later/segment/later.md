@@ -27,7 +27,7 @@ A prediction set is a labels TSV; the GUI already draws **one** second label
 set (`app_state.pred_labels_df`, rendered in the free `top1`/`top2` strip).
 Comparing runs A/B/C against the curated labels needs that to become a list
 of read-only prediction sets, each in its own lane with its run name, loaded
-from `predictions/{run}/` beside the session, plus a per-lane confidence
+from `labels/predictions_{run}_{timestamp}/` beside the session, plus a per-lane confidence
 threshold. The file contract is done; this is GUI work only.
 
 `cross_validate()` makes this the obvious next thing to build: one fold per

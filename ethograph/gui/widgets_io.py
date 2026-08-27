@@ -5,7 +5,9 @@ import os
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 from qtpy.QtCore import Qt
+from qtpy.QtGui import QAction
 from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -16,6 +18,8 @@ from qtpy.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMenu,
+    QMessageBox,
     QPushButton,
     QSizePolicy,
     QSpinBox,
@@ -632,27 +636,29 @@ class IOWidget(QWidget):
         pred_group_layout.setSpacing(2)
         self.pred_group.setLayout(pred_group_layout)
 
-        # Row 1: folder path + browse
+        # Row 1: path + import (two ways in: a run's folder, or a plain .tsv)
         folder_row = QHBoxLayout()
         folder_row.setContentsMargins(0, 0, 0, 0)
         self.pred_file_path_edit = QLineEdit()
         self.pred_file_path_edit.setReadOnly(True)
-        self.pred_file_path_edit.setPlaceholderText("No predictions folder selected")
+        self.pred_file_path_edit.setPlaceholderText("No predictions loaded")
         folder_row.addWidget(self.pred_file_path_edit)
-        self.import_predictions_btn = QPushButton("Browse")
-        self.import_predictions_btn.setToolTip("Select predictions folder (corr/ or uncorr/ subfolder)")
+        self.import_predictions_btn = QPushButton("Import…")
+        self.import_predictions_btn.setToolTip("Import a prediction set — from a run's folder, or a plain .tsv")
+        self.import_predictions_menu = QMenu(self.import_predictions_btn)
+        self.import_predictions_from_folder_action = QAction("From folder (segmentation run)…", self.import_predictions_menu)
+        self.import_predictions_from_folder_action.setToolTip(
+            "Select a segmentation run's prediction folder (labels/predictions_{run}_{timestamp}/)"
+        )
+        self.import_predictions_menu.addAction(self.import_predictions_from_folder_action)
+        self.import_predictions_from_tsv_action = QAction("From .tsv file…", self.import_predictions_menu)
+        self.import_predictions_from_tsv_action.setToolTip(
+            "Load a plain labels TSV as predictions — e.g. a second annotator's labels, for comparison"
+        )
+        self.import_predictions_menu.addAction(self.import_predictions_from_tsv_action)
+        self.import_predictions_btn.setMenu(self.import_predictions_menu)
         folder_row.addWidget(self.import_predictions_btn)
         pred_group_layout.addLayout(folder_row)
-
-        self.create_labels_from_predictions_cb = QCheckBox(
-            "Create session labels file from predictions (if none exists)"
-        )
-        self.create_labels_from_predictions_cb.setChecked(False)
-        self.create_labels_from_predictions_cb.setToolTip(
-            "After importing predictions, save them as {session}_labels.tsv\n"
-            "only when that file does not already exist. Never overwrites."
-        )
-        pred_group_layout.addWidget(self.create_labels_from_predictions_cb)
 
         # Row 2: show checkbox + threshold + PDF button
         controls_row = QHBoxLayout()
@@ -805,6 +811,70 @@ class IOWidget(QWidget):
             if self.data_widget.plot_container:
                 self.data_widget.plot_container.labels_redraw_needed.emit()
         self._close_labels_popup()
+
+    def _merge_tsv_labels(self):
+        """Fuse a second labels TSV into the one already loaded in the GUI.
+
+        Unlike :meth:`_import_tsv_labels`, this keeps whatever is currently in
+        :attr:`app_state._all_labels_df` and appends the rows from the picked
+        file — nothing is replaced or de-duplicated. If a label class (the
+        ``labels`` column) shows up in both files, that is surfaced as a
+        warning before anything is merged, so the user can back out.
+        """
+        file_path = browse_open_file(
+            self,
+            self.app_state,
+            "Open labels TSV to merge",
+            "TSV files (*.tsv)",
+            preferred_dir=self.app_state.nc_file_path,
+        )
+        if not file_path:
+            return
+
+        incoming = load_labels_tsv(file_path)
+        existing = self.app_state._all_labels_df
+
+        if existing is not None and not existing.empty and not incoming.empty:
+            shared_ids = set(existing["labels"].unique()) & set(incoming["labels"].unique())
+            if shared_ids:
+                names = self.labels_widget._mappings if self.labels_widget else {}
+                shown = ", ".join(str(names.get(lid, {}).get("name", lid)) for lid in sorted(shared_ids))
+                answer = QMessageBox.question(
+                    self,
+                    "Merge labels",
+                    f"Both files contain label class(es): {shown}.\n"
+                    "Merging keeps every row from both files as-is (no de-duplication).\n\n"
+                    "Merge anyway?",
+                )
+                if answer != QMessageBox.Yes:
+                    return
+
+        if existing is None or existing.empty:
+            merged = incoming
+        else:
+            merged = pd.concat([existing, incoming], ignore_index=True)
+
+        self.app_state._all_labels_df = merged
+        self.app_state.clear_label_history()
+        if self.data_widget:
+            # With no individual dimension the selector's names come from the
+            # labels, which have just gained rows.
+            self.data_widget.refresh_individual_choices()
+        self.app_state.label_intervals = self.app_state.get_trial_intervals(self.app_state.trials_sel)
+
+        if hasattr(self, "changepoints_widget") and self.changepoints_widget:
+            self.changepoints_widget._update_cp_status()
+        if self.labels_widget:
+            self.labels_widget._mark_changes_unsaved()
+            self.labels_widget.refresh_labels_shapes_layer()
+        self._update_correct_offsets_status()
+        self._update_purge_small_labels_status()
+        if self.data_widget:
+            self.data_widget.update_main_plot(preserve_x_range=True)
+            if self.data_widget.plot_container:
+                self.data_widget.plot_container.labels_redraw_needed.emit()
+
+        notify(f"Merged {len(incoming)} label row(s) from {Path(file_path).name}")
 
     def _close_labels_popup(self):
         """Close the top-bar "Import labels" popup hosting ``labels_group``.
@@ -1791,7 +1861,8 @@ class IOWidget(QWidget):
         )
         self.browse_mapping_btn.clicked.connect(self.labels_widget._browse_mapping_file)
         self.temp_labels_button.clicked.connect(self.labels_widget._create_temporary_labels)
-        self.import_predictions_btn.clicked.connect(self.labels_widget._import_predictions_from_folder)
+        self.import_predictions_from_folder_action.triggered.connect(self.labels_widget._import_predictions_from_folder)
+        self.import_predictions_from_tsv_action.triggered.connect(self.labels_widget._import_predictions_from_tsv)
         self.pred_confidence_pdf_btn.clicked.connect(self.labels_widget._plot_confidence_pdf)
         self.pred_confidence_threshold_spin.valueChanged.connect(self.labels_widget._on_confidence_threshold_changed)
         self.pred_segment_confidence_threshold_spin.valueChanged.connect(

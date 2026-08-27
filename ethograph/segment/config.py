@@ -18,13 +18,17 @@ from __future__ import annotations
 
 import copy
 import dataclasses
+import logging
 from dataclasses import MISSING, dataclass, field, fields, is_dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
 import yaml
 
+from ethograph.labels.tsv_store import labels_tsv_path
 from ethograph.utils.paths import ethograph_home
+
+logger = logging.getLogger(__name__)
 
 DLC2ACTION_CONFIG = Path(__file__).parent / "dlc2action" / "config"
 """The vendored DLC2Action config tree (see ``dlc2action/NOTICE.md``).
@@ -149,13 +153,16 @@ MERGED_CHANGEPOINTS = "changepoints"
 class SessionSpec:
     """One session: its source file, and where its labels and video live.
 
-    No discovery: ``labels_path`` names the labels TSV directly (there is no
-    ``{stem}_labels.tsv`` sidecar guess) and ``video_dir``, when the session
-    has video, is the one folder searched for it (no project-level list to
-    fall through). ``labels_path`` is required by :func:`config_from_dict` —
-    it stays optional on this dataclass only so a session can be built by
-    hand for a labels-free probe (see
-    :func:`ethograph.segment.sessions.discover_columns_from_source`).
+    ``labels_path`` defaults to ``{stem}_labels.tsv`` beside ``source`` (the
+    GUI's own convention, :func:`~ethograph.labels.tsv_store.labels_tsv_path`)
+    when left unset — :func:`config_from_dict` fills it in and logs what it
+    assumed. Nothing ever creates that file: a session's ``_labels.tsv`` is
+    the user's curated labels, and only the user (or the GUI, on an explicit
+    save/curate) should ever write it. A ``labels_path`` naming a file that
+    does not exist yet just means this session has none.
+    ``video_dir``, when the session has video,
+    is the one folder searched for it (no project-level list to fall
+    through).
 
     A session carries no role. Every listed session is material for the
     model; which of its *trials* end up train / val / test is drawn by
@@ -167,6 +174,16 @@ class SessionSpec:
     source: Path
     labels_path: Path | None = None
     video_dir: Path | None = None
+    #: How the session is referred to in outputs — fold names, prediction
+    #: keys, log lines. Defaults to the source's stem, which is fine until
+    #: every session's file is called ``Trial_data.nc``.
+    name: str | None = None
+
+    @property
+    def label(self) -> str:
+        if self.name:
+            return self.name
+        return self.source.name if self.source.is_dir() else self.source.stem
 
 
 @dataclass
@@ -174,6 +191,10 @@ class TrialsConfig:
     """Trial filter applied in every stage: metadata column → allowed values."""
 
     where: dict[str, list[Any]] = field(default_factory=dict)
+    #: Keep only the first N trials that pass ``where`` (in session order) —
+    #: a smoke run on a few trials before committing a night of GPU.
+    #: ``None`` = all of them.
+    limit: int | None = None
 
 
 @dataclass
@@ -291,6 +312,8 @@ class FeaturesConfig:
     #: pinned per sample); a second individual dim may be ``other: "*"``.
     columns: dict[str, dict[str, Any]] = field(default_factory=dict)
     #: Individuals that become samples; ``None`` = the dataset's individual coord.
+    #: For a single-animal project, prefer the top-level ``config.individual``
+    #: instead — a one-item list here is what it resolves to.
     individuals: list[str] | None = None
     preprocess: PreprocessConfig = field(default_factory=PreprocessConfig)
     labels: LabelsConfig | None = None
@@ -728,6 +751,11 @@ class SegmentConfig:
     sessions: list[SessionSpec]
     #: Project directory: ``data/`` and ``runs/`` live here. Default: the config's folder.
     root: Path = Path(".")
+    #: The one individual this project's samples belong to — the single-animal
+    #: spelling, stamped into every exported label row's ``individual`` column.
+    #: Equivalent to ``features.individuals: [name]``; set only one of them
+    #: (:func:`config_from_dict` fills the other in and refuses a mismatch).
+    individual: str | None = None
     trials: TrialsConfig = field(default_factory=TrialsConfig)
     features: FeaturesConfig = field(default_factory=FeaturesConfig)
     model: ModelConfig = field(default_factory=ModelConfig)
@@ -789,13 +817,20 @@ class SegmentConfig:
 # Building from dicts
 # ---------------------------------------------------------------------------
 
-_PATH_FIELDS = {"source", "labels_path", "video_dir", "mapping", "root"}
+_PATH_FIELDS = {"source", "labels_path", "video_dir", "mapping", "root", "frames"}
 _PATH_LIST_FIELDS = {"holdout_sessions"}
 _TUPLE_FIELDS = {"clip_percentiles", "stretch"}
 
 
-def _build(cls: type, data: Any, where: str, base_dir: Path) -> Any:
-    """Build dataclass *cls* from *data*, failing on unknown keys."""
+def _build(cls: type, data: Any, where: str, base_dir: Path, nested: dict[str, type] | None = None) -> Any:
+    """Build dataclass *cls* from *data*, failing on unknown keys.
+
+    *nested* maps a field name to the dataclass its mapping builds, and
+    defaults to this module's own :data:`_NESTED`. A sibling pipeline passes
+    its own so that a field name both of them use — ``train``, ``model``,
+    ``split`` — builds the right type for the config being read.
+    """
+    nested = _NESTED if nested is None else nested
     if not isinstance(data, dict):
         raise ValueError(f"{where}: expected a mapping, got {type(data).__name__}")
     known = {f.name: f for f in fields(cls)}
@@ -811,7 +846,7 @@ def _build(cls: type, data: Any, where: str, base_dir: Path) -> Any:
             # at the default". Passing the None on would hand a `None` to code
             # expecting a mapping, far from the line that wrote it.
             continue
-        kwargs[name] = _convert(name, known[name].type, value, f"{where}.{name}", base_dir)
+        kwargs[name] = _convert(name, known[name].type, value, f"{where}.{name}", base_dir, nested)
     try:
         return cls(**kwargs)
     except TypeError as exc:
@@ -838,11 +873,14 @@ _NESTED: dict[str, type] = {
 }
 
 
-def _convert(name: str, annotation: Any, value: Any, where: str, base_dir: Path) -> Any:
+def _convert(
+    name: str, annotation: Any, value: Any, where: str, base_dir: Path, nested: dict[str, type] | None = None
+) -> Any:
+    nested = _NESTED if nested is None else nested
     if value is None:
         return None
-    if name in _NESTED:
-        return _build(_NESTED[name], value, where, base_dir)
+    if name in nested:
+        return _build(nested[name], value, where, base_dir, nested)
     if name == "sessions":
         if not isinstance(value, list):
             raise ValueError(f"{where}: 'sessions' must be a list")
@@ -896,7 +934,15 @@ def _session(value: Any, where: str, base_dir: Path) -> SessionSpec:
             "(train_fraction / val_fraction / test_fraction) to split trials, and hold whole "
             "sessions out with Project.cross_validate() (train.split.holdout_sessions)."
         )
-    return _build(SessionSpec, value, where, base_dir)
+    spec = _build(SessionSpec, value, where, base_dir)
+    if spec.name is not None and not isinstance(spec.name, str):
+        # YAML 1.1 reads `name: 20260304_01` as the integer 2026030401 — the
+        # underscore is a digit separator — and the original spelling is gone.
+        raise ValueError(
+            f"{where}.name: got {spec.name!r}, not a string. Quote it — name: '{spec.name}' — YAML reads "
+            "digits with underscores as one number."
+        )
+    return spec
 
 
 def _path(value: Any, base_dir: Path) -> Path:
@@ -931,6 +977,13 @@ def _read_yaml_chain(path: Path) -> dict:
     if not base_path.is_file():
         raise FileNotFoundError(f"{path}: base config {base_path} does not exist")
     return deep_merge(_read_yaml_chain(base_path), raw)
+
+
+#: The generic config machinery, for a sibling pipeline that shares the
+#: session/split dataclasses but has its own stage graph (``ethograph.spot``).
+build_dataclass = _build
+read_yaml_chain = _read_yaml_chain
+resolve_path = _path
 
 
 def as_overrides(params: dict[str, Any]) -> list[str]:
@@ -993,6 +1046,18 @@ def _resolve_gui_postprocess(data: dict, base_dir: Path) -> dict:
     return {**data, "infer": {**infer, "postprocess": resolved}}
 
 
+def _default_labels_path(spec: SessionSpec) -> None:
+    """Fill in ``spec.labels_path`` with the GUI's own ``{stem}_labels.tsv`` convention.
+
+    Only resolves the path — :func:`~ethograph.segment.sessions.open_session`
+    is what creates the file if nothing is there yet, since a config may be
+    built (or re-read on every :meth:`Project.update`) without ever opening
+    a session.
+    """
+    spec.labels_path = labels_tsv_path(spec.source)
+    logger.info("%s: no labels_path set — defaulting to %s", spec.source, spec.labels_path)
+
+
 def config_from_dict(data: dict, base_dir: Path, config_path: Path | None = None) -> SegmentConfig:
     data = _resolve_gui_postprocess(dict(data), base_dir)
     data.setdefault("root", ".")
@@ -1000,11 +1065,17 @@ def config_from_dict(data: dict, base_dir: Path, config_path: Path | None = None
     cfg.config_path = config_path
     if not cfg.sessions:
         raise ValueError("config.sessions is empty — list at least one session")
-    unlabelled = [str(s.source) for s in cfg.sessions if s.labels_path is None]
-    if unlabelled:
-        raise ValueError(
-            f"Every session needs an explicit labels_path (no {{stem}}_labels.tsv discovery): {unlabelled}"
-        )
+    for spec in cfg.sessions:
+        if spec.labels_path is None:
+            _default_labels_path(spec)
+    if cfg.individual is not None:
+        if cfg.features.individuals is None:
+            cfg.features.individuals = [cfg.individual]
+        elif list(cfg.features.individuals) != [cfg.individual]:
+            raise ValueError(
+                f"config.individual={cfg.individual!r} conflicts with config.features.individuals="
+                f"{cfg.features.individuals!r} — set only one of them"
+            )
     if cfg.features.labels is None:
         raise ValueError("config.features.labels is required (at least a branch of the mapping.txt naming the classes)")
     if cfg.features.labels.mapping is None:

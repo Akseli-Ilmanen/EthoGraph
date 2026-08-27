@@ -7,7 +7,8 @@ each session ends up with a prediction set produced by a model that never saw
 one of its frames.
 
 That last part is the point. Predictions land in the GUI's own labels format
-beside the session (``predictions/{run}/{stem}_labels.tsv``), so you load them
+beside the session, under its own ``labels/`` folder
+(``labels/predictions_{run}_{timestamp}/{stem}_predictions.tsv``), so you load them
 next to the curated labels and look at *where* the model is still wrong —
 which classes, which trials, which boundaries — rather than at one aggregate
 number. A random trial split cannot give you that: its test trials share a
@@ -43,7 +44,7 @@ from ethograph.segment.config import (
     config_from_dict,
     config_to_dict,
 )
-from ethograph.segment.infer import infer
+from ethograph.segment.inference import inference
 from ethograph.segment.materialise import COLUMNS_FILE, materialise
 from ethograph.segment.metrics import EVAL_ARRAYS_FILE
 from ethograph.segment.samples import ClassTable
@@ -149,7 +150,7 @@ def cross_validate(
             result: RunResult = train(fold_config)
             predictions = None
             if predict:
-                written = infer(fold_config, run=result.run_dir, sessions=[str(spec.source)])
+                written = inference(fold_config, run=result.run_dir, sessions=[str(spec.source)])
                 predictions = written[0]
             results.append(
                 Fold(

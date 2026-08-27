@@ -21,6 +21,12 @@ class _DeadAxis:
     def show(self):
         raise RuntimeError("wrapped C/C++ object of type AxisItem has been deleted")
 
+    def isVisible(self):
+        raise RuntimeError("wrapped C/C++ object of type AxisItem has been deleted")
+
+    def setStyle(self, **_kw):
+        raise RuntimeError("wrapped C/C++ object of type AxisItem has been deleted")
+
 
 class _DeadPlotItem:
     def getAxis(self, _name):
@@ -48,9 +54,28 @@ class _DeadHost:
     vb = _DeadViewBox()
 
 
+class _HalfDeadPlotItem:
+    """What PyQt actually leaves behind: the PlotItem wrapper still answers
+    ``getAxis`` (a dict lookup), but the AxisItem it hands back is deleted."""
+
+    def getAxis(self, _name):
+        return _DeadAxis()
+
+    def viewRange(self):
+        return [[0.0, 1.0], [0.0, 1.0]]
+
+
+class _HalfDeadHost:
+    plot_item = _HalfDeadPlotItem()
+    vb = _DeadViewBox()
+
+
 class _LiveAxis:
     def __init__(self):
         self.hidden = False
+
+    def isVisible(self):
+        return not self.hidden
 
     def hide(self):
         self.hidden = True
@@ -112,6 +137,12 @@ class TestClosedHost:
     def test_removing_an_overlay_whose_panel_is_gone_does_not_raise(self, manager_with_overlay):
         mgr, _ = manager_with_overlay
         mgr._entries["onset_curve_31"].host_plot = _DeadHost()
+        mgr.remove_overlay("onset_curve_31")
+        assert not mgr.has_overlay("onset_curve_31")
+
+    def test_a_deleted_axis_behind_a_live_plot_item_counts_as_gone(self, manager_with_overlay):
+        mgr, _ = manager_with_overlay
+        mgr._entries["onset_curve_31"].host_plot = _HalfDeadHost()
         mgr.remove_overlay("onset_curve_31")
         assert not mgr.has_overlay("onset_curve_31")
 

@@ -84,10 +84,6 @@ Predictions
 
 .. currentmodule:: ethograph.labels.predictions
 
-.. autofunction:: load_predictions_folder
-
-.. autofunction:: load_prediction_file
-
 .. autofunction:: prediction_to_labels_and_confidence
 
 .. autoclass:: PredictionsStore

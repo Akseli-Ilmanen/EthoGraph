@@ -362,7 +362,7 @@ to `metrics.tsv`. Three things then happen:
   its best is normal — it keeps fitting the training trials while getting worse
   on new ones. Validation is what notices, so you keep the good weights instead
   of whatever the last epoch happened to produce. `best.pt` is what
-  `project.infer()` uses.
+  `project.inference()` uses.
 - **You get the metric curve** in `metrics.tsv` — one row per validation —
   which is how you find the right `epochs` for a later run. Each row also
   carries a test readout (raw and post-processed, `test_raw_*`/`test_post_*`)
@@ -498,7 +498,7 @@ Sidecars go to `{root}/video_features/`.
 
 | Key | Default | Meaning |
 |---|---|---|
-| `run` | `train.run_name` | Run name (exact or base) or a run directory under `runs/`; a base name resolves to its most recently trained timestamped run (`project.infer(run=…)` overrides it for one call). |
+| `run` | `train.run_name` | Run name (exact or base) or a run directory under `runs/`; a base name resolves to its most recently trained timestamped run (`project.inference(run=…)` overrides it for one call). |
 
 ### `infer.postprocess`
 
@@ -554,7 +554,7 @@ runs/{run}/
   test_metrics.yaml  test evaluation of best.pt: raw and post-processed, overall and class-wise
   eval.pdf           overall + class-wise F1, onset/offset |Δ| histograms
   train.log          everything logged during this run (always written, on top of the console)
-  infer.log          everything logged by every `project.infer()` call against this run (appended)
+  infer.log          everything logged by every `project.inference()` call against this run (appended)
 runs/compare.tsv     written by `project.compare()`, which also returns it as a DataFrame
 ```
 

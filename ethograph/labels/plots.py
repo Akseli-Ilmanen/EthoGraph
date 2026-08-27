@@ -209,7 +209,8 @@ def plot_confidence_pdf(
     Parameters
     ----------
     confidence_map : dict
-        {trial: confidence_array (T,)} from load_predictions_folder.
+        {trial: confidence_array (T,)}, built from ``PredictionsStore.get_confidence``
+        (see :mod:`ethograph.labels.predictions`).
     labels_df : pd.DataFrame
         Predictions intervals DataFrame (onset_s, offset_s, labels, trial, individual).
     dt : TrialTree

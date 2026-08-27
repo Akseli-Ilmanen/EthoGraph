@@ -24,19 +24,21 @@ weight peaking at the event, so a near-miss frame counts less than the exact
 frame. At inference the per-frame probability is Gaussian-smoothed with the
 same tolerance and its tallest peak becomes the predicted onset.
 
-Confidence is that peak's **height**, and nothing else (:func:`tallest_peak`).
-The number in the labels TSV's ``confidence`` column is a point on the curve —
-the same curve frame-by-frame review draws — so a threshold is something the
-user sets by looking rather than by trusting a formula. What the score leaves
-out, the picture shows: a rival peak elsewhere, a broad ramp, a trial where
-nothing rose at all. That is the trade, made deliberately — a legible number
-plus the curve beats an elaborate number alone. A human label is 1.0 by
+Confidence is a statistic of that curve around its tallest peak
+(:mod:`ethograph.labels.curve_confidence`): the peak's **height** by default,
+or — when the model's own held-out record says it separates hits from misses
+clearly better — the curve's **shape** (how much of it sits under that one
+bump, and whether a rival stands elsewhere). Every candidate is readable
+straight off the curve frame-by-frame review draws, so a threshold is still
+something the user sets by looking; which one is written is a measured
+property of the model, recorded in its calibration. A human label is 1.0 by
 definition; the curves are kept beside the labels
 (:mod:`ethograph.labels.onset_curves`).
 
 How often the model is *right* is a property of the model, not of one label:
 :func:`fit_confidence_calibration` scores every training trial with
-classifiers that never saw it, and training reports that hit rate.
+classifiers that never saw it, reports that hit rate, and is where the
+statistic is chosen.
 
 Every class lands on its own curve's tallest peak, independent of every other
 class. A model that jointly decoded the order (this module used to fit a
@@ -96,7 +98,6 @@ import joblib
 import numpy as np
 import pandas as pd
 import yaml
-from scipy.signal import find_peaks
 from sklearn.ensemble import HistGradientBoostingClassifier
 from sklearn.linear_model import LogisticRegression
 
@@ -109,6 +110,16 @@ from ethograph.features.columns import (
     sampling_rate,
 )
 from ethograph.io.catalog import INDIVIDUAL_DIMS
+from ethograph.labels.curve_confidence import (
+    DESCRIPTIONS,
+    CurveStats,
+    choose_statistic,
+    curve_stats,
+    focus_window_s,
+    rank_statistics,
+    tallest_peak,
+    window_samples,
+)
 from ethograph.labels.label_inputs import LabelInput, label_columns, render_label_inputs
 from ethograph.utils.paths import ethograph_home
 
@@ -736,6 +747,7 @@ def train_model(name: str) -> dict:
         if cal is not None:
             stats["held_out"] = f"{cal.n_hits}/{cal.n_trials}"
             stats["confidence_ceiling"] = cal.hit_rate
+            stats["confidence_statistic"] = cal.statistic
     joblib.dump(bundle, model_dir(name) / _MODEL_FILE)
     logger.info("Training done: %r", name)
     return summary
@@ -814,24 +826,18 @@ def _smoothing_kernel(tolerance_s: float, fs: float) -> np.ndarray:
     return kernel / kernel.sum()
 
 
-def tallest_peak(curve: np.ndarray) -> tuple[int, float]:
-    """The curve's tallest local maximum: ``(frame index, height)``.
+#: The one reading of a curve every consumer shares (re-exported).
+__all__ += ["tallest_peak"]
 
-    ``find_peaks`` rather than ``argmax`` so a curve still climbing at the
-    trial's edge does not report its last frame as a confident event — an edge
-    is not a peak. With no local maximum anywhere (a flat or monotone curve)
-    the argmax stands in, which for a flat curve is a height near 0 and says
-    exactly what it should.
 
-    The height is the confidence: a value that can be read straight off the
-    curve the review draws.
+def read_curve(curve: np.ndarray, fs: float, tolerance_s: float) -> CurveStats:
+    """The curve's statistics around its tallest peak.
+
+    The focus window is the model's own ``tolerance_s`` twice over
+    (:func:`~ethograph.labels.curve_confidence.focus_window_s`) — the
+    timescale the user declared, in this clock's samples.
     """
-    curve = np.asarray(curve, dtype=np.float64)
-    if curve.size == 0:
-        return 0, 0.0
-    peaks = find_peaks(curve)[0]
-    index = int(peaks[np.argmax(curve[peaks])]) if peaks.size else int(np.argmax(curve))
-    return index, float(np.clip(curve[index], 0.0, 1.0))
+    return curve_stats(curve, window_samples(focus_window_s(tolerance_s), fs))
 
 
 def _logit(p) -> np.ndarray | float:
@@ -859,6 +865,13 @@ class TargetCalibration:
 
     ``slope``/``intercept`` are a Platt fit of that peak height against the
     hits, kept so the mapping is on record; nothing reads them today.
+
+    ``statistic`` is the one thing here that *is* applied to a label: which
+    reading of the curve is written as its confidence. Chosen on the held-out
+    record (:func:`~ethograph.labels.curve_confidence.choose_statistic`) —
+    ``peak`` unless a shape statistic separates hits from misses clearly
+    better; ``aucs`` is the record of every candidate, so the choice can be
+    read.
     """
 
     #: Held-out predictions scored, and how many landed within the tolerance.
@@ -867,6 +880,10 @@ class TargetCalibration:
     #: Platt scaling of the raw reading's log-odds (identity: 1, 0).
     slope: float
     intercept: float
+    #: The curve statistic written as this target's confidence.
+    statistic: str = "peak"
+    #: AUC per candidate statistic on the held-out record.
+    aucs: dict[str, float] = field(default_factory=dict)
 
     @property
     def hit_rate(self) -> float:
@@ -896,9 +913,10 @@ class OnsetPrediction:
     label: int
     name: str
     time: float
-    #: Height of the curve's tallest peak — the number written to the label's
-    #: ``confidence`` column, and a point on the curve the review draws.
+    #: The number written to the label's ``confidence`` column: the curve's
+    #: ``statistic`` around its tallest peak, readable off the drawn curve.
     confidence: float
+    statistic: str = "peak"
 
 
 def target_curves(
@@ -956,14 +974,18 @@ def predict_trial(
     x = build_windows(data, offsets)
     curves = target_curves(bundle["models"], x, _smoothing_kernel(config.tolerance_s, fs))
 
+    calibration = bundle.get("calibration") or {}
     events: dict[int, OnsetPrediction] = {}
     for label, curve in curves.items():
-        index, height = tallest_peak(curve)
+        stats = read_curve(curve, fs, config.tolerance_s)
+        cal = calibration.get(label)
+        statistic = cal.statistic if cal is not None else "peak"
         events[label] = OnsetPrediction(
             label=label,
             name=config.target_name(label),
-            time=float(time[index]),
-            confidence=height,
+            time=float(time[stats.index]),
+            confidence=stats.statistic(statistic),
+            statistic=statistic,
         )
     return TrialPrediction(events, curves)
 
@@ -1042,30 +1064,34 @@ def fit_confidence_calibration(
     """
     calibrations: dict[int, TargetCalibration] = {}
     for label in config.targets:
-        raws: list[float] = []
+        readings: list[CurveStats] = []
         hits: list[int] = []
         for trial, curve in zip(trials, curves):
             y_time = _resolve_y_time(trial.y_times, label, config)
             if y_time is None or label not in curve:
                 continue
-            index, height = tallest_peak(curve[label])
-            raws.append(height)
-            hits.append(int(abs(float(trial.time[index]) - y_time) <= config.tolerance_s))
-        raw_arr = np.asarray(raws, dtype=np.float64)
+            stats = read_curve(curve[label], trial.fs, config.tolerance_s)
+            readings.append(stats)
+            hits.append(int(abs(float(trial.time[stats.index]) - y_time) <= config.tolerance_s))
+        raw_arr = np.asarray([s.peak for s in readings], dtype=np.float64)
         hit_arr = np.asarray(hits, dtype=int)
         slope, intercept = _fit_platt(raw_arr, hit_arr)
+        aucs = rank_statistics(readings, hit_arr.astype(bool)) if readings else {}
         calibrations[label] = TargetCalibration(
             n_trials=int(hit_arr.size),
             n_hits=int(hit_arr.sum()),
             slope=slope,
             intercept=intercept,
+            statistic=choose_statistic(aucs) if aucs else "peak",
+            aucs={k: (float(v) if np.isfinite(v) else float("nan")) for k, v in aucs.items()},
         )
         logger.info(
-            "  %s: %d/%d held-out predictions within %.3f s (confidence ceiling %.2f)",
+            "  %s: %d/%d held-out predictions within %.3f s (confidence ceiling %.2f); confidence = %s",
             config.target_name(label),
             calibrations[label].n_hits,
             calibrations[label].n_trials,
             config.tolerance_s,
             calibrations[label].hit_rate,
+            DESCRIPTIONS[calibrations[label].statistic],
         )
     return calibrations

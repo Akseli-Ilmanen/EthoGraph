@@ -244,7 +244,7 @@ class ScopeDropArea(QFrame):
             while panel is not None and not isinstance(panel, CurationPanel):
                 panel = panel.parent()
             if panel is not None:
-                panel._on_scope_edited(activates=True)
+                panel._on_scope_edited(activates=True, dropped=ids)
 
 
 class ShortcutsPopup(QDialog):
@@ -442,6 +442,15 @@ class CurationPanel(QGroupBox):
         self.automated_only_cb.setChecked(bool(self.app_state.get_with_default("frame_review_automated_only")))
         self.automated_only_cb.toggled.connect(lambda v: setattr(self.app_state, "frame_review_automated_only", v))
         review_opts_row.addWidget(self.automated_only_cb)
+
+        self.auto_advance_cb = QCheckBox("Jump to next after Enter/Backspace")
+        self.auto_advance_cb.setToolTip(
+            "Ticked: confirming (Enter) or deleting (Backspace) a boundary\n"
+            "moves on to the next target automatically. Untick to stay put."
+        )
+        self.auto_advance_cb.setChecked(bool(self.app_state.get_with_default("curation_auto_advance")))
+        self.auto_advance_cb.toggled.connect(lambda v: setattr(self.app_state, "curation_auto_advance", v))
+        review_opts_row.addWidget(self.auto_advance_cb)
         frame_lay.addLayout(review_opts_row)
 
         keys_row = QHBoxLayout()
@@ -536,11 +545,28 @@ class CurationPanel(QGroupBox):
         mappings = getattr(self.labels_widget, "_mappings", {}) or {}
         return sorted(lid for lid in mappings if isinstance(lid, int) and lid != 0)
 
-    def _on_scope_edited(self, *, activates: bool = False) -> None:
+    def _on_scope_edited(self, *, activates: bool = False, dropped=None) -> None:
         self.app_state.curation_label_ids = self.scope_area.ids() or None
         if activates:
             self.activate("label classes dropped into the curation scope")
+        if dropped:
+            self._follow_branch(dropped)
         self._refresh_status()
+
+    def _follow_branch(self, label_ids) -> None:
+        """Make the branch the dropped classes belong to the editable one.
+
+        Reviewing a class means editing its labels, and only the active
+        branch is editable. Classes from several branches name no single
+        branch, so nothing changes then.
+        """
+        mappings = getattr(self.labels_widget, "_mappings", {}) or {}
+        branches = {int(mappings[i].get("branch", 0)) for i in label_ids if i in mappings}
+        if len(branches) != 1:
+            return
+        set_active = getattr(self.labels_widget, "set_active_branch", None)
+        if callable(set_active):
+            set_active(branches.pop())
 
     def set_scope(self, label_ids, *, reason: str) -> None:
         """Replace the curation scope with *label_ids*, as if dragged in, and activate.
@@ -1314,9 +1340,10 @@ class CurationPanel(QGroupBox):
         self.app_state.curation_changed.emit()
         self._refresh_status()
 
-        self._advance_pending = True
         self.delta_label.setText("✓ placed")
-        QTimer.singleShot(_CONFIRM_PAUSE_MS, self._advance_after_pause)
+        if self.auto_advance_cb.isChecked():
+            self._advance_pending = True
+            QTimer.singleShot(_CONFIRM_PAUSE_MS, self._advance_after_pause)
 
     def _delete_current(self) -> None:
         """Backspace: this event does not belong in the trial — drop the label."""
@@ -1345,7 +1372,8 @@ class CurationPanel(QGroupBox):
         self.app_state.curation_changed.emit()
         self._refresh_status()
         self.delta_label.setText("✗ deleted")
-        self._advance_past(inst)
+        if self.auto_advance_cb.isChecked():
+            self._advance_past(inst)
 
     def _next(self) -> None:
         """N: leave this boundary — curating it when the checkbox says so."""

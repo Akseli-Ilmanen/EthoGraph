@@ -283,7 +283,7 @@ class TestDerivativeTick:
 
 
 class TestIndividualGuard:
-    """A label belongs to one (actor, recipient) pair and the overlay draws only
+    """A label belongs to one (actor, receiver) pair and the overlay draws only
     the selected pair, so events written for somebody this session has never
     heard of are stored and never seen. The usual cause is a workflow copied
     between animals with its Predict onsets step's individual left behind.

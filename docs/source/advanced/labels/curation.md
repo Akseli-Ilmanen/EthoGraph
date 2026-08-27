@@ -90,7 +90,7 @@ Navigating trials the normal way (trial combo, `Up`/`Down`) pulls the review
 along to that trial's first boundary. Nothing reaches disk until you save with
 `Ctrl+S`.
 
-Reviewing what an {doc}`onset model <onset_model>` predicted, you also get the
+Reviewing what an onset model (LightGBM) predicted, you also get the
 **curve it predicted from**: a dashed line per label class, in the class's own
 colour, on a 0–1 right-hand axis. Only the classes **in scope** are drawn, so
 dragging in one class shows that class's belief and nothing else. A low
@@ -136,7 +136,7 @@ not by position.
 tile per point event, a start and an end tile per state event, per camera —
 titled with label, trial, time, confidence and method, with **Flag confidence
 below** outlining doubtful tiles in red and **Histogram…** showing where the
-scores pile up (see {ref}`target-onset-model-confidence`). The grid exports to
+scores pile up. The grid exports to
 a paginated PDF.
 
 A **double click** always jumps the main GUI to that trial and time — in

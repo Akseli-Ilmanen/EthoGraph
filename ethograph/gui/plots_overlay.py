@@ -79,7 +79,9 @@ class OverlayManager:
         the entry is dropped instead of touching the corpse.
         """
         try:
-            host_plot.plot_item.getAxis("right")
+            # getAxis alone is a dict lookup on the Python wrapper and never
+            # touches C++ — only a call on the axis itself detects deletion.
+            host_plot.plot_item.getAxis("right").isVisible()
         except (RuntimeError, AttributeError):
             return True
         return False

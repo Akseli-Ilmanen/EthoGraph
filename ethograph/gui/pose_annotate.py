@@ -738,6 +738,13 @@ class KeypointStore:
         :attr:`filled` when it is set, never assigned from outside. A fill only
         bridges the gaps between labels, so this is normally the labelled span
         and not the whole video.
+    static_keypoints
+        Keypoints that do not move — the corners of an arena, a fixed
+        landmark. Labelled **once**, on any frame, and read as that position
+        on every frame: the canvas shows them everywhere, the fill leaves them
+        alone (:meth:`pin_static`), and the export writes them on every frame.
+        Placing one again moves it, everywhere. Persisted in the sidecar, and
+        carried to the next video of the same camera (:meth:`seed_static_from`).
     """
 
     keypoint_names: list[str]
@@ -756,6 +763,7 @@ class KeypointStore:
     filled: np.ndarray | None = None
     confidence: np.ndarray | None = None
     fill_range: tuple[int, int] | None = None
+    static_keypoints: list[str] = field(default_factory=list)
     _history: list[tuple[int, int, int, np.ndarray | None]] = field(default_factory=list, repr=False)
     #: Bumped on every change to the detections. A detector run can touch every
     #: frame of the video, so readers that would otherwise re-derive their state
@@ -1033,6 +1041,13 @@ class KeypointStore:
         if not self.has_keypoint(keypoint, individual):
             raise UnknownKeypointError(f"{keypoint!r} is not a keypoint of {self.individual_names[i]!r}")
         frame = int(frame)
+        if keypoint in self.static_keypoints:
+            # One position everywhere: placing it again moves it, so the
+            # previous frame's copy goes before the new one is written.
+            for other in [f for f, pts in self.anchors.items() if f != frame and not np.isnan(pts[i, k, 0])]:
+                self._record(other, i, k, self.anchors[other][i, k])
+                self.anchors[other][i, k] = np.nan
+                self._drop_if_empty(other)
         points = self.anchors.get(frame)
         if points is None:
             points = np.full((self.n_individuals, self.n_keypoints, 2), np.nan, dtype=np.float64)
@@ -1044,6 +1059,13 @@ class KeypointStore:
         """Remove *keypoint* of *individual* from *frame*; drops empty anchors."""
         i, k = self.individual_index(individual), self.keypoint_index(keypoint)
         frame = int(frame)
+        if keypoint in self.static_keypoints:
+            # It is on every frame, so clearing it clears it wherever it lives.
+            for other in [f for f, pts in self.anchors.items() if not np.isnan(pts[i, k, 0])]:
+                self._record(other, i, k, self.anchors[other][i, k])
+                self.anchors[other][i, k] = np.nan
+                self._drop_if_empty(other)
+            return
         points = self.anchors.get(frame)
         if points is None:
             return
@@ -1273,6 +1295,18 @@ class KeypointStore:
                 merged[frame][labelled] = points[labelled]
             else:
                 merged[frame] = points.copy()
+        if self.static_keypoints:
+            # A static keypoint rides along on every observed frame, but the
+            # frame it was clicked on is not an observation of anything that
+            # moves: left in, it would widen the span the fill covers and
+            # extrapolate the moving points towards it.
+            static = np.zeros(self.n_keypoints, dtype=bool)
+            for name in self.static_keypoints:
+                if name in self.keypoint_names:
+                    static[self.keypoint_index(name)] = True
+            merged = {frame: points for frame, points in merged.items() if not np.isnan(points[:, ~static, 0]).all()}
+            for points in merged.values():
+                self._overlay_static(points)
         return merged
 
     def flat_observations(self) -> dict[int, np.ndarray]:
@@ -1607,10 +1641,9 @@ class KeypointStore:
         if detected is not None:
             found = ~np.isnan(detected[:, :, 0])
             out[found] = detected[found]
-        points = self.anchors.get(int(frame))
-        if points is not None:
-            labelled = ~np.isnan(points[:, :, 0])
-            out[labelled] = points[labelled]
+        points = self.anchor_positions(frame)
+        labelled = ~np.isnan(points[:, :, 0])
+        out[labelled] = points[labelled]
         return out
 
     def positions_for(self, frame: int, individual: str | None = None) -> np.ndarray:
@@ -1618,11 +1651,111 @@ class KeypointStore:
         return self.positions(frame)[self.individual_index(individual)]
 
     def anchor_positions(self, frame: int) -> np.ndarray:
-        """``(n_individuals, n_keypoints, 2)`` of user-placed points only."""
+        """``(n_individuals, n_keypoints, 2)`` of user-placed points only.
+
+        A static keypoint counts as placed on every frame (see
+        :attr:`static_keypoints`).
+        """
         points = self.anchors.get(int(frame))
-        if points is None:
-            return np.full((self.n_individuals, self.n_keypoints, 2), np.nan, dtype=np.float64)
-        return points.copy()
+        out = (
+            np.full((self.n_individuals, self.n_keypoints, 2), np.nan, dtype=np.float64)
+            if points is None
+            else points.copy()
+        )
+        self._overlay_static(out)
+        return out
+
+    # -- static keypoints ------------------------------------------------
+
+    def is_static(self, keypoint: str) -> bool:
+        return keypoint in self.static_keypoints
+
+    def set_static(self, keypoint: str, static: bool) -> None:
+        """Mark *keypoint* as fixed in place (or moving again).
+
+        Making a keypoint static keeps its **first** labelled frame and drops
+        the others — one position is what "static" means.
+        """
+        if keypoint not in self.keypoint_names:
+            raise UnknownKeypointError(f"{keypoint!r} is not a keypoint")
+        if static and keypoint not in self.static_keypoints:
+            self.static_keypoints.append(keypoint)
+            k = self.keypoint_index(keypoint)
+            for i in range(self.n_individuals):
+                labelled = sorted(f for f, pts in self.anchors.items() if not np.isnan(pts[i, k, 0]))
+                for other in labelled[1:]:
+                    self.anchors[other][i, k] = np.nan
+                    self._drop_if_empty(other)
+        elif not static and keypoint in self.static_keypoints:
+            self.static_keypoints.remove(keypoint)
+
+    def static_anchor(self, keypoint: str, individual: str | None = None) -> np.ndarray:
+        """The one ``(x, y)`` a static keypoint was placed at, or ``NaN``s."""
+        i, k = self.individual_index(individual), self.keypoint_index(keypoint)
+        for pts in self.anchors.values():
+            if not np.isnan(pts[i, k, 0]):
+                return pts[i, k].copy()
+        return np.full(2, np.nan)
+
+    def _overlay_static(self, points: np.ndarray) -> None:
+        """Write every static keypoint's position into *points* (in place)."""
+        for name in self.static_keypoints:
+            if name not in self.keypoint_names:
+                continue
+            k = self.keypoint_index(name)
+            for i in range(self.n_individuals):
+                xy = self.static_anchor(name, self.individual_names[i])
+                if not np.isnan(xy[0]):
+                    points[i, k] = xy
+
+    def pin_static(self, filled: np.ndarray, confidence: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """A fill's output with every static keypoint held at its one position.
+
+        Backends track every point they are handed; a corner tracked across a
+        gap drifts with the noise. The one position is authoritative, so it is
+        written back over the whole span, at anchor confidence.
+        """
+        filled = np.array(filled, copy=True)
+        confidence = np.array(confidence, copy=True)
+        # Backends speak the flat ``(n_frames, n_points, 2)`` layout; the store
+        # keeps ``(n_frames, n_individuals, n_keypoints, 2)``. Either is fine
+        # here, and comes back in the layout it arrived in.
+        view = filled.reshape(len(filled), self.n_individuals, self.n_keypoints, 2)
+        conf_view = confidence.reshape(len(confidence), self.n_individuals, self.n_keypoints)
+        for name in self.static_keypoints:
+            if name not in self.keypoint_names:
+                continue
+            k = self.keypoint_index(name)
+            for i in range(self.n_individuals):
+                xy = self.static_anchor(name, self.individual_names[i])
+                if not np.isnan(xy[0]):
+                    view[:, i, k] = xy
+                    conf_view[:, i, k] = 1.0
+        return filled, confidence
+
+    def seed_static_from(self, other: KeypointStore, frame: int = 0) -> int:
+        """Copy *other*'s static keypoints and their positions in, for a new video.
+
+        Same camera, same pixels: the corners of the box are where they were in
+        the last clip. Only keypoints this schema also has are copied, onto
+        *frame*; nothing already placed here is overwritten. Returns how many
+        were seeded.
+        """
+        seeded = 0
+        for name in other.static_keypoints:
+            if name not in self.keypoint_names:
+                continue
+            if name not in self.static_keypoints:
+                self.static_keypoints.append(name)
+            for individual in self.individual_names:
+                if individual not in other.individual_names or not self.has_keypoint(name, individual):
+                    continue
+                xy = other.static_anchor(name, individual)
+                if np.isnan(xy[0]) or not np.isnan(self.static_anchor(name, individual)[0]):
+                    continue
+                self.set_point(frame, name, (float(xy[0]), float(xy[1])), individual)
+                seeded += 1
+        return seeded
 
     def anchor_positions_for(self, frame: int, individual: str | None = None) -> np.ndarray:
         """``(n_keypoints, 2)`` of user-placed points for one individual."""
@@ -1699,6 +1832,8 @@ class KeypointStore:
             payload["keypoint_color"] = dict(self.keypoint_color)
         if self.individual_color:
             payload["individual_color"] = dict(self.individual_color)
+        if self.static_keypoints:
+            payload["static"] = list(self.static_keypoints)
         # Detections are NOT written here: they are recomputable from the video
         # and the detector's parameters, and a sidecar carrying a frame per
         # detected frame is no longer a file anyone can read. What each label
@@ -1752,6 +1887,7 @@ class KeypointStore:
             anchors=anchors,
             assignment=AssignmentTable.from_list(payload.get("assignment")),
             calibration=CalibrationTable.from_list(payload.get("calibration")),
+            static_keypoints=[str(k) for k in (payload.get("static") or []) if str(k) in keypoints],
         )
 
     def save(self, path: str | Path) -> None:
@@ -1920,6 +2056,17 @@ def store_to_movement_ds(
         for i, k in zip(*np.nonzero(labelled)):
             position[frame, :, k, i] = points[i, k]
             confidence[frame, k, i] = 1.0
+
+    # A static keypoint was placed once and is there on every frame.
+    for name in store.static_keypoints:
+        if name not in store.keypoint_names:
+            continue
+        k = store.keypoint_index(name)
+        for i, individual in enumerate(store.individual_names):
+            xy = store.static_anchor(name, individual)
+            if not np.isnan(xy[0]):
+                position[:, :, k, i] = xy
+                confidence[:, k, i] = 1.0
 
     if image_height is not None:
         position[:, 1] = image_height - position[:, 1]

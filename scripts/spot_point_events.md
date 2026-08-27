@@ -303,6 +303,60 @@ predicted bin back as `bin × k + (k-1)/2`, the bin's **centre**. Mapping to
 `bin × k` reads every strided run as early by half a stride — 7.5 ms at
 stride 4, against a 20 ms budget.
 
+### What the ladder answered (2026-08-26)
+
+All five ran to 8 epochs. Each is read at its own best epoch, on val:
+
+| run | ep | context | quantisation | miss | median | ≤2 (10 ms) | ≤4 (20 ms) | ≤10 (50 ms) |
+|---|---|---|---|---|---|---|---|---|
+| `overnight2` (baseline) | 3 | 1.0 s | 5 ms | 11/54 | 12.0 | 13 % | 22 % | 35 % |
+| `A0` | 2 | 1.0 s | 5 ms | 1/54 | 7.0 | 30 % | 39 % | 57 % |
+| `A1` | 3 | 1.0 s | 10 ms | 2/54 | 12.0 | 22 % | 31 % | 44 % |
+| **`A2`** | **1** | **2.0 s** | 10 ms | **0/54** | **3.0** | **46 %** | **57 %** | **72 %** |
+| `A3` | 1 | 4.0 s | 20 ms | 0/54 | 9.0 | 24 % | 37 % | 56 % |
+| `A4` | 3 | 8.0 s | 40 ms | 0/54 | 6.0 | 19 % | 39 % | 72 % |
+
+**Context fixes recall; quantisation caps precision.** Every run with ≥ 2.0 s
+of context reaches 0 misses at its best epoch and neither 1.0 s run does — so
+the baseline's failure really was aperture, not capacity. But `A2`'s median
+error is 3 frames = 15 ms, which is *finer than the label grid* `A3` (10 ms)
+and `A4` (20 ms) are trained on; past stride 2 the model cannot represent the
+answer it is being asked for. The ladder therefore has an interior optimum,
+and it is `A2`.
+
+`A0` vs `A1` prices resolution alone: at fixed 1.0 s context, halving it costs
+1 extra miss and 8 points of `<=4`. `A1` vs `A2` buys context at that same
+resolution and gains 2 misses back and 26 points. Context is worth several
+times what the resolution costs — which is the whole claim under test.
+
+**Every run still collapses, and it happens fast.** Misses per epoch:
+
+```
+A0  3  1  3 10 11 11 14      A2  0  1  2  3  4  5  9
+A1  3 27  2  7  7  6  4      A3  0  6  3  9  7  9  7
+                             A4  0  0  0  2  3  3  3
+```
+
+Best epochs are 1-3, i.e. **4-10 passes over the training frames**
+(`1.24 × stride` passes per epoch here). The 8-epoch budget is mostly spent
+watching the model come apart; validate from epoch 0 and stop by epoch 3.
+`A4` is the exception — it never collapses and is still improving at epoch 7,
+which is the strongest evidence that the collapse is driven by how sparse the
+positives are on the model's own clock, not by the optimiser. Getting `A4`'s
+stability at `A2`'s resolution is exactly what a displacement head would buy.
+
+**Confirmed once on the held-out session** (`A2`, epoch 1, `test.json`,
+36 trials / 72 events, 0 misses):
+
+| class | median | ≤2 (10 ms) | ≤4 (20 ms) | ≤10 (50 ms) | ≤20 (100 ms) |
+|---|---|---|---|---|---|
+| `label_31` (stick) | 3.0 | 42 % | 72 % | 83 % | 89 % |
+| `label_32` (pellet) | 5.0 | 36 % | 47 % | 58 % | 72 % |
+
+Held-out val and test agree, so the numbers are the model's and not the
+split's. Against the 3-4 frame target this is a qualified yes for the stick
+event and a not-yet for the pellet event.
+
 ## Next steps
 
 ```bash

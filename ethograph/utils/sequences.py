@@ -143,6 +143,7 @@ def match_sequences(
 LABEL_MATCH_MODES = {
     "present": "All of them occur (any order)",
     "partial": "Some but not all occur",
+    "repeated": "Any of them occurs more than once",
     "order": "In this order (other labels may come between)",
     "order_strict": "In this order, one straight after another",
 }
@@ -193,6 +194,8 @@ def trial_matches_labels(present: list[int], target: list[int], mode: str) -> bo
     if mode == "partial":
         found = {label for label in target if label in present}
         return 0 < len(found) < len(set(target))
+    if mode == "repeated":
+        return any(present.count(label) > 1 for label in set(target))
     if mode == "order":
         return _is_subsequence(target, present)
     if mode == "order_strict":

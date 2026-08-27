@@ -42,9 +42,15 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
-#: Folder each prediction run writes into, under the session's ``labels/``.
-#: Matches the ``predictions_{model}_{timestamp}`` convention already on disk.
-RUN_PREFIX = "predictions_lightgbm_"
+#: Folder each prediction run writes into, under the session's ``labels/``:
+#: ``predictions_{model}_{timestamp}`` — the convention every model here
+#: shares (the LightGBM onset model, the segmentation pipeline, the pixel
+#: spotter). A run is recognised by holding :data:`CURVES_FILE`, not by which
+#: model wrote it.
+RUN_PREFIX = "predictions_"
+
+#: The model name the GUI's onset model writes under.
+LIGHTGBM = "lightgbm"
 
 #: The curves file inside a run folder.
 CURVES_FILE = "onset_curves.npz"
@@ -58,20 +64,26 @@ def labels_dir(session_path: str | Path) -> Path:
     return Path(session_path).parent / "labels"
 
 
-def run_dir(session_path: str | Path, timestamp: str) -> Path:
-    """The folder one prediction run writes into."""
-    return labels_dir(session_path) / f"{RUN_PREFIX}{timestamp}"
+def run_dir(session_path: str | Path, timestamp: str, model: str = LIGHTGBM) -> Path:
+    """The folder one prediction run writes into: ``predictions_{model}_{timestamp}``."""
+    return labels_dir(session_path) / f"{RUN_PREFIX}{model}_{timestamp}"
+
+
+def run_timestamp(folder: Path) -> str:
+    """The ``YYYYMMDD_HHMMSS`` a run folder ends in — what orders runs.
+
+    Sorting by whole name would put every ``lightgbm`` run before every
+    ``spot`` run whatever their dates; the timestamp is the last two parts.
+    """
+    return "_".join(folder.name.rsplit("_", 2)[-2:])
 
 
 def run_dirs(session_path: str | Path) -> list[Path]:
-    """Every prediction run's folder that holds curves, oldest name first.
-
-    The timestamp is the folder's name, so sorting the names sorts the runs.
-    """
+    """Every prediction run's folder that holds curves, oldest first."""
     root = labels_dir(session_path)
     if not root.is_dir():
         return []
-    return sorted(p for p in root.glob(f"{RUN_PREFIX}*") if (p / CURVES_FILE).is_file())
+    return sorted((p for p in root.glob(f"{RUN_PREFIX}*") if (p / CURVES_FILE).is_file()), key=run_timestamp)
 
 
 def read_curves(path: str | Path) -> dict[str, TrialCurves]:

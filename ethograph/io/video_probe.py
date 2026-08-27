@@ -1,4 +1,4 @@
-"""Cheap metadata probe of a video file: frame rate and frame count.
+"""Cheap metadata probe of a video file: frame rate, frame count and size.
 
 Qt-free, so both the GUI and the feature extractors read a video's rate from
 the same place — and nothing ever hardcodes one.
@@ -18,6 +18,9 @@ class VideoProbe:
     path: str
     fps: float
     nframes: int
+    #: Frame size in pixels, as encoded — the pixels a crop is spelled in.
+    width: int = 0
+    height: int = 0
 
 
 def probe_video(video_path: str) -> VideoProbe:
@@ -27,9 +30,10 @@ def probe_video(video_path: str) -> VideoProbe:
         if rate is None:
             raise ValueError(f"Cannot determine frame rate of {video_path}")
         fps = float(rate)
+        width, height = int(stream.codec_context.width), int(stream.codec_context.height)
         nframes = stream.frames
         if not nframes and stream.duration and stream.time_base:
             nframes = int(float(stream.duration * stream.time_base) * fps)
         if not nframes and container.duration:
             nframes = int(container.duration / av.time_base * fps)
-    return VideoProbe(path=str(video_path), fps=fps, nframes=int(nframes))
+    return VideoProbe(path=str(video_path), fps=fps, nframes=int(nframes), width=width, height=height)

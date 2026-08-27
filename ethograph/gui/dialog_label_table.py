@@ -14,11 +14,16 @@ it from its siblings.
 Every change is recorded with ``app_state.record_label_edit`` before it runs,
 so ``Ctrl+Z`` in the main window takes it back like any other label edit — one
 step per trial the change touched.
+
+Bulk edits (right-click a column header, or the "Find & replace…" button) run
+over whatever is currently visible in the table, so an active filter narrows
+their scope like everything else here.
 """
 
 from __future__ import annotations
 
 import logging
+import re
 
 import numpy as np
 import pandas as pd
@@ -27,12 +32,15 @@ from qtpy.QtGui import QColor, QStandardItem, QStandardItemModel
 from qtpy.QtWidgets import (
     QAbstractItemView,
     QApplication,
+    QCheckBox,
     QComboBox,
     QDialog,
+    QFormLayout,
     QHBoxLayout,
     QHeaderView,
     QInputDialog,
     QLabel,
+    QLineEdit,
     QMenu,
     QMessageBox,
     QPushButton,
@@ -77,6 +85,12 @@ _DECIMALS = {"onset_s": 3, "offset_s": 3, "confidence": 3}
 
 #: Columns filtered by a threshold rather than a checklist.
 _NUMERIC_FILTER_COLUMNS = {"onset_s", "offset_s", "confidence", "n_samples"}
+
+#: Columns eligible for find & replace: string-valued and editable. Numeric
+#: columns (onset_s, offset_s, confidence, labels) are excluded — a substring
+#: match against a number's text is a different, riskier kind of edit than the
+#: same match against a name, so it stays out of this tool.
+_TEXT_COLUMNS = tuple(c for c in INTERVAL_COLUMNS if INTERVAL_DTYPES.get(c, object) is object)
 
 _TABLE_STYLE = """
     QTableView { gridline-color: #555; background: #3b3b3b; color: #fff; }
@@ -125,6 +139,86 @@ def parse_cell(column: str, text: str):
     if np.issubdtype(dtype, np.integer):
         return int(round(number))
     return number
+
+
+def _replace_value(
+    current: str, find_text: str, replace_text: str, whole_cell: bool, case_sensitive: bool
+) -> str | None:
+    """The replaced text, or ``None`` when *current* does not match at all.
+
+    *replace_text* is inserted literally — a lambda substitution, so a ``\\1``
+    or backslash the user types is never read as a regex backreference.
+    """
+    flags = 0 if case_sensitive else re.IGNORECASE
+    pattern = re.compile(re.escape(find_text), flags)
+    if whole_cell:
+        return replace_text if pattern.fullmatch(current) else None
+    if not pattern.search(current):
+        return None
+    return pattern.sub(lambda _match: replace_text, current)
+
+
+class FindReplaceDialog(QDialog):
+    """Replace every occurrence of one string with another, within one column.
+
+    Restricted to :data:`_TEXT_COLUMNS` — the numeric columns are left out on
+    purpose, since a substring match against a number's text can silently
+    reinterpret the value rather than just rename it.
+    """
+
+    def __init__(self, columns: list[str], initial: str | None, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Find & replace")
+        layout = QVBoxLayout(self)
+
+        form = QFormLayout()
+        self._column_combo = QComboBox()
+        self._column_combo.addItems(columns)
+        if initial in columns:
+            self._column_combo.setCurrentText(initial)
+        form.addRow("Column:", self._column_combo)
+        self._find_edit = QLineEdit()
+        form.addRow("Find:", self._find_edit)
+        self._replace_edit = QLineEdit()
+        form.addRow("Replace with:", self._replace_edit)
+        layout.addLayout(form)
+
+        self._whole_cell = QCheckBox("Match whole cell only (safer)")
+        self._whole_cell.setChecked(True)
+        layout.addWidget(self._whole_cell)
+        self._case_sensitive = QCheckBox("Case sensitive")
+        self._case_sensitive.setChecked(True)
+        layout.addWidget(self._case_sensitive)
+
+        note = QLabel("Applies to every matching cell currently visible — an active filter narrows this.")
+        note.setStyleSheet("QLabel { color: #aaa; font-size: 11px; }")
+        note.setWordWrap(True)
+        layout.addWidget(note)
+
+        buttons = QHBoxLayout()
+        ok_btn = QPushButton("Replace all")
+        ok_btn.clicked.connect(self.accept)
+        buttons.addWidget(ok_btn)
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.clicked.connect(self.reject)
+        buttons.addWidget(cancel_btn)
+        layout.addLayout(buttons)
+        self._find_edit.setFocus()
+
+    def column(self) -> str:
+        return self._column_combo.currentText()
+
+    def find_text(self) -> str:
+        return self._find_edit.text()
+
+    def replace_text(self) -> str:
+        return self._replace_edit.text()
+
+    def whole_cell(self) -> bool:
+        return self._whole_cell.isChecked()
+
+    def case_sensitive(self) -> bool:
+        return self._case_sensitive.isChecked()
 
 
 class _ChoiceDelegate(QStyledItemDelegate):
@@ -185,6 +279,7 @@ class LabelTableDialog(QDialog):
         info = QLabel(
             "Every trial's labels, as they will be written to the TSV. "
             "Double-click a cell to edit it; select rows and press Delete to remove them. "
+            "Right-click a column header to set or find & replace the whole column. "
             "Ctrl+Z in the main window undoes."
         )
         info.setStyleSheet("QLabel { color: #aaa; }")
@@ -210,6 +305,8 @@ class LabelTableDialog(QDialog):
         self._header.setSectionResizeMode(QHeaderView.Interactive)
         self._header.setStretchLastSection(True)
         self._header.filter_requested.connect(self._on_filter_requested)
+        self._header.setContextMenuPolicy(Qt.CustomContextMenu)
+        self._header.customContextMenuRequested.connect(self._show_header_context_menu)
         self.table.setHorizontalHeader(self._header)
         self._header.setSortIndicator(-1, Qt.AscendingOrder)
         layout.addWidget(self.table, stretch=1)
@@ -228,6 +325,11 @@ class LabelTableDialog(QDialog):
         set_btn.setToolTip("Give every selected cell of one editable column the same value")
         set_btn.clicked.connect(self.set_selected_cells)
         buttons.addWidget(set_btn)
+
+        replace_btn = QPushButton("Find & replace…")
+        replace_btn.setToolTip("Replace every occurrence of one string with another, in one text column")
+        replace_btn.clicked.connect(lambda: self.find_replace())
+        buttons.addWidget(replace_btn)
 
         clear_btn = QPushButton("Clear filters")
         clear_btn.clicked.connect(self._clear_filters)
@@ -512,6 +614,24 @@ class LabelTableDialog(QDialog):
         finally:
             self._loading = False
 
+    def _prompt_value(self, column: str, title: str) -> str | None:
+        """Ask for one value to write into *column* — a combo for a fixed vocabulary."""
+        if column in CHOICE_COLUMNS:
+            text, ok = QInputDialog.getItem(self, title, f"{column}:", list(CHOICE_COLUMNS[column]), 0, False)
+        else:
+            text, ok = QInputDialog.getText(self, title, f"{column}:")
+        return text if ok else None
+
+    def _apply_to_rows(self, source_rows: list[int], column: str, text: str) -> int:
+        """Commit *text* to *column* for each of *source_rows*; returns how many landed."""
+        n = 0
+        for row in sorted(source_rows):
+            pos = self._position_of(row)
+            self._commit(pos, column, text)
+            self._refresh_row(row, pos)
+            n += 1
+        return n
+
     def set_selected_cells(self) -> None:
         """Give every selected cell of one editable column the same value."""
         indexes = [idx for idx in self._selected_source_indexes() if idx.column() > 0]
@@ -524,17 +644,77 @@ class LabelTableDialog(QDialog):
             notify(f"{column} is read-only", severity="warning")
             return
 
-        if column in CHOICE_COLUMNS:
-            text, ok = QInputDialog.getItem(self, "Set cells", f"{column}:", list(CHOICE_COLUMNS[column]), 0, False)
-        else:
-            text, ok = QInputDialog.getText(self, "Set cells", f"{column}:")
-        if not ok:
+        text = self._prompt_value(column, "Set cells")
+        if text is None:
             return
+        self._apply_to_rows({idx.row() for idx in indexes}, column, text)
 
-        for row in sorted({idx.row() for idx in indexes}):
-            pos = self._position_of(row)
-            self._commit(pos, column, text)
-            self._refresh_row(row, pos)
+    def _set_entire_column(self, col_logical: int) -> None:
+        """Give every row currently visible in the table the same value in one column."""
+        column = self._columns[col_logical - 1]
+        if column not in INTERVAL_COLUMNS:
+            notify(f"{column} is read-only", severity="warning")
+            return
+        text = self._prompt_value(column, f"Set '{column}' column")
+        if text is None:
+            return
+        rows = [self._proxy.mapToSource(self._proxy.index(r, col_logical)).row() for r in range(self._proxy.rowCount())]
+        if not rows:
+            notify("No visible rows to update", severity="warning")
+            return
+        n = self._apply_to_rows(rows, column, text)
+        notify(f"Set {n} cell{'s' if n != 1 else ''} in {column}")
+
+    def find_replace(self, column: str | None = None) -> None:
+        """Replace every occurrence of one string with another, in one text column."""
+        if not _TEXT_COLUMNS:
+            return
+        dialog = FindReplaceDialog(list(_TEXT_COLUMNS), column, self)
+        if dialog.exec_() != QDialog.Accepted:
+            return
+        find_text = dialog.find_text()
+        if not find_text:
+            notify("Enter text to find first", severity="warning")
+            return
+        col_name = dialog.column()
+        replace_text = dialog.replace_text()
+        if col_name in CHOICE_COLUMNS and replace_text not in CHOICE_COLUMNS[col_name]:
+            notify(f"{col_name} must be one of: {', '.join(CHOICE_COLUMNS[col_name])}", severity="warning")
+            return
+        whole_cell, case_sensitive = dialog.whole_cell(), dialog.case_sensitive()
+
+        col_logical = self._columns.index(col_name) + 1
+        n_matches = 0
+        for view_row in range(self._proxy.rowCount()):
+            source_row = self._proxy.mapToSource(self._proxy.index(view_row, col_logical)).row()
+            current = self._model.item(source_row, col_logical).text()
+            new_text = _replace_value(current, find_text, replace_text, whole_cell, case_sensitive)
+            if new_text is None:
+                continue
+            pos = self._position_of(source_row)
+            self._commit(pos, col_name, new_text)
+            self._refresh_row(source_row, pos)
+            n_matches += 1
+
+        if n_matches:
+            notify(f"Replaced {n_matches} cell{'s' if n_matches != 1 else ''} in {col_name}")
+        else:
+            notify("No matching cells found", severity="warning")
+
+    def _show_header_context_menu(self, point) -> None:
+        col_logical = self._header.logicalIndexAt(point)
+        if col_logical <= 0 or col_logical - 1 >= len(self._columns):
+            return
+        column = self._columns[col_logical - 1]
+        menu = QMenu(self)
+        if column in INTERVAL_COLUMNS:
+            menu.addAction(f"Set entire '{column}' column…", lambda: self._set_entire_column(col_logical))
+            if column in _TEXT_COLUMNS:
+                menu.addAction(f"Find & replace in '{column}'…", lambda: self.find_replace(column))
+        else:
+            action = menu.addAction(f"'{column}' is read-only")
+            action.setEnabled(False)
+        menu.exec_(self._header.mapToGlobal(point))
 
     def delete_selected_rows(self) -> None:
         """Remove every row the selection touches."""
@@ -609,6 +789,7 @@ class LabelTableDialog(QDialog):
         delete.setEnabled(n_rows > 0)
         delete.triggered.connect(self.delete_selected_rows)
         menu.addAction("Set selected cells…", self.set_selected_cells)
+        menu.addAction("Find & replace…", lambda: self.find_replace())
         menu.addAction("Copy", self.copy_selection)
         menu.addSeparator()
         menu.addAction("Refresh", self.reload)

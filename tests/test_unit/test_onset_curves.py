@@ -97,3 +97,26 @@ def test_unreadable_file_is_ignored(tmp_path):
     path = tmp_path / "broken.npz"
     path.write_bytes(b"not an npz")
     assert oc.read_curves(path) == {}
+
+
+class TestManyModels:
+    """One folder convention for every model, ordered by when it ran."""
+
+    def test_run_dir_names_the_model(self, tmp_path):
+        session = tmp_path / "s.nc"
+        assert oc.run_dir(session, "20260101_000000").name == "predictions_lightgbm_20260101_000000"
+        assert oc.run_dir(session, "20260101_000000", model="spot_A2").name == "predictions_spot_A2_20260101_000000"
+
+    def test_runs_order_by_timestamp_not_by_model(self, tmp_path):
+        session = tmp_path / "s.nc"
+        for model, ts in (
+            ("spot_A2", "20260101_000000"),
+            ("lightgbm", "20260102_000000"),
+            ("spot_A2", "20260103_000000"),
+        ):
+            oc.write_curves(oc.run_dir(session, ts, model=model) / oc.CURVES_FILE, {})
+        assert [oc.run_timestamp(p) for p in oc.run_dirs(session)] == [
+            "20260101_000000",
+            "20260102_000000",
+            "20260103_000000",
+        ]

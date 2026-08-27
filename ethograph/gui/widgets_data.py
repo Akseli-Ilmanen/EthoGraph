@@ -287,8 +287,8 @@ class DataPanel(QWidget):
         The actor combo is the dataset's individual dimension when it has one
         (created by ``DataWidget._create_combo_widget`` into this layout, so it
         keeps its dim name), and a plain list of the individuals the labels use
-        when it does not.  The recipient combo turns a solo behaviour into a
-        dyadic one: (actor, recipient) is the label subject.
+        when it does not.  The receiver combo turns a solo behaviour into a
+        dyadic one: (actor, receiver) is the label subject.
         """
         self.individual_groupbox = QGroupBox("Individual")
         self.individual_layout = QFormLayout()
@@ -304,13 +304,13 @@ class DataPanel(QWidget):
         self.individual_rec_combo = QComboBox()
         self.individual_rec_combo.setObjectName("individual_rec_combo")
         self.individual_rec_combo.setToolTip(
-            "Individual recipient: who the behaviour is directed at, for dyadic "
-            "interactions (e.g. one bird mounting another).\nWith a recipient "
-            "chosen, only the labels of this individual→recipient pair are shown "
+            "Individual receiver: who the behaviour is directed at, for dyadic "
+            "interactions (e.g. one bird mounting another).\nWith a receiver "
+            "chosen, only the labels of this individual→receiver pair are shown "
             "and labelled; None means a solo behaviour."
         )
         self.individual_rec_combo.addItem("None", "")
-        self.individual_layout.addRow("Recipient:", self.individual_rec_combo)
+        self.individual_layout.addRow("Receiver:", self.individual_rec_combo)
 
         parent_layout.addWidget(self.individual_groupbox)
 
@@ -678,7 +678,7 @@ class DataWidget(QWidget):
         self.individual_groupbox = panel.individual_groupbox
         self.individual_layout = panel.individual_layout
         self.individual_rec_combo = panel.individual_rec_combo
-        panel.individual_rec_combo.currentIndexChanged.connect(self._on_recipient_changed)
+        panel.individual_rec_combo.currentIndexChanged.connect(self._on_receiver_changed)
         self.slot_groupbox = panel.slot_groupbox
         self.slot_layout = panel.slot_layout
         self.slot_row2_layout = panel.slot_row2_layout
@@ -768,7 +768,10 @@ class DataWidget(QWidget):
             notify("Crop selection cancelled.", "warning")
             return
         self.video_mgr.set_camera_crop(camera, rect)
-        notify(f"Cropped {camera} to {rect[2] - rect[0]}×{rect[3] - rect[1]} px.")
+        notify(
+            f"Cropped {camera} to {rect[2] - rect[0]}×{rect[3] - rect[1]} px "
+            f"at ({rect[0]}, {rect[1]})-({rect[2]}, {rect[3]})."
+        )
 
     def _on_uncrop_video_clicked(self):
         view = self._crop_target_view()
@@ -1192,8 +1195,8 @@ class DataWidget(QWidget):
         self.app_state.ready = True
 
         self._restore_or_set_defaults()
-        # The restored individual decides who is available as a recipient.
-        self._populate_recipient_combo()
+        # The restored individual decides who is available as a receiver.
+        self._populate_receiver_combo()
 
         self.io_widget.on_load_complete()
         self.labels_widget.refresh_mapping_for_data_dir(Path(ctx.nc_file_path).parent)
@@ -1485,7 +1488,7 @@ class DataWidget(QWidget):
         trial = self.app_state.trials_sel
         store = getattr(self.app_state, "pred_store", None)
         if store is not None:
-            trial_confidence = store.get_confidence(trial, self.app_state.dt)
+            trial_confidence = store.get_confidence(trial, self.app_state.dt, individual=self.app_state.selected_individual())
             if trial_confidence is not None:
                 time_coord = self.app_state.time_coord.values
                 n = min(len(trial_confidence), len(time_coord))
@@ -1519,12 +1522,6 @@ class DataWidget(QWidget):
             self._update_confidence_overlay()
         if self.labels_widget is not None:
             self.labels_widget.refresh_labels_shapes_layer()
-
-    def toggle_predictions_slot(self):
-        """Toggle the Predictions overlay on/off (Ctrl+Y). No-op with no predictions loaded."""
-        if self.app_state.pred_labels_df is None:
-            return
-        self.show_predictions_overlay_checkbox.setChecked(not self.show_predictions_overlay_checkbox.isChecked())
 
     def cycle_neural_view(self):
         if not hasattr(self, "neural_view_combo") or not self.neural_view_combo.isVisible():
@@ -2270,7 +2267,7 @@ class DataWidget(QWidget):
         return combo
 
     # ------------------------------------------------------------------
-    # Individual (actor) + recipient
+    # Individual (actor) + receiver
     # ------------------------------------------------------------------
 
     def _individual_actor_key(self) -> str:
@@ -2285,7 +2282,7 @@ class DataWidget(QWidget):
         return (catalog.individual_combo if catalog is not None else None) or INDIVIDUAL_DIMS[0]
 
     def refresh_individual_choices(self) -> None:
-        """Point the Individual / Recipient combos at this session's individuals.
+        """Point the Individual / Receiver combos at this session's individuals.
 
         Run on load, on a catalog swap, and after a label import: with no
         individual dimension the names come from the labels themselves, and
@@ -2310,16 +2307,16 @@ class DataWidget(QWidget):
         for other in INDIVIDUAL_DIMS:
             if other != key:
                 self.app_state.set_key_sel(other, None)
-        self._populate_recipient_combo()
+        self._populate_receiver_combo()
 
-    def _populate_recipient_combo(self) -> None:
-        """Offer every individual except the actor — nothing is its own recipient."""
+    def _populate_receiver_combo(self) -> None:
+        """Offer every individual except the actor — nothing is its own receiver."""
         combo = getattr(self, "individual_rec_combo", None)
         if combo is None:
             return
         actor = self.app_state.selected_individual()
         names = [n for n in self.app_state.label_individuals() if n != actor]
-        wanted = self.app_state.selected_recipient()
+        wanted = self.app_state.selected_receiver()
         combo.blockSignals(True)
         combo.clear()
         combo.addItem("None", "")
@@ -2329,14 +2326,14 @@ class DataWidget(QWidget):
         combo.setCurrentIndex(idx if idx >= 0 else 0)
         combo.blockSignals(False)
         combo.setEnabled(bool(names))
-        # A recipient this actor cannot have is dropped, not kept as a filter
+        # A receiver this actor cannot have is dropped, not kept as a filter
         # that silently matches nothing.
-        self.app_state.individual_recipient = get_combo_value(combo) or ""
+        self.app_state.individual_receiver = get_combo_value(combo) or ""
 
-    def _on_recipient_changed(self, _index: int) -> None:
+    def _on_receiver_changed(self, _index: int) -> None:
         if not self.app_state.ready:
             return
-        self.app_state.individual_recipient = get_combo_value(self.individual_rec_combo) or ""
+        self.app_state.individual_receiver = get_combo_value(self.individual_rec_combo) or ""
         if self.labels_widget:
             # A half-placed label was anchored for the previous subject.
             self.labels_widget._reset_label_clicks()
@@ -2428,9 +2425,9 @@ class DataWidget(QWidget):
             except (ValueError, TypeError):
                 pass
         if key in INDIVIDUAL_DIMS:
-            # The actor changed: it can no longer be its own recipient, and a
-            # recipient carried over from the previous actor may not exist.
-            self._populate_recipient_combo()
+            # The actor changed: it can no longer be its own receiver, and a
+            # receiver carried over from the previous actor may not exist.
+            self._populate_receiver_combo()
             # A half-placed label was anchored for the previous subject.
             self.labels_widget._reset_label_clicks()
             self.labels_widget.refresh_labels_shapes_layer()
@@ -2894,7 +2891,7 @@ class DataWidget(QWidget):
         self.update_label_plot()
 
     def _subject_intervals(self, df):
-        """*df* reduced to the labels of the selected actor and recipient.
+        """*df* reduced to the labels of the selected actor and receiver.
 
         Read from ``app_state``, never from the xarray kwargs: a pynapple
         session has no ``ds_kwargs`` at all, and whose label a row is was never
@@ -2905,7 +2902,7 @@ class DataWidget(QWidget):
         actor = self.app_state.selected_individual()
         if not self.app_state.labels_name_our_individuals(df):
             actor = None
-        return select_subject(df, actor, self.app_state.selected_recipient())
+        return select_subject(df, actor, self.app_state.selected_receiver())
 
     def update_label_plot(self):
         # Labels are hidden when no branch is shown and predictions aren't toggled on.

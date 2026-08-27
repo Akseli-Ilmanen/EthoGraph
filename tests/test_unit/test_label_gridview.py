@@ -446,6 +446,30 @@ class TestConfigDialog:
         assert all(e.image is None and e.error == "video not found" for e in grid._entries)
         assert len(grid._cells) == 4
 
+    def test_building_the_grid_shows_no_top_level_window(self, dialog):
+        """Every tile is parented before it is shown: a parentless widget
+        made visible — even for the instant before a layout adopts it — is
+        a top-level window, and one flashed per tile."""
+        from qtpy.QtCore import QEvent, QObject
+
+        class _Spy(QObject):
+            shown: list[str] = []
+
+            def eventFilter(self, obj, event):
+                if event.type() == QEvent.Show and isinstance(obj, QWidget) and obj.parent() is None:
+                    self.shown.append(type(obj).__name__)
+                return False
+
+        spy = _Spy()
+        dialog.app_state.trials = [1, 3]
+        QApplication.instance().installEventFilter(spy)
+        try:
+            dialog._generate()
+        finally:
+            QApplication.instance().removeEventFilter(spy)
+        assert len(dialog.grid_view._cells) == 4
+        assert spy.shown == []
+
     def test_regenerating_replaces_the_grid_tab(self, dialog):
         """A second run swaps the tab's grid — never a second Frames tab."""
         dialog._generate()

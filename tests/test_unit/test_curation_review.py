@@ -40,9 +40,13 @@ class _LabelsStub(QWidget):
     def __init__(self, mappings):
         super().__init__()
         self._mappings = mappings
+        self.active_branch: int | None = None
 
     def refresh_labels_shapes_layer(self):
         pass
+
+    def set_active_branch(self, branch_idx: int) -> None:
+        self.active_branch = branch_idx
 
 
 class _TrialsStub:
@@ -154,6 +158,26 @@ class TestScope:
     def test_scope_follows_the_state(self, panel):
         panel.app_state.curation_label_ids = [6]
         assert panel.scope_area.ids() == [6]
+
+    def test_a_drop_from_one_branch_makes_it_the_editable_one(self, panel):
+        """Reviewing a class means editing it, and only the active branch
+        is editable — so the branch the dropped classes live in is selected.
+        Classes from several branches name no single branch: nothing moves."""
+        labels = panel.labels_widget
+        labels._mappings = {
+            4: {**MAPPINGS[4], "branch": 1},
+            6: {**MAPPINGS[6], "branch": 1},
+            8: {**MAPPINGS[8], "branch": 2},
+        }
+        panel.scope_area.add_ids([4, 6])
+        panel._on_scope_edited(activates=True, dropped=[4, 6])
+        assert labels.active_branch == 1
+        labels.active_branch = None
+        panel.scope_area.add_ids([8])
+        panel._on_scope_edited(activates=True, dropped=[8, 4])
+        assert labels.active_branch is None
+        panel._on_scope_edited(activates=True, dropped=[8])
+        assert labels.active_branch == 2
 
 
 class TestActive:

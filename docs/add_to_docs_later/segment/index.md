@@ -122,11 +122,11 @@ labels you drew.
     held-out session
 * - **Inference**
 
-    `project.infer()`
+    `project.inference()`
   - Runs a run over the sessions and post-processes the predictions (purge →
     stitch → snap to changepoints → purge). Returns the prediction paths;
     `run=` picks another run, `sessions=` narrows to a few.
-  - `{session folder}/predictions/{run}/{stem}_labels.tsv` + `_probs.npz`
+  - `{session folder}/labels/predictions_{run}_{timestamp}/{stem}_predictions.tsv` + `_probs.npz`
 ```
 
 `project.config` is the resolved config and `project.root` the project

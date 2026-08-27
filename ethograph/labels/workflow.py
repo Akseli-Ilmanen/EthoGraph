@@ -128,11 +128,12 @@ GRID_MODE_CHOICES = {
 #: ``gui.dialog_label_gridview.GRID_METHOD_FILTERS`` — spelled here so this
 #: module stays importable without Qt.
 GRID_METHOD_CHOICES = {
-    "all": "All labels",
+    "automated": "Automated only",
     "manual": "Manual only",
     "curated": "Curated only",
     "human": "Manual or curated",
-    "automated": "Automated only",
+    "all": "All labels",
+    
 }
 
 #: The ``methods`` parameter both grid steps take: which half of the labels

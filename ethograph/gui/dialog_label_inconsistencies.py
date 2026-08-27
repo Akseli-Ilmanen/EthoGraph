@@ -8,7 +8,7 @@ the classes in an order they should not have, which are missing a sequence
 altogether. Those are the trials worth looking at first, and no metadata
 column knows about them.
 
-The four questions it can ask about a set of label classes, in the order the
+The five questions it can ask about a set of label classes, in the order the
 dialog lists them (:data:`~ethograph.utils.sequences.LABEL_MATCH_MODES`):
 
 * **All of them occur** — the classes are all somewhere in the trial.
@@ -16,6 +16,8 @@ dialog lists them (:data:`~ethograph.utils.sequences.LABEL_MATCH_MODES`):
   "spot uncoupled labels" case, and it is not the negation of the first: a
   trial with *none* of them is not a broken pair, it is a trial where the
   behaviour did not happen.
+* **Any of them occurs more than once** — a class that should happen once per
+  trial happens twice: a doubled click, a prediction that fired twice.
 * **In this order** — ``1-2-6-8`` in that order, other labels allowed in
   between (so ``1-2-6-6-8`` matches).
 * **In this order, one straight after another** — the same, contiguously (so
@@ -85,7 +87,7 @@ class LabelInconsistencyDialog(QDialog):
         self.pattern_edit.setPlaceholderText("e.g. 1-2-6-8")
         self.pattern_edit.setToolTip(
             "Label ids, in the order you expect them — the same spelling the\n"
-            "Sequence navigate mode takes. Order is ignored by the first two modes."
+            "Sequence navigate mode takes. Only the 'in this order' modes read the order."
         )
         self.pattern_edit.textChanged.connect(self._refresh_preview)
         form.addRow("Labels:", self.pattern_edit)

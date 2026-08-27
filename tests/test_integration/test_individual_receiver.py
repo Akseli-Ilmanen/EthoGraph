@@ -1,11 +1,11 @@
-"""Who the panels are about: the Individual selector and its recipient.
+"""Who the panels are about: the Individual selector and its receiver.
 
 Picking an individual used to be a feature-plot privilege — the combo lived in
 the "Xarray coords" group, so an audio, space or ephys panel had no way to say
 whose labels it was showing, and a pynapple session filtered labels by nobody
 at all.  The selector now sits above every context but the video's, and carries
-a second combo: with a recipient chosen, only the labels of that exact
-(actor, recipient) pair are shown.
+a second combo: with a receiver chosen, only the labels of that exact
+(actor, receiver) pair are shown.
 """
 
 from __future__ import annotations
@@ -39,7 +39,7 @@ def test_every_context_but_the_video_gets_the_selector(moll2025_gui):
     assert not panel._individual.isVisibleTo(panel)
 
 
-def test_a_recipient_makes_the_pair_its_own_label_track(moll2025_gui):
+def test_a_receiver_makes_the_pair_its_own_label_track(moll2025_gui):
     _, meta = moll2025_gui
     state = meta.app_state
     dw = meta.data_widget
@@ -51,11 +51,11 @@ def test_a_recipient_makes_the_pair_its_own_label_track(moll2025_gui):
     state.set_trial_intervals(trial, df)
     state.label_intervals = state.get_trial_intervals(trial)
 
-    state.individual_recipient = ""
+    state.individual_receiver = ""
     solo = dw._subject_intervals(state.get_display_intervals())
     assert list(solo["onset_s"]) == [0.5]
 
-    state.individual_recipient = "partner"
+    state.individual_receiver = "partner"
     dyadic = dw._subject_intervals(state.get_display_intervals())
     assert list(dyadic["onset_s"]) == [2.0]
 
@@ -63,12 +63,12 @@ def test_a_recipient_makes_the_pair_its_own_label_track(moll2025_gui):
     dw.update_label_plot()
 
 
-def test_the_actor_is_never_offered_as_its_own_recipient(moll2025_gui):
+def test_the_actor_is_never_offered_as_its_own_receiver(moll2025_gui):
     _, meta = moll2025_gui
     state = meta.app_state
     dw = meta.data_widget
 
-    dw._populate_recipient_combo()
+    dw._populate_receiver_combo()
     combo = dw.individual_rec_combo
     offered = [combo.itemData(i) for i in range(combo.count())]
     assert offered[0] == "", "None (solo) is always the default"
@@ -87,7 +87,7 @@ def test_labels_written_under_other_names_are_not_filtered_away(moll2025_gui):
     df = add_interval(empty_intervals(), 0.5, 1.0, 1, "somebody_else_entirely")
     state.set_trial_intervals(trial, df)
     state.label_intervals = state.get_trial_intervals(trial)
-    state.individual_recipient = ""
+    state.individual_receiver = ""
 
     assert not state.labels_name_our_individuals(state.label_intervals)
     assert len(dw._subject_intervals(state.get_display_intervals())) == 1

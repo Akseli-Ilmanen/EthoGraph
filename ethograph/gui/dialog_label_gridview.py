@@ -1444,7 +1444,7 @@ class LabelGridView(QWidget):
         layout = QVBoxLayout(self)
         bar = QHBoxLayout()
         choices = label_filter_choices(entries)
-        self._filter_row = QWidget()
+        self._filter_row = QWidget(self)
         filter_lay = QHBoxLayout(self._filter_row)
         filter_lay.setContentsMargins(0, 0, 0, 0)
         filter_lay.addWidget(QLabel("Label:"))
@@ -1530,10 +1530,10 @@ class LabelGridView(QWidget):
 
         self._scroll = QScrollArea()
         self._scroll.setWidgetResizable(True)
-        container = QWidget()
-        self._grid = QGridLayout(container)
+        self._container = QWidget(self._scroll)
+        self._grid = QGridLayout(self._container)
         self._grid.setSpacing(10)
-        self._scroll.setWidget(container)
+        self._scroll.setWidget(self._container)
         layout.addWidget(self._scroll)
 
         self._cells = [self._make_cell(entry) for entry in entries]
@@ -1604,7 +1604,10 @@ class LabelGridView(QWidget):
         return f" Filtered to '{name}': no other label class is touched."
 
     def _make_cell(self, entry: FrameEntry) -> QFrame:
-        cell = QFrame()
+        # Parented from birth: a parentless widget that is shown — even for
+        # the instant before the grid layout adopts it — is a top-level
+        # window, and one flashes per tile.
+        cell = QFrame(self._container)
         cell.setObjectName("frameCell")
         lay = QVBoxLayout(cell)
         lay.setContentsMargins(2, 2, 2, 2)
@@ -1731,11 +1734,11 @@ class LabelGridView(QWidget):
             cell = cells.get(id(entry))
             if cell is None:
                 continue
-            cell.setVisible(True)
             for label, pixmap in cell._pix_labels:
                 if not pixmap.isNull():
                     label.setPixmap(pixmap.scaledToWidth(min(thumb_w, pixmap.width()), Qt.SmoothTransformation))
             self._grid.addWidget(cell, i // columns, i % columns, alignment=Qt.AlignTop)
+            cell.setVisible(True)
 
     def _on_tile_clicked(self, entry: FrameEntry):
         """A single click is the verdict the mode names."""

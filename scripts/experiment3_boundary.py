@@ -62,7 +62,7 @@ from _sweep import Cell, dataset_rate, fold_dots, load_results, summarise, sweep
 from ethograph.segment.boundary import boundary_probabilities  # noqa: E402
 from ethograph.segment.config import PostprocessConfig, SessionSpec  # noqa: E402
 from ethograph.segment.dataset import MaterialisedStore  # noqa: E402
-from ethograph.segment.infer import load_run  # noqa: E402
+from ethograph.segment.inference import load_run  # noqa: E402
 from ethograph.segment.metrics import evaluate, metric_key, scalar_metrics  # noqa: E402
 from ethograph.segment.postprocess import postprocess_dense  # noqa: E402
 

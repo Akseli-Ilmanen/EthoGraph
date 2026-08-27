@@ -1,10 +1,15 @@
 """Inference: a trained run over sessions → one prediction set per session.
 
-Beside each session, under ``predictions/{run_name}/``::
+Beside each session's own ``labels/`` folder (the same one label backups and
+LightGBM onset-model runs use, see :mod:`ethograph.labels.onset_curves`), one
+folder per call to :func:`infer`, named ``predictions_{run_name}_{timestamp}``
+so a re-run never overwrites an earlier one::
 
-    {stem}_labels.tsv   # the GUI's native labels format, labeling_method=automated
-    {stem}_probs.npz    # per sample: "{key}" → (T, C) float16, "{key}_time" → (T,),
-                        # and "{key}_boundary" → (T,) where the run has that head
+    labels/
+        predictions_{run_name}_{timestamp}/
+            {stem}_predictions.tsv   # the GUI's native labels format, labeling_method=automated
+            {stem}_probs.npz    # per sample: "{key}" → (T, C) float16, "{key}_time" → (T,),
+                                # and "{key}_boundary" → (T,) where the run has that head
 
 The TSV is what the GUI loads and compares; the ``.npz`` exists only for the
 confidence overlay and, for a run with a boundary head, for plotting the
@@ -15,6 +20,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Iterable
 
@@ -25,6 +31,7 @@ import yaml
 
 from ethograph.labels.intervals import LABELING_AUTOMATED, NO_RECIPIENT
 from ethograph.labels.ml import dense_to_intervals
+from ethograph.labels.onset_curves import labels_dir
 from ethograph.labels.tsv_store import save_labels_tsv
 from ethograph.segment.boundary import boundary_probabilities
 from ethograph.segment.config import SegmentConfig, load_config
@@ -40,7 +47,16 @@ from ethograph.utils.logging import log_to_file
 
 logger = logging.getLogger(__name__)
 
-PREDICTIONS_DIR = "predictions"
+PREDICTIONS_PREFIX = "predictions"
+
+
+def prediction_run_dir(session_path: Path, run_name: str, timestamp: str) -> Path:
+    """Where one inference run's outputs for one session are written.
+
+    One folder per call, so cross-validation folds and repeated ad-hoc
+    ``infer()`` calls never overwrite each other's predictions.
+    """
+    return labels_dir(session_path) / f"{PREDICTIONS_PREFIX}_{run_name}_{timestamp}"
 
 
 @dataclass
@@ -191,9 +207,13 @@ def infer_session(config: SegmentConfig, run: Run, session: Session, out_dir: Pa
             len(trials_without_cp),
             len(trials) * len(individuals),
         )
-    out_dir = out_dir if out_dir is not None else session.source.parent / PREDICTIONS_DIR / run.name
+    out_dir = (
+        out_dir
+        if out_dir is not None
+        else prediction_run_dir(session.source, run.name, datetime.now().strftime("%Y%m%d_%H%M%S"))
+    )
     out_dir.mkdir(parents=True, exist_ok=True)
-    tsv_path = out_dir / f"{session.stem}_labels.tsv"
+    tsv_path = out_dir / f"{session.stem}_predictions.tsv"
     npz_path = out_dir / f"{session.stem}_probs.npz"
     df = (
         pd.DataFrame(rows)
@@ -221,7 +241,7 @@ def infer_session(config: SegmentConfig, run: Run, session: Session, out_dir: Pa
     return tsv_path, npz_path
 
 
-def infer(
+def inference(
     config: SegmentConfig,
     run: str | Path | None = None,
     sessions: Iterable[str | Path] | None = None,
@@ -234,10 +254,12 @@ def infer(
     """
     loaded = load_run(resolve_run_dir(config, run))
     specs = config.select_sessions(sessions)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     with log_to_file(loaded.run_dir / "infer.log"):
         written = []
         for spec in specs:
             session = open_session(spec, config)
-            tsv, _ = infer_session(config, loaded, session)
+            out_dir = prediction_run_dir(session.source, loaded.name, timestamp)
+            tsv, _ = infer_session(config, loaded, session, out_dir=out_dir)
             written.append(tsv)
         return written
