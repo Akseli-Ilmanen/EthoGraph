@@ -593,6 +593,11 @@ class TrialsWidget(QWidget):
 
         self.trials_filtered.emit(sorted_trials)
 
+    def all_trials(self) -> list:
+        """Every trial this dataset has, filters or no — what ``app_state.trials``
+        (the visible/filtered subset) is drawn from."""
+        return list(self._base_trials)
+
     # ------------------------------------------------------------------
     # Filters by column name — how a saved curation workflow replays them
     # ------------------------------------------------------------------

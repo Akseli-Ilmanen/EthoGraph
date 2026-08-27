@@ -117,6 +117,10 @@ class _ConsoleFormatter(logging.Formatter):
 
 def launch():
     """Launch the ethograph GUI."""
+    from ethograph.utils.logging import start_session_log
+
+    log_path = start_session_log("gui")
+
     logging.basicConfig(level=logging.INFO)
     for handler in logging.getLogger().handlers:
         handler.setFormatter(_ConsoleFormatter())
@@ -127,6 +131,7 @@ def launch():
     from ethograph.utils.paths import ethograph_home
 
     logging.getLogger("ethograph").info("Global settings directory: %s", ethograph_home())
+    logging.getLogger("ethograph").info("Session log: %s", log_path)
 
     try:
         from qtpy.QtCore import QLocale

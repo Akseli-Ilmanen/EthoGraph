@@ -589,11 +589,19 @@ class CameraView(QWidget):
         return self._overlay
 
     def image_height(self) -> float:
-        if self._plot is not None:
-            return float(self._plot.texture.size[1])
-        if self._static is not None:
-            return float(self._static.texture.size[1])
-        return 0.0
+        return self.image_size()[1]
+
+    def image_size(self) -> tuple[float, float]:
+        """``(width, height)`` of the texture on screen, in its own pixels.
+
+        Under proxy playback this is the proxy's size, not the source's:
+        every rectangle the view reports (``screen_to_image``, a crop) is in
+        these units, and a consumer speaking source pixels rescales.
+        """
+        plot = self._plot if self._plot is not None else self._static
+        if plot is None:
+            return 0.0, 0.0
+        return float(plot.texture.size[0]), float(plot.texture.size[1])
 
     # ------------------------------------------------------------------
     # Keypoint labelling

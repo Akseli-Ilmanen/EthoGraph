@@ -14,15 +14,20 @@ from ethograph.labels.curation import (
     CURATED_COLUMN,
     CURATED_NO,
     CURATED_YES,
+    REVIEW_ORDER_LABEL,
     build_review_queue,
     curate_label,
     curate_rows,
     curate_trial,
+    curate_trials,
     curated_column,
     curated_column_differs,
+    delete_labels,
+    delete_rows,
     label_key,
     mark_manual,
     method_counts,
+    purge_short_labels,
     queue_index_of,
     set_method,
     targets_from_seeds,
@@ -184,6 +189,87 @@ class TestTransitions:
         row = _labels().iloc[3]
         assert label_key(row) == ("2", 3, 2.0, "b", "")
 
+    def test_curate_trials_spans_multiple_trials_in_one_call(self):
+        out, n = curate_trials(_labels(), [1, 2])
+        assert n == 2  # trial 1 label 1, trial 2 label 3 — the automated ones
+        assert _methods(out) == [LABELING_CURATED, LABELING_MANUAL, LABELING_CURATED, LABELING_CURATED]
+
+    def test_curate_trials_respects_the_scope(self):
+        out, n = curate_trials(_labels(), [1, 2], label_ids={3})
+        assert n == 1
+        assert out.loc[out["labels"] == 3, "labeling_method"].item() == LABELING_CURATED
+        assert out.loc[(out["trial"] == 1) & (out["labels"] == 1), "labeling_method"].item() == LABELING_AUTOMATED
+
+
+class TestDelete:
+    def test_delete_labels_drops_every_row_of_the_named_trials_in_scope(self):
+        out, n = delete_labels(_labels(), [2])
+        assert n == 2
+        assert out["trial"].tolist() == [1, 1]
+
+    def test_delete_labels_respects_the_scope(self):
+        out, n = delete_labels(_labels(), [2], label_ids={3})
+        assert n == 1
+        assert sorted(out["labels"].tolist()) == [1, 1, 2]
+
+    def test_delete_labels_touches_manual_and_curated_rows_too(self):
+        """Unlike curation, deletion is not method-selective — the event is gone."""
+        out, n = delete_labels(_labels(), [1])
+        assert n == 2
+        assert LABELING_MANUAL not in _methods(out)
+
+    def test_delete_labels_spans_multiple_trials(self):
+        out, n = delete_labels(_labels(), [1, 2], label_ids={1})
+        assert n == 2
+        assert out["labels"].tolist() == [2, 3]
+
+    def test_delete_rows_on_empty_or_no_match_is_a_no_op(self):
+        df = _labels()
+        assert delete_rows(None, pd.Series(dtype=bool)) == (None, 0)
+        out, n = delete_rows(df, pd.Series(False, index=df.index))
+        assert n == 0 and out is df
+
+    def test_delete_labels_empty_table_passes_through(self):
+        assert delete_labels(None, [1]) == (None, 0)
+        empty = empty_intervals()
+        out, n = delete_labels(empty, [1])
+        assert n == 0 and out is empty
+
+
+class TestPurge:
+    def test_purge_drops_short_state_intervals_only(self):
+        """Both trial 1's state (0.5 s) and trial 2's (0.4 s) fall below 10 s;
+        the two point events (no duration) are never touched."""
+        out, n = purge_short_labels(_labels(), [1, 2], min_duration_s=10.0)
+        assert n == 2
+        assert set(out["event_type"]) == {"point"}
+
+    def test_purge_keeps_intervals_at_or_above_the_threshold(self):
+        out, n = purge_short_labels(_labels(), [1, 2], min_duration_s=0.3)
+        assert n == 0  # 0.5s and 0.4s both clear a 0.3s threshold
+
+    def test_purge_respects_the_scope(self):
+        # Only label 2's state (trial 1, 0.5s) is in scope; trial 2's short
+        # state (label 1) is a different class and stays regardless of duration.
+        out, n = purge_short_labels(_labels(), [1, 2], min_duration_s=10.0, label_ids={2})
+        assert n == 1
+        assert _row_present(out, trial=2, labels=1)
+
+    def test_purge_only_touches_named_trials(self):
+        out, n = purge_short_labels(_labels(), [2], min_duration_s=10.0)
+        assert n == 1
+        assert _row_present(out, trial=1, labels=2)
+
+    def test_purge_empty_table_passes_through(self):
+        assert purge_short_labels(None, [1], 0.01) == (None, 0)
+        empty = empty_intervals()
+        out, n = purge_short_labels(empty, [1], 0.01)
+        assert n == 0 and out is empty
+
+
+def _row_present(df: pd.DataFrame, trial, labels) -> bool:
+    return bool(((df["trial"] == trial) & (df["labels"] == labels)).any())
+
 
 # ---------------------------------------------------------------------------
 # Per-trial verdicts
@@ -250,6 +336,22 @@ class TestQueue:
         ]
         start, end = queue[1], queue[2]
         assert start.inst is end.inst  # one label, two boundaries
+
+    def test_label_order_finishes_one_class_across_trials_before_the_next(self):
+        queue = build_review_queue(_labels(), None, order=REVIEW_ORDER_LABEL)
+        got = [(t.inst["trial"], t.inst["labels"], t.field) for t in queue]
+        assert got == [
+            (1, 1, "point"),
+            (2, 1, "start"),
+            (2, 1, "end"),
+            (1, 2, "start"),
+            (1, 2, "end"),
+            (2, 3, "point"),
+        ]
+
+    def test_unknown_order_raises(self):
+        with pytest.raises(ValueError, match="review order"):
+            build_review_queue(_labels(), None, order="bogus")
 
     def test_automated_only_skips_manual_and_curated(self):
         """A human already vouched for the manual (trial 1, label 2) and

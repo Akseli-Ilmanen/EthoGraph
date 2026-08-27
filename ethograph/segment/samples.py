@@ -26,7 +26,7 @@ from ethograph.features.columns import (
     extract_features,
     sampling_rate,
 )
-from ethograph.io.catalog import SPACE_DIM
+from ethograph.io.catalog import INDIVIDUAL_DIMS, SPACE_DIM
 from ethograph.io.schema import is_normalise, kind_of
 from ethograph.labels.intervals import load_label_mapping, states_only
 from ethograph.segment.config import SegmentConfig
@@ -214,14 +214,30 @@ def sample_features_spec(
 
 
 def layout_names(spec: dict[str, dict[str, list[str]]], tokens: dict[str, str]) -> list[str]:
+    """Column names, with the individual axis canonicalised to one spelling.
+
+    A session may spell its individual dim ``individual`` or ``individuals``
+    (:data:`~ethograph.io.catalog.INDIVIDUAL_DIMS`); the *value* along it is
+    already normalised to ``self``/``otherN`` so a model can run on a session
+    naming different animals — canonicalising the *key* too is what makes
+    that hold across a session that spells the dim differently as well.
+    """
     names = []
     for col in enumerate_columns(spec):
-        sel = {d: tokens.get(v, v) if d in _INDIVIDUAL_LIKE or d == OTHER_DIM else v for d, v in col.selections.items()}
+        sel = {}
+        for d, v in col.selections.items():
+            if d in _INDIVIDUAL_LIKE:
+                sel[_CANONICAL_INDIVIDUAL_DIM] = tokens.get(v, v)
+            elif d == OTHER_DIM:
+                sel[d] = tokens.get(v, v)
+            else:
+                sel[d] = v
         names.append(column_name(col.feature, sel))
     return names
 
 
-_INDIVIDUAL_LIKE = {"individual", "individuals"}
+_INDIVIDUAL_LIKE = set(INDIVIDUAL_DIMS)
+_CANONICAL_INDIVIDUAL_DIM = INDIVIDUAL_DIMS[0]
 
 
 def _vector_groups(spec: dict[str, dict[str, list[str]]]) -> list[list[int]]:

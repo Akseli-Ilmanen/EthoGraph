@@ -13,7 +13,14 @@ from ethograph.gui.widgets_curation import CurationPanel, drag_label_ids
 from ethograph.gui.widgets_navigation import NavigationWidget
 from ethograph.labels import onset_curves
 from ethograph.labels.curation import CURATED_COLUMN
-from ethograph.labels.intervals import HUMAN_CONFIDENCE, LABELING_AUTOMATED, LABELING_CURATED, LABELING_MANUAL
+from ethograph.labels.intervals import (
+    HUMAN_CONFIDENCE,
+    LABELING_AUTOMATED,
+    LABELING_CURATED,
+    LABELING_MANUAL,
+    add_interval,
+    empty_intervals,
+)
 
 
 @pytest.fixture(scope="module")
@@ -40,9 +47,13 @@ class _LabelsStub(QWidget):
     def __init__(self, mappings):
         super().__init__()
         self._mappings = mappings
+        self.active_branch: int | None = None
 
     def refresh_labels_shapes_layer(self):
         pass
+
+    def set_active_branch(self, branch_idx: int) -> None:
+        self.active_branch = branch_idx
 
 
 class _TrialsStub:
@@ -50,6 +61,9 @@ class _TrialsStub:
         self._metadata_df = metadata_df
         self.written: list[tuple[str, dict]] = []
         self.ensured = 0
+        #: Every trial the dataset has, filters or no — defaults to the
+        #: metadata table's own trials (nothing filtered out).
+        self._all_trials = list(metadata_df["trial"])
 
     def set_column_values(self, column, values):
         self.written.append((column, dict(values)))
@@ -57,6 +71,9 @@ class _TrialsStub:
     def ensure_tabular_metadata_file(self):
         self.ensured += 1
         return None
+
+    def all_trials(self):
+        return list(self._all_trials)
 
 
 class _Meta:
@@ -155,6 +172,26 @@ class TestScope:
         panel.app_state.curation_label_ids = [6]
         assert panel.scope_area.ids() == [6]
 
+    def test_a_drop_from_one_branch_makes_it_the_editable_one(self, panel):
+        """Reviewing a class means editing it, and only the active branch
+        is editable — so the branch the dropped classes live in is selected.
+        Classes from several branches name no single branch: nothing moves."""
+        labels = panel.labels_widget
+        labels._mappings = {
+            4: {**MAPPINGS[4], "branch": 1},
+            6: {**MAPPINGS[6], "branch": 1},
+            8: {**MAPPINGS[8], "branch": 2},
+        }
+        panel.scope_area.add_ids([4, 6])
+        panel._on_scope_edited(activates=True, dropped=[4, 6])
+        assert labels.active_branch == 1
+        labels.active_branch = None
+        panel.scope_area.add_ids([8])
+        panel._on_scope_edited(activates=True, dropped=[8, 4])
+        assert labels.active_branch is None
+        panel._on_scope_edited(activates=True, dropped=[8])
+        assert labels.active_branch == 2
+
 
 class TestActive:
     """Nothing is written until someone actually starts curating."""
@@ -213,12 +250,15 @@ class TestTrialLevel:
         assert _row(panel.app_state, "1", 4, 0.5)["labeling_method"] == LABELING_CURATED
         assert _row(panel.app_state, "0", 8, 2.0)["labeling_method"] == LABELING_MANUAL
 
-    def test_the_button_asks_before_curating_what_nobody_looked_at(self, panel, monkeypatch):
-        """One click must not silently vouch for labels across every trial."""
+    def test_confirm_asks_before_curating_what_nobody_looked_at(self, panel, monkeypatch):
+        """confirm=True (the bulk-editing dialog's own button) must not silently
+        vouch for labels across every trial."""
         asked = []
-        monkeypatch.setattr(panel, "_confirm_bulk_curate", lambda total, n: asked.append((total, n)) or False)
-        panel.curate_visible_btn.click()
-        assert asked == [(3, 2)]
+        monkeypatch.setattr(
+            panel, "_confirm_bulk_curate", lambda which, label_ids, total, n: asked.append((which, total, n)) or False
+        )
+        assert panel.curate_visible_trials(confirm=True) == 0
+        assert asked == [("filtered", 3, 2)]
         # Declined: nothing moved.
         assert _row(panel.app_state, "0", 4, 1.0)["labeling_method"] == LABELING_AUTOMATED
 
@@ -271,6 +311,167 @@ class TestTrialLevel:
         panel.curate_current_trial()
         panel.sync_metadata()
         assert panel._trials_stub.written[-1] == (CURATED_COLUMN, {"0": "yes", "1": "no"})
+
+
+class TestDeleteScope:
+    """Bulk delete picks a trial scope (single/all/filtered/hidden) and, since
+    the bulk-editing dialog moved away, an explicit label-class set — never
+    silently the curation scope area, unless the caller asks for that."""
+
+    def test_filtered_deletes_only_the_shown_trials(self, panel):
+        # Trial 1 filtered out — only trial 0's labels are in scope.
+        panel.app_state.trials = ["0"]
+        assert panel.delete_trial_labels("filtered") == 3  # labels 4, 8, 6 of trial 0
+        df = panel.app_state._all_labels_df
+        assert df["trial"].tolist() == ["1"]
+
+    def test_hidden_deletes_the_filtered_out_trials(self, panel):
+        # Trial 1 filtered out of the table, but its labels are what get swept.
+        panel.app_state.trials = ["0"]
+        assert panel.delete_trial_labels("hidden") == 1  # trial 1's one label
+        df = panel.app_state._all_labels_df
+        assert df["trial"].unique().tolist() == ["0"]
+
+    def test_hidden_is_empty_when_nothing_is_filtered_out(self, panel):
+        assert panel.app_state.trials == ["0", "1"]
+        assert panel.delete_trial_labels("hidden") == 0
+        assert len(panel.app_state._all_labels_df) == 4  # nothing touched
+
+    def test_single_acts_on_only_the_current_trial(self, panel):
+        panel.app_state.trials_sel = "1"
+        assert panel.delete_trial_labels("single") == 1  # trial 1's one label
+        df = panel.app_state._all_labels_df
+        assert df["trial"].unique().tolist() == ["0"]
+
+    def test_all_ignores_the_table_s_filters(self, panel):
+        panel.app_state.trials = ["0"]  # trial 1 filtered out
+        assert panel.delete_trial_labels("all") == 4  # every label, both trials
+        assert panel.app_state._all_labels_df.empty
+
+    def test_deletion_falls_back_to_the_curation_scope_area(self, panel):
+        panel.app_state.curation_label_ids = [6]
+        panel.app_state.trials = ["0"]
+        assert panel.delete_trial_labels("filtered") == 1  # only label 6
+        df = panel.app_state._all_labels_df
+        assert sorted(df["labels"].tolist()) == [4, 4, 8]
+
+    def test_an_explicit_label_ids_overrides_the_curation_scope_area(self, panel):
+        panel.app_state.curation_label_ids = [6]  # the scope area names label 6...
+        panel.app_state.trials = ["0"]
+        assert panel.delete_trial_labels("filtered", label_ids={4}) == 1  # ...but the caller names 4
+        df = panel.app_state._all_labels_df
+        # Trial 0's label-4 row is gone; trial 1's (out of scope) and 6/8 survive.
+        assert sorted(df["labels"].tolist()) == [4, 6, 8]
+
+    def test_an_explicit_none_means_every_class_regardless_of_the_scope_area(self, panel):
+        panel.app_state.curation_label_ids = [6]
+        panel.app_state.trials = ["0"]
+        assert panel.delete_trial_labels("filtered", label_ids=None) == 3
+
+    def test_deletion_touches_manual_labels_too(self, panel):
+        """Unlike curation, deleting is not method-selective."""
+        panel.app_state.trials = ["0"]
+        panel.delete_trial_labels("filtered")
+        assert LABELING_MANUAL not in panel.app_state._all_labels_df["labeling_method"].tolist()
+
+    def test_confirm_asks_before_deleting(self, panel, monkeypatch):
+        asked = []
+        monkeypatch.setattr(
+            panel,
+            "_confirm_bulk_delete",
+            lambda which, label_ids, total, n: asked.append((which, total, n)) or False,
+        )
+        panel.app_state.trials = ["0"]
+        assert panel.delete_trial_labels("hidden", confirm=True) == 0
+        assert asked == [("hidden", 1, 1)]
+        assert len(panel.app_state._all_labels_df) == 4  # declined — nothing removed
+
+    def test_a_workflow_step_does_not_ask(self, panel, monkeypatch):
+        monkeypatch.setattr(panel, "_confirm_bulk_delete", lambda *a: pytest.fail("must not ask"))
+        panel.app_state.trials = ["0"]
+        assert panel.delete_trial_labels("hidden") == 1
+
+    def test_deletion_is_undoable_per_trial(self, panel):
+        """Unlike curation, deleting is a genuine edit — Ctrl+Z can take it back."""
+        panel.app_state.trials = ["0"]
+        panel.delete_trial_labels("hidden")
+        assert len(panel.app_state._all_labels_df) == 3
+        edit = panel.app_state.undo_label_edit()
+        assert edit is not None
+        assert len(panel.app_state._all_labels_df) == 4
+        assert _row(panel.app_state, "1", 4, 0.5)["labeling_method"] == LABELING_AUTOMATED
+
+
+class TestPurgeScoped:
+    def test_purges_short_state_labels_only(self, panel):
+        # Add a very short state interval to trial 0 alongside the existing labels.
+        rows = add_interval(panel.app_state.get_trial_intervals("0"), 5.0, 5.005, 8, "a")
+        panel.app_state.set_trial_intervals("0", rows)
+        panel.app_state.label_intervals = rows
+        assert panel.purge_trial_labels("filtered", min_duration_s=0.01) == 1
+        df = panel.app_state._all_labels_df
+        assert not ((df["trial"] == "0") & (df["labels"] == 8) & (df["onset_s"] == 5.0)).any()
+        # The original manual state label (1.0 s long) survives.
+        assert _row(panel.app_state, "0", 8, 2.0)["labeling_method"] == LABELING_MANUAL
+
+    def test_purge_never_touches_point_events(self, panel):
+        assert panel.purge_trial_labels("all", min_duration_s=1000.0) == 1  # the one state label
+        df = panel.app_state._all_labels_df
+        assert set(df["event_type"]) == {"point"}
+        assert len(df) == 3
+
+    def test_purge_is_undoable_per_trial(self, panel):
+        panel.purge_trial_labels("all", min_duration_s=1000.0)
+        assert len(panel.app_state._all_labels_df) == 3
+        assert panel.app_state.undo_label_edit() is not None
+        assert len(panel.app_state._all_labels_df) == 4
+
+
+class TestCorrectOffsetsScoped:
+    """``correct_offsets_trial`` looks at *every* row of a subject's sequence,
+    points included, so these replace trial 0 with a clean, controlled pair
+    of states rather than building on the shared fixture's point events."""
+
+    def _set_two_states(self, panel, gap: float):
+        df = add_interval(empty_intervals(), 2.0, 3.0, 8, "a")
+        df = add_interval(df, 3.0 + gap, 5.0, 8, "a")
+        panel.app_state.set_trial_intervals("0", df)
+        panel.app_state.label_intervals = df
+
+    def test_pulls_back_the_offset_across_a_near_zero_gap(self, panel):
+        self._set_two_states(panel, gap=0.00003)  # under the 1e-4 s eps
+        assert panel.correct_offsets("filtered") == 1
+        df = panel.app_state._all_labels_df
+        first = df[(df["trial"] == "0") & (df["onset_s"] == 2.0)].iloc[0]
+        assert first["offset_s"] == pytest.approx(3.00003 - 1e-4)
+
+    def test_no_gaps_is_a_no_op(self, panel):
+        self._set_two_states(panel, gap=1.0)  # well clear of the eps
+        assert panel.correct_offsets("filtered") == 0
+
+    def test_confirm_asks_before_correcting(self, panel, monkeypatch):
+        self._set_two_states(panel, gap=0.00003)
+        asked = []
+        monkeypatch.setattr(panel, "_confirm_bulk_correct", lambda which, n: asked.append((which, n)) or False)
+        assert panel.correct_offsets("filtered", confirm=True) == 0
+        assert asked == [("filtered", 2)]
+        # Declined: nothing moved.
+        df = panel.app_state._all_labels_df
+        first = df[(df["trial"] == "0") & (df["onset_s"] == 2.0)].iloc[0]
+        assert first["offset_s"] == 3.0
+
+    def test_a_workflow_step_does_not_ask(self, panel, monkeypatch):
+        monkeypatch.setattr(panel, "_confirm_bulk_correct", lambda *a: pytest.fail("must not ask"))
+        self._set_two_states(panel, gap=0.00003)
+        assert panel.correct_offsets("filtered") == 1
+
+    def test_correction_is_undoable_per_trial(self, panel):
+        self._set_two_states(panel, gap=0.00003)
+        panel.correct_offsets("filtered")
+        assert panel.app_state.undo_label_edit() is not None
+        df = panel.app_state._all_labels_df
+        first = df[(df["trial"] == "0") & (df["onset_s"] == 2.0)].iloc[0]
+        assert first["offset_s"] == 3.0
 
 
 # ---------------------------------------------------------------------------
@@ -434,6 +635,41 @@ class TestFrameReview:
         panel._sync_session_shortcuts()
         assert all(s.isEnabled() for s in panel._session_shortcuts)
 
+    def test_restart_review_is_a_noop_when_inactive(self, panel):
+        panel.restart_review()
+        assert not panel.session_active
+
+    def test_restart_review_keeps_position_on_the_same_target(self, panel):
+        _set_mode(panel, "frame")
+        panel.start_review(idx=3)  # trial 0, label 6, point at 2.5
+        before = panel.targets[panel.current_index].inst
+        panel.restart_review()
+        assert panel.session_active
+        after = panel.targets[panel.current_index].inst
+        assert (after["trial"], after["labels"]) == (before["trial"], before["labels"])
+
+    def test_restart_review_drops_a_target_a_grid_done_just_curated(self, panel):
+        """A Done elsewhere may curate the label under review — restarting
+        must rebuild the queue against the new state, not keep the stale one."""
+        panel.automated_only_cb.setChecked(True)
+        _set_mode(panel, "frame")
+        panel.start_review(idx=0)  # trial 0, label 4, point at 1.0 (automated)
+        target = panel.targets[panel.current_index]
+        panel.curate_labels([target.inst])  # what GridModeBar.apply_done does
+        panel.restart_review()
+        assert panel.session_active
+        assert panel.targets[panel.current_index].inst["labels"] == 6
+
+    def test_restart_review_stops_when_the_queue_empties(self, panel):
+        panel.automated_only_cb.setChecked(True)
+        panel.app_state.curation_label_ids = [6]
+        _set_mode(panel, "frame")
+        panel.start_review()
+        target = panel.targets[panel.current_index]
+        panel.curate_labels([target.inst])
+        panel.restart_review()
+        assert not panel.session_active
+
 
 class TestAutomatedOnlyFilter:
     """Frame-by-frame review skips manual/curated boundaries by default."""
@@ -551,6 +787,45 @@ class TestOnsetCurves:
         before = container.hidden
         panel._stop()
         assert container.hidden > before
+
+    def test_one_run_is_used_without_asking(self, panel, tmp_path, monkeypatch):
+        _write_curves(panel.app_state, tmp_path)
+        monkeypatch.setattr(panel, "_ask_curve_run", lambda *a: pytest.fail("must not ask"))
+        container = _ContainerStub()
+        panel.set_plot_container(container)
+        _set_mode(panel, "frame")
+        assert panel.start_review()
+        assert set(container.shown[-1][1]) == {4, 6}
+
+    def test_several_runs_ask_which_one(self, panel, tmp_path):
+        _write_curves(panel.app_state, tmp_path, timestamp="20260824_120000")
+        _write_curves(panel.app_state, tmp_path, timestamp="20260825_090000")
+        session = panel.app_state.nc_file_path
+        chosen = onset_curves.run_dirs(session)[0] / onset_curves.CURVES_FILE
+        asked = []
+
+        def _ask(session_, folders):
+            asked.append((session_, folders))
+            return chosen
+
+        panel._ask_curve_run = _ask
+        container = _ContainerStub()
+        panel.set_plot_container(container)
+        _set_mode(panel, "frame")
+        assert panel.start_review()
+        assert len(asked) == 1
+        assert len(asked[0][1]) == 2
+        assert set(container.shown[-1][1]) == {4, 6}
+
+    def test_declining_the_choice_shows_no_curves(self, panel, tmp_path):
+        _write_curves(panel.app_state, tmp_path, timestamp="20260824_120000")
+        _write_curves(panel.app_state, tmp_path, timestamp="20260825_090000")
+        panel._ask_curve_run = lambda *a: None
+        container = _ContainerStub()
+        panel.set_plot_container(container)
+        _set_mode(panel, "frame")
+        assert panel.start_review()
+        assert container.shown == []
 
 
 def test_qt_key_names(qapp):

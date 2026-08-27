@@ -20,6 +20,7 @@ docs/build_preview/
 *.npz
 *paper.pdf
 screenshots/
+spot_frames_crop164x0_367x164/
 
 # Upstream repos cloned for reference only — never committed (they carry their
 # own .git, so `git add` would record them as submodule gitlinks). Anything we
@@ -122,5 +123,6 @@ ethograph-*/
 .archive/
 
 # E2E-Spot clone (+ snapshot) used by scripts/spot_point_events.py; patch kept in scripts/
-spot/
-spot_mod/
+# Anchored: an unanchored `spot/` also hides ethograph/spot/ and docs/.../spot/.
+/spot/
+/spot_mod/

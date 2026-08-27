@@ -72,6 +72,7 @@ from ethograph.gui.dialog_label_gridview import (
     VIDEO_GRID_SORT_ORDERS,
     ConfidenceEdit,
     ConfidenceHistogramsDialog,
+    ConfidenceRuleController,
     GridModeBar,
     LabelSetupPage,
     _mapping_color_hex,
@@ -590,6 +591,9 @@ class VideoGridPlayer(QWidget):
         )
         self.histogram_btn.clicked.connect(self._show_histograms)
         top.addWidget(self.histogram_btn)
+        # The confidence rule lives in the histogram popup; this drives it.
+        self.rule_controller = ConfidenceRuleController(meta, entries_fn=lambda: self._all_entries, parent=self)
+        self.rule_controller.changed.connect(self._on_confidence_rescored)
         layout.addLayout(top)
 
         self.hint = QLabel("")
@@ -965,6 +969,12 @@ class VideoGridPlayer(QWidget):
         if self._hist_dialog is not None:
             self._hist_dialog.set_threshold(threshold)
 
+    def _on_confidence_rescored(self) -> None:
+        """The confidence knob changed the entries' values: restyle, and refresh the histogram."""
+        self._apply_styles()
+        if self._hist_dialog is not None:
+            self._hist_dialog.set_groups(confidence_groups(self._all_entries))
+
     def _show_histograms(self) -> None:
         """Open (or raise) the per-label confidence histograms, scope-wide."""
         if self._hist_dialog is not None:
@@ -975,7 +985,10 @@ class VideoGridPlayer(QWidget):
         if not groups:
             notify("No labels to plot confidences for.", severity="warning")
             return
-        self._hist_dialog = ConfidenceHistogramsDialog(groups, self.threshold_edit.value(), parent=self)
+        self.rule_controller.begin()
+        self._hist_dialog = ConfidenceHistogramsDialog(
+            groups, self.threshold_edit.value(), parent=self, rule_controller=self.rule_controller
+        )
         self._hist_dialog.threshold_changed.connect(self.threshold_edit.setValue)
         self._hist_dialog.destroyed.connect(self._on_histograms_closed)
         self._hist_dialog.show()

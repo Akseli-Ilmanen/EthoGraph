@@ -39,11 +39,15 @@ from ethograph.utils.xr_utils import get_ds_duration, get_time_coord, sel_valid
 
 
 def __getattr__(name: str):
-    """Expose ``eto.segment`` lazily — it imports torch, which the base install lacks."""
+    """Expose the model pipelines lazily — they import torch, which the base install lacks."""
     if name == "segment":
         import ethograph.segment as segment
 
         return segment
+    if name == "spot":
+        import ethograph.spot as spot
+
+        return spot
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 

@@ -47,6 +47,13 @@ class TestModes:
         assert not trial_matches_labels([1, 2], [1, 2], "partial")  # both there
         assert not trial_matches_labels([9], [1, 2], "partial")  # neither there
 
+    def test_repeated_flags_a_doubled_label(self):
+        """A class that should happen once per trial happens twice."""
+        assert trial_matches_labels(self.TRIAL, [6], "repeated")
+        assert trial_matches_labels(self.TRIAL, [1, 6], "repeated")  # any of them
+        assert not trial_matches_labels(self.TRIAL, [1, 2, 8], "repeated")
+        assert not trial_matches_labels(self.TRIAL, [9], "repeated")
+
     def test_order_allows_labels_in_between(self):
         assert trial_matches_labels(self.TRIAL, [1, 2, 6, 8], "order")
         assert trial_matches_labels(self.TRIAL, [1, 8], "order")
@@ -79,6 +86,11 @@ class TestOverTrials:
 
     def test_uncoupled_finds_the_lonely_label(self):
         assert trials_matching_labels(self.DF, [1, 2], mode="partial") == {"2"}
+
+    def test_repeated_finds_the_doubled_label(self):
+        df = _labels({"1": [1, 2], "2": [1, 2, 1], "3": [2, 2]})
+        assert trials_matching_labels(df, [1], mode="repeated") == {"2"}
+        assert trials_matching_labels(df, [1, 2], mode="repeated") == {"2", "3"}
 
     def test_invert_needs_the_whole_population(self):
         """A trial with no labels at all only exists if it is named.

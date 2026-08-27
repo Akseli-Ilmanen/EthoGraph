@@ -146,6 +146,66 @@ def test_config_rejects_unknown_keys(project: Path):
         load_config(project / "config.yaml", ["train.epoch=3"])
 
 
+def test_missing_labels_path_defaults_and_is_never_created(project: Path):
+    """A session named with no labels_path is fine for inference-only use: the
+    path defaults to {stem}_labels.tsv beside source, but nothing ever creates
+    that file — it is the user's curated labels, and a session with none yet
+    just opens with an empty labels table, same as the GUI would treat it."""
+    from ethograph.segment.config import config_from_dict
+    from ethograph.segment.sessions import open_session
+
+    s3 = _make_session(project.parent / "sessions" / "s3", "s3", [1], seed=20)
+    s3_labels = s3.with_name("s3_labels.tsv")
+    s3_labels.unlink()  # a session that was never curated has no labels file yet
+
+    cfg = config_from_dict(
+        {
+            "sessions": [{"source": str(s3)}],
+            "features": {"columns": {"speed": {}}, "labels": {"mapping": "mapping.txt"}},
+        },
+        project,
+    )
+    assert cfg.sessions[0].labels_path == s3_labels
+    assert not s3_labels.exists()
+
+    session = open_session(cfg.sessions[0], cfg)
+    assert not s3_labels.exists()
+    assert session.result.all_labels_df.empty
+
+
+def test_top_level_individual_fills_features_individuals(project: Path):
+    """`config.individual` is the single-animal spelling of `features.individuals`."""
+    from ethograph.segment.config import config_from_dict
+
+    cfg = config_from_dict(
+        {
+            "sessions": [{"source": "s.nc", "labels_path": "s_labels.tsv"}],
+            "individual": "A",
+            "features": {"columns": {"speed": {}}, "labels": {"mapping": "mapping.txt"}},
+        },
+        project,
+    )
+    assert cfg.features.individuals == ["A"]
+
+
+def test_top_level_individual_conflicting_with_features_individuals_is_refused(project: Path):
+    from ethograph.segment.config import config_from_dict
+
+    with pytest.raises(ValueError, match="conflicts"):
+        config_from_dict(
+            {
+                "sessions": [{"source": "s.nc", "labels_path": "s_labels.tsv"}],
+                "individual": "A",
+                "features": {
+                    "columns": {"speed": {}},
+                    "labels": {"mapping": "mapping.txt"},
+                    "individuals": ["B"],
+                },
+            },
+            project,
+        )
+
+
 def test_training_defaults_come_from_the_vendored_training_yaml(project: Path):
     """`epochs`, `learning_rate` and `weight_decay` are DLC2Action's, not ours.
 
@@ -300,7 +360,7 @@ def test_trials_filter_uses_metadata(project: Path):
 
 
 def test_train_infer_compare_roundtrip(project: Path):
-    from ethograph.segment.infer import infer
+    from ethograph.segment.inference import inference
     from ethograph.segment.train import compare_runs, train
 
     cfg = load_config(project / "config.yaml", ["train.device=cpu"])
@@ -324,10 +384,11 @@ def test_train_infer_compare_roundtrip(project: Path):
     assert {"tp", "fp", "fn"} <= set(test_metrics["raw"])
 
     # inference runs over every session of the config
-    written = infer(cfg, run="smoke")
+    written = inference(cfg, run="smoke")
     assert len(written) == 2
-    tsv = next(p for p in written if p.name == "s2_labels.tsv")
-    assert tsv.parent == project.parent / "sessions" / "s2" / "predictions" / run_dir.name
+    tsv = next(p for p in written if p.name == "s2_predictions.tsv")
+    assert tsv.parent.parent == project.parent / "sessions" / "s2" / "labels"
+    assert tsv.parent.name.startswith(f"predictions_{run_dir.name}_")
     df = load_labels_tsv(tsv)
     if not df.empty:
         assert set(df["labeling_method"]) == {LABELING_AUTOMATED}
@@ -447,14 +508,14 @@ def test_write_comparison_pdf(tmp_path: Path):
 
 
 def test_layout_mismatch_is_an_error(project: Path):
-    from ethograph.segment.infer import infer
+    from ethograph.segment.inference import inference
     from ethograph.segment.train import train
 
     cfg = load_config(project / "config.yaml", ["train.device=cpu"])
     train(cfg)
     changed = load_config(project / "config.yaml", ["features.columns.speed.keypoint=[tail]"])
     with pytest.raises(ValueError, match="column layout differs"):
-        infer(changed, run="smoke")
+        inference(changed, run="smoke")
 
 
 # ---------------------------------------------------------------------------
@@ -556,7 +617,7 @@ class TestSearchAndCrossValidation:
         assert list(table["session"]) == [session_id(cfg.sessions[1].source)]
 
         prediction = Path(table["predictions"].iloc[0])
-        assert prediction.name == "s2_labels.tsv"
+        assert prediction.name == "s2_predictions.tsv"
         assert prediction.parent.parent.parent == project.parent / "sessions" / "s2"
         assert set(load_labels_tsv(prediction)["labeling_method"]) <= {LABELING_AUTOMATED}
 
@@ -630,7 +691,7 @@ def test_drop_kinds_trains_a_narrower_model(project: Path):
     import torch
 
     from ethograph.io.schema import VIDEO_FEATURE
-    from ethograph.segment.infer import load_run
+    from ethograph.segment.inference import load_run
     from ethograph.segment.train import train
 
     _kinded_project(project)
@@ -683,9 +744,9 @@ def test_project_runs_every_stage(project: Path):
     assert result.run_dir.name.startswith("smoke_")
     assert p.runs() == [result.run_dir.name]
 
-    written = p.infer()
+    written = p.inference()
     assert len(written) == 2
-    assert all(path.name.endswith("_labels.tsv") for path in written)
+    assert all(path.name.endswith("_predictions.tsv") for path in written)
 
 
 def test_project_update_accumulates_overrides(project: Path):
@@ -767,15 +828,15 @@ class TestSubsample:
 
     def test_a_run_trains_and_predicts_at_its_own_rate(self, project: Path):
         """The model sees half the frames; the labels still span the same seconds."""
-        from ethograph.segment.infer import infer
+        from ethograph.segment.inference import inference
         from ethograph.segment.train import train
 
         cfg = load_config(project / "config.yaml", ["train.device=cpu", "train.run_name=half", "train.subsample=2"])
         result = train(cfg)
         assert (result.run_dir / "test_metrics.yaml").is_file()
 
-        written = infer(cfg, run=result.run_dir)
-        tsv = next(p for p in written if p.name == "s2_labels.tsv")
+        written = inference(cfg, run=result.run_dir)
+        tsv = next(p for p in written if p.name == "s2_predictions.tsv")
         probs = np.load(tsv.with_name("s2_probs.npz"))
         key = next(k for k in probs.files if not k.endswith("_time"))
         assert probs[key].shape[0] == int(DURATION * FS) // 2

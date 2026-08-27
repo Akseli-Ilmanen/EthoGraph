@@ -5,14 +5,22 @@
 materialise/train/infer progress by default. :func:`log_to_file` is on top of
 that: a pipeline stage wraps its own body in it so a log of what happened
 always lands beside the stage's other outputs too.
+
+:func:`start_session_log` is unrelated to the ``logging`` module records above
+— it tees raw ``stdout``/``stderr`` (prints, tracebacks, third-party library
+output, not just log records) to a timestamped file under
+``~/.ethograph/logs/``, one per GUI session.
 """
 
 from __future__ import annotations
 
+import atexit
 import logging
+import sys
 from contextlib import contextmanager
+from datetime import datetime
 from pathlib import Path
-from typing import Iterator
+from typing import IO, Iterator
 
 _FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
 
@@ -60,3 +68,56 @@ def log_to_file(path: Path, logger_name: str = "ethograph.segment", level: int =
         logger.removeHandler(handler)
         handler.close()
         logger.setLevel(previous_level)
+
+
+class _TeeStream:
+    """Writes to *stream* as before, plus a timestamp-prefixed copy to *log_file*."""
+
+    def __init__(self, stream: IO[str], log_file: IO[str]) -> None:
+        self._stream = stream
+        self._log_file = log_file
+        self._at_line_start = True
+
+    def write(self, data: str) -> int:
+        self._stream.write(data)
+        for line in data.splitlines(keepends=True):
+            if self._at_line_start:
+                self._log_file.write(f"[{datetime.now():%Y-%m-%d %H:%M:%S}] ")
+            self._log_file.write(line)
+            self._at_line_start = line.endswith("\n")
+        return len(data)
+
+    def flush(self) -> None:
+        self._stream.flush()
+        self._log_file.flush()
+
+    def isatty(self) -> bool:
+        return self._stream.isatty()
+
+
+def start_session_log(prefix: str = "session") -> Path:
+    """Tee ``stdout``/``stderr`` to a fresh timestamped file under ``~/.ethograph/logs/``.
+
+    Captures everything a session prints to the terminal — log records,
+    plain ``print()`` calls, uncaught tracebacks, third-party library
+    chatter — so it survives after the terminal window that launched it is
+    gone. Call once, as early as possible in a long-running entry point
+    (e.g. the GUI's ``ethograph launch``).
+
+    Returns
+    -------
+    Path
+        The log file's path (also printed to the console).
+    """
+    from ethograph.utils.paths import ethograph_home
+
+    logs_dir = ethograph_home() / "logs"
+    logs_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now()
+    path = logs_dir / f"{prefix}_{timestamp:%Y%m%d_%H%M%S}.log"
+    log_file = path.open("w", encoding="utf-8")
+    log_file.write(f"# ethograph session log started {timestamp:%Y-%m-%d %H:%M:%S}\n")
+    atexit.register(log_file.close)
+    sys.stdout = _TeeStream(sys.stdout, log_file)
+    sys.stderr = _TeeStream(sys.stderr, log_file)
+    return path

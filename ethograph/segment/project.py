@@ -179,15 +179,15 @@ class Project:
 
         return cross_validate(self._config, folds=folds, val_fraction=val_fraction, predict=predict)
 
-    def infer(self, run: str | Path | None = None, sessions: Iterable[str | Path] | None = None) -> list[Path]:
+    def inference(self, run: str | Path | None = None, sessions: Iterable[str | Path] | None = None) -> list[Path]:
         """Write a prediction set beside every session of the config.
 
         *sessions* narrows that to the ones it names (full path or source
         stem); *run* names a run other than the config's own.
         """
-        from ethograph.segment.infer import infer
+        from ethograph.segment.inference import inference
 
-        return infer(self._config, run=run, sessions=sessions)
+        return inference(self._config, run=run, sessions=sessions)
 
     # ------------------------------------------------------------------
     # Looking at results
@@ -208,7 +208,7 @@ class Project:
 
     def load_run(self, run: str | Path | None = None):
         """A trained run, ready to predict with (see :meth:`infer` for the usual path)."""
-        from ethograph.segment.infer import load_run, resolve_run_dir
+        from ethograph.segment.inference import load_run, resolve_run_dir
 
         return load_run(resolve_run_dir(self._config, run))
 

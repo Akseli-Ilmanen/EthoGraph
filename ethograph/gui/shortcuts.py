@@ -108,7 +108,6 @@ def bind_global_shortcuts(meta_widget):
     bind("Ctrl+Down", lambda: meta_widget._cycle_channel(+1))
     bind("Ctrl+Up", lambda: meta_widget._cycle_channel(-1))
     bind("Shift+N", meta_widget.show_source_popup, guarded=True)
-    bind("Ctrl+Y", data_widget.toggle_predictions_slot)
 
     def toggle_autoscale():
         autoscale_status = plot_settings_widget.autoscale_checkbox.isChecked()

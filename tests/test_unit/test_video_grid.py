@@ -181,6 +181,8 @@ class _PanelStub:
     def __init__(self):
         self.curated: list[dict] = []
         self._mode = "manual"
+        self.session_active = False
+        self.restarted = 0
 
     def mode(self):
         return self._mode
@@ -188,6 +190,9 @@ class _PanelStub:
     def curate_labels(self, insts):
         self.curated.extend(insts)
         return len(insts)
+
+    def restart_review(self):
+        self.restarted += 1
 
 
 class _LabelsStub(QWidget):

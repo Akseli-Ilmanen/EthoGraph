@@ -55,7 +55,10 @@ predicting five classes costs barely more than predicting one.
 
    Ticking a feature's **d/dt** box adds its rate of change beside every column
    it produces (`np.gradient`: central differences, centred on the frame, so a
-   turn in the signal shows up at the frame it happened). 
+   turn in the signal shows up at the frame it happened). The classifier sees
+   each tap of the window on its own and cannot difference them, so *how fast
+   is this changing* has to be handed to it as its own input — worth a tick
+   when the event is a change of speed or direction rather than a level.
 4. **Tick the existing labels to read as inputs** (optional) — see
    {ref}`below <target-onset-model-label-inputs>`.
 5. **Set the parameters.** `Window size` is how much context the classifier
@@ -75,11 +78,11 @@ would invalidate every training trial already stored. To change them, make a
 new model. To add more sessions, open the dialog there, pick the model, and
 press **Add current session's events**.
 
+
 (target-onset-model-label-inputs)=
 ### Existing labels as inputs
 
-Besides behavioural features, you can also use existing (state/point) labels
-to predict new labels:
+You can also pass existing labels as features to the model.
 
 * a **state** class becomes its **on/off indicator** — `1` inside every
   interval of that class, `0` outside. That is the whole of what a state says.
@@ -89,14 +92,6 @@ to predict new labels:
   the narrow peak points straight at the moment while the long tails stay
   readable from far away, so one column carries both *it is here* and *it was
   a while ago*.
-
-```{warning}
-**Every chosen feature must share one sampling rate.** Windows are
-index-based, so mixing a 30 Hz pose feature with a 44.1 kHz audio feature
-would silently misalign them. EthoGraph refuses instead — resample first, or
-pick features from one stream.
-```
-
 ---
 
 ## Predicting
@@ -115,35 +110,25 @@ never touched:
   filters of its own; it says how many trials it will run over, read off the
   table.
 
+Predictions land in memory like any other label, stamped
+`labeling_method = automated` — they draw dotted on the plots until you
+{doc}`curate <curation>` them, and a trial holding one stays red in the trial
+list. **Review predictions…** at the bottom of the dialog opens the
+label grid view on exactly what the run
+just wrote — those classes, those trials — so you can check the video frame at
+each one and either click through to fix it or mark it curated.
 
 ---
 
 (target-onset-model-confidence)=
 ## Confidence
 
-A predicted label's **`confidence`** is the height of the tallest peak of that
-class's probability curve — the model's per-frame belief that the event is
-here (a label you placed by hand is `1.0`). That curve is the **dotted line**
-{ref}`frame-by-frame review <target-curation-frame>` draws under the label it
-is on, one per class in the class's own colour, against a fixed 0–1 right-hand
-axis. The peak's frame is where the label sits, so the number and the label
-point at the same place on the same curve.
-
-Set a threshold by looking: open a few reviews, see what a good curve peaks at
-and what a bad one peaks at, and put the threshold between them.
-
-### Reviewing by confidence
-
-**Label grid view…** (Labels tab ▸ Curation) puts each label's confidence and
-`labeling_method` on its tile and outlines everything below **Flag confidence
-below** in red, in the grid and in the exported PDF. The threshold is typed in
-full rather than stepped, so a model whose scores sit at the bottom of the
-range can be flagged at `0.0002` as easily as at `0.6`; **Histogram…** beside
-it shows where the scores actually sit, per class, before you commit.
-
-In the default *Click = uncurated, rest = curated* mode, **Mark low-confidence
-as uncurated** pre-clicks exactly the outlined tiles; click any other tile that
-looks wrong, and **Done** curates everything else in one go. With the Curation
-section in {ref}`frame-by-frame review <target-curation-frame>`, a tile click
-drops straight into that boundary instead: `Enter` moves the event onto the
-right frame, `Backspace` deletes one that never happened, `N` marks it curated.
+A predicted label's **`confidence`** is a statistic of that class's
+probability curve around its tallest peak — its height, or how concentrated
+the curve is there and whether a rival peak stands elsewhere — chosen per
+class on the trials the model did not see, and named in the training
+message. The curve is the **dotted line** frame-by-frame review draws under
+the label, so the number is always something you can see. The statistics,
+the equations and how they compare with the segmentation pipeline's entropy
+are in {doc}`the confidence page <../confidence>`, together with reviewing
+by confidence in the label grid.

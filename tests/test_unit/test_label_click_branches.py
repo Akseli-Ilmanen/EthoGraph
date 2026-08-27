@@ -37,6 +37,8 @@ class _State:
         self.label_intervals = _intervals()
         self.trials_sel = 0
         self.video = None
+        self._show_predictions_overlay = False
+        self.pred_labels_df = None
 
     def set_trial_intervals(self, _trial, df):
         self.label_intervals = df
@@ -57,6 +59,7 @@ class _Labels:
     """LabelsWidget's click/selection logic without the Qt widget."""
 
     _check_labels_click = LabelsWidget._check_labels_click
+    _check_predictions_click = LabelsWidget._check_predictions_click
     _is_editable_label = LabelsWidget._is_editable_label
     _adopt_clicked_class = LabelsWidget._adopt_clicked_class
     _refuse_foreign_branch = LabelsWidget._refuse_foreign_branch
@@ -83,7 +86,7 @@ class _Labels:
     def _to_display(self, t_rel):
         return t_rel
 
-    def _current_recipient(self):
+    def _current_receiver(self):
         return ""
 
     def _point_click_tolerance_s(self):
@@ -155,4 +158,44 @@ def test_editing_another_branchs_label_is_refused(widget):
     widget._check_labels_click(3.5, "bird1")
     widget._edit_label()
     assert widget.old_labels_pos is None, "edit mode was entered for a non-editable branch"
+    assert widget.ready_for_label_click is False
+
+
+# ---------------------------------------------------------------------------
+# Predictions: a click that misses every branch falls through to the
+# Predictions overlay, but only while it is shown; selecting one never lets
+# it be deleted or edited.
+# ---------------------------------------------------------------------------
+
+
+def _predictions() -> pd.DataFrame:
+    rows = [{"trial": 0, "onset_s": 6.0, "offset_s": 7.0, "labels": 1, "individual": "bird1", "event_type": "state"}]
+    return pd.concat([empty_intervals(), pd.DataFrame(rows)], ignore_index=True)
+
+
+def test_a_prediction_is_selectable_when_the_overlay_is_shown(widget):
+    widget.app_state._show_predictions_overlay = True
+    widget.app_state.pred_labels_df = _predictions()
+    assert widget._check_labels_click(6.5, "bird1") is True
+    assert widget.current_labels_is_prediction is True
+    assert widget.current_labels == 1
+
+
+def test_a_prediction_is_unclickable_while_the_overlay_is_hidden(widget):
+    widget.app_state._show_predictions_overlay = False
+    widget.app_state.pred_labels_df = _predictions()
+    assert widget._check_labels_click(6.5, "bird1") is False
+    assert widget.current_labels_pos is None
+
+
+def test_a_selected_prediction_cannot_be_deleted_or_edited(widget):
+    widget.app_state._show_predictions_overlay = True
+    widget.app_state.pred_labels_df = _predictions()
+    widget._check_labels_click(6.5, "bird1")
+
+    widget._delete_label()
+    assert widget.current_labels_pos is not None, "a prediction was deleted"
+
+    widget._edit_label()
+    assert widget.old_labels_pos is None, "edit mode was entered for a prediction"
     assert widget.ready_for_label_click is False

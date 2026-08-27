@@ -53,7 +53,7 @@ from ethograph.labels.intervals import (
 )
 from ethograph.labels.plots import plot_confidence_pdf
 from ethograph.labels.predictions import PredictionsStore
-from ethograph.labels.tsv_store import labels_tsv_path, save_labels_tsv
+from ethograph.labels.tsv_store import load_labels_tsv
 
 # Glyphs used to indicate the kind of a label in the table.
 #   ━ (horizontal bar) = state event — visually conveys "spans across time"
@@ -87,7 +87,7 @@ from .app_constants import (  # noqa: E402
     LABELS_TABLE_ROW_HEIGHT,
     LABELS_WIDGET_SIZE_HINT_HEIGHT,
 )
-from .file_dialogs import browse_open_dir  # noqa: E402
+from .file_dialogs import browse_open_dir, browse_open_file  # noqa: E402
 from .widgets_curation import CurationPanel, drag_label_ids  # noqa: E402
 
 
@@ -192,6 +192,9 @@ class LabelsWidget(QWidget):
         self.current_labels_pos: int | None = None  # DataFrame index of selected interval
         self.current_labels: int | None = None  # ID of currently selected
         self.current_labels_is_prediction: bool = False  # Whether selected  is from predictions
+        # Edge-triggered: warn once when Predictions loses its Top1/Top2 slot to
+        # shown branches, not on every redraw. Reset once a slot is free again.
+        self._predictions_slot_warned = False
 
         # Edit mode state
         self.old_labels_pos: int | None = None  # Original interval index when editing
@@ -388,6 +391,14 @@ class LabelsWidget(QWidget):
             pred_position = "top1" if "top1" not in occupied else ("top2" if "top2" not in occupied else None)
             if pred_position is not None:
                 slots.append({"df": predictions_df, "label_ids": None, "position": pred_position})
+                self._predictions_slot_warned = False
+            elif not self._predictions_slot_warned:
+                self._predictions_slot_warned = True
+                notify(
+                    "Predictions has no free strip — Top1 and Top2 are both taken by shown branches. "
+                    "Hide a branch to make room.",
+                    severity="warning",
+                )
 
         return slots
 
@@ -802,41 +813,49 @@ class LabelsWidget(QWidget):
                 notify(f"Loaded {len(labels)} temporary labels")
 
     def _import_predictions_from_folder(self):
+        """A segmentation run's own output folder — real intervals, confidence curves."""
         folder = browse_open_dir(
             self,
             self.app_state,
-            "Select predictions folder (.npy files)",
+            "Select predictions folder",
             preferred_dir=self.app_state.nc_file_path,
         )
         if not folder:
             return
         individual = self.app_state.selected_individual() or "default"
-        threshold = self.io_widget.pred_confidence_threshold_spin.value()
-        seg_threshold = self.io_widget.pred_segment_confidence_threshold_spin.value()
         try:
             store = PredictionsStore(folder)
-            labels_df, confidence_levels = store.load_all(
-                self.app_state.dt,
-                individual,
-                confidence_threshold=threshold,
-                segment_confidence_threshold=seg_threshold,
-            )
+            labels_df, _confidence_levels = store.load_all(self.app_state.dt, individual)
         except (FileNotFoundError, ValueError, AssertionError) as e:
             notify(str(e), severity="error")
             return
+        self._finish_predictions_import(labels_df, store, folder)
 
-        folder_path = Path(folder)
-        labels_dir = folder_path.parent
-        tsv_path = labels_dir / f"{folder_path.name}.tsv"
-        save_labels_tsv(tsv_path, labels_df)
+    def _import_predictions_from_tsv(self):
+        """A plain labels TSV as predictions — e.g. a second annotator's file, for comparison.
 
-        cb = getattr(self.io_widget, "create_labels_from_predictions_cb", None)
-        if cb is not None and cb.isChecked() and self.app_state.nc_file_path and not labels_df.empty:
-            session_tsv = labels_tsv_path(self.app_state.nc_file_path)
-            if not session_tsv.exists():
-                save_labels_tsv(session_tsv, labels_df)
-                notify(f"Created session labels from predictions: {session_tsv.name}")
+        No confidence curve (there is no ``.npz``): the "Confidence" checkbox
+        simply has nothing to show for this predictions set.
+        """
+        path = browse_open_file(
+            self,
+            self.app_state,
+            "Select predictions TSV file",
+            "TSV files (*.tsv)",
+            preferred_dir=self.app_state.nc_file_path,
+        )
+        if not path:
+            return
+        try:
+            labels_df = load_labels_tsv(path)
+        except (FileNotFoundError, ValueError) as e:
+            notify(str(e), severity="error")
+            return
+        self._finish_predictions_import(labels_df, None, path)
 
+    def _finish_predictions_import(self, labels_df, store, source_text: str):
+        """Shared wiring once a predictions set is loaded, whichever way in."""
+        threshold = self.io_widget.pred_confidence_threshold_spin.value()
         self.app_state.pred_labels_df = labels_df
         self.app_state.pred_store = store
         self.app_state.pred_confidence_threshold = threshold
@@ -844,8 +863,8 @@ class LabelsWidget(QWidget):
         self.app_state._show_predictions_overlay = True
         if self.data_widget:
             self.data_widget.refresh_trials_confidence()
-        self.io_widget.pred_confidence_pdf_btn.setEnabled(True)
-        self.io_widget.pred_file_path_edit.setText(folder)
+        self.io_widget.pred_confidence_pdf_btn.setEnabled(store is not None)
+        self.io_widget.pred_file_path_edit.setText(source_text)
 
         if self.data_widget:
             self.data_widget.update_main_plot(preserve_x_range=True)
@@ -861,12 +880,22 @@ class LabelsWidget(QWidget):
     def _plot_confidence_pdf(self):
         store = getattr(self.app_state, "pred_store", None)
         labels_df = getattr(self.app_state, "pred_labels_df", None)
-        if store is None or labels_df is None or labels_df.empty:
+        if labels_df is None or labels_df.empty:
             notify("No predictions loaded.", severity="warning")
+            return
+        if store is None:
+            notify(
+                "This predictions set has no confidence curves (loaded from a plain .tsv, not a run folder).",
+                severity="warning",
+            )
             return
         try:
             # Load all confidence arrays at click time for the PDF (one-off)
-            confidence_map = {trial: store.get_confidence(trial, self.app_state.dt) for trial in self.app_state.trials}
+            individual = self.app_state.selected_individual()
+            confidence_map = {
+                trial: store.get_confidence(trial, self.app_state.dt, individual=individual)
+                for trial in self.app_state.trials
+            }
             pdf_path, highlighted = plot_confidence_pdf(
                 confidence_map,
                 labels_df,
@@ -1076,13 +1105,13 @@ class LabelsWidget(QWidget):
             return str(_ds.coords[_ind_dim].values[0])
         return "default"
 
-    def _current_recipient(self) -> str:
-        """The recipient the labels being drawn are about, "" for a solo one.
+    def _current_receiver(self) -> str:
+        """The receiver the labels being drawn are about, "" for a solo one.
 
         Together with :meth:`_current_individual` this is the label subject:
         every label is created, found and drawn for exactly one pair.
         """
-        return self.app_state.selected_recipient()
+        return self.app_state.selected_receiver()
 
     @property
     def ready_for_label_click(self) -> bool:
@@ -1218,50 +1247,98 @@ class LabelsWidget(QWidget):
         :meth:`_edit_label` refuse a selection outside the active branch, and
         the clicked class is only adopted for drawing when it is editable.
 
+        A click that misses every branch falls through to the shown
+        Predictions overlay (:meth:`_check_predictions_click`) — clicking a
+        predicted segment selects it too, so V plays back *that* segment.
+
         Args:
             t_clicked: Time in seconds of the click
             individual: Individual name to check
         """
         df = self.app_state.label_intervals
+        if df is not None and not df.empty:
+            active_ids = self.app_state.active_label_ids
+
+            # Points take precedence over overlapping state intervals: they're
+            # smaller targets, so a near-hit is almost certainly intentional.
+            # State intervals are only selected when no point matches.
+            # Each lookup falls back to ANY individual: a loaded file may store a
+            # different individual name than the current selection (e.g. a TSV
+            # from another session), and a label the user can see and click must
+            # be selectable — otherwise playback (V) silently fails on it.
+            tolerance_s = self._point_click_tolerance_s()
+            receiver = self._current_receiver()
+            idx = find_point_at(df, t_clicked, individual, tolerance_s, label_ids=active_ids, individual_rec=receiver)
+            if idx is None:
+                idx = find_point_at(df, t_clicked, None, tolerance_s, label_ids=active_ids)
+            if idx is not None:
+                row = df.loc[idx]
+                t = float(row["onset_s"])
+                labels = int(row["labels"])
+                self.current_labels = labels
+                self.current_labels_pos = idx
+                self.current_labels_is_prediction = False
+                self.highlight_spaceplot.emit(self._to_display(t), self._to_display(t))
+                self._adopt_clicked_class(labels)
+                return True
+
+            # No point near the click — fall through to state intervals.
+            idx = find_interval_at(df, t_clicked, individual, label_ids=active_ids, individual_rec=receiver)
+            if idx is None:
+                idx = find_interval_at(df, t_clicked, None, label_ids=active_ids)
+            if idx is not None:
+                onset_s, offset_s, labels = get_interval_bounds(df, idx)
+                self.current_labels = labels
+                self.current_labels_pos = idx
+                self.current_labels_is_prediction = False
+                self.highlight_spaceplot.emit(self._to_display(onset_s), self._to_display(offset_s))
+                self._adopt_clicked_class(labels)
+                return True
+
+        return self._check_predictions_click(t_clicked, individual)
+
+    def _check_predictions_click(self, t_clicked: float, individual: str) -> bool:
+        """Same lookup as :meth:`_check_labels_click`, over the shown Predictions overlay.
+
+        Predictions are read-only — no branch/mapping, no class adoption,
+        and :meth:`_delete_label`/:meth:`_edit_label` refuse a prediction
+        selection — but they select and drive V playback just the same.
+        Only searched while the overlay is actually shown: a click where a
+        hidden prediction sits should not select it.
+        """
+        if not self.app_state._show_predictions_overlay:
+            return False
+        df = self.app_state.pred_labels_df
         if df is None or df.empty:
             return False
+        if "trial" in df.columns:
+            df = df[df["trial"] == self.app_state.trials_sel]
+            if df.empty:
+                return False
 
-        active_ids = self.app_state.active_label_ids
-
-        # Points take precedence over overlapping state intervals: they're
-        # smaller targets, so a near-hit is almost certainly intentional.
-        # State intervals are only selected when no point matches.
-        # Each lookup falls back to ANY individual: a loaded file may store a
-        # different individual name than the current selection (e.g. a TSV
-        # from another session), and a label the user can see and click must
-        # be selectable — otherwise playback (V) silently fails on it.
         tolerance_s = self._point_click_tolerance_s()
-        recipient = self._current_recipient()
-        idx = find_point_at(df, t_clicked, individual, tolerance_s, label_ids=active_ids, individual_rec=recipient)
+        receiver = self._current_receiver()
+        idx = find_point_at(df, t_clicked, individual, tolerance_s, individual_rec=receiver)
         if idx is None:
-            idx = find_point_at(df, t_clicked, None, tolerance_s, label_ids=active_ids)
+            idx = find_point_at(df, t_clicked, None, tolerance_s)
         if idx is not None:
             row = df.loc[idx]
             t = float(row["onset_s"])
-            labels = int(row["labels"])
-            self.current_labels = labels
+            self.current_labels = int(row["labels"])
             self.current_labels_pos = idx
-            self.current_labels_is_prediction = False
+            self.current_labels_is_prediction = True
             self.highlight_spaceplot.emit(self._to_display(t), self._to_display(t))
-            self._adopt_clicked_class(labels)
             return True
 
-        # No point near the click — fall through to state intervals.
-        idx = find_interval_at(df, t_clicked, individual, label_ids=active_ids, individual_rec=recipient)
+        idx = find_interval_at(df, t_clicked, individual, individual_rec=receiver)
         if idx is None:
-            idx = find_interval_at(df, t_clicked, None, label_ids=active_ids)
+            idx = find_interval_at(df, t_clicked, None)
         if idx is not None:
             onset_s, offset_s, labels = get_interval_bounds(df, idx)
             self.current_labels = labels
             self.current_labels_pos = idx
-            self.current_labels_is_prediction = False
+            self.current_labels_is_prediction = True
             self.highlight_spaceplot.emit(self._to_display(onset_s), self._to_display(offset_s))
-            self._adopt_clicked_class(labels)
             return True
         return False
 
@@ -1356,7 +1433,7 @@ class LabelsWidget(QWidget):
         t0, t1 = (wb.start_s, wb.end_s) if wb is not None else (None, None)
         return loader.get_cp_times(feature, feature_plot._effective_selections(), t0=t0, t1=t1)
 
-    def _post_label_cleanup(self, placed_onset: float, placed_offset: float, individual: str, recipient: str):
+    def _post_label_cleanup(self, placed_onset: float, placed_offset: float, individual: str, receiver: str):
         """Purge only the slivers ``add_interval`` just created.
 
         Scoped cleanup: when the new interval cuts through an existing one,
@@ -1382,7 +1459,7 @@ class LabelsWidget(QWidget):
 
         eps = 1e-3
         durations = df["offset_s"] - df["onset_s"]
-        same_ind = subject_mask(df, individual, recipient)
+        same_ind = subject_mask(df, individual, receiver)
         touches_left = np.isclose(df["offset_s"], placed_onset - eps, atol=eps / 10)
         touches_right = np.isclose(df["onset_s"], placed_offset + eps, atol=eps / 10)
         sliver = same_ind & (touches_left | touches_right) & (durations < min_duration_s)
@@ -1403,7 +1480,7 @@ class LabelsWidget(QWidget):
         onset_s = min(self.first_click, self.second_click)
         offset_s = max(self.first_click, self.second_click)
         individual = self._current_individual()
-        recipient = self._current_recipient()
+        receiver = self._current_receiver()
 
         self.app_state.record_label_edit("move label" if self.old_labels_pos is not None else "place label")
 
@@ -1437,17 +1514,17 @@ class LabelsWidget(QWidget):
             self.selected_labels,
             individual,
             protected_label_ids=protected,
-            individual_rec=recipient,
+            individual_rec=receiver,
         )
         self.app_state.label_intervals = df
         self.app_state.set_trial_intervals(self.app_state.trials_sel, df)
-        self._post_label_cleanup(onset_s, offset_s, individual, recipient)
+        self._post_label_cleanup(onset_s, offset_s, individual, receiver)
         if self.changepoints_widget:
             self.changepoints_widget.cp_correction_from_labelling()
         df = self.app_state.label_intervals
 
         # Auto-select the newly created interval for immediate playback
-        new_idx = find_interval_at(df, (onset_s + offset_s) / 2, individual, individual_rec=recipient)
+        new_idx = find_interval_at(df, (onset_s + offset_s) / 2, individual, individual_rec=receiver)
         self.current_labels_pos = new_idx
         self.current_labels = self.selected_labels
         self.current_labels_is_prediction = False
@@ -1476,7 +1553,7 @@ class LabelsWidget(QWidget):
         point effectively moves to the new time.
         """
         individual = self._current_individual()
-        recipient = self._current_recipient()
+        receiver = self._current_receiver()
 
         self.app_state.record_label_edit("move point" if self.old_labels_pos is not None else "place point")
 
@@ -1490,7 +1567,7 @@ class LabelsWidget(QWidget):
             self.old_labels_pos = None
             self.old_labels = None
 
-        df = add_point(df, t_clicked, self.selected_labels, individual, individual_rec=recipient)
+        df = add_point(df, t_clicked, self.selected_labels, individual, individual_rec=receiver)
         self.app_state.label_intervals = df
         self.app_state.set_trial_intervals(self.app_state.trials_sel, df)
         # Point events don't cut through other intervals → no slivers to purge.
@@ -1554,6 +1631,9 @@ class LabelsWidget(QWidget):
 
     def _delete_label(self):
         if self.current_labels_pos is None:
+            return
+        if self.current_labels_is_prediction:
+            notify("Predictions are read-only — cannot delete.", severity="warning")
             return
 
         df = self.app_state.label_intervals
@@ -1626,6 +1706,9 @@ class LabelsWidget(QWidget):
         if self.current_labels_pos is None:
             logger.warning("No label selected. Click on a label first to select it.")
             return
+        if self.current_labels_is_prediction:
+            notify("Predictions are read-only — cannot edit.", severity="warning")
+            return
 
         if self._refuse_foreign_branch(self.current_labels):
             return
@@ -1642,7 +1725,12 @@ class LabelsWidget(QWidget):
             logger.warning("No label selected for playback")
             return
 
-        df = self.app_state.label_intervals
+        if self.current_labels_is_prediction:
+            df = self.app_state.pred_labels_df
+            if df is not None and "trial" in df.columns:
+                df = df[df["trial"] == self.app_state.trials_sel]
+        else:
+            df = self.app_state.label_intervals
         if df is None or self.current_labels_pos not in df.index:
             return
 
@@ -1760,7 +1848,7 @@ class LabelsWidget(QWidget):
             css_color = "white"
             active_ids = self.app_state.active_label_ids
             if df is not None and not df.empty:
-                idx = find_interval_at(df, time_s, ind, label_ids=active_ids, individual_rec=self._current_recipient())
+                idx = find_interval_at(df, time_s, ind, label_ids=active_ids, individual_rec=self._current_receiver())
                 if idx is not None:
                     _, _, labels = get_interval_bounds(df, idx)
                     if labels in mappings and labels != 0:

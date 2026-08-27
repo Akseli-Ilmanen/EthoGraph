@@ -69,6 +69,7 @@ from ethograph.gui.notify import notify
 from ethograph.io.catalog import PynappleLoader, XarrayLoader
 from ethograph.labels import onset_curves
 from ethograph.labels import onset_model as om
+from ethograph.labels.curve_confidence import DESCRIPTIONS
 from ethograph.labels.intervals import (
     EVENT_TYPE_POINT,
     EVENT_TYPE_STATE,
@@ -219,7 +220,7 @@ def predict_onsets(
     app_state = meta.app_state
     known = app_state.label_individuals()
     if individual not in known:
-        # A label belongs to one (actor, recipient) pair and the overlay draws
+        # A label belongs to one (actor, receiver) pair and the overlay draws
         # only the selected pair, so an event written for somebody this
         # session has never heard of is stored and never seen. Say so instead
         # of producing invisible labels — the usual cause is a workflow copied
@@ -1000,9 +1001,11 @@ class TrainOnsetDialog(QDialog):
         # so it belongs in the one message the user reads after training.
         def _held_out(label: int, cal: dict) -> str:
             ceiling = confidence_display((cal["n_hits"] + 1) / (cal["n_trials"] + 2))
+            statistic = cal.get("statistic", "peak")
             return (
                 f"{config.target_name(label)}: {cal['n_hits']}/{cal['n_trials']} "
-                f"within {config.tolerance_s:g} s (confidence ceiling {ceiling})"
+                f"within {config.tolerance_s:g} s (confidence ceiling {ceiling}; "
+                f"confidence = {DESCRIPTIONS[statistic]})"
             )
 
         held_out = ", ".join(_held_out(label, cal) for label, cal in summary.get("calibration", {}).items())

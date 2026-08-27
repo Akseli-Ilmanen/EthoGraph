@@ -1,56 +1,29 @@
-"""Load model predictions from per-trial files and convert to label intervals.
+"""Read a :mod:`ethograph.segment.inference` prediction folder.
 
-Predictions are stored as per-trial files in a folder:
-    predictions_dlc2action/
-        dlc2action_trial1.pickle    # (T, n_classes) or (T,)
-        dlc2action_trial2.npy
+One run, one folder, beside the session's own ``labels/`` (see
+:mod:`ethograph.labels.onset_curves` for the sibling convention the LightGBM
+onset model uses)::
 
-If shape (T, n_classes): softmax probabilities → labels via argmax, confidence via 1-entropy.
-If shape (T,): dense labels directly, no confidence available.
+    labels/
+        predictions_{run_name}_{timestamp}/
+            {stem}_predictions.tsv   # real intervals, per-segment confidence, labeling_method
+            {stem}_probs.npz         # per (trial, individual): "{key}" -> (T, C) probs, "{key}_time" -> (T,)
+
+The TSV needs no reconstruction — it is already the GUI's native labels
+format. Only the frame-by-frame confidence *curve* (for the review overlay)
+is read from the ``.npz``, one array at a time.
 """
 
 from __future__ import annotations
 
 import logging
-import pickle
 import re
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
-from ethograph.labels.intervals import HUMAN_CONFIDENCE, LABELING_AUTOMATED, empty_intervals
-from ethograph.labels.ml import dense_to_intervals
-
 logger = logging.getLogger(__name__)
-
-
-def load_prediction_file(path: str | Path) -> np.ndarray:
-    """Load a prediction file (.npy or .pickle). Returns a numpy array.
-
-    For .npy files with shape (T,) (confidence or dense labels), uses
-    memory-mapping (mmap_mode='r') so no data is copied into RAM until accessed.
-    """
-    path = Path(path)
-    if path.suffix == ".npy":
-        arr = np.load(path, mmap_mode="r")
-        return arr
-    elif path.suffix in (".pickle", ".pkl"):
-        with open(path, "rb") as f:
-            data = pickle.load(f)
-        if isinstance(data, np.ndarray):
-            return data
-        if isinstance(data, dict):
-            for key in ("predictions", "softmax", "probs", "probabilities"):
-                if key in data:
-                    return np.asarray(data[key])
-            first_array = next((v for v in data.values() if isinstance(v, np.ndarray)), None)
-            if first_array is not None:
-                return first_array
-            raise ValueError(f"No numpy array found in pickle keys: {list(data.keys())}")
-        raise ValueError(f"Unexpected pickle type: {type(data)}")
-    else:
-        raise ValueError(f"Unsupported prediction file format: {path.suffix}")
 
 
 def prediction_to_labels_and_confidence(
@@ -88,182 +61,53 @@ def prediction_to_labels_and_confidence(
 
 
 class PredictionsStore:
-    """Lazy per-trial loader for a predictions folder.
-
-    Scans the folder at construction time (fast — filesystem only, no file reads).
-    Individual trial data is loaded on demand via :meth:`get_confidence`.
-
-    Supports ``.npy`` (memory-mapped when shape is 1-D) and ``.pkl``/``.pickle``
-    formats. Additional formats can be added to ``load_prediction_file``.
-
-    Parameters
-    ----------
-    folder : str or Path
-        Folder containing per-trial prediction files.
+    """Read one :mod:`ethograph.segment.inference` prediction folder.
 
     Example
     -------
     ::
 
-        store = PredictionsStore("predictions_cetnet_20260330/uncorr")
-        confidence = store.get_confidence(trial=5, dt=dt)
-        labels_df, levels = store.load_all(dt, individual="Poppy", threshold=0.75)
+        store = PredictionsStore("labels/predictions_mstcn_20260101_000000")
+        labels_df, _ = store.load_all(dt)
+        confidence = store.get_confidence(trial=5, dt=dt, individual="A")
     """
 
     def __init__(self, folder: str | Path):
         self.folder = Path(folder)
-        if not self.folder.exists():
-            raise FileNotFoundError(f"Predictions folder not found: {self.folder}")
-        self._files: list[Path] = sorted(p for p in self.folder.iterdir() if p.suffix in (".npy", ".pickle", ".pkl"))
-        self._index: dict = {}  # {trial: Path} — populated lazily on first access
+        # *_labels.tsv is the legacy spelling — a run written before predictions
+        # were renamed to *_predictions.tsv to read distinctly from a curated
+        # labels file of the same session.
+        tsvs = sorted(self.folder.glob("*_predictions.tsv")) or sorted(self.folder.glob("*_labels.tsv"))
+        if not tsvs:
+            raise FileNotFoundError(f"No *_predictions.tsv in {self.folder}")
+        self.tsv_path = tsvs[0]
+        npzs = sorted(self.folder.glob("*_probs.npz"))
+        self.npz_path = npzs[0] if npzs else None
 
-    def _resolve(self, trial_list: list) -> None:
-        """Build the trial→file index if not already done."""
-        if self._index:
-            return
-        for p in self._files:
-            trial = _extract_trial_from_filename(p, trial_list)
-            if trial is not None:
-                self._index[trial] = p
+    def load_all(self, dt, individual: str | None = None, **_ignored) -> tuple[pd.DataFrame, dict]:
+        """Every trial's predictions, already postprocessed by the run itself."""
+        from ethograph.labels.tsv_store import load_labels_tsv
 
-    def get_file(self, trial, trial_list: list) -> Path | None:
-        """Return the prediction file path for a trial, or None."""
-        self._resolve(trial_list)
-        return self._index.get(trial)
+        return load_labels_tsv(self.tsv_path), {}
 
-    def get_confidence(self, trial, dt) -> np.ndarray | None:
-        """Load and return the confidence array for one trial.
+    def get_confidence(self, trial, dt, individual: str | None = None) -> np.ndarray | None:
+        """Per-frame confidence for one (trial, individual), from the run's own probabilities.
 
-        For ``.npy`` probability files the array is memory-mapped; for ``.pkl``
-        files the full file is read (typically ~150 KB — a few milliseconds).
-        The returned array is not cached — call again to re-load if needed.
+        Returns ``None`` when the run has no ``.npz`` (e.g. a hand-edited
+        folder) or no key matches — an aid to review, never something a
+        caller depends on.
         """
-        path = self.get_file(trial, dt.trials)
-        if path is None:
+        if self.npz_path is None:
             return None
-        pred = load_prediction_file(path)
-        _, confidence = prediction_to_labels_and_confidence(pred)
+        marker = f"_trial{trial}_"
+        with np.load(self.npz_path) as npz:
+            keys = [k for k in npz.files if marker in k and not k.endswith("_time") and not k.endswith("_boundary")]
+            if not keys:
+                return None
+            match = keys[0]
+            if individual is not None and len(keys) > 1:
+                safe = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(individual))
+                match = next((k for k in keys if k.endswith(f"_{safe}")), match)
+            probs = np.asarray(npz[match], dtype=np.float64)
+        _, confidence = prediction_to_labels_and_confidence(probs)
         return confidence
-
-    def load_all(
-        self,
-        dt,
-        individual: str,
-        confidence_threshold: float = 0.75,
-        segment_confidence_threshold: float = 0.6,
-    ) -> tuple[pd.DataFrame, dict[int | str, str]]:
-        """Load all trials — convert to intervals and compute confidence levels.
-
-        Confidence arrays are computed in one pass then discarded; only the
-        per-trial high/low classification is kept.  The same two-condition
-        criterion used in the confidence PDF is applied: a trial is "low" if
-        its overall mean confidence < *confidence_threshold* OR any labeled
-        segment's mean confidence < *segment_confidence_threshold*.
-
-        Parameters
-        ----------
-        dt : TrialTree
-        individual : str
-        confidence_threshold : float
-            Frame-level threshold; overall trial mean below this → "low".
-        segment_confidence_threshold : float
-            Segment-level threshold; any segment mean below this → "low".
-
-        Returns
-        -------
-        all_labels_df : pd.DataFrame
-        confidence_levels : dict
-            ``{trial: "low" | "high"}``
-        """
-        if not self._files:
-            raise FileNotFoundError(f"No prediction files found in {self.folder}")
-
-        rows: list[pd.DataFrame] = []
-        confidence_levels: dict = {}
-
-        for pred_file in self._files:
-            trial = _extract_trial_from_filename(pred_file, dt.trials)
-            if trial is None:
-                logger.warning("Could not match %s to a trial, skipping", pred_file.name)
-                continue
-
-            pred = load_prediction_file(pred_file)
-            labels, confidence = prediction_to_labels_and_confidence(pred)
-
-            ds = dt.trial(trial)
-            time_coord = ds.time.values if "time" in ds.coords else np.arange(len(labels)) / 30.0
-            assert len(labels) == len(time_coord), (
-                f"Trial {trial}: predictions length {len(labels)} != time_coord length {len(time_coord)}"
-            )
-
-            intervals = dense_to_intervals(labels, [individual], time_coord=time_coord)
-            if confidence is not None and not intervals.empty:
-                # Each segment carries the mean frame confidence over its own
-                # span — the per-label number the review tools read.
-                intervals["confidence"] = [
-                    _segment_confidence(confidence, time_coord, seg["onset_s"], seg["offset_s"])
-                    for _, seg in intervals.iterrows()
-                ]
-            if not intervals.empty:
-                intervals.insert(0, "trial", trial)
-                intervals["prediction_source"] = str(pred_file)
-                intervals["labeling_method"] = LABELING_AUTOMATED
-                intervals["changepoint_corrected"] = 0
-                rows.append(intervals)
-
-            if confidence is not None:
-                mean_conf = float(np.mean(confidence))
-                has_low_segment = False
-                if not intervals.empty and "confidence" in intervals.columns:
-                    has_low_segment = bool((intervals["confidence"] < segment_confidence_threshold).any())
-                low = mean_conf < confidence_threshold or has_low_segment
-                confidence_levels[trial] = "low" if low else "high"
-
-        if rows:
-            all_df = pd.concat(rows, ignore_index=True)
-        else:
-            all_df = empty_intervals()
-            all_df.insert(0, "trial", pd.Series(dtype=object))
-
-        return all_df, confidence_levels
-
-
-def _segment_confidence(
-    confidence: np.ndarray,
-    time_coord: np.ndarray,
-    onset_s: float,
-    offset_s: float,
-) -> float:
-    """Mean frame confidence over one segment; :data:`HUMAN_CONFIDENCE` if it
-    spans no frame (a point event's NaN offset makes the mask empty)."""
-    mask = (time_coord >= onset_s) & (time_coord <= offset_s)
-    if not mask.any():
-        return float(HUMAN_CONFIDENCE)
-    return float(np.mean(confidence[mask]))
-
-
-def _extract_trial_from_filename(path: Path, trial_list: list) -> int | str | None:
-    """Try to extract a trial ID from a prediction filename."""
-    stem = path.stem
-
-    # Extract the number after 'trial' (e.g. cetnet_trial10_uncorr -> 10)
-    match = re.search(r"trial(\d+)", stem)
-    if match:
-        num = int(match.group(1))
-        if num in trial_list:
-            return num
-        num_str = str(num)
-        if num_str in [str(t) for t in trial_list]:
-            return num
-
-    # Fallback: trailing number in stem
-    match = re.search(r"(\d+)$", stem)
-    if match:
-        num = int(match.group(1))
-        if num in trial_list:
-            return num
-        num_str = str(num)
-        if num_str in [str(t) for t in trial_list]:
-            return num
-
-    return None

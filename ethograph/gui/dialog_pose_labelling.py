@@ -96,8 +96,10 @@ import hashlib
 import html
 import json
 import logging
+import os
 from collections.abc import Callable, Sequence
 from contextlib import contextmanager
+from pathlib import Path
 
 import numpy as np
 from qtpy.QtCore import QAbstractTableModel, QEvent, QModelIndex, QRect, Qt, QTimer
@@ -224,6 +226,16 @@ DETECT_MAX_SIDE = None
 
 _LABELLED_MARK = "●"
 _UNLABELLED_MARK = "·"
+
+#: The sidecar most recently saved by any labelling dialog in this GUI
+#: session: what a fresh store's static keypoints are seeded from.
+_LAST_SAVED_SIDECAR: dict[str, str] = {}
+
+
+def template_path(video_path: str) -> Path:
+    """The camera's static-keypoint template: ``{video folder}/.ethograph/keypoints_template.json``."""
+    return Path(video_path).parent / ".ethograph" / "keypoints_template.json"
+
 
 #: Side of the colour swatch drawn beside a keypoint in the schema tree.
 _SWATCH_PX = 12
@@ -810,6 +822,8 @@ class PoseLabellingDialog(QDialog):
         self._head_direction_offered = False
 
         self.store = self._load_store()
+        #: The video the current store was loaded for; a change means a new clip.
+        self._store_video = self._video_path()
         self._build_ui()
         self._load_detections()
         self._rebuild_tree()
@@ -853,16 +867,66 @@ class PoseLabellingDialog(QDialog):
                 else:
                     store.n_frames = n_frames or store.n_frames
                     return store
-        return KeypointStore(
+        store = KeypointStore(
             keypoint_names=list(self.app_state.keypoints or []),
             n_frames=n_frames,
             individual_names=list(self.app_state.labelling_individuals or [DEFAULT_INDIVIDUAL]),
         )
+        template = self._last_saved_sidecar()
+        if template is not None:
+            seeded = store.seed_static_from(template)
+            if seeded:
+                notify(f"Seeded {seeded} static keypoint(s) from the last labelled clip.", "info")
+        return store
+
+    def _last_saved_sidecar(self) -> KeypointStore | None:
+        """What a fresh clip's static keypoints are seeded from.
+
+        The sidecar this GUI session last wrote — the previous clip of this
+        camera — else the camera's template beside the videos
+        (:func:`template_path`), written whenever a clip with static keypoints
+        is saved, so the seed survives a restart. Many short clips of one
+        fixed camera share their static keypoints; re-clicking four corners in
+        every clip is exactly the work "static" exists to remove.
+        """
+        candidates = [_LAST_SAVED_SIDECAR.get("path")]
+        video = self._video_path()
+        if video:
+            candidates.append(str(template_path(video)))
+        for path in candidates:
+            if path is None or not os.path.isfile(path):
+                continue
+            try:
+                return KeypointStore.load(path)
+            except (KeypointStoreError, ValueError, KeyError, OSError):
+                continue
+        return None
+
+    def _write_template(self, video: str) -> None:
+        """Keep the camera's template current: the schema and the static keypoints only."""
+        if not self.store.static_keypoints:
+            return
+        template = KeypointStore(
+            keypoint_names=list(self.store.keypoint_names),
+            n_frames=1,
+            individual_names=list(self.store.individual_names),
+            shared_keypoints=self.store.shared_keypoints,
+            keypoint_sets={k: list(v) for k, v in self.store.keypoint_sets.items()},
+        )
+        template.seed_static_from(self.store)
+        path = template_path(video)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        template.save(path)
 
     def _save_store(self) -> None:
         video = self._video_path()
         if video:
-            self.store.save(sidecar_path(video))
+            path = sidecar_path(video)
+            self.store.save(path)
+            _LAST_SAVED_SIDECAR["path"] = str(path)
+            self._write_template(video)
+            if hasattr(self, "clips_label"):
+                self._refresh_clip_counter()
 
     # ------------------------------------------------------------------
     # UI
@@ -919,6 +983,7 @@ class PoseLabellingDialog(QDialog):
         page = QWidget()
         box = QVBoxLayout(page)
         box.addWidget(self._build_mode_controls())
+        box.addLayout(self._build_clips_row())
         box.addWidget(self._build_table_group(), stretch=1)
 
         # Approve beside Clear, because they are the two bulk verdicts on a run:
@@ -1374,14 +1439,22 @@ class PoseLabellingDialog(QDialog):
         box.addWidget(self.shared_toggle)
 
         self.tree = QTreeWidget()
-        self.tree.setColumnCount(2)
-        self.tree.setHeaderLabels(["Name", "This frame"])
+        self.tree.setColumnCount(3)
+        self.tree.setHeaderLabels(["Name", "This frame", "Static"])
+        self.tree.headerItem().setToolTip(
+            2,
+            "A keypoint that does not move: an arena corner, a fixed landmark.\n"
+            "Label it once, on any frame, and it is there on every frame —\n"
+            "the fill leaves it alone, the export writes it everywhere, and\n"
+            "the next clip of the same camera starts with it already placed.",
+        )
         self.tree.setSelectionMode(QAbstractItemView.SingleSelection)
         self.tree.setRootIsDecorated(True)
         self.tree.setMinimumHeight(180)
         self.tree.header().setStretchLastSection(False)
         self.tree.setColumnWidth(0, 220)
         self.tree.currentItemChanged.connect(self._on_tree_item_changed)
+        self.tree.itemChanged.connect(self._on_tree_static_toggled)
         box.addWidget(self.tree)
 
         individual_row = QHBoxLayout()
@@ -1458,6 +1531,24 @@ class PoseLabellingDialog(QDialog):
         self._remove_keypoint_btn.setToolTip(f"Remove the selected keypoint from {scope}.")
         # Nothing to reset while every colour is still the generated one.
         self._reset_colours_btn.setEnabled(bool(self.store.keypoint_color or self.store.individual_color))
+
+    def _build_clips_row(self) -> QHBoxLayout:
+        """Where this clip sits among the camera's clips, and the way to the next one."""
+        row = QHBoxLayout()
+        self.clips_label = QLabel("")
+        row.addWidget(self.clips_label)
+        row.addStretch(1)
+        self.next_clip_btn = QPushButton("Next clip without labels")
+        self.next_clip_btn.setToolTip(
+            "Jump to the next trial whose clip has no labels yet. The schema and the\n"
+            "static keypoints carry over; each clip keeps its own labels."
+        )
+        self.next_clip_btn.setAutoDefault(False)
+        self.next_clip_btn.setDefault(False)
+        self.next_clip_btn.clicked.connect(self._on_next_unlabelled_clip)
+        row.addWidget(self.next_clip_btn)
+        QTimer.singleShot(0, self._refresh_clip_counter)
+        return row
 
     def _build_mode_controls(self) -> QWidget:
         """One compact row — modes plus the target pickers — over the status chip.
@@ -3368,10 +3459,12 @@ class PoseLabellingDialog(QDialog):
             branch.setData(0, Qt.UserRole, (individual, None))
             branch.setIcon(0, self._swatch(self._point_brush(individual, None)))
             for keypoint in self.store.keypoints_for(individual):
-                leaf = QTreeWidgetItem([keypoint, ""])
+                leaf = QTreeWidgetItem([keypoint, "", ""])
                 leaf.setData(0, Qt.UserRole, (individual, keypoint))
                 leaf.setIcon(0, self._swatch(self._point_brush(individual, keypoint)))
                 leaf.setForeground(1, self._point_brush(individual, keypoint))
+                leaf.setFlags(leaf.flags() | Qt.ItemIsUserCheckable)
+                leaf.setCheckState(2, Qt.Checked if self.store.is_static(keypoint) else Qt.Unchecked)
                 branch.addChild(leaf)
             self.tree.addTopLevelItem(branch)
             branch.setExpanded(True)
@@ -3416,6 +3509,18 @@ class PoseLabellingDialog(QDialog):
                     self.tree.blockSignals(False)
                     return
         self.tree.blockSignals(False)
+
+    def _on_tree_static_toggled(self, item: QTreeWidgetItem, column: int) -> None:
+        """The Static checkbox: the same keypoint is static on every individual."""
+        if column != 2 or item.parent() is None:
+            return
+        _individual, keypoint = item.data(0, Qt.UserRole)
+        static = item.checkState(2) == Qt.Checked
+        if static == self.store.is_static(keypoint):
+            return
+        self.store.set_static(keypoint, static)
+        self._rebuild_tree()  # every individual's leaf shows the same state
+        self._on_store_changed(full=True)
 
     def _on_tree_item_changed(self, item: QTreeWidgetItem | None, _previous=None) -> None:
         if item is None or self._mode is None:
@@ -3969,12 +4074,80 @@ class PoseLabellingDialog(QDialog):
         """
         # The held-open preview source belongs to the video that is going away.
         self._close_preview_frames()
+        self._switch_clip()
         # The calibration mode holds pygfx objects in the scene being replaced;
         # rebuilt (deferred, like the key filter) if the tab is still open.
         self._exit_calibrate_mode(restore=False)
         QTimer.singleShot(0, self._sync_calibrate_mode)
         QTimer.singleShot(0, self._reinstall_key_filter)
         self._schedule_preview()
+
+    def _switch_clip(self) -> None:
+        """Another clip of the same camera: save this store, load that clip's.
+
+        A session cut into trials is labelled clip by clip without closing the
+        dialog — the schema and the static keypoints carry over, the labels
+        are each clip's own. Nothing happens when the path did not change (a
+        reload of the same video).
+        """
+        video = self._video_path()
+        if video == self._store_video:
+            return
+        if self._store_video:
+            path = sidecar_path(self._store_video)
+            self.store.save(path)
+            _LAST_SAVED_SIDECAR["path"] = str(path)
+            self._write_template(self._store_video)
+        self.store = self._load_store()
+        self._store_video = video
+        if self._mode is not None:
+            self._mode.store = self.store
+        self._rebuild_tree()
+        self._on_store_changed(full=True)
+        self._refresh_clip_counter()
+
+    # -- many clips, one camera ---------------------------------------------
+
+    def _clip_videos(self) -> list[tuple[object, str]]:
+        """``(trial, video path)`` for every trial the trials table shows, in order."""
+        alignment = getattr(self.app_state, "nwb_alignment", None)
+        camera = getattr(self.app_state, "primary_camera", None)
+        if alignment is None or not camera:
+            return []
+        out = []
+        for trial in list(self.app_state.trials or []):
+            path = alignment.resolve_media_path(
+                trial, "video", device=camera, fallback_folder=self.app_state.video_folder
+            )
+            if path:
+                out.append((trial, str(path)))
+        return out
+
+    def _refresh_clip_counter(self) -> None:
+        clips = self._clip_videos()
+        if not clips:
+            self.clips_label.setText("")
+            self.next_clip_btn.setEnabled(False)
+            return
+        labelled = sum(1 for _, v in clips if sidecar_path(v).exists())
+        self.clips_label.setText(f"Clips labelled: {labelled} / {len(clips)}")
+        self.next_clip_btn.setEnabled(labelled < len(clips))
+
+    def _on_next_unlabelled_clip(self) -> None:
+        """Jump to the next trial (after this one, wrapping) whose clip has no sidecar."""
+        clips = self._clip_videos()
+        if not clips:
+            notify("No trials with a video on this camera.", "warning")
+            return
+        current = self.app_state.trials_sel
+        order = [t for t, _ in clips]
+        start = order.index(current) + 1 if current in order else 0
+        for k in range(len(clips)):
+            trial, video = clips[(start + k) % len(clips)]
+            if not sidecar_path(video).exists():
+                self._data_widget.navigation_widget.navigate_to_trial(trial)
+                return
+        notify("Every clip on this camera has labels.", "info")
 
     def _sync_calibrate_mode(self) -> None:
         """Re-attach the calibration mode if its tab is (still) the open one."""
@@ -4375,6 +4548,8 @@ class PoseLabellingDialog(QDialog):
                 frames.close()
         if key == POSEPAL_BACKEND:
             self._save_refinement(backend)
+        if self.store.static_keypoints:
+            filled = self.store.pin_static(*filled)
         return filled
 
     def _open_frames(self, max_side: int = MAX_SIDE) -> VideoFrameSource:

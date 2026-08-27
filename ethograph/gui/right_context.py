@@ -22,7 +22,7 @@ plot type     sections shown
 ============  ==================================================
 
 The **Individual** group sits above all of them, outside the mapping: which
-animal (and, for dyadic behaviours, which recipient) is being shown and
+animal (and, for dyadic behaviours, which receiver) is being shown and
 labelled is a question every panel answers — the sole exception is the video,
 whose overlays follow the pose settings instead.
 

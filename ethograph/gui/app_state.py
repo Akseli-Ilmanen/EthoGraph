@@ -122,11 +122,20 @@ class AppStateSpec:
         "curation_mode": (str, "manual", True, SCOPE_LOCAL),
         "curation_label_ids": (list | None, None, True, SCOPE_LOCAL),
         "curation_next_curates": (bool, True, True),
+        # curation_auto_advance: Enter/Backspace in frame-by-frame review jump
+        # to the next target once they commit/delete the current one. On by
+        # default; untick to confirm or delete without leaving the boundary.
+        "curation_auto_advance": (bool, True, True),
         # Frame-by-frame review queue: skip manual/curated boundaries, only
         # queuing automated ones — a human already vouched for the rest, so
         # there is nothing to re-review. On by default; a reviewing
         # preference like curation_next_curates.
         "frame_review_automated_only": (bool, True, True),
+        # Frame-by-frame review order: "trial" (every boundary of a trial,
+        # then the next trial) or "label" (every instance of a class across
+        # trials, then the next class) — see labels/curation.REVIEW_ORDERS.
+        # A reviewing preference like curation_next_curates.
+        "curation_review_order": (str, "trial", True),
         # curation_active: is anyone curating this session? Off until the user
         # drops label rows into the scope area or curates something — only then
         # does the per-trial verdict get a metadata file to live in, and only
@@ -141,11 +150,11 @@ class AppStateSpec:
         "xlim_mode": (str, "interval", True),
         "fixed_window_s": (float, 10.0, True, SCOPE_LOCAL),
         "labels_visible": (bool, True, True, SCOPE_LOCAL),
-        # Recipient of the labelled behaviour (dyadic interactions): the actor
-        # is whichever individual is selected, and (actor, recipient) together
+        # Receiver of the labelled behaviour (dyadic interactions): the actor
+        # is whichever individual is selected, and (actor, receiver) together
         # are the label subject — each pair its own track. "" = solo behaviour,
         # the default. SCOPE_LOCAL: individual names belong to one dataset.
-        "individual_recipient": (str, "", True, SCOPE_LOCAL),
+        "individual_receiver": (str, "", True, SCOPE_LOCAL),
         # Per-plot-type label rendering: "full" | "bottom" | "none"
         "label_overlay_modes": (dict[str, str], dict(DEFAULT_LABEL_OVERLAY_MODES), True),
         "feature_view_mode": (str, "LinePlot", True, SCOPE_LOCAL),
@@ -205,6 +214,13 @@ class AppStateSpec:
         # threshold of 0.0002 is as easy to set as 0.5
         # (dialog_label_gridview.ConfidenceEdit).
         "grid_confidence_threshold": (float, wf.DEFAULT_CONFIDENCE, True),
+        # The confidence knob beside the grids' Histogram… button
+        # (labels/rescore.py): which reading of a prediction's curve is the
+        # confidence, the slider of the custom rule, and the "same event"
+        # window in ms. A review preference, remembered like the threshold.
+        "grid_confidence_rule": (str, "product", True),
+        "grid_confidence_alpha": (float, 0.5, True),
+        "grid_confidence_window_ms": (float, 100.0, True),
         # The grids' "Labeling method" filter: a key of
         # dialog_label_gridview.GRID_METHOD_FILTERS ("all" | "manual" |
         # "curated" | "human" | "automated"). Global like the rest of the grid
@@ -1057,14 +1073,14 @@ class ObservableAppState(QObject):
                 return str(val)
         return None
 
-    def selected_recipient(self) -> str:
-        """The recipient of the behaviour being labelled, ``""`` for none.
+    def selected_receiver(self) -> str:
+        """The receiver of the behaviour being labelled, ``""`` for none.
 
         The counterpart of :meth:`selected_individual`: the two together are
         the label subject, and only labels of that exact pair are drawn,
         hit-tested and created.
         """
-        return str(getattr(self, "individual_recipient", "") or "")
+        return str(getattr(self, "individual_receiver", "") or "")
 
     def label_individuals(self) -> list[str]:
         """Every individual that can act or receive, backend-agnostic.

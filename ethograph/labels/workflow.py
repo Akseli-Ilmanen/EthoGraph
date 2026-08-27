@@ -124,15 +124,34 @@ GRID_MODE_CHOICES = {
 }
 
 
+#: Which trials a bulk label operation (curate / delete / purge) acts on.
+#: Canonical here, not mirrored from the GUI — it names no Qt object, so
+#: ``gui.widgets_curation`` and ``gui.dialog_bulk_labels`` import it directly
+#: instead of keeping their own copy. "single" is the current trial; "all"
+#: is every trial regardless of the table's filters; "filtered" is what the
+#: table currently shows (after any earlier ``filter_trials`` step); "hidden"
+#: is everything its filters currently exclude.
+TRIAL_SCOPE_SINGLE = "single"
+TRIAL_SCOPE_ALL = "all"
+TRIAL_SCOPE_FILTERED = "filtered"
+TRIAL_SCOPE_HIDDEN = "hidden"
+TRIAL_SCOPE_CHOICES = {
+    TRIAL_SCOPE_SINGLE: "Current trial",
+    TRIAL_SCOPE_ALL: "All trials",
+    TRIAL_SCOPE_FILTERED: "Filtered trials (shown by the table)",
+    TRIAL_SCOPE_HIDDEN: "Hidden trials (filtered out)",
+}
+
 #: The grids' "Labeling method" filter, mirroring
 #: ``gui.dialog_label_gridview.GRID_METHOD_FILTERS`` — spelled here so this
 #: module stays importable without Qt.
 GRID_METHOD_CHOICES = {
-    "all": "All labels",
+    "automated": "Automated only",
     "manual": "Manual only",
     "curated": "Curated only",
     "human": "Manual or curated",
-    "automated": "Automated only",
+    "all": "All labels",
+    
 }
 
 #: The ``methods`` parameter both grid steps take: which half of the labels
@@ -145,6 +164,30 @@ _METHODS_PARAM = ParamSpec(
     "all",
     "Which labels of the scope's classes the grid shows.",
     choices=GRID_METHOD_CHOICES,
+)
+
+#: The ``which`` parameter every bulk label step takes, spelled once.
+_TRIALS_PARAM = ParamSpec(
+    "which",
+    "Trials",
+    "choice",
+    TRIAL_SCOPE_FILTERED,
+    "Which trials this step runs over.",
+    choices=TRIAL_SCOPE_CHOICES,
+)
+
+#: The ``label_ids`` parameter curate/delete/purge share: an explicit class
+#: list, like the bulk-editing dialog's own checklist. Empty means "don't
+#: override — use whatever the curation scope area holds" (the drag-and-drop
+#: scope, or an earlier ``scope`` step), exactly as leaving the dialog's own
+#: checklist on *All* would; it is never "every class" for its own sake.
+_LABEL_IDS_PARAM = ParamSpec(
+    "label_ids",
+    "Label classes",
+    "labels",
+    [],
+    "Empty = whatever the curation scope currently holds (the scope area, or an earlier 'Set curation "
+    "scope' step) — the same fallback the scope step itself uses.",
 )
 
 #: The ``cameras`` parameter both grid steps take, spelled once: each grid
@@ -386,8 +429,43 @@ STEP_KINDS: dict[str, StepKind] = {
         ),
         StepKind(
             key="curate_trials",
-            title="Curate the visible trials",
-            summary="Mark every automated label in scope, in every trial the table shows, as curated.",
+            title="Curate trials' labels",
+            summary="Mark every automated label of the chosen classes, in the chosen trials, as curated.",
+            params=(_TRIALS_PARAM, _LABEL_IDS_PARAM),
+        ),
+        StepKind(
+            key="delete_labels",
+            title="Delete trials' labels",
+            summary="Delete every label of the chosen classes, in the chosen trials — every "
+            "labeling_method, not just automated.",
+            params=(_TRIALS_PARAM, _LABEL_IDS_PARAM),
+        ),
+        StepKind(
+            key="purge_labels",
+            title="Purge short labels",
+            summary="Delete state-interval labels of the chosen classes shorter than a threshold, in the "
+            "chosen trials. Point events are never touched.",
+            params=(
+                _TRIALS_PARAM,
+                _LABEL_IDS_PARAM,
+                ParamSpec(
+                    "min_duration_s",
+                    "Shorter than",
+                    "float",
+                    0.010,
+                    "Labels below this duration (seconds) are dropped.",
+                    minimum=0.0,
+                    maximum=600.0,
+                ),
+            ),
+        ),
+        StepKind(
+            key="correct_offsets",
+            title="Correct offsets",
+            summary="Pull back each label's offset across a near-zero gap to the next onset of the same "
+            "subject, in the chosen trials — makes every interval strictly separated so pynapple can "
+            "resolve them. Not scoped by label class: a subject's whole sequence has to be seen together.",
+            params=(_TRIALS_PARAM,),
         ),
         StepKind(
             key="save_labels",

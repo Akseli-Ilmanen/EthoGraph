@@ -31,6 +31,7 @@ import pandas as pd
 
 from ethograph.labels.intervals import (
     EVENT_TYPE_POINT,
+    EVENT_TYPE_STATE,
     LABELING_AUTOMATED,
     LABELING_CURATED,
     LABELING_MANUAL,
@@ -49,6 +50,14 @@ CURATED_NO = "no"
 
 #: Visit order of the boundaries of one label: START before END.
 FIELD_RANK = {"point": 0, "start": 0, "end": 1}
+
+#: How :func:`build_review_queue` orders the boundaries in scope.
+#: "trial" walks every boundary of a trial before moving to the next trial
+#: (time order within, arbitrary class order); "label" walks every instance
+#: of one class, across every trial, before moving to the next class.
+REVIEW_ORDER_TRIAL = "trial"
+REVIEW_ORDER_LABEL = "label"
+REVIEW_ORDERS = (REVIEW_ORDER_TRIAL, REVIEW_ORDER_LABEL)
 
 
 # ---------------------------------------------------------------------------
@@ -154,6 +163,24 @@ def curate_trial(
     return curate_rows(all_df, trial_mask(all_df, trial) & scope_mask(all_df, label_ids))
 
 
+def curate_trials(
+    all_df: pd.DataFrame | None,
+    trials,
+    label_ids: set[int] | None = None,
+) -> tuple[pd.DataFrame | None, int]:
+    """Curate every automated label of *trials* (within *label_ids*, if given).
+
+    The multi-trial sibling of :func:`curate_trial`, in the same shape as
+    :func:`delete_labels`/:func:`purge_short_labels` — one call over the set
+    rather than a loop.
+    """
+    if all_df is None or all_df.empty:
+        return all_df, 0
+    trial_strs = {str(t) for t in trials}
+    mask = all_df["trial"].astype(str).isin(trial_strs) & scope_mask(all_df, label_ids)
+    return curate_rows(all_df, mask)
+
+
 def curate_label(all_df: pd.DataFrame | None, inst: dict) -> tuple[pd.DataFrame | None, int]:
     """Curate one label (identified as :func:`row_mask` does, within its trial)."""
     if all_df is None or all_df.empty:
@@ -166,6 +193,63 @@ def mark_manual(all_df: pd.DataFrame | None, inst: dict) -> tuple[pd.DataFrame |
     if all_df is None or all_df.empty:
         return all_df, 0
     return set_method(all_df, trial_mask(all_df, inst["trial"]) & row_mask(all_df, inst), LABELING_MANUAL)
+
+
+# ---------------------------------------------------------------------------
+# Bulk deletion
+# ---------------------------------------------------------------------------
+
+
+def delete_rows(all_df: pd.DataFrame | None, mask: pd.Series) -> tuple[pd.DataFrame | None, int]:
+    """Drop the rows *mask* selects. Returns (table, rows deleted)."""
+    if all_df is None or all_df.empty:
+        return all_df, 0
+    n = int(mask.sum())
+    if not n:
+        return all_df, 0
+    return all_df.loc[~mask].reset_index(drop=True), n
+
+
+def delete_labels(
+    all_df: pd.DataFrame | None,
+    trials,
+    label_ids: set[int] | None = None,
+) -> tuple[pd.DataFrame | None, int]:
+    """Delete every label of *trials* (within *label_ids*, if given).
+
+    Unlike :func:`curate_trial`, this drops the rows outright regardless of
+    ``labeling_method`` — the event is gone, not marked reviewed. Used for
+    bulk clean-up (e.g. every trial where a metadata column has a given
+    value never got a real recording of this behaviour).
+    """
+    if all_df is None or all_df.empty:
+        return all_df, 0
+    trial_strs = {str(t) for t in trials}
+    mask = all_df["trial"].astype(str).isin(trial_strs) & scope_mask(all_df, label_ids)
+    return delete_rows(all_df, mask)
+
+
+def purge_short_labels(
+    all_df: pd.DataFrame | None,
+    trials,
+    min_duration_s: float,
+    label_ids: set[int] | None = None,
+) -> tuple[pd.DataFrame | None, int]:
+    """Drop state-interval labels of *trials* shorter than *min_duration_s*.
+
+    Point events have no duration and are never touched. The multi-trial,
+    scoped sibling of :func:`~ethograph.labels.intervals.purge_short_intervals`
+    (which purges one trial's own rows); like :func:`delete_labels`, this
+    drops rows regardless of ``labeling_method``.
+    """
+    if all_df is None or all_df.empty:
+        return all_df, 0
+    trial_strs = {str(t) for t in trials}
+    in_scope = all_df["trial"].astype(str).isin(trial_strs) & scope_mask(all_df, label_ids)
+    is_state = all_df["event_type"] == EVENT_TYPE_STATE
+    durations = all_df["offset_s"].astype(float) - all_df["onset_s"].astype(float)
+    short = in_scope & is_state & (durations < min_duration_s)
+    return delete_rows(all_df, short)
 
 
 # ---------------------------------------------------------------------------
@@ -288,17 +372,22 @@ def build_review_queue(
     individual: str | None = None,
     allowed_trials: set[str] | None = None,
     automated_only: bool = False,
+    order: str = REVIEW_ORDER_TRIAL,
 ) -> list[ReviewTarget]:
-    """Every boundary of the labels in scope, sorted (trial, onset).
+    """Every boundary of the labels in scope, sorted per *order*.
 
-    One target per point event, a start then an end target per state event,
-    so each trial is visited once and in time order. *allowed_trials* (as
+    One target per point event, a start then an end target per state event.
+    *order* (:data:`REVIEW_ORDERS`) is "trial" (each trial visited once, in
+    time order — the default) or "label" (each class visited once, across
+    every trial in time order, before the next class). *allowed_trials* (as
     strings) is the trials-table filter. *automated_only* skips manual and
     already-curated labels — a human already vouched for those, so a
     from-scratch review has nothing to add.
     """
     if all_df is None or all_df.empty:
         return []
+    if order not in REVIEW_ORDERS:
+        raise ValueError(f"Unknown review order {order!r}; expected one of {REVIEW_ORDERS}")
     mask = scope_mask(all_df, label_ids)
     if individual is not None and "individual" in all_df.columns:
         mask &= all_df["individual"].astype(str) == str(individual)
@@ -308,7 +397,8 @@ def build_review_queue(
     if automated_only:
         df = ensure_labeling_method(all_df.copy())
         mask &= df["labeling_method"] == LABELING_AUTOMATED
-    rows = df[mask].sort_values(["trial", "onset_s"])
+    sort_cols = ["labels", "trial", "onset_s"] if order == REVIEW_ORDER_LABEL else ["trial", "onset_s"]
+    rows = df[mask].sort_values(sort_cols)
     targets: list[ReviewTarget] = []
     for _, row in rows.iterrows():
         targets.extend(_targets_for_inst(_inst_from_row(row)))

@@ -8,7 +8,6 @@ annotation tools, and exporting to TSV / Crowsetta formats.
 :maxdepth: 1
 
 labelling_gui
-
 mapping
 branches
 importing

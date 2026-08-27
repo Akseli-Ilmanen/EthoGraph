@@ -5,7 +5,9 @@ import os
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 from qtpy.QtCore import Qt
+from qtpy.QtGui import QAction
 from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -16,6 +18,8 @@ from qtpy.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMenu,
+    QMessageBox,
     QPushButton,
     QSizePolicy,
     QSpinBox,
@@ -26,7 +30,6 @@ from qtpy.QtWidgets import (
 from ethograph.io.catalog import INDIVIDUAL_DIMS
 from ethograph.io.metadata_table import metadata_tsv_path
 from ethograph.io.validation import EPHYS_FILE_FILTER
-from ethograph.labels.export import correct_offsets_trial
 from ethograph.labels.tsv_store import labels_tsv_path, load_labels_tsv
 from ethograph.utils.paths import (
     default_config_dir,
@@ -310,36 +313,11 @@ class IOWidget(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         self.export_panel.setLayout(layout)
 
-        # Correct offsets row
-        co_row = QHBoxLayout()
-        co_row.addWidget(QLabel("Apply offset correction to:"))
-        self.correct_offsets_trial_btn = QPushButton("Single Trial")
-        self.correct_offsets_trial_btn.clicked.connect(lambda: self._apply_correct_offsets("single_trial"))
-        co_row.addWidget(self.correct_offsets_trial_btn)
-        self.correct_offsets_all_trials_btn = QPushButton("All Trials (Filtered only)")
-        self.correct_offsets_all_trials_btn.clicked.connect(lambda: self._apply_correct_offsets("all_trials"))
-        co_row.addWidget(self.correct_offsets_all_trials_btn)
-        co_row.addStretch()
-        layout.addLayout(co_row)
-
-        # Purge small labels row
-        purge_row = QHBoxLayout()
-        purge_row.addWidget(QLabel("Purge labels shorter than:"))
-        self.purge_min_duration_spin = QDoubleSpinBox()
-        self.purge_min_duration_spin.setRange(0.001, 10.0)
-        self.purge_min_duration_spin.setValue(0.01)
-        self.purge_min_duration_spin.setSuffix(" s")
-        self.purge_min_duration_spin.setSingleStep(0.01)
-        self.purge_min_duration_spin.setDecimals(3)
-        purge_row.addWidget(self.purge_min_duration_spin)
-        self.purge_trial_btn = QPushButton("Single Trial")
-        self.purge_trial_btn.clicked.connect(lambda: self._apply_purge_small_labels("single_trial"))
-        purge_row.addWidget(self.purge_trial_btn)
-        self.purge_all_trials_btn = QPushButton("All Trials (Filtered only)")
-        self.purge_all_trials_btn.clicked.connect(lambda: self._apply_purge_small_labels("all_trials"))
-        purge_row.addWidget(self.purge_all_trials_btn)
-        purge_row.addStretch()
-        layout.addLayout(purge_row)
+        # Offset correction and short-label purging moved to Tools ▸ Label
+        # bulk editing… (gui/dialog_bulk_labels.py, CurationPanel.correct_offsets
+        # / .purge_trial_labels) — scoped by the same trial-scope vocabulary
+        # every other bulk action uses, not a single_trial/all_trials pair
+        # local to this panel.
 
         # Save button
         self.save_labels_button = QPushButton("Save labels (Ctrl+S)")
@@ -492,118 +470,6 @@ class IOWidget(QWidget):
             self.remote_backup_edit.setText(folder)
             self.app_state.remote_backup_path = folder
 
-    def _apply_correct_offsets(self, mode: str):
-        if self.app_state.trials_sel is None:
-            return
-
-        total_corrected = 0
-        total_negative = 0
-
-        if mode == "single_trial":
-            trial = self.app_state.trials_sel
-            df, corrected, negative = correct_offsets_trial(self.app_state.get_trial_intervals(trial))
-            total_corrected += corrected
-            total_negative += negative
-            self.app_state.set_trial_intervals(trial, df)
-            self.app_state.label_intervals = df
-            self.app_state.set_trial_meta_attr(trial, "offsets_corrected", 1)
-        elif mode == "all_trials":
-            for trial in self.app_state.trials:
-                df, corrected, negative = correct_offsets_trial(self.app_state.get_trial_intervals(trial))
-                total_corrected += corrected
-                total_negative += negative
-                self.app_state.set_trial_intervals(trial, df)
-                self.app_state.set_trial_meta_attr(trial, "offsets_corrected", 1)
-            self.app_state.label_intervals = self.app_state.get_trial_intervals(self.app_state.trials_sel)
-
-        msg = f"Corrected {total_corrected} offsets with gap < 1e-4 s."
-        if total_negative:
-            msg += f" {total_negative} negative gap(s) found — check for overlapping intervals."
-        notify(msg, "warning" if total_negative else None)
-
-        self._update_correct_offsets_status()
-        self.app_state.changes_saved = False
-        if self.data_widget:
-            self.data_widget.update_main_plot(preserve_x_range=True)
-            if self.data_widget.plot_container:
-                self.data_widget.plot_container.labels_redraw_needed.emit()
-
-    def _update_correct_offsets_status(self):
-        if not hasattr(self, "correct_offsets_trial_btn"):
-            return
-        default_style = ""
-        applied_style = "background-color: green; color: white;"
-
-        if self.app_state.trials_sel is None:
-            self.correct_offsets_trial_btn.setStyleSheet(default_style)
-            self.correct_offsets_all_trials_btn.setStyleSheet(default_style)
-            return
-
-        trial_corrected = self.app_state.get_trial_meta(self.app_state.trials_sel).get("offsets_corrected", 0)
-        self.correct_offsets_trial_btn.setStyleSheet(applied_style if trial_corrected else default_style)
-
-        all_corrected = all(self.app_state.get_trial_meta(t).get("offsets_corrected", 0) for t in self.app_state.trials)
-        self.correct_offsets_all_trials_btn.setStyleSheet(applied_style if all_corrected else default_style)
-
-    def _apply_purge_small_labels(self, mode: str):
-        if self.app_state.trials_sel is None:
-            return
-
-        min_duration = self.purge_min_duration_spin.value()
-
-        from ethograph.labels.intervals import purge_short_intervals
-
-        def purge(df):
-            if df.empty:
-                return df, 0
-            before = len(df)
-            out = purge_short_intervals(df, min_duration)
-            return out.reset_index(drop=True), before - len(out)
-
-        counter = 0
-
-        if mode == "single_trial":
-            trial = self.app_state.trials_sel
-            df, counter = purge(self.app_state.get_trial_intervals(trial))
-            self.app_state.set_trial_intervals(trial, df)
-            self.app_state.label_intervals = df
-            self.app_state.set_trial_meta_attr(trial, "small_labels_purged", 1)
-
-        elif mode == "all_trials":
-            for trial in self.app_state.trials:
-                df, count = purge(self.app_state.get_trial_intervals(trial))
-                counter += count
-                self.app_state.set_trial_intervals(trial, df)
-                self.app_state.set_trial_meta_attr(trial, "small_labels_purged", 1)
-
-            self.app_state.label_intervals = self.app_state.get_trial_intervals(self.app_state.trials_sel)
-
-        notify(f"Purged {counter} label(s) shorter than {min_duration:.3f} s.")
-
-        self._update_purge_small_labels_status()
-        self.app_state.changes_saved = False
-        if self.data_widget:
-            self.data_widget.update_main_plot(preserve_x_range=True)
-            if self.data_widget.plot_container:
-                self.data_widget.plot_container.labels_redraw_needed.emit()
-
-    def _update_purge_small_labels_status(self):
-        if not hasattr(self, "purge_trial_btn"):
-            return
-        default_style = ""
-        applied_style = "background-color: green; color: white;"
-
-        if self.app_state.trials_sel is None:
-            self.purge_trial_btn.setStyleSheet(default_style)
-            self.purge_all_trials_btn.setStyleSheet(default_style)
-            return
-
-        trial_purged = self.app_state.get_trial_meta(self.app_state.trials_sel).get("small_labels_purged", 0)
-        self.purge_trial_btn.setStyleSheet(applied_style if trial_purged else default_style)
-
-        all_purged = all(self.app_state.get_trial_meta(t).get("small_labels_purged", 0) for t in self.app_state.trials)
-        self.purge_all_trials_btn.setStyleSheet(applied_style if all_purged else default_style)
-
     def _create_mapping_row(self, target_layout):
         mapping_row = QWidget()
         mapping_layout = QHBoxLayout()
@@ -632,27 +498,29 @@ class IOWidget(QWidget):
         pred_group_layout.setSpacing(2)
         self.pred_group.setLayout(pred_group_layout)
 
-        # Row 1: folder path + browse
+        # Row 1: path + import (two ways in: a run's folder, or a plain .tsv)
         folder_row = QHBoxLayout()
         folder_row.setContentsMargins(0, 0, 0, 0)
         self.pred_file_path_edit = QLineEdit()
         self.pred_file_path_edit.setReadOnly(True)
-        self.pred_file_path_edit.setPlaceholderText("No predictions folder selected")
+        self.pred_file_path_edit.setPlaceholderText("No predictions loaded")
         folder_row.addWidget(self.pred_file_path_edit)
-        self.import_predictions_btn = QPushButton("Browse")
-        self.import_predictions_btn.setToolTip("Select predictions folder (corr/ or uncorr/ subfolder)")
+        self.import_predictions_btn = QPushButton("Import…")
+        self.import_predictions_btn.setToolTip("Import a prediction set — from a run's folder, or a plain .tsv")
+        self.import_predictions_menu = QMenu(self.import_predictions_btn)
+        self.import_predictions_from_folder_action = QAction("From folder (segmentation run)…", self.import_predictions_menu)
+        self.import_predictions_from_folder_action.setToolTip(
+            "Select a segmentation run's prediction folder (labels/predictions_{run}_{timestamp}/)"
+        )
+        self.import_predictions_menu.addAction(self.import_predictions_from_folder_action)
+        self.import_predictions_from_tsv_action = QAction("From .tsv file…", self.import_predictions_menu)
+        self.import_predictions_from_tsv_action.setToolTip(
+            "Load a plain labels TSV as predictions — e.g. a second annotator's labels, for comparison"
+        )
+        self.import_predictions_menu.addAction(self.import_predictions_from_tsv_action)
+        self.import_predictions_btn.setMenu(self.import_predictions_menu)
         folder_row.addWidget(self.import_predictions_btn)
         pred_group_layout.addLayout(folder_row)
-
-        self.create_labels_from_predictions_cb = QCheckBox(
-            "Create session labels file from predictions (if none exists)"
-        )
-        self.create_labels_from_predictions_cb.setChecked(False)
-        self.create_labels_from_predictions_cb.setToolTip(
-            "After importing predictions, save them as {session}_labels.tsv\n"
-            "only when that file does not already exist. Never overwrites."
-        )
-        pred_group_layout.addWidget(self.create_labels_from_predictions_cb)
 
         # Row 2: show checkbox + threshold + PDF button
         controls_row = QHBoxLayout()
@@ -779,7 +647,13 @@ class IOWidget(QWidget):
         if not file_path:
             return
 
-        self.app_state._all_labels_df = load_labels_tsv(file_path)
+        try:
+            labels_df = load_labels_tsv(file_path)
+        except (FileNotFoundError, ValueError) as e:
+            notify(str(e), severity="error")
+            return
+
+        self.app_state._all_labels_df = labels_df
         self.app_state.clear_label_history()
         if self.data_widget:
             # With no individual dimension the selector's names come from the
@@ -798,13 +672,77 @@ class IOWidget(QWidget):
         if self.labels_widget:
             self.labels_widget._mark_changes_unsaved()
             self.labels_widget.refresh_labels_shapes_layer()
-        self._update_correct_offsets_status()
-        self._update_purge_small_labels_status()
         if self.data_widget:
             self.data_widget.update_main_plot(preserve_x_range=True)
             if self.data_widget.plot_container:
                 self.data_widget.plot_container.labels_redraw_needed.emit()
         self._close_labels_popup()
+
+    def _merge_tsv_labels(self):
+        """Fuse a second labels TSV into the one already loaded in the GUI.
+
+        Unlike :meth:`_import_tsv_labels`, this keeps whatever is currently in
+        :attr:`app_state._all_labels_df` and appends the rows from the picked
+        file — nothing is replaced or de-duplicated. If a label class (the
+        ``labels`` column) shows up in both files, that is surfaced as a
+        warning before anything is merged, so the user can back out.
+        """
+        file_path = browse_open_file(
+            self,
+            self.app_state,
+            "Open labels TSV to merge",
+            "TSV files (*.tsv)",
+            preferred_dir=self.app_state.nc_file_path,
+        )
+        if not file_path:
+            return
+
+        try:
+            incoming = load_labels_tsv(file_path)
+        except (FileNotFoundError, ValueError) as e:
+            notify(str(e), severity="error")
+            return
+        existing = self.app_state._all_labels_df
+
+        if existing is not None and not existing.empty and not incoming.empty:
+            shared_ids = set(existing["labels"].unique()) & set(incoming["labels"].unique())
+            if shared_ids:
+                names = self.labels_widget._mappings if self.labels_widget else {}
+                shown = ", ".join(str(names.get(lid, {}).get("name", lid)) for lid in sorted(shared_ids))
+                answer = QMessageBox.question(
+                    self,
+                    "Merge labels",
+                    f"Both files contain label class(es): {shown}.\n"
+                    "Merging keeps every row from both files as-is (no de-duplication).\n\n"
+                    "Merge anyway?",
+                )
+                if answer != QMessageBox.Yes:
+                    return
+
+        if existing is None or existing.empty:
+            merged = incoming
+        else:
+            merged = pd.concat([existing, incoming], ignore_index=True)
+
+        self.app_state._all_labels_df = merged
+        self.app_state.clear_label_history()
+        if self.data_widget:
+            # With no individual dimension the selector's names come from the
+            # labels, which have just gained rows.
+            self.data_widget.refresh_individual_choices()
+        self.app_state.label_intervals = self.app_state.get_trial_intervals(self.app_state.trials_sel)
+
+        if hasattr(self, "changepoints_widget") and self.changepoints_widget:
+            self.changepoints_widget._update_cp_status()
+        if self.labels_widget:
+            self.labels_widget._mark_changes_unsaved()
+            self.labels_widget.refresh_labels_shapes_layer()
+        if self.data_widget:
+            self.data_widget.update_main_plot(preserve_x_range=True)
+            if self.data_widget.plot_container:
+                self.data_widget.plot_container.labels_redraw_needed.emit()
+
+        notify(f"Merged {len(incoming)} label row(s) from {Path(file_path).name}")
 
     def _close_labels_popup(self):
         """Close the top-bar "Import labels" popup hosting ``labels_group``.
@@ -1020,8 +958,6 @@ class IOWidget(QWidget):
         if self.labels_widget:
             self.labels_widget._mark_changes_unsaved()
             self.labels_widget.refresh_labels_shapes_layer()
-        self._update_correct_offsets_status()
-        self._update_purge_small_labels_status()
         if self.data_widget:
             self.data_widget.update_main_plot(preserve_x_range=True)
             if self.data_widget.plot_container:
@@ -1319,8 +1255,6 @@ class IOWidget(QWidget):
         attr = attr_map.get(object_name)
         if attr:
             setattr(self.app_state, attr, None)
-        self._update_correct_offsets_status()
-        self._update_purge_small_labels_status()
 
     # Device controls (populated after load)
     # ------------------------------------------------------------------
@@ -1628,7 +1562,13 @@ class IOWidget(QWidget):
                 if not labels_file_path:
                     return
 
-                self.app_state._all_labels_df = load_labels_tsv(labels_file_path)
+                try:
+                    labels_df = load_labels_tsv(labels_file_path)
+                except (FileNotFoundError, ValueError) as e:
+                    notify(str(e), severity="error")
+                    return
+
+                self.app_state._all_labels_df = labels_df
                 self.app_state.clear_label_history()
                 if self.data_widget:
                     self.data_widget.refresh_individual_choices()
@@ -1641,8 +1581,6 @@ class IOWidget(QWidget):
                 if self.labels_widget:
                     self.labels_widget._mark_changes_unsaved()
                     self.labels_widget.refresh_labels_shapes_layer()
-                self._update_correct_offsets_status()
-                self._update_purge_small_labels_status()
                 if self.data_widget:
                     self.data_widget.update_main_plot(preserve_x_range=True)
                     if self.data_widget.plot_container:
@@ -1791,7 +1729,8 @@ class IOWidget(QWidget):
         )
         self.browse_mapping_btn.clicked.connect(self.labels_widget._browse_mapping_file)
         self.temp_labels_button.clicked.connect(self.labels_widget._create_temporary_labels)
-        self.import_predictions_btn.clicked.connect(self.labels_widget._import_predictions_from_folder)
+        self.import_predictions_from_folder_action.triggered.connect(self.labels_widget._import_predictions_from_folder)
+        self.import_predictions_from_tsv_action.triggered.connect(self.labels_widget._import_predictions_from_tsv)
         self.pred_confidence_pdf_btn.clicked.connect(self.labels_widget._plot_confidence_pdf)
         self.pred_confidence_threshold_spin.valueChanged.connect(self.labels_widget._on_confidence_threshold_changed)
         self.pred_segment_confidence_threshold_spin.valueChanged.connect(

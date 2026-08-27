@@ -19,5 +19,4 @@ ethograph.labels.predictions
     :toctree:
     :nosignatures:
 
-    load_prediction_file
     prediction_to_labels_and_confidence

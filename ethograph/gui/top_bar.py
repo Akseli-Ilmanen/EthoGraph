@@ -131,6 +131,8 @@ class TopBarBuilder:
         self._onset_predict_dialog = None
         self._video_feature_rank_dialog = None
         self._label_inconsistency_dialog = None
+        self._spot_crop_dialog = None
+        self._bulk_labels_dialog = None
 
     # ------------------------------------------------------------------
     # Public entry point
@@ -166,6 +168,16 @@ class TopBarBuilder:
         # metadata column can answer (an event without its partner, a broken
         # order). See dialog_label_inconsistencies.py.
         menu.addAction("Labels: Find label inconsistencies…", self._open_label_inconsistencies)
+        # Curate/delete/purge across many trials at once — see
+        # gui/dialog_bulk_labels.py; the Curation section keeps only the
+        # Ctrl+C shortcut and the two review grids.
+        menu.addAction("Labels: Bulk editing…", self._open_bulk_labels)
+
+        menu.addSeparator()
+        # Drag a box on the video and read off the source pixels it covers,
+        # in the spelling `labels.crop:` of a spot config takes -- the model
+        # then trains on that part of the frame. See dialog_spot_crop.py.
+        menu.addAction("Video: Pick a crop for spot config…", self._open_spot_crop)
 
         menu.addSeparator()
         menu.addAction("Pose tracking (from scratch)…", self._open_keypoint_labelling)
@@ -267,6 +279,29 @@ class TopBarBuilder:
         self._label_inconsistency_dialog.show()
         self._label_inconsistency_dialog.raise_()
         self._label_inconsistency_dialog.activateWindow()
+
+    def _open_bulk_labels(self):
+        """Curate / delete / purge labels across many trials at once (Tools)."""
+        from .dialog_bulk_labels import LabelBulkEditDialog
+
+        # Rebuilt when reopened so the label-class checklist reflects the
+        # loaded session's mapping, like the other session-dependent dialogs.
+        if self._bulk_labels_dialog is None or not self._bulk_labels_dialog.isVisible():
+            self._bulk_labels_dialog = LabelBulkEditDialog(self.meta, parent=self.shell)
+        self._bulk_labels_dialog.show()
+        self._bulk_labels_dialog.raise_()
+        self._bulk_labels_dialog.activateWindow()
+
+    def _open_spot_crop(self):
+        """Arm the rectangle tool on the clicked camera and report the box."""
+        from .dialog_spot_crop import pick_spot_crop
+
+        data_widget = getattr(self.meta, "data_widget", None)
+        if data_widget is None:
+            return
+        if self._spot_crop_dialog is not None and self._spot_crop_dialog.isVisible():
+            self._spot_crop_dialog.close()
+        self._spot_crop_dialog = pick_spot_crop(data_widget, parent=self.shell)
 
     def _open_keypoint_labelling(self):
         """Open the keypoint labelling dialog (owned by the DataWidget, so the
@@ -374,6 +409,9 @@ class TopBarBuilder:
             "Import labels…",
             lambda: self._popup_section("import_labels", "Import labels", getattr(io, "labels_group", None)),
         )
+        merge_labels = self._first_method(io, "_merge_tsv_labels")
+        if merge_labels is not None:
+            menu.addAction("Merge labels (.tsv)…", merge_labels)
         menu.addAction(
             "Import predictions…",
             lambda: self._popup_section("import_predictions", "Import predictions", getattr(io, "pred_group", None)),

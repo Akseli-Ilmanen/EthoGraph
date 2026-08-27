@@ -81,7 +81,7 @@ class Session:
         if not actors:
             raise ValueError(
                 f"{self.source}: the dataset has no individual dim and its labels name no "
-                "individual — set features.individuals in the config."
+                "individual — set config.individual (single-animal) or features.individuals in the config."
             )
         return actors
 
@@ -151,13 +151,16 @@ class Session:
         return Path(found) if found else None
 
 
-def open_session(spec: SessionSpec, config: SegmentConfig) -> Session:
-    """Open one session with the GUI's loaders (no Qt involved)."""
+def open_session(spec: SessionSpec, config: SegmentConfig | None = None) -> Session:
+    """Open one session with the GUI's loaders (no Qt involved).
+
+    *config* is only consulted for ``features.changepoint_features``; a
+    pipeline with no feature engineering at all (``ethograph.spot``) passes
+    ``None``.
+    """
     source = spec.source
     if not source.exists():
         raise FileNotFoundError(f"Session source does not exist: {source}")
-    if spec.labels_path is not None and not spec.labels_path.exists():
-        raise FileNotFoundError(f"Session labels_path does not exist: {spec.labels_path}")
     labels_path = str(spec.labels_path) if spec.labels_path is not None else None
     result = load_features_dataset(str(source), labels_path=labels_path)
     sid = session_id(source)
@@ -167,7 +170,7 @@ def open_session(spec: SessionSpec, config: SegmentConfig) -> Session:
     return session
 
 
-def _expand_changepoint_features(session: Session, config: SegmentConfig) -> None:
+def _expand_changepoint_features(session: Session, config: SegmentConfig | None) -> None:
     """Apply ``config.features.changepoint_features`` (if set) to every trial, once.
 
     Runs before anything reads the session, so ``trial_windows``,
@@ -175,7 +178,7 @@ def _expand_changepoint_features(session: Session, config: SegmentConfig) -> Non
     consistently — materialise and infer share this one call site
     (:func:`open_session`).
     """
-    cfg = config.features.changepoint_features
+    cfg = None if config is None else config.features.changepoint_features
     if cfg is None:
         return
     if session.result.dt is None:
@@ -307,7 +310,17 @@ def discover_columns_from_source(
 
 
 def filter_trials(session: Session, trials: TrialsConfig) -> list[int | str]:
-    """Trials passing the metadata filter (all trials when the filter is empty)."""
+    """Trials passing the metadata filter (all trials when the filter is empty),
+    cut to ``trials.limit`` when one is set."""
+    ids = _filter_by_columns(session, trials)
+    if trials.limit is not None:
+        if trials.limit < 1:
+            raise ValueError(f"{session.source}: trials.limit must be >= 1, got {trials.limit}")
+        ids = ids[: trials.limit]
+    return ids
+
+
+def _filter_by_columns(session: Session, trials: TrialsConfig) -> list[int | str]:
     ids = session.trial_ids
     if not trials.where:
         return ids

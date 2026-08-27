@@ -23,6 +23,14 @@ a user turns automated labels into curated ones:
     by default) leaves manual/curated boundaries out of the queue — a human
     already vouched for those, so there is nothing to re-review.
 
+* **Order** (next to Mode) — how the frame-by-frame queue is walked
+  (:data:`~ethograph.labels.curation.REVIEW_ORDERS`, saved to
+  ``gui_settings.yaml``): *Trial-by-trial* finishes every boundary of one
+  trial before moving to the next; *Label-by-label* finishes every instance
+  of one class, across every trial, before moving to the next class.
+  Changing it mid-session rebuilds the queue in place, keeping the current
+  boundary in view.
+
 * **Label grid view…** / **Video grid…** open the review grids
   (``dialog_label_gridview.py``, ``dialog_video_grid.py``) on the scope; a
   tile click there navigates, and in frame-by-frame mode it drops straight
@@ -30,6 +38,16 @@ a user turns automated labels into curated ones:
 * **Model ▸ Curation workflows…** (top bar) opens the saved curation routines
   (``dialog_curation_workflow.py``): filter, predict, scope, grid, review,
   save — recorded once and replayed, rather than set up again each session.
+* **Tools ▸ Label bulk editing…** (``dialog_bulk_labels.py``) is where curate /
+  delete / purge across many trials at once live — this panel only keeps the
+  shortcut (**Ctrl+C**, current trial) and the two review grids, so it stays
+  about *reviewing* rather than accumulating every bulk action as a button.
+
+Curate / delete / purge all take an explicit trial scope
+(:data:`~ethograph.labels.workflow.TRIAL_SCOPE_CHOICES`: single / all /
+filtered / hidden) and an explicit label-class set — the bulk-editing dialog's
+own checkbox list, never silently the drag-and-drop scope area above, so a
+bulk action's blast radius is always what the dialog shows on screen.
 
 The per-trial verdict (no automated label left) colours the trial combo and
 the bottom bar, and is written to the metadata table's ``curated`` column on
@@ -50,6 +68,7 @@ from __future__ import annotations
 
 import logging
 import math
+from pathlib import Path
 
 import numpy as np
 from qtpy.QtCore import Qt, QTimer, Signal
@@ -71,25 +90,31 @@ from qtpy.QtWidgets import (
 )
 
 from ethograph.gui.dialog_label_gridview import confidence_display
+from ethograph.gui.file_dialogs import browse_open_file
 from ethograph.gui.label_drawing_mixin import draw_key
 from ethograph.gui.notify import notify
 from ethograph.gui.shortcuts import typing_in_text_field
 from ethograph.io.time_model import TimeRange
 from ethograph.labels import onset_curves
+from ethograph.labels import workflow as wf
 from ethograph.labels.curation import (
     CURATED_COLUMN,
     CURATED_NO,
     CURATED_YES,
+    REVIEW_ORDER_TRIAL,
     ReviewTarget,
     build_review_queue,
     curate_label,
-    curate_trial,
+    curate_trials,
     curated_column_differs,
+    delete_labels,
     method_counts,
+    purge_short_labels,
     queue_index_of,
     row_mask,
     targets_from_seeds,
 )
+from ethograph.labels.export import correct_offsets_trial
 from ethograph.labels.intervals import (
     HUMAN_CONFIDENCE,
     LABELING_AUTOMATED,
@@ -113,10 +138,30 @@ CURATION_MODES = {
     "frame": "Frame-by-frame review",
 }
 
+#: Frame-by-frame review order (``labels/curation.REVIEW_ORDERS``): key → combo text.
+REVIEW_ORDERS = {
+    "trial": "Trial-by-trial",
+    "label": "Label-by-label",
+}
+
+_REVIEW_ORDER_HINTS = {
+    "trial": "Walks every boundary of a trial (all classes in scope, in time order), then the next trial.",
+    "label": "Walks every instance of one class across every trial, then moves to the next class.",
+}
+
+#: The plain "current trial"/"all trials"/… phrase, without the parenthetical
+#: — for a message or dialog title built from :data:`wf.TRIAL_SCOPE_CHOICES`.
+_TRIAL_SCOPE_NOUN = {key: text.split(" (")[0].lower() for key, text in wf.TRIAL_SCOPE_CHOICES.items()}
+
+#: Sentinel default for a *label_ids* parameter: "not given, fall back to the
+#: curation scope area" — distinct from an explicit ``None`` (every class),
+#: which a caller like the bulk-editing dialog's "All" checkbox passes on purpose.
+_SCOPE_UNSET = object()
+
 _MODE_HINTS = {
     "manual": "Editing a label makes it manual · Ctrl+C curates every automated label in scope of this trial.",
     "inspect": "Opening a trial curates its automated labels in scope — looking is enough.",
-    "frame": "Walk the labels in scope boundary by boundary; N curates what it leaves behind.",
+    "frame": "Walk the labels in scope boundary by boundary and use shortcuts (below) to approve/edit.",
 }
 
 _FIELD_TITLES = {"point": "POINT", "start": "START", "end": "END"}
@@ -244,7 +289,7 @@ class ScopeDropArea(QFrame):
             while panel is not None and not isinstance(panel, CurationPanel):
                 panel = panel.parent()
             if panel is not None:
-                panel._on_scope_edited(activates=True)
+                panel._on_scope_edited(activates=True, dropped=ids)
 
 
 class ShortcutsPopup(QDialog):
@@ -318,9 +363,11 @@ class CurationPanel(QGroupBox):
         self._n_confirmed = 0
         self._n_deleted = 0
         self._session_shortcuts: list[QShortcut] = []
-        #: Onset-model probability curves, and the (path, mtime) they were
-        #: read at — a fresh prediction run rewrites the sidecar, so the key
-        #: is what notices instead of a cross-module invalidation call.
+        #: The onset_curves.npz picked for this review session (None = don't
+        #: show curves), resolved once in _begin, plus the (path, mtime) it
+        #: was last read at — a fresh prediction run rewrites the file, so
+        #: the key is what notices instead of a cross-module invalidation call.
+        self._curve_source: Path | None = None
         self._curves: dict[str, onset_curves.TrialCurves] = {}
         self._curves_key: tuple | None = None
 
@@ -336,8 +383,10 @@ class CurationPanel(QGroupBox):
         app_state.current_frame_changed.connect(self._on_frame_changed)
         app_state.curation_mode_changed.connect(self._sync_mode_from_state)
         app_state.curation_label_ids_changed.connect(self._sync_scope_from_state)
+        app_state.curation_review_order_changed.connect(self._sync_order_from_state)
         self._sync_mode_from_state()
         self._sync_scope_from_state()
+        self._sync_order_from_state()
 
     # ------------------------------------------------------------------
     # UI
@@ -370,6 +419,16 @@ class CurationPanel(QGroupBox):
             self.mode_combo.addItem(text, key)
         self.mode_combo.currentIndexChanged.connect(self._on_mode_combo)
         mode_row.addWidget(self.mode_combo, stretch=1)
+        mode_row.addWidget(QLabel("Order:"))
+        self.order_combo = QComboBox()
+        for key, text in REVIEW_ORDERS.items():
+            self.order_combo.addItem(text, key)
+        self.order_combo.setToolTip(
+            "Frame-by-frame review order — Trial-by-trial walks a trial's boundaries\n"
+            "then moves on; Label-by-label finishes one class across every trial first."
+        )
+        self.order_combo.currentIndexChanged.connect(self._on_order_combo)
+        mode_row.addWidget(self.order_combo, stretch=1)
         lay.addLayout(mode_row)
 
         self.mode_hint = QLabel("")
@@ -424,7 +483,7 @@ class CurationPanel(QGroupBox):
         frame_lay.addLayout(win_row)
 
         review_opts_row = QHBoxLayout()
-        self.next_curates_cb = QCheckBox("N = Next (and mark current curated)")
+        self.next_curates_cb = QCheckBox("Click N curates current")
         self.next_curates_cb.setToolTip(
             "Moving on with N means you looked at the boundary and it is fine:\n"
             "an automated label becomes curated. Untick to only browse."
@@ -442,6 +501,15 @@ class CurationPanel(QGroupBox):
         self.automated_only_cb.setChecked(bool(self.app_state.get_with_default("frame_review_automated_only")))
         self.automated_only_cb.toggled.connect(lambda v: setattr(self.app_state, "frame_review_automated_only", v))
         review_opts_row.addWidget(self.automated_only_cb)
+
+        self.auto_advance_cb = QCheckBox("Jump to next after Enter/Backspace")
+        self.auto_advance_cb.setToolTip(
+            "Ticked: confirming (Enter) or deleting (Backspace) a boundary\n"
+            "moves on to the next target automatically. Untick to stay put."
+        )
+        self.auto_advance_cb.setChecked(bool(self.app_state.get_with_default("curation_auto_advance")))
+        self.auto_advance_cb.toggled.connect(lambda v: setattr(self.app_state, "curation_auto_advance", v))
+        review_opts_row.addWidget(self.auto_advance_cb)
         frame_lay.addLayout(review_opts_row)
 
         keys_row = QHBoxLayout()
@@ -462,26 +530,10 @@ class CurationPanel(QGroupBox):
         lay.addWidget(self.frame_group)
 
         # ── Tools ───────────────────────────────────────────────────
+        # Curate trial/visible/delete/purge all moved to Tools ▸ Label bulk
+        # editing… (dialog_bulk_labels.py) — this panel keeps only the
+        # Ctrl+C shortcut (bound in shortcuts.py) and the two review grids.
         tools_row = QHBoxLayout()
-        self.curate_trial_btn = QPushButton("Curate trial (Ctrl+C)")
-        self.curate_trial_btn.setAutoDefault(False)
-        self.curate_trial_btn.setToolTip(
-            "Every automated label in scope of the current trial becomes curated.\nManual labels stay manual."
-        )
-        self.curate_trial_btn.clicked.connect(self.curate_current_trial)
-        tools_row.addWidget(self.curate_trial_btn)
-        self.curate_visible_btn = QPushButton("Curate visible trials…")
-        self.curate_visible_btn.setAutoDefault(False)
-        self.curate_visible_btn.setToolTip(
-            "Ctrl+C over every trial the trials table shows, not just this one:\n"
-            "every automated label in scope becomes curated. Manual labels stay manual.\n"
-            "\n"
-            "This says a human approved them and cannot be undone, so it asks first —\n"
-            "reach for it when a review left labels unjudged (a grid browsed without\n"
-            "curating, a review stopped partway), not as a way to skip looking."
-        )
-        self.curate_visible_btn.clicked.connect(lambda: self.curate_visible_trials(confirm=True))
-        tools_row.addWidget(self.curate_visible_btn)
         self.grid_btn = QPushButton("Label grid view…")
         self.grid_btn.setAutoDefault(False)
         self.grid_btn.setToolTip("A grid of video frames at the label times in scope — click a tile to go there")
@@ -536,11 +588,28 @@ class CurationPanel(QGroupBox):
         mappings = getattr(self.labels_widget, "_mappings", {}) or {}
         return sorted(lid for lid in mappings if isinstance(lid, int) and lid != 0)
 
-    def _on_scope_edited(self, *, activates: bool = False) -> None:
+    def _on_scope_edited(self, *, activates: bool = False, dropped=None) -> None:
         self.app_state.curation_label_ids = self.scope_area.ids() or None
         if activates:
             self.activate("label classes dropped into the curation scope")
+        if dropped:
+            self._follow_branch(dropped)
         self._refresh_status()
+
+    def _follow_branch(self, label_ids) -> None:
+        """Make the branch the dropped classes belong to the editable one.
+
+        Reviewing a class means editing its labels, and only the active
+        branch is editable. Classes from several branches name no single
+        branch, so nothing changes then.
+        """
+        mappings = getattr(self.labels_widget, "_mappings", {}) or {}
+        branches = {int(mappings[i].get("branch", 0)) for i in label_ids if i in mappings}
+        if len(branches) != 1:
+            return
+        set_active = getattr(self.labels_widget, "set_active_branch", None)
+        if callable(set_active):
+            set_active(branches.pop())
 
     def set_scope(self, label_ids, *, reason: str) -> None:
         """Replace the curation scope with *label_ids*, as if dragged in, and activate.
@@ -597,10 +666,43 @@ class CurationPanel(QGroupBox):
             self.curate_current_trial(quiet=True)
 
     # ------------------------------------------------------------------
+    # Review order
+    # ------------------------------------------------------------------
+
+    def order(self) -> str:
+        return str(self.order_combo.currentData() or REVIEW_ORDER_TRIAL)
+
+    def _on_order_combo(self, _index: int) -> None:
+        key = self.order()
+        if self.app_state.curation_review_order != key:
+            self.app_state.curation_review_order = key
+        self.order_combo.setToolTip(_REVIEW_ORDER_HINTS.get(key, ""))
+        if self._session_active:
+            self.restart_review()
+
+    def _sync_order_from_state(self, *_args) -> None:
+        key = str(self.app_state.get_with_default("curation_review_order") or REVIEW_ORDER_TRIAL)
+        idx = self.order_combo.findData(key)
+        if idx < 0:
+            idx = 0
+        if self.order_combo.currentIndex() != idx:
+            self.order_combo.blockSignals(True)
+            self.order_combo.setCurrentIndex(idx)
+            self.order_combo.blockSignals(False)
+
+    # ------------------------------------------------------------------
     # Applying method changes
     # ------------------------------------------------------------------
 
-    def _commit(self, df, n: int, *, restyle: tuple | None = None, message: str | None = None) -> int:
+    def _commit(
+        self,
+        df,
+        n: int,
+        *,
+        restyle: tuple | None = None,
+        message: str | None = None,
+        activate_reason: str = "labels curated",
+    ) -> int:
         """Swap *df* in and refresh what shows a label's method.
 
         *restyle* is ``(inst, automated)`` for a single-label transition —
@@ -609,8 +711,8 @@ class CurationPanel(QGroupBox):
         """
         if not n:
             return 0
-        # Something was actually curated, so the verdict now needs a home.
-        self.activate("labels curated")
+        # The per-trial verdict may have changed either way, so it needs a home.
+        self.activate(activate_reason)
         self.app_state.replace_all_labels(df)
         self.app_state.changes_saved = False
         restyled = 0
@@ -631,29 +733,42 @@ class CurationPanel(QGroupBox):
             notify(message)
         return n
 
-    def curate_current_trial(self, quiet: bool = False) -> int:
-        """Ctrl+C: every automated label in scope of the current trial → curated."""
-        trial = getattr(self.app_state, "trials_sel", None)
-        if trial is None or not self.app_state.ready:
-            return 0
-        df, n = curate_trial(self.app_state._all_labels_df, trial, self.scope())
-        if not n:
-            if not quiet:
-                notify(f"Trial {trial}: nothing left to curate in scope.")
-            return 0
-        return self._commit(df, n, message=None if quiet else f"Trial {trial}: curated {n} label(s).")
+    def trials_for_scope(self, which: str) -> list:
+        """Which trials *which* (:data:`wf.TRIAL_SCOPE_CHOICES`) names right now.
 
-    def curate_visible_trials(self, confirm: bool = False) -> int:
-        """Every automated label in scope, in every trial the trials table shows.
+        "single" is the current trial. "filtered" is exactly ``app_state.trials``
+        (what the table shows). "all"/"hidden" need the full trial list — the
+        trials table is the one place that still has it once its filters have
+        narrowed ``app_state.trials``.
+        """
+        if which == wf.TRIAL_SCOPE_SINGLE:
+            trial = getattr(self.app_state, "trials_sel", None)
+            return [trial] if trial is not None else []
+        visible = self.app_state.trials or []
+        if which in (wf.TRIAL_SCOPE_ALL, wf.TRIAL_SCOPE_HIDDEN):
+            trials_widget = self._trials_widget()
+            if trials_widget is None:
+                return list(visible) if which == wf.TRIAL_SCOPE_ALL else []
+            if which == wf.TRIAL_SCOPE_ALL:
+                return trials_widget.all_trials()
+            visible_set = {str(t) for t in visible}
+            return [t for t in trials_widget.all_trials() if str(t) not in visible_set]
+        return list(visible)  # filtered
 
-        Ctrl+C over the whole visible set rather than the current trial.
-        Manual labels are never rewritten.
+    def curate_trial_labels(
+        self, which: str = wf.TRIAL_SCOPE_FILTERED, label_ids=_SCOPE_UNSET, confirm: bool = False, quiet: bool = False
+    ) -> int:
+        """Curate every automated label of *label_ids*, across the trials *which* names.
 
-        *confirm* asks first, and is what the button passes: from the GUI this
-        is one click away from marking labels nobody looked at as seen, which
-        is the one thing the automated/curated split exists to keep apart. A
-        workflow step is already a deliberate, written-down choice and does
-        not ask.
+        *label_ids* defaults to the curation scope area (``self.scope()``);
+        pass an explicit set (or ``None`` for every class) to bypass it — what
+        the bulk-editing dialog's own checkbox list does. Manual labels are
+        never rewritten.
+
+        *confirm* asks first: from the GUI this is one click away from marking
+        labels nobody looked at as seen, which is the one thing the
+        automated/curated split exists to keep apart. A workflow step is
+        already a deliberate, written-down choice and does not ask.
 
         Not a follow-up to a grid's *uncurate* Done: that already curates
         every unclicked automated label in the grid, which is this same set.
@@ -662,21 +777,31 @@ class CurationPanel(QGroupBox):
         """
         if not self.app_state.ready:
             return 0
-        df = self.app_state._all_labels_df
-        scope = self.scope()
-        total = 0
-        for trial in self.app_state.trials or []:
-            df, n = curate_trial(df, trial, scope)
-            total += n
+        scope = self.scope() if label_ids is _SCOPE_UNSET else label_ids
+        trials = self.trials_for_scope(which)
+        df, total = curate_trials(self.app_state._all_labels_df, trials, scope)
         if not total:
-            notify("Nothing left to curate in scope across the visible trials.")
+            if not quiet:
+                notify(f"Nothing left to curate in scope across the {_TRIAL_SCOPE_NOUN[which]}.")
             return 0
-        n_trials = len(self.app_state.trials or [])
-        if confirm and not self._confirm_bulk_curate(total, n_trials):
+        if confirm and not self._confirm_bulk_curate(which, scope, total, len(trials)):
             return 0
-        return self._commit(df, total, message=f"Curated {total} label(s) across {n_trials} trial(s).")
+        message = None if quiet else f"Curated {total} label(s) across {len(trials)} trial(s)."
+        return self._commit(df, total, message=message)
 
-    def _confirm_bulk_curate(self, total: int, n_trials: int) -> bool:
+    def curate_current_trial(self, quiet: bool = False) -> int:
+        """Ctrl+C: every automated label in scope of the current trial → curated."""
+        return self.curate_trial_labels(wf.TRIAL_SCOPE_SINGLE, quiet=quiet)
+
+    def curate_visible_trials(self, confirm: bool = False) -> int:
+        """Every automated label in scope, in every trial the trials table shows.
+
+        Ctrl+C over the whole visible set rather than the current trial. The
+        ``curate_trials`` workflow step's manual twin.
+        """
+        return self.curate_trial_labels(wf.TRIAL_SCOPE_FILTERED, confirm=confirm)
+
+    def _confirm_bulk_curate(self, which: str, label_ids, total: int, n_trials: int) -> bool:
         """Ask before marking labels across many trials as seen by a human.
 
         Curating is **not** undoable: ``Ctrl+Z`` walks per-trial snapshots
@@ -684,16 +809,204 @@ class CurationPanel(QGroupBox):
         runs automated → curated backwards. Saying so is the whole job of this
         dialog, so it says it plainly and defaults to No.
         """
-        scope = self.scope()
-        classes = "every label class" if scope is None else f"{len(scope)} label class(es)"
+        classes = "every label class" if label_ids is None else f"{len(label_ids)} label class(es)"
+        noun = _TRIAL_SCOPE_NOUN[which]
         box = QMessageBox(self)
         box.setIcon(QMessageBox.Warning)
-        box.setWindowTitle("Curate visible trials")
-        box.setText(f"Mark {total} automated label(s) as curated, across {n_trials} trial(s) in {classes}?")
+        box.setWindowTitle(f"Curate: {noun}")
+        box.setText(f"Mark {total} automated label(s) as curated, across {n_trials} {noun}, in {classes}?")
         box.setInformativeText(
             "Curated means a human has approved them — labels you have not looked at "
             "will be marked as though you had.\n\n"
             "This cannot be undone: Ctrl+Z does not take back a curation. Nothing "
+            "reaches disk until you save, so closing without saving still discards it."
+        )
+        box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+        box.setDefaultButton(QMessageBox.No)
+        return box.exec() == QMessageBox.Yes
+
+    def delete_trial_labels(
+        self, which: str = wf.TRIAL_SCOPE_FILTERED, label_ids=_SCOPE_UNSET, confirm: bool = False
+    ) -> int:
+        """Delete every label of *label_ids*, in the trials *which* names.
+
+        *label_ids* defaults to the curation scope area (``self.scope()``);
+        pass an explicit set (or ``None`` for every class) to bypass it.
+        Unlike curation this touches labels of every ``labeling_method``, not
+        just automated ones — deleting means the event is gone.
+
+        Each touched trial is snapshotted first, so ``Ctrl+Z`` can take the
+        deletion back one trial at a time.
+
+        *confirm* asks first: a workflow step is already a deliberate,
+        written-down choice and does not ask.
+        """
+        if not self.app_state.ready:
+            return 0
+        all_df = self.app_state._all_labels_df
+        scope = self.scope() if label_ids is _SCOPE_UNSET else label_ids
+        trials = self.trials_for_scope(which)
+        touched = []
+        total = 0
+        for trial in trials:
+            df, n = delete_labels(all_df, [trial], scope)
+            if not n:
+                continue
+            touched.append(trial)
+            total += n
+        if not total:
+            notify(f"Nothing in scope to delete across the {_TRIAL_SCOPE_NOUN[which]}.")
+            return 0
+        if confirm and not self._confirm_bulk_delete(which, scope, total, len(touched)):
+            return 0
+        for trial in touched:
+            self.app_state.record_label_edit(f"Delete labels: {which} (trial {trial})", trial=trial)
+        df, _ = delete_labels(self.app_state._all_labels_df, touched, scope)
+        return self._commit(
+            df,
+            total,
+            message=f"Deleted {total} label(s) across {len(touched)} trial(s).",
+            activate_reason="labels deleted",
+        )
+
+    def _confirm_bulk_delete(self, which: str, label_ids, total: int, n_trials: int) -> bool:
+        """Ask before deleting labels across many trials — there is no server-side undo past Ctrl+Z."""
+        classes = "every label class" if label_ids is None else f"{len(label_ids)} label class(es)"
+        noun = _TRIAL_SCOPE_NOUN[which]
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Warning)
+        box.setWindowTitle(f"Delete labels: {noun}")
+        box.setText(f"Delete {total} label(s), across {n_trials} {noun}, in {classes}?")
+        box.setInformativeText(
+            "This removes the events outright — manual and curated labels included, not\n"
+            "just automated ones.\n\n"
+            "Ctrl+Z can take it back one trial at a time while this session is open. Nothing\n"
+            "reaches disk until you save, so closing without saving still discards it."
+        )
+        box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+        box.setDefaultButton(QMessageBox.No)
+        return box.exec() == QMessageBox.Yes
+
+    def purge_trial_labels(
+        self,
+        which: str = wf.TRIAL_SCOPE_FILTERED,
+        min_duration_s: float = 0.010,
+        label_ids=_SCOPE_UNSET,
+        confirm: bool = False,
+    ) -> int:
+        """Drop state-interval labels of *label_ids* shorter than *min_duration_s*,
+        in the trials *which* names. Point events are never touched.
+
+        *label_ids* defaults to the curation scope area (``self.scope()``);
+        pass an explicit set (or ``None`` for every class) to bypass it.
+        Each touched trial is snapshotted first, so ``Ctrl+Z`` can take the
+        purge back one trial at a time.
+        """
+        if not self.app_state.ready:
+            return 0
+        all_df = self.app_state._all_labels_df
+        scope = self.scope() if label_ids is _SCOPE_UNSET else label_ids
+        trials = self.trials_for_scope(which)
+        touched = []
+        total = 0
+        for trial in trials:
+            df, n = purge_short_labels(all_df, [trial], min_duration_s, scope)
+            if not n:
+                continue
+            touched.append(trial)
+            total += n
+        if not total:
+            notify(f"Nothing in scope shorter than {min_duration_s:g} s across the {_TRIAL_SCOPE_NOUN[which]}.")
+            return 0
+        if confirm and not self._confirm_bulk_purge(which, scope, total, len(touched), min_duration_s):
+            return 0
+        for trial in touched:
+            self.app_state.record_label_edit(f"Purge short labels: {which} (trial {trial})", trial=trial)
+        df, _ = purge_short_labels(self.app_state._all_labels_df, touched, min_duration_s, scope)
+        return self._commit(
+            df,
+            total,
+            message=f"Purged {total} label(s) shorter than {min_duration_s:g} s across {len(touched)} trial(s).",
+            activate_reason="labels purged",
+        )
+
+    def _confirm_bulk_purge(self, which: str, label_ids, total: int, n_trials: int, min_duration_s: float) -> bool:
+        """Ask before purging short labels — there is no server-side undo past Ctrl+Z."""
+        classes = "every label class" if label_ids is None else f"{len(label_ids)} label class(es)"
+        noun = _TRIAL_SCOPE_NOUN[which]
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Warning)
+        box.setWindowTitle(f"Purge short labels: {noun}")
+        box.setText(
+            f"Delete {total} label(s) shorter than {min_duration_s:g} s, across {n_trials} {noun}, in {classes}?"
+        )
+        box.setInformativeText(
+            "Point events have no duration and are never touched.\n\n"
+            "Ctrl+Z can take it back one trial at a time while this session is open. Nothing\n"
+            "reaches disk until you save, so closing without saving still discards it."
+        )
+        box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+        box.setDefaultButton(QMessageBox.No)
+        return box.exec() == QMessageBox.Yes
+
+    def correct_offsets(self, which: str = wf.TRIAL_SCOPE_FILTERED, confirm: bool = False) -> int:
+        """Pull back each label's offset across a near-zero gap to the next onset
+        of the same subject, in the trials *which* names — the export step that
+        makes every interval strictly separated so pynapple can resolve them.
+
+        Unlike curate/delete/purge this is never scoped by label class: a
+        subject's whole sequence of labels has to be seen together to find a
+        gap between two of them. Each touched trial is snapshotted first, so
+        Ctrl+Z can take a trial's correction back.
+        """
+        if not self.app_state.ready:
+            return 0
+        trials = self.trials_for_scope(which)
+        if not trials:
+            notify(f"No trials to correct across the {_TRIAL_SCOPE_NOUN[which]}.")
+            return 0
+        if confirm and not self._confirm_bulk_correct(which, len(trials)):
+            return 0
+        total_corrected = 0
+        total_negative = 0
+        touched = []
+        for trial in trials:
+            corrected_df, corrected, negative = correct_offsets_trial(self.app_state.get_trial_intervals(trial))
+            total_negative += negative
+            if not corrected:
+                continue
+            self.app_state.record_label_edit(f"Correct offsets: {which} (trial {trial})", trial=trial)
+            self.app_state.set_trial_intervals(trial, corrected_df)
+            touched.append(trial)
+            total_corrected += corrected
+        if self.app_state.trials_sel is not None:
+            self.app_state.label_intervals = self.app_state.get_trial_intervals(self.app_state.trials_sel)
+        if not total_corrected:
+            notify(f"Nothing to correct across the {_TRIAL_SCOPE_NOUN[which]}.")
+            return 0
+        message = f"Corrected {total_corrected} offset(s) across {len(touched)} trial(s)."
+        if total_negative:
+            message += f" {total_negative} negative gap(s) found — check for overlapping intervals."
+        notify(message, "warning" if total_negative else None)
+        self.app_state.changes_saved = False
+        self.app_state.curation_changed.emit()
+        self._refresh_status()
+        if self.plot_container is not None:
+            self.plot_container.schedule_labels_redraw()
+        if self.data_widget is not None:
+            self.data_widget.update_main_plot(preserve_x_range=True)
+        return total_corrected
+
+    def _confirm_bulk_correct(self, which: str, n_trials: int) -> bool:
+        """Ask before correcting offsets across many trials — a low-risk fix, but still an edit."""
+        noun = _TRIAL_SCOPE_NOUN[which]
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Warning)
+        box.setWindowTitle(f"Correct offsets: {noun}")
+        box.setText(f"Pull back offsets across near-zero gaps, in {n_trials} {noun}?")
+        box.setInformativeText(
+            "Every subject's whole sequence is affected, not just the classes in scope.\n\n"
+            "Ctrl+Z can take it back one trial at a time while this session is open. Nothing\n"
             "reaches disk until you save, so closing without saving still discards it."
         )
         box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
@@ -889,6 +1202,7 @@ class CurationPanel(QGroupBox):
             self.scope(),
             allowed_trials=self._allowed_trials(),
             automated_only=self.automated_only_cb.isChecked(),
+            order=self.order(),
         )
 
     def _toggle_session(self) -> None:
@@ -935,6 +1249,23 @@ class CurationPanel(QGroupBox):
         self._begin(targets, 0)
         return True
 
+    def restart_review(self) -> None:
+        """Rebuild the queue in place: a Done elsewhere (a grid) may have
+        curated labels the current session is reviewing, so what's left to
+        review has changed under it."""
+        if not self._session_active:
+            return
+        current = self._targets[self._idx] if self._targets else None
+        targets = self.build_queue()
+        if not targets:
+            self._stop(done=True)
+            return
+        idx = 0
+        if current is not None:
+            found = queue_index_of(targets, current.inst, current.field)
+            idx = found if found is not None else min(self._idx, len(targets) - 1)
+        self._begin(targets, idx)
+
     def _begin(self, targets: list[ReviewTarget], idx: int) -> None:
         if self._session_active:
             self._teardown()
@@ -946,6 +1277,9 @@ class CurationPanel(QGroupBox):
         self._advance_pending = False
         self.start_stop_btn.setText("Stop review")
         self._install_session_shortcuts()
+        self._curve_source = self._resolve_curve_source()
+        self._curves = {}
+        self._curves_key = None
         self._jump_current()
 
     def _stop(self, done: bool = False) -> None:
@@ -969,6 +1303,9 @@ class CurationPanel(QGroupBox):
         self._session_active = False
         self._advance_pending = False
         self._seed_frame = None
+        self._curve_source = None
+        self._curves = {}
+        self._curves_key = None
         self._remove_session_shortcuts()
         if self.plot_container is not None:
             self.plot_container.hide_onset_curves()
@@ -977,19 +1314,63 @@ class CurationPanel(QGroupBox):
     # The model's probability curves, under the label being reviewed
     # ------------------------------------------------------------------
 
-    def _load_curves(self) -> dict[str, onset_curves.TrialCurves]:
-        """Every prediction run's curves for this session, newest word winning.
+    def _resolve_curve_source(self) -> Path | None:
+        """Which run's ``onset_curves.npz`` to draw for this review session.
 
-        Re-read when a run folder appears or changes, so predicting again
-        during a review shows the new curves without any invalidation call.
+        One matching run is used without asking. With several, silently
+        merging newest-per-class hid which model's confidence was actually
+        on screen — so the reviewer is asked to pick, either by name or by
+        browsing the session's ``labels/`` folder directly.
         """
         session = self.app_state.nc_file_path
         if not session:
-            return {}
+            return None
         folders = onset_curves.run_dirs(session)
-        key = tuple((str(p), p.stat().st_mtime) for p in folders)
+        if not folders:
+            return None
+        if len(folders) == 1:
+            return folders[0] / onset_curves.CURVES_FILE
+        return self._ask_curve_run(session, folders)
+
+    def _ask_curve_run(self, session: str, folders: list[Path]) -> Path | None:
+        """More than one run has curves — ask which one to show, or none."""
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Question)
+        box.setWindowTitle("Multiple prediction runs")
+        box.setText(
+            f"This session has {len(folders)} prediction runs with confidence curves.\n"
+            "Pick which run's curves to show during review."
+        )
+        pick_btn = box.addButton("Pick file…", QMessageBox.AcceptRole)
+        box.addButton("Don't show curves", QMessageBox.RejectRole)
+        box.exec()
+        if box.clickedButton() is not pick_btn:
+            return None
+
+        chosen = browse_open_file(
+            self,
+            self.app_state,
+            "Choose onset_curves.npz",
+            f"Onset curves ({onset_curves.CURVES_FILE})",
+            preferred_dir=onset_curves.labels_dir(session),
+        )
+        return Path(chosen) if chosen else None
+
+    def _load_curves(self) -> dict[str, onset_curves.TrialCurves]:
+        """This session's chosen run's curves, keyed by trial id.
+
+        Re-read when the file's mtime changes, so re-running the same model
+        mid-review shows the new curves without any invalidation call.
+        """
+        if self._curve_source is None:
+            return {}
+        try:
+            mtime = self._curve_source.stat().st_mtime
+        except OSError:
+            return {}
+        key = (str(self._curve_source), mtime)
         if key != self._curves_key:
-            self._curves = onset_curves.read_all_curves(session)
+            self._curves = onset_curves.read_curves(self._curve_source)
             self._curves_key = key
         return self._curves
 
@@ -1314,9 +1695,10 @@ class CurationPanel(QGroupBox):
         self.app_state.curation_changed.emit()
         self._refresh_status()
 
-        self._advance_pending = True
         self.delta_label.setText("✓ placed")
-        QTimer.singleShot(_CONFIRM_PAUSE_MS, self._advance_after_pause)
+        if self.auto_advance_cb.isChecked():
+            self._advance_pending = True
+            QTimer.singleShot(_CONFIRM_PAUSE_MS, self._advance_after_pause)
 
     def _delete_current(self) -> None:
         """Backspace: this event does not belong in the trial — drop the label."""
@@ -1345,7 +1727,8 @@ class CurationPanel(QGroupBox):
         self.app_state.curation_changed.emit()
         self._refresh_status()
         self.delta_label.setText("✗ deleted")
-        self._advance_past(inst)
+        if self.auto_advance_cb.isChecked():
+            self._advance_past(inst)
 
     def _next(self) -> None:
         """N: leave this boundary — curating it when the checkbox says so."""

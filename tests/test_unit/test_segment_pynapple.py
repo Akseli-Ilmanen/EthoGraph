@@ -133,7 +133,7 @@ def test_materialise_train_infer(project):
     assert layout.fs == pytest.approx(FS)
 
     project.train()
-    written = project.infer()
+    written = project.inference()
     df = load_labels_tsv(written[0])
     assert written[0].name == "sess_labels.tsv"
     assert set(df["labeling_method"]) <= {"automated"}
@@ -171,7 +171,7 @@ def test_without_a_sidecar_nothing_is_declared(tmp_path: Path):
 
 
 def test_ablation_drops_the_video_columns(project):
-    from ethograph.segment.infer import load_run
+    from ethograph.segment.inference import load_run
 
     project.materialise()
     result = project.update("train.drop_kinds=[video_feature]", "train.run_name=able").train()

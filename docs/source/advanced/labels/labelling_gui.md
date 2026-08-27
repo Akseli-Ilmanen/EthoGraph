@@ -22,13 +22,13 @@ dropdowns:
 
 - **Individual** — the animal performing the behaviour. Switching it switches
   the labels you see and create, exactly as before.
-- **Recipient** — for dyadic interactions (one bird mounting another, one
+- **Receiver** — for dyadic interactions (one bird mounting another, one
   animal grooming another). It is `None` by default, meaning a solo behaviour.
 
-Together they are the *subject* of a label, and each (individual, recipient)
-pair is an independent track: with a recipient chosen, only that pair's labels
+Together they are the *subject* of a label, and each (individual, receiver)
+pair is an independent track: with a receiver chosen, only that pair's labels
 are drawn and clickable, and a new label is stored against that pair. Switching
-the recipient therefore gives you a fresh canvas for the next interaction
+the receiver therefore gives you a fresh canvas for the next interaction
 without touching what you already labelled.
 
 The pair is stored per label in the TSV's `individual` and `individual_rec`
