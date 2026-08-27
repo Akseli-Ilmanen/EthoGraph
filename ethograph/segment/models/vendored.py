@@ -12,9 +12,11 @@ vendored copies of upstream's own ``config/model/*.yaml``
 defaults together and the two cannot drift. A builder adds a keyword of its
 own only where the YAML cannot carry it — ``exclusive`` for MS-TCN, which
 upstream fills in from the task's single- vs multi-label problem type rather
-than from a config file. ``params`` from the project config override
-everything, key by key, and reach the upstream constructor unchanged, so any
-upstream keyword is settable.
+than from a config file, and :data:`MOTIONBERT_WINDOW`, which stands in for a
+window length upstream reads from a config group this project does not
+vendor. ``params`` from the project config override everything, key by key,
+and reach the upstream constructor unchanged, so any upstream keyword is
+settable.
 """
 
 from __future__ import annotations
@@ -25,6 +27,7 @@ from typing import Any
 import torch
 import yaml
 from torch import nn
+from torch.nn import functional as F
 
 from ethograph.segment.dlc2action.model.asformer import ASFormer
 from ethograph.segment.dlc2action.model.base_model import Model
@@ -32,6 +35,7 @@ from ethograph.segment.dlc2action.model.c2f_tcn import C2F_TCN
 from ethograph.segment.dlc2action.model.c2f_transformer import C2F_Transformer
 from ethograph.segment.dlc2action.model.edtcn import EDTCN
 from ethograph.segment.dlc2action.model.mlp import MLP
+from ethograph.segment.dlc2action.model.motionbert import MotionBERT
 from ethograph.segment.dlc2action.model.ms_tcn import MS_TCN3
 from ethograph.segment.models import register_architecture
 
@@ -43,8 +47,25 @@ CONFIG_DIR = Path(__file__).parent.parent / "dlc2action" / "config" / "model"
 DATASET_FEATURES = "dataset_features"
 """Upstream's sentinel for "fill this in from the dataset's feature count"."""
 
+DATASET_LEN_SEGMENT = "dataset_len_segment"
+"""Upstream's sentinel for its fixed window length — see :func:`build_motionbert`."""
+
+UPSTREAM_REQUIRED = "???"
+"""OmegaConf's "no default, the user must set this" marker (only ``motionbert.num_joints``)."""
+
 C2F_MIN_FRAMES = 384
 """C2F models pool the time axis six times (T // 64) and then max-pool that with kernel 6."""
+
+MOTIONBERT_WINDOW = 128
+"""Frames MotionBERT sees at once — **ours**, and the only default written here.
+
+Its temporal position embedding is a parameter of exactly this length, so it
+is an architectural size, not a preference. Upstream fills it in from
+``general.yaml: len_segment``, a config group this project does not vendor
+because a sample here is a whole trial rather than a fixed window;
+:class:`MotionBERTModel` windows the trial instead. Override under
+``model.params.len_segment``.
+"""
 
 _STEMS = {
     "mstcn": "ms_tcn3",
@@ -53,6 +74,7 @@ _STEMS = {
     "c2f_transformer": "c2f_transformer",
     "edtcn": "edtcn",
     "mlp": "mlp",
+    "motionbert": "motionbert",
 }
 """Registry name → upstream's file name. They differ only for ``mstcn``."""
 
@@ -109,6 +131,38 @@ class DLC2ActionModel(nn.Module):
         return logits
 
 
+class MotionBERTModel(DLC2ActionModel):
+    """MotionBERT over a whole trial, one fixed-length window at a time.
+
+    Its temporal position embedding is a parameter of exactly *window* frames,
+    so the model cannot be shown more than that however long the sample is.
+    Upstream never has to: it cuts fixed windows before the model sees the
+    data. A sample here is a whole trial, so the cutting happens here — the
+    timeline is zero-padded up to a multiple of *window*, folded into the
+    batch, and the logits are folded back and cropped to the original length.
+
+    Frames inside a window attend to each other and windows are independent,
+    which is the trade upstream makes too; the loss and every metric still see
+    one continuous trial, because the fold is undone before the logits leave.
+    """
+
+    def __init__(self, inner: Model, window: int) -> None:
+        super().__init__(inner)
+        self.window = int(window)
+
+    def _run(self, x: torch.Tensor) -> torch.Tensor:
+        b, f, t = x.shape
+        pad = -t % self.window
+        if pad:
+            x = F.pad(x, (0, pad))
+        n_windows = x.shape[2] // self.window
+        folded = x.reshape(b, f, n_windows, self.window).permute(0, 2, 1, 3).reshape(-1, f, self.window)
+        logits = super()._run(folded)
+        stages, _, n_classes, _ = logits.shape
+        logits = logits.reshape(stages, b, n_windows, n_classes, self.window)
+        return logits.permute(0, 1, 3, 2, 4).reshape(stages, b, n_classes, -1)[..., :t]
+
+
 def _dims(n_features: int) -> dict[str, tuple[int]]:
     return {FEATURE_KEY: (n_features,)}
 
@@ -117,16 +171,24 @@ def tunable_params(architecture: str) -> dict[str, Any]:
     """What ``model.params`` accepts for *architecture*, and each key's default.
 
     Read straight off upstream's own ``config/model/{stem}.yaml``, minus the
-    keys filled in from the dataset (the feature count, the segment length).
-    This is what tells ``mlp`` (``f_maps_list``, ``dropout_rates``) apart from
-    ``mstcn`` (``num_f_maps``, ``num_layers_R``, …) — the two do not share a
-    single hyperparameter name, so a search space is per-architecture.
+    keys filled in from the dataset (the feature count, the segment length)
+    and the ones upstream leaves required (``???``) — neither has a default to
+    report, and a required one is named by the builder that refuses to run
+    without it. This is what tells ``mlp`` (``f_maps_list``,
+    ``dropout_rates``) apart from ``mstcn`` (``num_f_maps``, ``num_layers_R``,
+    …) — the two do not share a single hyperparameter name, so a search space
+    is per-architecture.
     """
     stem = _STEMS.get(architecture)
     if stem is None:
         raise ValueError(f"Unknown architecture {architecture!r}. Available: {', '.join(sorted(_STEMS))}")
     defaults = yaml.safe_load((CONFIG_DIR / f"{stem}.yaml").read_text(encoding="utf-8")) or {}
-    return {k: v for k, v in defaults.items() if not (isinstance(v, str) and v.startswith("dataset_"))}
+    return {k: v for k, v in defaults.items() if not _unset(v)}
+
+
+def _unset(value: Any) -> bool:
+    """Is this YAML value a placeholder rather than a default a user could keep?"""
+    return isinstance(value, str) and (value.startswith("dataset_") or value == UPSTREAM_REQUIRED)
 
 
 def _kwargs(stem: str, n_features: int, params: dict[str, Any], **supplied: Any) -> dict[str, Any]:
@@ -245,3 +307,57 @@ def build_mlp(params: dict[str, Any], n_features: int, n_classes: int) -> nn.Mod
     if rates is not None and not isinstance(rates, list):
         kwargs["dropout_rates"] = [float(rates)] * len(kwargs["f_maps_list"])
     return DLC2ActionModel(MLP(num_classes=n_classes, **kwargs))
+
+
+def _motionbert_joints(value: Any, n_features: int) -> int:
+    """Validate ``num_joints`` against this session's column count.
+
+    Upstream asserts the divisibility inside the constructor; this says which
+    numbers would work, because the answer depends on the feature layout the
+    config built and not on anything the user can see in the model's YAML.
+    """
+    divisors = [d for d in range(1, n_features + 1) if n_features % d == 0]
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(
+            "motionbert needs model.params.num_joints: how the "
+            f"{n_features} feature columns factor into joints x channels. "
+            f"It has no default — upstream leaves it required. Divisors of {n_features}: {divisors}."
+        )
+    if n_features % value:
+        raise ValueError(
+            f"model.params.num_joints={value} does not divide the {n_features} feature "
+            f"columns of this dataset. Divisors: {divisors}."
+        )
+    return value
+
+
+@register_architecture("motionbert")
+def build_motionbert(params: dict[str, Any], n_features: int, n_classes: int) -> nn.Module:
+    """MotionBERT: attention alternating between the joints and the timeline.
+
+    Defaults from ``config/motionbert.yaml``. Returns ``S = 1`` stage, any
+    ``T >= 1`` and any batch size.
+
+    The two settings that are not numbers in that YAML are the two this
+    builder resolves.
+
+    ``num_joints`` is ``???`` — required, no default. The model reads a frame
+    as ``num_joints`` contiguous blocks of ``n_features // num_joints``
+    columns and attends *across* the blocks, so the column order is what says
+    which columns belong to which joint, and the count must divide the
+    feature count. That structure is the whole point of the architecture and
+    nothing in a materialised dataset declares it, so it is set in
+    ``model.params`` or the build refuses. ``num_joints: 1`` is the honest
+    setting for features that do not factor by joint — one block per frame,
+    leaving a temporal transformer.
+
+    ``len_segment`` is upstream's fixed window length, which its config fills
+    in from the dataset; see :data:`MOTIONBERT_WINDOW` and
+    :class:`MotionBERTModel` for what it means when a sample is a whole trial.
+    """
+    kwargs = _kwargs("motionbert", n_features, params)
+    kwargs["num_joints"] = _motionbert_joints(kwargs["num_joints"], n_features)
+    if kwargs["len_segment"] == DATASET_LEN_SEGMENT:
+        kwargs["len_segment"] = MOTIONBERT_WINDOW
+    kwargs["len_segment"] = int(kwargs["len_segment"])
+    return MotionBERTModel(MotionBERT(num_classes=n_classes, **kwargs), window=kwargs["len_segment"])

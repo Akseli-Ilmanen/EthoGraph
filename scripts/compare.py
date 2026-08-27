@@ -45,7 +45,7 @@ from ethograph.segment.metrics import EVAL_ARRAYS_FILE
 from ethograph.segment.plotting import RunEval, load_run_eval, write_model_report_pdf
 from ethograph.segment.samples import ClassTable
 
-CONFIG = Path(r"C:\Users\aksel\Documents\Code\ethograph\data\model\project.yaml")
+CONFIG =  Path(r"D:\Akseli\Code\ethograph\data\project.yaml")
 
 #: Which runs to consider, as paths relative to ``runs/`` — a run trained by
 #: hand is one level deep (``asformer_kin_v1_20260824_1200``), a search trial
@@ -55,9 +55,11 @@ CONFIG = Path(r"C:\Users\aksel\Documents\Code\ethograph\data\model\project.yaml"
 RUNS: list[str] = []
 
 #: Which metric picks an architecture's best run, read off the post-processed
-#: test scores. ``f1@50`` is the loosest segmental threshold every run
-#: evaluates; ``f1@90``, ``frame_f1`` or ``acc`` work the same way.
-SELECT_ON = "f1@50"
+#: test scores. ``f1@90`` is what ``bench.py``'s own search selects on and what
+#: docs/add_to_docs_later/segment/boundaries.md calls "the metric that still
+#: moves" -- f1@50 saturates too early to tell close runs apart. ``frame_f1``
+#: or ``acc`` work the same way as either.
+SELECT_ON = "f1@90"
 
 OUTPUT = CONFIG.with_name("compare.pdf")
 
@@ -106,7 +108,8 @@ def main() -> None:
     logger.info("%d runs → %d architectures (best on postprocessed %s)", len(dirs), len(chosen), SELECT_ON)
     for arch, run_dir, e in chosen:
         scalars = {k: round(v, 2) for k, v in e.processed.items() if k != "classwise"}
-        logger.info("%-12s %-50s %s", arch, str(run_dir.relative_to(config.runs_dir)), scalars)
+        duration = f"{e.train_seconds:.0f} s" if e.train_seconds is not None else "unknown"
+        logger.info("%-12s %-50s %-10s %s", arch, str(run_dir.relative_to(config.runs_dir)), duration, scalars)
 
     evals = [e for _, _, e in chosen]
     classes = ClassTable.from_dict(yaml.safe_load((chosen[0][1] / "classes.yaml").read_text(encoding="utf-8")))

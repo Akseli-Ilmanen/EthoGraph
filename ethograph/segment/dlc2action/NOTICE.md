@@ -22,6 +22,12 @@ for these files.
 | `version.py`, `utils.py`, `colors.txt` | `dlc2action/` |
 | `LICENSE.APGPL` | `dlc2action/LICENSE.APGPL` |
 
+Two values in `config/model/` are not numbers: upstream's `dataset_*`
+sentinels ("fill this in from the dataset") and OmegaConf's `???` ("required,
+no default"). Both reach `../models/vendored.py` untouched — resolving one
+against *this* project's dataset is the builder's job, and refusing to build
+without a required one is too.
+
 `config/` holds the three groups this project reads, unmodified:
 
 | File | Read by | For |
@@ -82,9 +88,8 @@ linter and mypy skip this directory — see `pyproject.toml`).
   `dlc2action.project` and `dlc2action.preprocessing`; replaced with a minimal
   one). Nothing under `model/` or `loss/` depends on either.
 
-`model/motionbert.py` is vendored but has no builder — nothing registers it
-yet. It is the only file here needing `einops`, which the `model` extra
-declares.
+`model/motionbert.py` and `model/motionbert_modules.py` are the only files
+here needing `einops`, which the `model` extra declares.
 
 ## How these are used
 
@@ -97,8 +102,9 @@ resolved from the run's own data.
 
 The adapters add only what a config file cannot carry: the padding mask
 (upstream cuts fixed-length windows and has no mask), the stage-order and
-temporal-resolution declarations, and `exclusive`, which upstream takes from
-the task's single- vs multi-label problem type.
+temporal-resolution declarations, `exclusive`, which upstream takes from the
+task's single- vs multi-label problem type, and the window fold MotionBERT's
+fixed-length position embedding forces once a sample is a whole trial.
 
 ## Adding another upstream model or loss
 

@@ -54,8 +54,7 @@ as its value zeroed.
 - One place to tune, and the same numbers on both sides by default.
 - The GUI keeps its own store and needs no project config; nothing in
   `ethograph/gui` imports from `ethograph/segment`.
-- The boundary-head settings and the `changepoints` selection stay the
-  config's: the GUI holds neither.
+- The `changepoints` selection stays the config's: the GUI does not hold it.
 - The reverse direction — the GUI reading a project config — is not offered.
   It would make the GUI depend on a file most of its users do not have, and
   the GUI's settings are already the source.

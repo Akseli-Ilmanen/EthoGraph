@@ -308,7 +308,7 @@ a run (`runs/{run}/splits/*.bundle`, `stats.npz`).
 
 ## Architectures
 
-Six networks are available; `eto.segment.architectures()` lists them.
+Seven networks are available; `eto.segment.architectures()` lists them.
 Switching between them is a one-line change, and `project.compare()` puts the
 runs side by side, so trying two or three is cheap.
 
@@ -320,8 +320,7 @@ runs side by side, so trying two or three is cheap.
 | `asformer` | Sliding-window attention + decoders | Strongest context modelling, several times slower per epoch. |
 | `edtcn` | Encoder–decoder, wide kernels | Small and quick. |
 | `mlp` | Per-frame, no temporal context | A floor to compare against: how much is time actually buying you? |
-| `asrf` | Any of the above + a boundary branch | When the boundaries matter more than the classes — see {doc}`boundaries`. |
-| `baformer` | ASFormer encoder + a query-voting head | A segment-level objective instead of a frame-wise one — see {doc}`boundaries`. |
+| `motionbert` | Attention across joints, then across time | For pose columns that factor into joints: set `model.params.num_joints` (it has no default and must divide the column count). Reads a fixed 128-frame window at a time. |
 
 Each one's hyperparameters, with a comment on each and its default, are in
 `ethograph/segment/dlc2action/config/model/{architecture}.yaml` — set only the
@@ -336,13 +335,8 @@ plug in your own, register a builder with `@register_architecture("name")`, or
 ship one from another package through the `ethograph.segment.architectures`
 entry-point group. It takes `(x (B,F,T), mask (B,1,T))` and returns
 `logits (S,B,C,T)`, finest stage last — or a `ModelOutput` carrying those
-logits plus whatever extra heads it has.
+logits.
 ```
-
-The last two rows are ours: `asrf` and `baformer` add a head that predicts
-**where the transitions are** rather than only what each frame is, which is
-what F1@90 measures. {doc}`boundaries` covers both, and the four ways a
-prediction can then be turned into intervals.
 
 ## Stage 1: find the settings
 
@@ -505,7 +499,6 @@ becomes *which* class, *which* trials and *how far off* the boundaries are.
 :hidden:
 
 config
-boundaries
 video_features
 later
 ```

@@ -271,6 +271,9 @@ def tunable_params(architecture: str) -> dict[str, Any]:
 
         for name in eto.segment.architectures():
             print(name, sorted(eto.segment.tunable_params(name)))
+
+    A setting upstream leaves required — ``motionbert``'s ``num_joints`` — has
+    no default and so is not listed; the builder names it if it is missing.
     """
     from ethograph.segment.models.vendored import tunable_params as _tunable
 

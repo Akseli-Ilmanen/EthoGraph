@@ -211,14 +211,14 @@ class TestCircleLoss:
     def test_default_weight_leaves_circle_loss_unbuilt(self) -> None:
         from ethograph.segment.losses import build_objective
 
-        objective, settings = build_objective(self._config(), n_classes=N_CLASSES, fs=50.0)
+        objective, settings = build_objective(self._config(), n_classes=N_CLASSES)
         assert objective.circle_loss is None
         assert settings["circle"]["weight"] == 0.0
 
     def test_a_positive_weight_builds_and_records_the_loss(self) -> None:
         from ethograph.segment.losses import CircleLoss, build_objective
 
-        objective, settings = build_objective(self._config(weight=0.5, gamma=64.0), n_classes=N_CLASSES, fs=50.0)
+        objective, settings = build_objective(self._config(weight=0.5, gamma=64.0), n_classes=N_CLASSES)
         assert isinstance(objective.circle_loss, CircleLoss)
         assert objective.circle_loss.gamma == 64.0
         assert settings["circle"] == {"weight": 0.5, "m": 0.25, "gamma": 64.0, "max_frames": 2048}
@@ -235,7 +235,7 @@ class TestCircleLoss:
 
         cfg = self._config(weight=0.5)
         cfg.train.frame_weight = 0.0
-        objective, _ = build_objective(cfg, n_classes=N_CLASSES, fs=50.0)
+        objective, _ = build_objective(cfg, n_classes=N_CLASSES)
         logits, target, mask = self._batch()
         _total, parts = objective(ModelOutput(logits=logits), target, mask)
         assert "circle" in parts and "frame" not in parts

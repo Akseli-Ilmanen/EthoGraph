@@ -134,13 +134,12 @@ class TestConfig:
         assert cfg.infer.postprocess.stitch_gap_s == 0.5
         assert cfg.infer.postprocess.min_duration_s == 0.08
 
-    def test_the_boundary_keys_and_selection_stay_the_configs(self, tmp_path: Path):
+    def test_the_changepoint_selection_stays_the_configs(self, tmp_path: Path):
         _gui_file(tmp_path)
         cfg = config_from_dict(
             _minimal({"gui_settings": GUI_SETTINGS_FILENAME, "changepoints": {"keypoint": "beak"}}), tmp_path
         )
         assert cfg.infer.postprocess.changepoints == {"keypoint": "beak"}
-        assert cfg.infer.postprocess.boundary_refinement == "none"
 
     def test_a_saved_run_config_does_not_follow_the_gui(self, tmp_path: Path):
         """The dump carries the resolved values, so re-reading it after the GUI changed gives the same run."""

@@ -192,12 +192,12 @@ For what each architecture is good at, see {doc}`index`.
 | `f1_thresholds` | `[0.5, 0.75, 0.9]` | IoU thresholds of the segmental F1 scores. |
 | `seed`, `device` | `0`, auto | `device` = `cuda`, `mps`, `cpu`; auto picks the best available. |
 | `drop_kinds` | `[]` | Feature categories to leave out of this run — the ablation axis (see {doc}`../variable_schema`). `[video_feature]` trains the same model without S3D. Applied to the materialised dataset's columns, so an ablation costs a run rather than a re-materialisation; columns whose `kind` is undeclared are always kept. |
-| `frame_weight` | `1.0` | Weight of `train.loss` in the total. `0` trains a query-head architecture on its set objective alone (upstream's setting for `baformer`); anything else keeps the frame loss as an auxiliary. |
+| `frame_weight` | `1.0` | Weight of `train.loss` in the total. `0` leaves `train.circle` as the only thing training. |
 | `subsample` | `1` | Train and predict at `fs / subsample` — the temporal-resolution axis, run-level like `drop_kinds`, so one materialised dataset serves every rate. Every frame count the run reports (its metrics, its `_probs.npz`) is then in *its* frames, so runs at different rates are only comparable once their predictions are scored back on one grid (`scripts/experiment2_smoothing.py` does that). Striding, with no anti-alias filter. |
 
 ### Losses
 
-The total objective is a sum of up to four terms, each independently
+The total objective is a sum of up to two terms, each independently
 switched on by its own weight — `Objective` in
 {mod}`ethograph.segment.losses` computes and itemises them, and every
 weighted term's value lands in `metrics.tsv`/the console log by the name
@@ -207,15 +207,10 @@ moving.
 | Term | Weight key | Default | Config section | Needs |
 |---|---|---|---|---|
 | frame (CE + consistency) | `train.frame_weight` | `1.0` | `train.loss` | any architecture |
-| boundary | `train.boundary.weight` | `0` | `train.boundary` | `asrf`, `baformer` |
-| query set | *(no separate weight — see `train.queries`)* | — | `train.queries` | query-emitting architectures (`baformer`) |
 | circle (metric-learning) | `train.circle.weight` | `0` | `train.circle` | any architecture |
 
-`frame_weight: 0` and every other weight left at `0` is a `ValueError`
-("nothing to train on") — at least one term must be active. A positive
-`boundary`/`queries` weight against an architecture without that head is
-also an error, naming the architectures that do have it, rather than a
-weight that silently does nothing.
+`frame_weight: 0` with `circle.weight` left at `0` is a `ValueError`
+("nothing to train on") — at least one term must be active.
 
 ### `train.loss`
 
@@ -244,44 +239,12 @@ on each, live in `ethograph/segment/dlc2action/config/losses.yaml`.
 
 **TODO**: See if inverse_frequency weights loss is detrimental
 
-### `train.boundary`
-
-The class-agnostic boundary branch — see {doc}`boundaries`. Needs an
-architecture that has the head (`asrf`, `baformer`); a positive `weight`
-against one that does not is an error naming them, not a setting that quietly
-does nothing.
-
-| Key | Default | Meaning |
-|---|---|---|
-| `weight` | `0` | `w_b`, the weight of the boundary BCE in the total loss. `0` leaves the head built but untrained, which is the ablation. |
-| `tolerance_s` | `0` | How far either side of a true transition still counts as a boundary, **in seconds**. `0` is the single-frame target ASRF uses. The literature's "±4 frames" was tuned at 15–30 fps; at 200 Hz it is ±20 ms, which is a different instruction — so this is a duration and the frame half-width is derived from the dataset's own rate. |
-| `pos_weight` | `null` | Positive-class weight. `null` recomputes `n_negative / n_positive` per batch, which is honest for a channel whose positives are ~1% of frames and whose density varies by trial. Whichever was used is recorded in the run's `test_metrics.yaml`. |
-| `focal` | `false` | Use the focal form of the BCE instead of `pos_weight`. The two are alternatives, not a stack. |
-| `focal_gamma` | `2` | How sharply, when `focal` is on. |
-
-### `train.queries`
-
-BaFormer's set-prediction objective — read only when the architecture emits
-queries. The three matched terms are both the matching cost and the gradient,
-so the assignment and the loss agree about what a good segment is.
-
-| Key | Default | Meaning |
-|---|---|---|
-| `class_weight` | `2.0` | Weight of the matched classification cross-entropy. |
-| `mask_weight` | `5.0` | Weight of the matched mask focal loss. |
-| `dice_weight` | `5.0` | Weight of the matched dice loss — the IoU-shaped term. |
-| `boundary_weight` | `1.0` | Weight of the global boundary query's BCE. Its target dilation and positive weighting come from `train.boundary`. |
-| `eos_coef` | `0.1` | Weight of the "no segment" class the unmatched queries are pushed towards. Without it the head learns that predicting nothing is safe. |
-| `label_smoothing` | `0` | Label smoothing on that cross-entropy. |
-| `deep_supervision` | `true` | Match and score every decoder level, not just the last. It is what makes a ten-level decoder trainable. |
-
 ### `train.circle`
 
 A deep metric-learning term over the finest-stage logits (Sun et al. 2020,
 circle loss) — pulls same-class frames' logit vectors together and pushes
 different-class ones apart, independent of the frame cross-entropy above.
-Architecture-agnostic (every registered model produces logits, unlike the
-boundary/query heads above).
+Architecture-agnostic — every registered model produces logits.
 
 | Key | Default | Meaning |
 |---|---|---|
@@ -502,10 +465,9 @@ Sidecars go to `{root}/video_features/`.
 
 ### `infer.postprocess`
 
-(Re-cut) → purge → stitch → snap → purge. The interval steps go through the
-same functions as the GUI's changepoint correction; the optional first step is
-the one that is not about intervals at all, and it needs a boundary head. Also
-used for the *post-processed* numbers in `test_metrics.yaml`.
+Purge → stitch → snap → purge, through the same functions as the GUI's
+changepoint correction. Also used for the *post-processed* numbers in
+`test_metrics.yaml`.
 
 The interval steps are the GUI's *CP Correction* section under other names,
 and the default way to fill them is to **take the GUI's numbers**:
@@ -523,9 +485,9 @@ carries the resolved values explicitly (plus the path they came from), so a
 finished run does not change when the GUI does. The GUI's step checkboxes
 read as zeroed parameters (purge off → `min_duration_s: 0`, stitch off →
 `stitch_gap_s: 0`, snap off → `changepoint_correction: false`). Spell the
-values instead when one project needs settings the GUI does not hold. The
-boundary-head keys and `changepoints` have no GUI counterpart and are always
-the config's. See `docs/adr/0006-postprocess-from-gui-settings.md`.
+values instead when one project needs settings the GUI does not hold.
+`changepoints` has no GUI counterpart and is always the config's. See
+`docs/adr/0006-postprocess-from-gui-settings.md`.
 
 | Key | Default | Meaning |
 |---|---|---|
@@ -535,10 +497,7 @@ the config's. See `docs/adr/0006-postprocess-from-gui-settings.md`.
 | `stitch_gap_s` | `0` | Merge same-label predictions separated by less than this. |
 | `changepoint_correction` | `false` | Snap onsets/offsets to the session's changepoint masks (xarray sessions only; see {doc}`../variable_schema`). |
 | `changepoints` | `{}` | Selections pinning those variables (e.g. `{keypoint: beakTip}`); the individual is pinned per sample. |
-| `max_expansion_s`, `max_shrink_s` | `0.05`, `0.05` | How far a boundary may move outwards / inwards when snapping. |
-| `boundary_refinement` | `none` | `none` / `predicted` / `hybrid` — whether to re-cut the *dense* prediction at the model's own boundary peaks before it becomes intervals, and whether to restrict those peaks to the detected changepoints. See {doc}`boundaries`. A run whose architecture has no boundary head ignores this. |
-| `boundary_threshold` | `0.5` | Below this, a local maximum of the boundary probability is not a peak. |
-| `boundary_snap_s` | `0.05` | `hybrid` only: how far a predicted peak may be moved onto a detected changepoint. A peak with nothing that close is dropped. |
+| `max_expansion_s`, `max_shrink_s` | `0.05`, `0.05` | How far an interval edge may move outwards / inwards when snapping. |
 
 ## What a run writes
 

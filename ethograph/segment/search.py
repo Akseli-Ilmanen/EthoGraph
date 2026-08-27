@@ -76,6 +76,8 @@ class SearchResult:
     #: ``train.select_on`` on the validation trials, for the winning draw.
     best_score: float
     best_run_dir: Path
+    #: Wall-clock training time of the winning trial, in seconds.
+    best_train_seconds: float
     #: ``searches/{name}/best.yaml`` — a config that inherits yours and pins those params.
     config_path: Path
     #: One row per trial: number, state, value and every parameter.
@@ -242,6 +244,7 @@ def search(config: SegmentConfig, n_trials: int | None = None) -> SearchResult:
             run_dirs[trial.number] = result.run_dir
             trial.set_user_attr("run_dir", str(result.run_dir))
             trial.set_user_attr("best_epoch", result.best_epoch)
+            trial.set_user_attr("train_seconds", result.train_seconds)
             logger.info(
                 "[trial %d] val %s = %.4f at epoch %d",
                 trial.number,
@@ -259,6 +262,7 @@ def search(config: SegmentConfig, n_trials: int | None = None) -> SearchResult:
                 "state": t.state.name,
                 "value": t.value,
                 "best_epoch": t.user_attrs.get("best_epoch"),
+                "train_seconds": t.user_attrs.get("train_seconds"),
                 "run_dir": t.user_attrs.get("run_dir"),
                 **t.params,
             }
@@ -290,6 +294,7 @@ def search(config: SegmentConfig, n_trials: int | None = None) -> SearchResult:
             best_params=dict(best.params),
             best_score=float(best.value),
             best_run_dir=best_run_dir,
+            best_train_seconds=float(best.user_attrs["train_seconds"]),
             config_path=config_path,
             trials=trials,
         )
