@@ -80,7 +80,7 @@ def register_architecture(name: str) -> Callable[[Builder], Builder]:
 
 def _load_builtin() -> None:
     # Imported for their registration side effect only.
-    from ethograph.segment.models import vendored  # noqa: F401
+    from ethograph.segment.models import skeleton_graph, vendored  # noqa: F401
 
 
 def _load_entry_points() -> None:

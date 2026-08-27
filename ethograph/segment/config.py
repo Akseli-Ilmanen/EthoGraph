@@ -321,6 +321,20 @@ class FeaturesConfig:
     #: at session-open time; ``None`` = sessions keep only what their own
     #: ``.nc``/sidecar already declares.
     changepoint_features: ChangepointFeaturesConfig | None = None
+    #: Features in ``columns`` that are **angles**: each is replaced by the
+    #: two components of its ``(sin, cos)`` encoding, in radians or degrees
+    #: as the variable's ``units`` attr says (or as its values imply). A
+    #: circular quantity read as a plain number puts its two ends maximally
+    #: far apart, and the components are bounded, so they are never z-scored.
+    sin_cos: list[str] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        unknown = [name for name in self.sin_cos if name not in self.columns]
+        if unknown:
+            raise ValueError(
+                f"features.sin_cos names {unknown}, which features.columns does not select "
+                f"(it has {sorted(self.columns)})."
+            )
 
 
 @dataclass

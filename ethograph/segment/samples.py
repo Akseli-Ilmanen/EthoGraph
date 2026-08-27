@@ -20,6 +20,7 @@ import numpy as np
 import pandas as pd
 
 from ethograph.features.columns import (
+    FeatureColumn,
     column_name,
     enumerate_columns,
     expand_dim_values,
@@ -213,7 +214,17 @@ def sample_features_spec(
     return spec, tokens
 
 
-def layout_names(spec: dict[str, dict[str, list[str]]], tokens: dict[str, str]) -> list[str]:
+def sample_columns(spec: dict[str, dict[str, list[str]]], config: SegmentConfig) -> list[FeatureColumn]:
+    """The sample's columns: *spec* expanded the way ``features`` asks for.
+
+    Every per-column list below (names, kinds, normalise flags) is built from
+    this one enumeration, so they index the matrix ``extract_features``
+    returns — which expands the same way.
+    """
+    return enumerate_columns(spec, sin_cos=config.features.sin_cos)
+
+
+def layout_names(columns: list[FeatureColumn], tokens: dict[str, str]) -> list[str]:
     """Column names, with the individual axis canonicalised to one spelling.
 
     A session may spell its individual dim ``individual`` or ``individuals``
@@ -223,7 +234,7 @@ def layout_names(spec: dict[str, dict[str, list[str]]], tokens: dict[str, str]) 
     that hold across a session that spells the dim differently as well.
     """
     names = []
-    for col in enumerate_columns(spec):
+    for col in columns:
         sel = {}
         for d, v in col.selections.items():
             if d in _INDIVIDUAL_LIKE:
@@ -232,7 +243,7 @@ def layout_names(spec: dict[str, dict[str, list[str]]], tokens: dict[str, str]) 
                 sel[d] = tokens.get(v, v)
             else:
                 sel[d] = v
-        names.append(column_name(col.feature, sel))
+        names.append(column_name(col.feature, sel, col.derivative, col.circular))
     return names
 
 
@@ -240,10 +251,16 @@ _INDIVIDUAL_LIKE = set(INDIVIDUAL_DIMS)
 _CANONICAL_INDIVIDUAL_DIM = INDIVIDUAL_DIMS[0]
 
 
-def _vector_groups(spec: dict[str, dict[str, list[str]]]) -> list[list[int]]:
+def _vector_groups(columns: list[FeatureColumn]) -> list[list[int]]:
+    """Index groups of the columns spanning one vector's space dim.
+
+    A derived column (a derivative, an angle component) belongs to no vector:
+    the geometric augmentations rotate and mirror these groups, which only
+    means something for the coordinates themselves.
+    """
     groups: dict[tuple, list[int]] = {}
-    for i, col in enumerate(enumerate_columns(spec)):
-        if SPACE_DIM not in col.selections:
+    for i, col in enumerate(columns):
+        if SPACE_DIM not in col.selections or col.derivative or col.circular:
             continue
         key = (col.feature, tuple((d, v) for d, v in col.selections.items() if d != SPACE_DIM))
         groups.setdefault(key, []).append(i)
@@ -251,17 +268,24 @@ def _vector_groups(spec: dict[str, dict[str, list[str]]]) -> list[list[int]]:
 
 
 def _normalise_flags(
-    spec: dict[str, dict[str, list[str]]], session: Session, trial: int | str, config: SegmentConfig
+    columns: list[FeatureColumn], session: Session, trial: int | str, config: SegmentConfig
 ) -> list[bool]:
+    """Which columns are z-scored (and percentile-clipped).
+
+    An angle component is never one of them: ``sin``/``cos`` already live in
+    ``[-1, 1]`` and mean what they say there — the same statement
+    ``attrs["normalise"] = 0`` makes about a unit vector.
+    """
     exclude = set(config.features.preprocess.zscore_exclude)
-    return [
-        is_normalise(session.variable_attrs(col.feature, trial)) and col.feature not in exclude
-        for col in enumerate_columns(spec)
-    ]
+    flags = []
+    for col in columns:
+        declared = is_normalise(session.variable_attrs(col.feature, trial))
+        flags.append(col.circular is None and declared and col.feature not in exclude)
+    return flags
 
 
-def _column_kinds(spec: dict[str, dict[str, list[str]]], session: Session, trial: int | str) -> list[str | None]:
-    return [kind_of(session.variable_attrs(col.feature, trial)) for col in enumerate_columns(spec)]
+def _column_kinds(columns: list[FeatureColumn], session: Session, trial: int | str) -> list[str | None]:
+    return [kind_of(session.variable_attrs(col.feature, trial)) for col in columns]
 
 
 # ---------------------------------------------------------------------------
@@ -301,25 +325,40 @@ def build_sample_features(
     """Select, preprocess and lay out one sample → ``(time, x (F, T), layout)``."""
     others = others_of(individual, individuals)
     spec, tokens = sample_features_spec(config, session, window.loader, individual, others)
-    time, data = extract_features(window.loader, spec, window.t0, window.t1)
+    sin_cos = list(config.features.sin_cos)
+    time, data = extract_features(
+        window.loader,
+        spec,
+        window.t0,
+        window.t1,
+        sin_cos=sin_cos,
+        units=_declared_units(session, window.trial, sin_cos),
+    )
     time = time - window.shift
-    data = _apply_likelihood_threshold(data, spec, config, window, individual)
-    normalise = _normalise_flags(spec, session, window.trial, config)
+    columns = sample_columns(spec, config)
+    data = _apply_likelihood_threshold(data, columns, config, window, individual)
+    normalise = _normalise_flags(columns, session, window.trial, config)
     data = preprocess_session_level(data, config.features.preprocess, np.asarray(normalise, dtype=bool))
     layout = ColumnLayout(
-        names=layout_names(spec, tokens),
-        features=[c.feature for c in enumerate_columns(spec)],
+        names=layout_names(columns, tokens),
+        features=[c.feature for c in columns],
         normalise=normalise,
-        vector_groups=_vector_groups(spec),
+        vector_groups=_vector_groups(columns),
         fs=sampling_rate(time),
-        kinds=_column_kinds(spec, session, window.trial),
+        kinds=_column_kinds(columns, session, window.trial),
     )
     return time, data.T.astype(np.float32), layout
 
 
+def _declared_units(session: Session, trial: int | str, features: list[str]) -> dict[str, Any]:
+    """The ``units`` attr of each of *features* that declares one."""
+    units = {name: session.variable_attrs(name, trial).get("units") for name in features}
+    return {name: value for name, value in units.items() if value is not None}
+
+
 def _apply_likelihood_threshold(
     data: np.ndarray,
-    spec: dict[str, dict[str, list[str]]],
+    columns: list[FeatureColumn],
     config: SegmentConfig,
     window: TrialWindow,
     individual: str,
@@ -337,7 +376,7 @@ def _apply_likelihood_threshold(
         )
     ind_dim = individual_dim_name(loader, pre.likelihood_feature)
     data = np.array(data, dtype=np.float64, copy=True)
-    for i, col in enumerate(enumerate_columns(spec)):
+    for i, col in enumerate(columns):
         if "keypoint" not in col.selections:
             continue
         sel = {"keypoint": col.selections["keypoint"]}

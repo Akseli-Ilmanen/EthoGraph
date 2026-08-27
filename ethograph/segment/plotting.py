@@ -517,3 +517,199 @@ def _training_panels(fig, evals: list[RunEval]) -> None:
     for idx, (key, title) in enumerate(keys):
         ax = fig.add_subplot(gs[1 + idx // ncols, idx % ncols])
         _convergence_curve(ax, evals, curves, key, title, legend=idx == 0)
+
+
+# ---------------------------------------------------------------------------
+# Factorial comparison: groups × architectures × variants, each cross-validated
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class FactorCell:
+    """One cell of a factorial comparison — a group × an architecture × a variant — over its folds.
+
+    *group* is whatever the comparison is split by (an individual, a feature
+    set), *variant* the axis under ablation (a loss combination), and *folds*
+    one :class:`RunEval` per cross-validation fold of that cell — so every bar
+    :func:`write_factorial_pdf` draws is a mean over held-out sessions, with
+    one dot per session behind it.
+    """
+
+    group: str
+    architecture: str
+    variant: str
+    folds: list[RunEval]
+
+
+ALL_GROUPS = "all groups"
+"""The summary row pooling every group's folds, drawn when there is more than one group."""
+
+
+def write_factorial_pdf(
+    path: Path,
+    cells: list[FactorCell],
+    classes: ClassTable,
+    title: str = "",
+    classwise_key: str | None = None,
+    stamp: str | None = None,
+) -> Path:
+    """One PDF over a factorial comparison: the summary first, then one page per group × architecture.
+
+    *page 1* — segmental F1 at every IoU threshold, post-processed: one row
+    per group (plus :data:`ALL_GROUPS` pooling them), one column per
+    threshold; within a panel the architectures along x and one bar per
+    variant, a dot per fold. *Page 2* — the same grid for the frame-level
+    scores (accuracy, edit, frame F1).
+
+    *One page per group × architecture* — the variants side by side: each
+    one's IoU distribution and boundary deltas over its folds, then the
+    class-wise F1 at *classwise_key* (default: the strictest threshold, the
+    one that still moves) with a bar per variant, post-processed and raw. A
+    class a fold's held-out session never contained is left out of that
+    fold's dots rather than counted as 0.
+
+    A grid need not be full — a cell that was never trained simply has no
+    bar — but every cell listed must carry at least one fold.
+    """
+    if not cells:
+        raise ValueError("write_factorial_pdf needs at least one cell.")
+    empty = [f"{c.group}/{c.architecture}/{c.variant}" for c in cells if not c.folds]
+    if empty:
+        raise ValueError(f"Every cell needs at least one fold; these have none: {empty}")
+    stamp = stamp or datetime.now().strftime("%Y-%m-%d %H:%M")
+    thresholds = cells[0].folds[0].thresholds
+    classwise_key = classwise_key or metric_key(thresholds[-1])
+    groups, architectures, _ = _factor_axes(cells)
+    title = title or f"{len(cells)} cells compared"
+    with PdfPages(path) as pdf:
+        segmental = [metric_key(t) for t in thresholds]
+        _summary_page(pdf, cells, segmental, segmental, "processed", f"{title} — segmental F1 (post-processed)", stamp)
+        _summary_page(
+            pdf,
+            cells,
+            ["acc", "edit", "frame_f1"],
+            ["acc", "edit", "frame_f1"],
+            "processed",
+            f"{title} — frame-level scores (post-processed)",
+            stamp,
+        )
+        for group in groups:
+            for architecture in architectures:
+                chosen = [c for c in cells if c.group == group and c.architecture == architecture]
+                if chosen:
+                    _cell_page(pdf, chosen, classes, thresholds, classwise_key, stamp)
+        pdf.infodict()["Title"] = f"{title} — {stamp}"
+    return path
+
+
+def _factor_axes(cells: list[FactorCell]) -> tuple[list[str], list[str], list[str]]:
+    """The groups, architectures and variants the cells span, each in first-seen order."""
+    groups = list(dict.fromkeys(c.group for c in cells))
+    architectures = list(dict.fromkeys(c.architecture for c in cells))
+    variants = list(dict.fromkeys(c.variant for c in cells))
+    return groups, architectures, variants
+
+
+def _variant_bars(
+    ax,
+    categories: list[str],
+    variants: list[str],
+    values: dict[str, dict[str, list[float]]],
+    ylabel: str,
+    title: str,
+    legend: bool,
+) -> None:
+    """Grouped bars — one group per category, one bar per variant — each a mean with a dot per value.
+
+    ``values[variant][category]`` is the list behind one bar; a category a
+    variant has no values for draws nothing there.
+    """
+    x = np.arange(len(categories))
+    n = len(variants)
+    width = 0.8 / n
+    for v_idx, variant in enumerate(variants):
+        offset = (v_idx - (n - 1) / 2) * width
+        colour = _run_colour(v_idx)
+        per_category = values.get(variant, {})
+        means = [np.mean(per_category[c]) if per_category.get(c) else np.nan for c in categories]
+        ax.bar(x + offset, means, width, label=variant, alpha=0.85, color=colour)
+        for i, category in enumerate(categories):
+            points = per_category.get(category, [])
+            if len(points) > 1:
+                ax.scatter([x[i] + offset] * len(points), points, color=_DOT_COLOUR, s=_DOT_SIZE, alpha=0.6, zorder=3)
+    ax.set_xticks(x, categories, rotation=30, ha="right")
+    ax.set_ylabel(ylabel)
+    ax.set_ylim(0, 100)
+    ax.grid(axis="y", alpha=0.3)
+    ax.set_title(title)
+    if legend:
+        ax.legend(fontsize=8)
+
+
+def _summary_page(
+    pdf: PdfPages, cells: list[FactorCell], keys: list[str], labels: list[str], stage: str, title: str, stamp: str
+) -> None:
+    """Rows = groups (+ all of them pooled), columns = *keys*; architectures along x, a bar per variant."""
+    groups, architectures, variants = _factor_axes(cells)
+    rows = [*groups, ALL_GROUPS] if len(groups) > 1 else groups
+    fig, axes = plt.subplots(
+        len(rows), len(keys), figsize=(5.0 * len(keys), 3.6 * len(rows)), squeeze=False, layout="constrained"
+    )
+    for r, group in enumerate(rows):
+        chosen = cells if group == ALL_GROUPS else [c for c in cells if c.group == group]
+        for k, (key, label) in enumerate(zip(keys, labels)):
+            values: dict[str, dict[str, list[float]]] = {v: {} for v in variants}
+            for cell in chosen:
+                values[cell.variant].setdefault(cell.architecture, []).extend(
+                    float(getattr(e, stage)[key]) for e in cell.folds
+                )
+            _variant_bars(
+                axes[r, k], architectures, variants, values, f"{label} (%)", f"{group} — {label}", legend=r == k == 0
+            )
+    _save_page(pdf, fig, title, stamp)
+
+
+def _cell_page(
+    pdf: PdfPages,
+    cells: list[FactorCell],
+    classes: ClassTable,
+    thresholds: list[float],
+    classwise_key: str,
+    stamp: str,
+) -> None:
+    """One group × architecture: every variant's IoU distribution, boundary deltas and class-wise F1."""
+    n = len(cells)
+    fig = plt.figure(figsize=(max(6.0 * n, 12.0), 17.0), layout="constrained")
+    gs = fig.add_gridspec(4, n, height_ratios=[1.2, 1.0, 1.1, 1.1])
+    for i, cell in enumerate(cells):
+        ax = fig.add_subplot(gs[0, i])
+        _iou_distribution(ax, cell.folds, thresholds)
+        ax.set_title(f"{ax.get_title()} — {cell.variant} ({len(cell.folds)} folds)")
+        ax = fig.add_subplot(gs[1, i])
+        _deltas_comparison(ax, cell.folds)
+        ax.set_title(f"{ax.get_title()} — {cell.variant}")
+    for row, stage, label in ((2, "processed", "post-processed"), (3, "raw", "raw")):
+        _classwise_by_variant(
+            fig.add_subplot(gs[row, :]), cells, classes, classwise_key, stage, f"Class-wise {classwise_key} ({label})"
+        )
+    _save_page(pdf, fig, f"{cells[0].group} — {cells[0].architecture}", stamp)
+
+
+def _classwise_by_variant(ax, cells: list[FactorCell], classes: ClassTable, key: str, stage: str, title: str) -> None:
+    """Each class's F1 at *key*, one bar per variant, a dot per fold that saw the class."""
+    ids = sorted({i for c in cells for e in c.folds for i in getattr(e, stage)["classwise"]})
+    if not ids:
+        ax.set_title(f"{title}: no classes")
+        return
+    names = [classes.names[i] if i < classes.n_classes else str(i) for i in ids]
+    values: dict[str, dict[str, list[float]]] = {}
+    for cell in cells:
+        per_class: dict[str, list[float]] = {}
+        for cid, name in zip(ids, names):
+            per_class[name] = [
+                float(getattr(e, stage)["classwise"][cid][key])
+                for e in cell.folds
+                if cid in getattr(e, stage)["classwise"]
+            ]
+        values[cell.variant] = per_class
+    _variant_bars(ax, names, [c.variant for c in cells], values, "F1 (%)", title, legend=True)

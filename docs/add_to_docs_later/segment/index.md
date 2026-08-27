@@ -308,7 +308,7 @@ a run (`runs/{run}/splits/*.bundle`, `stats.npz`).
 
 ## Architectures
 
-Seven networks are available; `eto.segment.architectures()` lists them.
+Nine networks are available; `eto.segment.architectures()` lists them.
 Switching between them is a one-line change, and `project.compare()` puts the
 runs side by side, so trying two or three is cheap.
 
@@ -321,6 +321,8 @@ runs side by side, so trying two or three is cheap.
 | `edtcn` | Encoder–decoder, wide kernels | Small and quick. |
 | `mlp` | Per-frame, no temporal context | A floor to compare against: how much is time actually buying you? |
 | `motionbert` | Attention across joints, then across time | For pose columns that factor into joints: set `model.params.num_joints` (it has no default and must divide the column count). Reads a fixed 128-frame window at a time. |
+| `specscalpel` | Skeleton graph + frequency-selective filtering | **Pose-native.** Reads a skeleton of keypoints and sharpens the boundaries between adjacent behaviours in the frequency domain. Needs `model.params.keypoints` and (optionally) `skeleton`. |
+| `lady` | `specscalpel` + a learned Lagrangian-dynamics stream | **Pose-native.** Adds a physics-informed stream (torque, power, energy) over the skeleton's generalised coordinates. Needs `keypoints`, a `skeleton` with edges, and the root-frame landmarks `root`/`spine` (+ `left`/`right` in 3D); reads raw positions only. |
 
 Each one's hyperparameters, with a comment on each and its default, are in
 `ethograph/segment/dlc2action/config/model/{architecture}.yaml` — set only the
@@ -475,6 +477,22 @@ best.cross_validate(folds=["ses-01", "ses-02"])     # two folds, not all four
 which is how you compare two parameter sets at a fraction of the cost. When
 you actually want to *inspect* a session in the GUI, run its own fold — a
 model that trained on the session it is predicting tells you nothing.
+
+### Ablating the loss, one model per individual
+
+`scripts/bench.py` is that loop turned on the objective. One config per
+individual sits beside the project's (`data/crow1.yaml`: `base: project.yaml`,
+its own four sessions, its own `features.name` — a run draws its split over
+the whole materialised index it reads, so a shared one would train on the
+other individuals), and for each of them and each architecture the bench
+cross-validates three arms: every term, no smoothing (`train.loss.alpha=0`),
+no circle (`train.circle.weight=0`), the "with" weights pinned in the script.
+`data/bench_loss.pdf` then shows segmental F1 per individual, architecture
+and arm — one dot per held-out session — and, per individual × architecture,
+the three arms' IoU distributions, boundary deltas and class-wise F1 side by
+side ({func}`~ethograph.segment.plotting.write_factorial_pdf`). Folds that
+finished are read back, never retrained; `--report-only` draws without
+training.
 
 There is no validation slice by default (`val_fraction=0`): the
 hyperparameters, `epochs` included, came out of stage 1, so every remaining

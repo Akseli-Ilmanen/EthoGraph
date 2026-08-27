@@ -1,0 +1,14 @@
+# SpecScalpel architecture hyperparameters (HaoyuJi/SpecScalpel, MIT).
+# The dataset-specific keys of upstream's config/PKU-subject/config.yaml
+# (node, dataset, loss weights, optimiser, paths) are NOT here: the number of
+# keypoints and the channels-per-keypoint come from this run's feature layout,
+# and the skeleton adjacency from the pose source or a skeleton config. Only
+# the numbers that are the architecture itself remain — read by the builder in
+# ../../models/skeleton_graph.py, never restated in code.
+n_features: 64          # width of the temporal stream
+n_layers: 10            # dilated-attention layers in the encoder (STI)
+n_refine_layers: 10     # layers per refinement decoder
+n_stages: 4             # total prediction stages
+n_stages_asb: 2         # action-segmentation-branch stages (>=1)
+n_stages_brb: 3         # boundary-regression-branch stages (>=1)
+SFI_layer: [1, 2, 3, 4, 5, 6, 7, 8, 9]   # encoder layers that fuse the spatial stream

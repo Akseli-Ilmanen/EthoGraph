@@ -275,8 +275,11 @@ def tunable_params(architecture: str) -> dict[str, Any]:
     A setting upstream leaves required — ``motionbert``'s ``num_joints`` — has
     no default and so is not listed; the builder names it if it is missing.
     """
+    from ethograph.segment.models import skeleton_graph
     from ethograph.segment.models.vendored import tunable_params as _tunable
 
+    if architecture in skeleton_graph._DEFAULTS_FILE:
+        return skeleton_graph.tunable_params(architecture)
     return _tunable(architecture)
 
 

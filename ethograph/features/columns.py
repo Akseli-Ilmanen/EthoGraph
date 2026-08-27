@@ -16,16 +16,27 @@ A feature can additionally contribute its **time derivative** as an extra
 column per combination (:func:`time_derivative`) — how fast the value is
 changing is often what marks an event, and a boosted tree cannot difference
 its own inputs.
+
+An **angle** is instead replaced by its ``(sin, cos)`` pair
+(:func:`sin_cos_values`): a circular quantity read as a plain number lies to
+every model about the distance between its two ends, and no amount of
+z-scoring repairs the jump at the wrap. The units are the variable's own
+``units`` attr where it declares one and are otherwise read off the values
+(:func:`angle_units`), so degrees and radians both arrive as the same two
+bounded columns.
 """
 
 from __future__ import annotations
 
 import itertools
+import logging
 import re
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from typing import Any, NamedTuple
 
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 #: Relative tolerance for "same sampling rate" comparisons.
 FS_RTOL = 1e-3
@@ -33,6 +44,31 @@ FS_RTOL = 1e-3
 #: Suffix marking a derivative column, appended to the name of the column it
 #: is taken from.
 DERIVATIVE_SUFFIX = "d/dt"
+
+#: The two components an angle is replaced by, in the order they are laid out.
+SIN_COMPONENT = "sin"
+COS_COMPONENT = "cos"
+CIRCULAR_COMPONENTS: tuple[str, str] = (SIN_COMPONENT, COS_COMPONENT)
+
+#: The two units an angle may be written in.
+RADIANS = "radians"
+DEGREES = "degrees"
+
+#: How a ``units`` attr may spell each of them.
+_UNIT_SPELLINGS: dict[str, str] = {
+    "rad": RADIANS,
+    "radian": RADIANS,
+    "radians": RADIANS,
+    "deg": DEGREES,
+    "degree": DEGREES,
+    "degrees": DEGREES,
+    "°": DEGREES,
+}
+
+#: Largest magnitude a radian-valued angle reaches. Above it, the values are
+#: degrees — a full turn is 6.28 in radians and 360 in degrees, so there is no
+#: near miss to worry about (see :func:`angle_units`).
+_RADIAN_CEILING = 2.0 * np.pi + 1e-6
 
 #: A dim's value written ``"a..b"`` — sugar for the explicit inclusive range,
 #: never a session-dependent "all" (see :func:`expand_dim_values`).
@@ -48,12 +84,22 @@ class FeatureColumn(NamedTuple):
     #: This column is the pinned series' time derivative, not the series
     #: itself (see :func:`enumerate_columns`).
     derivative: bool = False
+    #: Which component of the angle's ``(sin, cos)`` encoding this column is
+    #: (``None`` = the value as the dataset stores it).
+    circular: str | None = None
 
 
-def column_name(feature: str, selections: dict[str, str], derivative: bool = False) -> str:
+def column_name(
+    feature: str,
+    selections: dict[str, str],
+    derivative: bool = False,
+    circular: str | None = None,
+) -> str:
     name = feature
     if selections:
         name += "|" + ",".join(f"{d}={v}" for d, v in selections.items())
+    if circular:
+        name += f"|{circular}"
     return f"{name}|{DERIVATIVE_SUFFIX}" if derivative else name
 
 
@@ -70,6 +116,92 @@ def time_derivative(values: np.ndarray, time: np.ndarray) -> np.ndarray:
     if values.size < 2:
         raise ValueError("Need at least 2 samples to take a time derivative.")
     return np.gradient(values, np.asarray(time, dtype=np.float64))
+
+
+def parse_angle_units(declared: Any, what: str) -> str | None:
+    """*declared* — a ``units`` attr — as :data:`RADIANS` / :data:`DEGREES`.
+
+    ``None`` when the variable says nothing, which leaves the units to
+    :func:`angle_units`. A unit that is not angular is an error: it says this
+    column is not an angle, and encoding it as one would silently feed the
+    model the sine of a distance.
+    """
+    if declared is None:
+        return None
+    spelling = str(declared).strip().lower().rstrip(".")
+    if not spelling:
+        return None
+    if spelling in _UNIT_SPELLINGS:
+        return _UNIT_SPELLINGS[spelling]
+    raise ValueError(
+        f"{what} is configured as an angle (sin/cos), but the dataset declares "
+        f"units={declared!r} — expected one of {sorted(_UNIT_SPELLINGS)}."
+    )
+
+
+def angle_units(values: np.ndarray, declared: Any = None, what: str = "an angle") -> str:
+    """Whether *values* are radians or degrees.
+
+    The variable's own ``units`` attr decides where it has one; otherwise the
+    values do, and the decision is logged. The two scales are a factor of ~57
+    apart, so the reading is only ambiguous for an angle that never leaves
+    ``±2pi`` — a signal that spends its life within a third of a degree of
+    zero, which is not an angle anyone segments behaviour on. Declare
+    ``units`` on the variable to settle it.
+    """
+    unit = parse_angle_units(declared, what)
+    if unit is not None:
+        return unit
+    finite = np.asarray(values, dtype=np.float64)
+    finite = finite[np.isfinite(finite)]
+    peak = float(np.max(np.abs(finite))) if finite.size else 0.0
+    unit = DEGREES if peak > _RADIAN_CEILING else RADIANS
+    logger.info("%s declares no units; reading it as %s (largest |value| %.4g).", what, unit, peak)
+    return unit
+
+
+def sin_cos_values(values: np.ndarray, units: str) -> tuple[np.ndarray, np.ndarray]:
+    """*values* as ``(sin, cos)``, both in ``[-1, 1]``.
+
+    NaNs pass through as NaNs — a gap in the angle stays a gap, for the
+    interpolation step to fill rather than this one to invent.
+    """
+    radians = np.asarray(values, dtype=np.float64)
+    if units == DEGREES:
+        radians = np.deg2rad(radians)
+    elif units != RADIANS:
+        raise ValueError(f"Unknown angle units {units!r}; expected {RADIANS!r} or {DEGREES!r}.")
+    return np.sin(radians), np.cos(radians)
+
+
+def expand_column(col: FeatureColumn, derivative: bool = False, circular: bool = False) -> list[FeatureColumn]:
+    """The columns one pinned series contributes, in layout order.
+
+    The one definition of that order, read by :func:`enumerate_columns` and by
+    :func:`extract_features`, so the names and the numbers cannot disagree: an
+    angle becomes ``sin`` then ``cos``, and a derivative follows each value it
+    is taken from (the derivative of the *components*, never of the angle
+    itself — that one jumps by ``2pi`` at the wrap).
+    """
+    parts = (
+        [
+            col._replace(name=column_name(col.feature, col.selections, circular=c), circular=c)
+            for c in CIRCULAR_COMPONENTS
+        ]
+        if circular
+        else [col]
+    )
+    out: list[FeatureColumn] = []
+    for part in parts:
+        out.append(part)
+        if derivative:
+            out.append(
+                part._replace(
+                    name=column_name(part.feature, part.selections, True, part.circular),
+                    derivative=True,
+                )
+            )
+    return out
 
 
 def expand_dim_values(values: Any) -> list[str]:
@@ -96,24 +228,27 @@ def expand_dim_values(values: Any) -> list[str]:
 def enumerate_columns(
     features: dict[str, dict[str, Any]],
     derivatives: Iterable[str] | None = None,
+    sin_cos: Iterable[str] | None = None,
 ) -> list[FeatureColumn]:
     """Expand the config's per-dim value lists into pinned columns.
 
     Order is deterministic (config order, then the cartesian product in the
     values' stored order) — it defines the model's input layout. A feature
     named in *derivatives* contributes a second column per combination, its
-    time derivative, directly after the value it is taken from.
+    time derivative, directly after the value it is taken from; a feature
+    named in *sin_cos* is replaced by the two components of its angle
+    (:func:`expand_column`).
     """
     wants_derivative = set(derivatives or ())
+    wants_sin_cos = set(sin_cos or ())
     columns: list[FeatureColumn] = []
     for feature, dims in features.items():
         dim_names = list(dims)
         value_lists = [expand_dim_values(dims[d]) for d in dim_names]
         for combo in itertools.product(*value_lists):
             selections = dict(zip(dim_names, combo))
-            columns.append(FeatureColumn(feature, selections, column_name(feature, selections)))
-            if feature in wants_derivative:
-                columns.append(FeatureColumn(feature, selections, column_name(feature, selections, True), True))
+            col = FeatureColumn(feature, selections, column_name(feature, selections))
+            columns.extend(expand_column(col, feature in wants_derivative, feature in wants_sin_cos))
     return columns
 
 
@@ -143,17 +278,27 @@ def extract_features(
     t0: float | None = None,
     t1: float | None = None,
     derivatives: Iterable[str] | None = None,
+    sin_cos: Iterable[str] | None = None,
+    units: Mapping[str, Any] | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Select every configured column over ``[t0, t1]`` and stack to ``(T, D)``.
 
     *loader* is any :class:`~ethograph.io.catalog.DataLoader`; times are in the
     loader's native clock. Columns come out in :func:`enumerate_columns` order,
     a feature named in *derivatives* contributing its :func:`time_derivative`
-    right after each value it is taken from. Raises ``ValueError`` when a
-    feature is missing, a selection does not pin down to one column, or
-    sampling rates differ.
+    right after each value it is taken from and a feature named in *sin_cos*
+    arriving as its two angle components. *units* is the ``units`` attr of the
+    features that declare one (feature → attr), read only for *sin_cos*; a
+    feature missing from it has its units read off its values
+    (:func:`angle_units`). Raises ``ValueError`` when a feature is missing, a
+    selection does not pin down to one column, or sampling rates differ.
     """
     wants_derivative = set(derivatives or ())
+    wants_sin_cos = set(sin_cos or ())
+    declared = dict(units or {})
+    missing = wants_sin_cos - set(features)
+    if missing:
+        raise ValueError(f"sin_cos names {sorted(missing)}, which is not among the selected features.")
     columns = enumerate_columns(features)
     if not columns:
         raise ValueError("The model config selects no features.")
@@ -183,9 +328,14 @@ def extract_features(
                     f"Feature {col.feature!r} starts {abs(time[0] - time_ref[0]):.4g} s "
                     "away from the other features — their samples cannot be aligned."
                 )
-        arrays.append(data)
-        if col.feature in wants_derivative:
-            arrays.append(time_derivative(data, time))
+        if col.feature in wants_sin_cos:
+            values = list(sin_cos_values(data, angle_units(data, declared.get(col.feature), f"Column {col.name!r}")))
+        else:
+            values = [data]
+        for series in values:
+            arrays.append(series)
+            if col.feature in wants_derivative:
+                arrays.append(time_derivative(series, time))
 
     assert time_ref is not None
     n = min(len(time_ref), *(len(a) for a in arrays))

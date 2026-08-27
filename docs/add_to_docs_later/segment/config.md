@@ -49,10 +49,38 @@ the one folder searched for it (no project-level list to fall through).
 |---|---|---|
 | `name` | `default` | Materialised dataset name → `{root}/data/{name}`. |
 | `columns` | required | `feature → dim → values`. Every dim of a feature must be pinned except the individual dim (pinned per sample). A second individual dim is spelled `other: "*"` — the remaining individuals in dataset order. |
+| `sin_cos` | `[]` | Features in `columns` that are **angles** — see below. |
 | `individuals` | dataset's individual coord | Which individuals become samples. Required when the dataset has no individual dim but the labels name individuals. |
 | `labels.mapping` | required | `mapping.txt` (`id name [branch] [event_type]`). |
 | `labels.branch` | `0` | The one branch this model predicts. |
 | `labels.classes` | all state classes of the branch | Subset of label ids to predict. |
+
+### `features.sin_cos`
+
+An angle read as a plain number lies about its own geometry: 359° and 1° are
+two degrees apart and the column says they are the furthest apart it ever
+gets, and no amount of z-scoring repairs that jump. Name the feature here and
+each of its columns is replaced by the two components of its angle:
+
+```yaml
+features:
+  columns:
+    angles: {keypoint: [beakTip, stickTip]}
+  sin_cos: [angles]
+```
+
+gives `angles|keypoint=beakTip|sin`, `angles|keypoint=beakTip|cos`, and the
+same pair for `stickTip` — the raw column is gone, not supplemented. The
+units are the variable's own `units` attr (`rad` / `deg`, either spelling,
+which is what {mod}`ethograph.features.geometry` writes); a variable that
+declares none has them read off its values, logged at INFO, since a full turn
+is 6.28 one way and 360 the other. A `units` that is not angular at all is an
+error — it says the feature is not an angle.
+
+The components live in `[-1, 1]` and mean what they say there, so they are
+never z-scored or percentile-clipped, exactly like a column carrying
+`attrs["normalise"] = 0`. Naming a feature that `columns` does not select is
+an error.
 
 ### `features.changepoint_features`
 
@@ -156,6 +184,15 @@ ethograph/segment/dlc2action/config/model/{architecture}.yaml
 One name differs from its file: `mstcn` reads `ms_tcn3.yaml`. Every other
 architecture matches.
 
+The two skeleton-graph architectures (`specscalpel`, `lady`) are the
+exception to "params are architecture hyperparameters only": their `params`
+also carry the **joint layout** — `keypoints` (the ordered keypoint names) and
+`skeleton` (a skeleton-config YAML, an ndx-pose `.nwb`, or `[a, b]` pairs) — and,
+for `lady`, the root-frame landmarks `root`/`spine`/`left`/`right`. These are
+structural, not tunable, so `eto.segment.tunable_params(name)` lists only the
+network numbers. Their defaults live in
+`ethograph/segment/{specscalpel,lady}/config/defaults.yaml`.
+
 An unknown key is an error naming the valid ones, so a typo cannot silently do
 nothing — and it is raised *before* training starts, not by the constructor
 half-way into a search.
@@ -220,7 +257,7 @@ stops the output flickering between classes mid-behaviour.
 
 | Key | Default | Meaning |
 |---|---|---|
-| `alpha` | `0.001` | Weight of the consistency term. Raise it if predictions flicker; lower it if short behaviours are being swallowed by their neighbours. |
+| `alpha` | `0.001` | Weight of the consistency term. Raise it if predictions flicker; lower it if short behaviours are being swallowed by their neighbours. The default is DLC2Action's, at which the term barely registers; MS-TCN's published value is `0.15`, which is what the earlier CETNet training script used and what `scripts/bench.py` pins when it asks whether the term helps at all. |
 | `tau` | `4` | How large a frame-to-frame jump in log-probability that term still penalises; beyond `tau` it is truncated, so a genuine class change is not punished without limit. Ours, not a key of a config file upstream: DLC2Action writes MS-TCN's `tau` of 4 into the arithmetic as `clamp(..., max=16)`. Both it and `alpha` were tuned in the literature at 15–30 fps, so at a high sampling rate they are worth re-tuning together — that is what `scripts/experiment2_smoothing.py` sweeps. |
 | `focal` | `true` | Focus the loss on frames the model still gets wrong, instead of ones it already has right. |
 | `gamma` | `2` | How sharply `focal` does that. Higher = more focus on hard frames. No effect when `focal: false`. |
@@ -255,8 +292,23 @@ Architecture-agnostic — every registered model produces logits.
 
 ```yaml
 train:
-  circle: {weight: 0}   # explicit off, same as the default
+  circle: {weight: 0.001}   # the weighting it was ported with; 0 (the default) switches it off
 ```
+
+#### Choosing a weight
+
+Start at **`0.001`**, with `m` and `gamma` at their defaults. The term is a
+softplus of a log-sum-exp over every same-class and different-class pair,
+scaled by `gamma` = 128, so its raw value runs to tens where the frame
+cross-entropy sits below 1 — the weight is what brings the two onto one
+scale, and `0.001` is exactly the weighting the CETNet training script this
+was ported from used (`0.001 * CircleLoss(m=0.25, gamma=128)`). One
+difference to keep in mind: that script applied it to the encoder's feature
+map, whereas here it reads the class logits, a vector only as wide as the
+number of classes, so the same weight is a starting point rather than a
+tuned answer. Whether the term earns its place is what `scripts/bench.py`
+measures — every architecture, with and without it, cross-validated per
+individual.
 
 ### `train.augment`
 
