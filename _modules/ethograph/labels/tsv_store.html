@@ -517,23 +517,42 @@
 
 <span class="n">REQUIRED_COLUMNS</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"onset_s"</span><span class="p">,</span> <span class="s2">"offset_s"</span><span class="p">,</span> <span class="s2">"labels"</span><span class="p">,</span> <span class="s2">"individual"</span><span class="p">,</span> <span class="s2">"trial"</span><span class="p">}</span>
 
+<span class="c1">#: Columns that must carry a value on *every* row. ``offset_s`` is excluded —</span>
+<span class="c1">#: a point event legitimately stores it as NaN.</span>
+<span class="n">REQUIRED_NONNULL_COLUMNS</span> <span class="o">=</span> <span class="p">(</span><span class="s2">"trial"</span><span class="p">,</span> <span class="s2">"individual"</span><span class="p">,</span> <span class="s2">"labels"</span><span class="p">,</span> <span class="s2">"onset_s"</span><span class="p">)</span>
+
 
 <div class="viewcode-block" id="validate_labels_tsv">
 <a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.tsv_store.validate_labels_tsv">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">validate_labels_tsv</span><span class="p">(</span><span class="n">df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span> <span class="o">=</span> <span class="s2">""</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">"""Validate that a labels DataFrame has all required columns.</span>
+<span class="w">    </span><span class="sd">"""Validate that a labels DataFrame has all required columns and values.</span>
 
 <span class="sd">    Raises</span>
 <span class="sd">    ------</span>
 <span class="sd">    ValueError</span>
 <span class="sd">        If any of ``onset_s``, ``offset_s``, ``labels``, ``individual``, ``trial``</span>
-<span class="sd">        are missing from the DataFrame columns.</span>
+<span class="sd">        are missing from the DataFrame columns, or if any row is missing a</span>
+<span class="sd">        value in one of :data:`REQUIRED_NONNULL_COLUMNS` (``offset_s`` aside,</span>
+<span class="sd">        since a point event's is legitimately blank).</span>
 <span class="sd">    """</span>
     <span class="n">missing</span> <span class="o">=</span> <span class="n">REQUIRED_COLUMNS</span> <span class="o">-</span> <span class="nb">set</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">missing</span><span class="p">:</span>
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
             <span class="sa">f</span><span class="s2">"Labels file </span><span class="si">{</span><span class="n">path</span><span class="si">}</span><span class="s2"> is missing required columns: </span><span class="si">{</span><span class="nb">sorted</span><span class="p">(</span><span class="n">missing</span><span class="p">)</span><span class="si">}</span><span class="s2">. Required: </span><span class="si">{</span><span class="nb">sorted</span><span class="p">(</span><span class="n">REQUIRED_COLUMNS</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span>
-        <span class="p">)</span></div>
+        <span class="p">)</span>
+
+    <span class="k">for</span> <span class="n">col</span> <span class="ow">in</span> <span class="n">REQUIRED_NONNULL_COLUMNS</span><span class="p">:</span>
+        <span class="c1"># astype(str) covers both plain-object and pandas' newer StringDtype</span>
+        <span class="c1"># columns; a numeric column's values never stringify to "".</span>
+        <span class="n">blank</span> <span class="o">=</span> <span class="n">df</span><span class="p">[</span><span class="n">col</span><span class="p">]</span><span class="o">.</span><span class="n">isna</span><span class="p">()</span> <span class="o">|</span> <span class="p">(</span><span class="n">df</span><span class="p">[</span><span class="n">col</span><span class="p">]</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">str</span><span class="p">)</span><span class="o">.</span><span class="n">str</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span> <span class="o">==</span> <span class="s2">""</span><span class="p">)</span>
+        <span class="n">n_blank</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">blank</span><span class="o">.</span><span class="n">sum</span><span class="p">())</span>
+        <span class="k">if</span> <span class="n">n_blank</span><span class="p">:</span>
+            <span class="c1"># +2: 1 for the header row, 1 for 1-indexing.</span>
+            <span class="n">rows</span> <span class="o">=</span> <span class="p">(</span><span class="n">blank</span><span class="p">[</span><span class="n">blank</span><span class="p">]</span><span class="o">.</span><span class="n">index</span><span class="p">[:</span><span class="mi">10</span><span class="p">]</span> <span class="o">+</span> <span class="mi">2</span><span class="p">)</span><span class="o">.</span><span class="n">tolist</span><span class="p">()</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">"Labels file </span><span class="si">{</span><span class="n">path</span><span class="si">}</span><span class="s2"> has </span><span class="si">{</span><span class="n">n_blank</span><span class="si">}</span><span class="s2"> row(s) with a missing '</span><span class="si">{</span><span class="n">col</span><span class="si">}</span><span class="s2">' value "</span>
+                <span class="sa">f</span><span class="s2">"(e.g. line(s) </span><span class="si">{</span><span class="n">rows</span><span class="si">}</span><span class="s2">). Every row must have a '</span><span class="si">{</span><span class="n">col</span><span class="si">}</span><span class="s2">'."</span>
+            <span class="p">)</span></div>
 
 
 

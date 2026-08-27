@@ -374,7 +374,7 @@
 <li class="toctree-l2"><a class="reference internal" href="importing.html">Importing labels</a></li>
 <li class="toctree-l2"><a class="reference internal" href="exporting.html">Exporting labels</a></li>
 <li class="toctree-l2"><a class="reference internal" href="curation.html">Curating labels</a></li>
-<li class="toctree-l2"><a class="reference internal" href="onset_model.html">Predicting point events (LightGBM)</a></li>
+
 <li class="toctree-l2"><a class="reference internal" href="workflows.html">Curation workflows</a></li>
 </ul>
 </details></li>
@@ -483,13 +483,13 @@ dropdowns:</p>
 <ul class="simple">
 <li><p><strong>Individual</strong> — the animal performing the behaviour. Switching it switches
 the labels you see and create, exactly as before.</p></li>
-<li><p><strong>Recipient</strong> — for dyadic interactions (one bird mounting another, one
+<li><p><strong>Receiver</strong> — for dyadic interactions (one bird mounting another, one
 animal grooming another). It is <code class="docutils literal notranslate"><span class="pre">None</span></code> by default, meaning a solo behaviour.</p></li>
 </ul>
-<p>Together they are the <em>subject</em> of a label, and each (individual, recipient)
-pair is an independent track: with a recipient chosen, only that pair’s labels
+<p>Together they are the <em>subject</em> of a label, and each (individual, receiver)
+pair is an independent track: with a receiver chosen, only that pair’s labels
 are drawn and clickable, and a new label is stored against that pair. Switching
-the recipient therefore gives you a fresh canvas for the next interaction
+the receiver therefore gives you a fresh canvas for the next interaction
 without touching what you already labelled.</p>
 <p>The pair is stored per label in the TSV’s <code class="docutils literal notranslate"><span class="pre">individual</span></code> and <code class="docutils literal notranslate"><span class="pre">individual_rec</span></code>
 columns — see <a class="reference internal" href="exporting.html#target-exporting-labels"><span class="std std-ref">the column reference</span></a>.</p>

@@ -16,6 +16,17 @@ Keypoints are defined as one shared list of names instantiated by one or more in
 Every marker is a circle either way; the individual you are labelling is drawn at full opacity, the others dimmed, and each carries its name at the centre of its points. Colours are auto-assigned from a spread palette, overridable via **Colour…** — which edits whichever palette is being drawn, the selected keypoint's or the selected individual's — applied consistently across overlay, tree and points table, resettable wholesale, and persisted in `<video>.keypoints.json`.
 
 
+### Static keypoints
+
+Tick **Static** beside a keypoint that does not move — the corners of the
+arena, a fixed landmark. Label it **once**, on any frame, and it is there on
+every frame: the canvas draws it everywhere as a label, the fill leaves it
+alone, and the export writes it on every frame. Placing it again moves it
+(everywhere); deleting it removes it (everywhere). It is saved in the sidecar,
+and the next clip you open from the same camera starts with the static
+keypoints already placed where they were in the last clip you saved — so with
+many short clips of one rig you click the corners once, not once per clip.
+
 ## 2. Label & Edit
 
 Arm **Sequential** or **Loop** and click the video:

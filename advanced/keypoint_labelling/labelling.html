@@ -374,7 +374,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../labels/importing.html">Importing labels</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../labels/exporting.html">Exporting labels</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../labels/curation.html">Curating labels</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../labels/onset_model.html">Predicting point events (LightGBM)</a></li>
+
 <li class="toctree-l2"><a class="reference internal" href="../labels/workflows.html">Curation workflows</a></li>
 </ul>
 </details></li>
@@ -489,6 +489,17 @@
 </table>
 </div>
 <p>Every marker is a circle either way; the individual you are labelling is drawn at full opacity, the others dimmed, and each carries its name at the centre of its points. Colours are auto-assigned from a spread palette, overridable via <strong>Colour…</strong> — which edits whichever palette is being drawn, the selected keypoint’s or the selected individual’s — applied consistently across overlay, tree and points table, resettable wholesale, and persisted in <code class="docutils literal notranslate"><span class="pre">&lt;video&gt;.keypoints.json</span></code>.</p>
+<section id="static-keypoints">
+<h3>Static keypoints<a class="headerlink" href="#static-keypoints" title="Link to this heading">#</a></h3>
+<p>Tick <strong>Static</strong> beside a keypoint that does not move — the corners of the
+arena, a fixed landmark. Label it <strong>once</strong>, on any frame, and it is there on
+every frame: the canvas draws it everywhere as a label, the fill leaves it
+alone, and the export writes it on every frame. Placing it again moves it
+(everywhere); deleting it removes it (everywhere). It is saved in the sidecar,
+and the next clip you open from the same camera starts with the static
+keypoints already placed where they were in the last clip you saved — so with
+many short clips of one rig you click the corners once, not once per clip.</p>
+</section>
 </section>
 <section id="label-edit">
 <h2>2. Label &amp; Edit<a class="headerlink" href="#label-edit" title="Link to this heading">#</a></h2>
@@ -630,7 +641,10 @@ the points table seeks to any frame, suggested or not.</p>
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#define-keypoints">1. Define keypoints</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#define-keypoints">1. Define keypoints</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#static-keypoints">Static keypoints</a></li>
+</ul>
+</li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#label-edit">2. Label &amp; Edit</a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#which-frames-to-label">Which frames to label</a></li>
 </ul>

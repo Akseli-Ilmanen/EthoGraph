@@ -424,44 +424,32 @@
 <dt class="sig sig-object py" id="ethograph.labels.predictions.PredictionsStore">
 <em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">ethograph.labels.predictions.</span></span><span class="sig-name descname"><span class="pre">PredictionsStore</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">folder</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/labels/predictions.html#PredictionsStore"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.labels.predictions.PredictionsStore" title="Link to this definition">#</a></dt>
 <dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
-<p>Lazy per-trial loader for a predictions folder.</p>
-<p>Scans the folder at construction time (fast — filesystem only, no file reads).
-Individual trial data is loaded on demand via <a class="reference internal" href="labels.html#ethograph.labels.predictions.PredictionsStore.get_confidence" title="ethograph.labels.predictions.PredictionsStore.get_confidence"><code class="xref py py-meth docutils literal notranslate"><span class="pre">get_confidence()</span></code></a>.</p>
-<p>Supports <code class="docutils literal notranslate"><span class="pre">.npy</span></code> (memory-mapped when shape is 1-D) and <code class="docutils literal notranslate"><span class="pre">.pkl</span></code>/<code class="docutils literal notranslate"><span class="pre">.pickle</span></code>
-formats. Additional formats can be added to <code class="docutils literal notranslate"><span class="pre">load_prediction_file</span></code>.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>folder</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> or </em><em>Path</em>) – Folder containing per-trial prediction files.</p>
-</dd>
-</dl>
+<p>Read one <code class="xref py py-mod docutils literal notranslate"><span class="pre">ethograph.segment.inference</span></code> prediction folder.</p>
 <p class="rubric">Example</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">store</span> <span class="o">=</span> <span class="n">PredictionsStore</span><span class="p">(</span><span class="s2">"predictions_cetnet_20260330/uncorr"</span><span class="p">)</span>
-<span class="n">confidence</span> <span class="o">=</span> <span class="n">store</span><span class="o">.</span><span class="n">get_confidence</span><span class="p">(</span><span class="n">trial</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span> <span class="n">dt</span><span class="o">=</span><span class="n">dt</span><span class="p">)</span>
-<span class="n">labels_df</span><span class="p">,</span> <span class="n">levels</span> <span class="o">=</span> <span class="n">store</span><span class="o">.</span><span class="n">load_all</span><span class="p">(</span><span class="n">dt</span><span class="p">,</span> <span class="n">individual</span><span class="o">=</span><span class="s2">"Poppy"</span><span class="p">,</span> <span class="n">threshold</span><span class="o">=</span><span class="mf">0.75</span><span class="p">)</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">store</span> <span class="o">=</span> <span class="n">PredictionsStore</span><span class="p">(</span><span class="s2">"labels/predictions_mstcn_20260101_000000"</span><span class="p">)</span>
+<span class="n">labels_df</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">store</span><span class="o">.</span><span class="n">load_all</span><span class="p">(</span><span class="n">dt</span><span class="p">)</span>
+<span class="n">confidence</span> <span class="o">=</span> <span class="n">store</span><span class="o">.</span><span class="n">get_confidence</span><span class="p">(</span><span class="n">trial</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span> <span class="n">dt</span><span class="o">=</span><span class="n">dt</span><span class="p">,</span> <span class="n">individual</span><span class="o">=</span><span class="s2">"A"</span><span class="p">)</span>
 </pre></div>
 </div>
 <p class="rubric">Methods</p>
 <div class="pst-scrollable-table-container"><table class="autosummary longtable table">
 <tbody>
-<tr class="row-odd"><td><p><a class="reference internal" href="labels.html#ethograph.labels.predictions.PredictionsStore.get_confidence" title="ethograph.labels.predictions.PredictionsStore.get_confidence"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_confidence</span></code></a>(trial, dt)</p></td>
-<td><p>Load and return the confidence array for one trial.</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="labels.html#ethograph.labels.predictions.PredictionsStore.get_confidence" title="ethograph.labels.predictions.PredictionsStore.get_confidence"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_confidence</span></code></a>(trial, dt[, individual])</p></td>
+<td><p>Per-frame confidence for one (trial, individual), from the run's own probabilities.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="labels.html#ethograph.labels.predictions.PredictionsStore.get_file" title="ethograph.labels.predictions.PredictionsStore.get_file"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_file</span></code></a>(trial, trial_list)</p></td>
-<td><p>Return the prediction file path for a trial, or None.</p></td>
-</tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="labels.html#ethograph.labels.predictions.PredictionsStore.load_all" title="ethograph.labels.predictions.PredictionsStore.load_all"><code class="xref py py-obj docutils literal notranslate"><span class="pre">load_all</span></code></a>(dt, individual[, ...])</p></td>
-<td><p>Load all trials — convert to intervals and compute confidence levels.</p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="labels.html#ethograph.labels.predictions.PredictionsStore.load_all" title="ethograph.labels.predictions.PredictionsStore.load_all"><code class="xref py py-obj docutils literal notranslate"><span class="pre">load_all</span></code></a>(dt[, individual])</p></td>
+<td><p>Every trial's predictions, already postprocessed by the run itself.</p></td>
 </tr>
 </tbody>
 </table>
 </div>
 <dl class="py method">
 <dt class="sig sig-object py" id="ethograph.labels.predictions.PredictionsStore.get_confidence">
-<span class="sig-name descname"><span class="pre">get_confidence</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">trial</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dt</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/labels/predictions.html#PredictionsStore.get_confidence"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.labels.predictions.PredictionsStore.get_confidence" title="Link to this definition">#</a></dt>
-<dd><p>Load and return the confidence array for one trial.</p>
-<p>For <code class="docutils literal notranslate"><span class="pre">.npy</span></code> probability files the array is memory-mapped; for <code class="docutils literal notranslate"><span class="pre">.pkl</span></code>
-files the full file is read (typically ~150 KB — a few milliseconds).
-The returned array is not cached — call again to re-load if needed.</p>
+<span class="sig-name descname"><span class="pre">get_confidence</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">trial</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dt</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">individual</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/labels/predictions.html#PredictionsStore.get_confidence"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.labels.predictions.PredictionsStore.get_confidence" title="Link to this definition">#</a></dt>
+<dd><p>Per-frame confidence for one (trial, individual), from the run’s own probabilities.</p>
+<p>Returns <code class="docutils literal notranslate"><span class="pre">None</span></code> when the run has no <code class="docutils literal notranslate"><span class="pre">.npz</span></code> (e.g. a hand-edited
+folder) or no key matches — an aid to review, never something a
+caller depends on.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type">np.ndarray | None</span></p>
@@ -470,43 +458,12 @@ The returned array is not cached — call again to re-load if needed.</p>
 </dd></dl>
 
 <dl class="py method">
-<dt class="sig sig-object py" id="ethograph.labels.predictions.PredictionsStore.get_file">
-<span class="sig-name descname"><span class="pre">get_file</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">trial</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">trial_list</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/labels/predictions.html#PredictionsStore.get_file"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.labels.predictions.PredictionsStore.get_file" title="Link to this definition">#</a></dt>
-<dd><p>Return the prediction file path for a trial, or None.</p>
+<dt class="sig sig-object py" id="ethograph.labels.predictions.PredictionsStore.load_all">
+<span class="sig-name descname"><span class="pre">load_all</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dt</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">individual</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">_ignored</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/labels/predictions.html#PredictionsStore.load_all"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.labels.predictions.PredictionsStore.load_all" title="Link to this definition">#</a></dt>
+<dd><p>Every trial’s predictions, already postprocessed by the run itself.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Path</span></code></a> | <a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></a></span></p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="ethograph.labels.predictions.PredictionsStore.load_all">
-<span class="sig-name descname"><span class="pre">load_all</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dt</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">individual</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">confidence_threshold</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.75</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">segment_confidence_threshold</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.6</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/labels/predictions.html#PredictionsStore.load_all"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.labels.predictions.PredictionsStore.load_all" title="Link to this definition">#</a></dt>
-<dd><p>Load all trials — convert to intervals and compute confidence levels.</p>
-<p>Confidence arrays are computed in one pass then discarded; only the
-per-trial high/low classification is kept.  The same two-condition
-criterion used in the confidence PDF is applied: a trial is “low” if
-its overall mean confidence &lt; <em>confidence_threshold</em> OR any labeled
-segment’s mean confidence &lt; <em>segment_confidence_threshold</em>.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>dt</strong> (<a class="reference internal" href="trialtree.html#ethograph.io.trialtree.TrialTree" title="ethograph.io.trialtree.TrialTree"><em>TrialTree</em></a>)</p></li>
-<li><p><strong>individual</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>)</p></li>
-<li><p><strong>confidence_threshold</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><em>float</em></a>) – Frame-level threshold; overall trial mean below this → “low”.</p></li>
-<li><p><strong>segment_confidence_threshold</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><em>float</em></a>) – Segment-level threshold; any segment mean below this → “low”.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">tuple</span></code></a>[<a class="reference external" href="https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html#pandas.DataFrame" title="(in pandas v3.0.5)"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code></a>, <a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code></a>[<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></a> | <a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></a>, <a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></a>]]</span></p>
-</dd>
-<dt class="field-odd">Returns<span class="colon">:</span></dt>
-<dd class="field-odd"><p><ul class="simple">
-<li><p><strong>all_labels_df</strong> (<em>pd.DataFrame</em>)</p></li>
-<li><p><strong>confidence_levels</strong> (<em>dict</em>) – <code class="docutils literal notranslate"><span class="pre">{trial:</span> <span class="pre">&quot;low&quot;</span> <span class="pre">|</span> <span class="pre">&quot;high&quot;}</span></code></p></li>
-</ul>
-</p>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">tuple</span></code></a>[<a class="reference external" href="https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html#pandas.DataFrame" title="(in pandas v3.0.5)"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code></a>, <a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code></a>]</span></p>
 </dd>
 </dl>
 </dd></dl>
@@ -546,7 +503,6 @@ segment’s mean confidence &lt; <em>segment_confidence_threshold</em>.</p>
     <ul class="pst-show_toc_level nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.labels.predictions.PredictionsStore"><code class="docutils literal notranslate"><span class="pre">PredictionsStore</span></code></a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.labels.predictions.PredictionsStore.get_confidence"><code class="docutils literal notranslate"><span class="pre">PredictionsStore.get_confidence()</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.labels.predictions.PredictionsStore.get_file"><code class="docutils literal notranslate"><span class="pre">PredictionsStore.get_file()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.labels.predictions.PredictionsStore.load_all"><code class="docutils literal notranslate"><span class="pre">PredictionsStore.load_all()</span></code></a></li>
 </ul>
 </li>

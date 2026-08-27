@@ -405,22 +405,24 @@
                   
   <section id="module-ethograph.labels.predictions">
 <span id="ethograph-labels-predictions"></span><h1>ethograph.labels.predictions<a class="headerlink" href="#module-ethograph.labels.predictions" title="Link to this heading">#</a></h1>
-<p>Load model predictions from per-trial files and convert to label intervals.</p>
-<dl class="simple">
-<dt>Predictions are stored as per-trial files in a folder:</dt><dd><dl class="simple">
-<dt>predictions_dlc2action/</dt><dd><p>dlc2action_trial1.pickle    # (T, n_classes) or (T,)
-dlc2action_trial2.npy</p>
-</dd>
-</dl>
-</dd>
-</dl>
-<p>If shape (T, n_classes): softmax probabilities → labels via argmax, confidence via 1-entropy.
-If shape (T,): dense labels directly, no confidence available.</p>
+<p>Read a <code class="xref py py-mod docutils literal notranslate"><span class="pre">ethograph.segment.inference</span></code> prediction folder.</p>
+<p>One run, one folder, beside the session’s own <code class="docutils literal notranslate"><span class="pre">labels/</span></code> (see
+<code class="xref py py-mod docutils literal notranslate"><span class="pre">ethograph.labels.onset_curves</span></code> for the sibling convention the LightGBM
+onset model uses):</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">labels</span><span class="o">/</span>
+    <span class="n">predictions_</span><span class="p">{</span><span class="n">run_name</span><span class="p">}</span><span class="n">_</span><span class="p">{</span><span class="n">timestamp</span><span class="p">}</span><span class="o">/</span>
+        <span class="p">{</span><span class="n">stem</span><span class="p">}</span><span class="n">_predictions</span><span class="o">.</span><span class="n">tsv</span>   <span class="c1"># real intervals, per-segment confidence, labeling_method</span>
+        <span class="p">{</span><span class="n">stem</span><span class="p">}</span><span class="n">_probs</span><span class="o">.</span><span class="n">npz</span>         <span class="c1"># per (trial, individual): "{key}" -&gt; (T, C) probs, "{key}_time" -&gt; (T,)</span>
+</pre></div>
+</div>
+<p>The TSV needs no reconstruction — it is already the GUI’s native labels
+format. Only the frame-by-frame confidence <em>curve</em> (for the review overlay)
+is read from the <code class="docutils literal notranslate"><span class="pre">.npz</span></code>, one array at a time.</p>
 <p class="rubric">Classes</p>
 <div class="pst-scrollable-table-container"><table class="autosummary longtable table">
 <tbody>
 <tr class="row-odd"><td><p><a class="reference internal" href="labels.html#ethograph.labels.predictions.PredictionsStore" title="ethograph.labels.predictions.PredictionsStore"><code class="xref py py-obj docutils literal notranslate"><span class="pre">PredictionsStore</span></code></a></p></td>
-<td><p>Lazy per-trial loader for a predictions folder.</p></td>
+<td><p>Read one <code class="xref py py-mod docutils literal notranslate"><span class="pre">ethograph.segment.inference</span></code> prediction folder.</p></td>
 </tr>
 </tbody>
 </table>
@@ -428,10 +430,7 @@ If shape (T,): dense labels directly, no confidence available.</p>
 <p class="rubric">Functions</p>
 <div class="pst-scrollable-table-container"><table class="autosummary longtable table">
 <tbody>
-<tr class="row-odd"><td><p><a class="reference internal" href="labels.html#ethograph.labels.predictions.load_prediction_file" title="ethograph.labels.predictions.load_prediction_file"><code class="xref py py-obj docutils literal notranslate"><span class="pre">load_prediction_file</span></code></a></p></td>
-<td><p>Load a prediction file (.npy or .pickle).</p></td>
-</tr>
-<tr class="row-even"><td><p><a class="reference internal" href="labels.html#ethograph.labels.predictions.prediction_to_labels_and_confidence" title="ethograph.labels.predictions.prediction_to_labels_and_confidence"><code class="xref py py-obj docutils literal notranslate"><span class="pre">prediction_to_labels_and_confidence</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="labels.html#ethograph.labels.predictions.prediction_to_labels_and_confidence" title="ethograph.labels.predictions.prediction_to_labels_and_confidence"><code class="xref py py-obj docutils literal notranslate"><span class="pre">prediction_to_labels_and_confidence</span></code></a></p></td>
 <td><p>Convert prediction array to dense labels and optional confidence.</p></td>
 </tr>
 </tbody>

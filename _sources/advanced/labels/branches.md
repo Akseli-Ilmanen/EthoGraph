@@ -36,10 +36,13 @@ branch's labels can be created, deleted (Ctrl+D) or edited (Ctrl+E) ---
 labels on other branches are protected while shown.
 
 Any label you can **see** can be clicked to select it, whatever branch is
-active, so playback (V) works on every shown branch. Selecting a label from
-another branch leaves the active branch alone: it does not change which label
-class a new label would be drawn with, and Ctrl+D / Ctrl+E on it are refused
-with a message telling you to activate its branch first.
+active, so playback (V) works on every shown branch — and on a shown
+**prediction** too, once nothing else matches the click. Selecting a label
+from another branch leaves the active branch alone: it does not change which
+label class a new label would be drawn with, and Ctrl+D / Ctrl+E on it are
+refused with a message telling you to activate its branch first. A selected
+prediction is refused the same way — it is read-only, never editable or
+deletable.
 
 - Click a branch's name in the Labels panel to make it active (highlighted).
 - Each branch has its own **checkbox** (left of its **x** delete button) to
@@ -49,8 +52,9 @@ with a message telling you to activate its branch first.
   updates automatically.
 - **+** adds a new branch (max 3); **x** deletes one (must be empty first).
 - Imported **predictions** are a separate overlay, toggled with the
-  "Predictions" checkbox or **Ctrl+Y**, filling whichever of Top 1/Top 2
-  isn't already used by a shown branch.
+  "Predictions" checkbox, filling whichever of Top 1/Top 2 isn't already used
+  by a shown branch. If both are already taken by shown branches, predictions
+  get no strip and a warning says so — hide a branch to make room.
 
 ---
 

@@ -53,7 +53,6 @@ useful guide when guessing a binding.
 | `Ctrl+D` | Delete selected label (after selecting label) |
 | `Ctrl+Z` | Undo the last label placed, moved or deleted (cancels a half-placed label first) |
 | `Ctrl+S` | Save `labels.tsv` file |
-| `Ctrl+Y` | Switch between labels and predictions |
 | `Shift+B` | Switch the Main labels slot to the previously-selected branch |
 
 ## Curation

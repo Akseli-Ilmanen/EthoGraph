@@ -105,14 +105,15 @@ inference — runs over the filtered trials only.
 
 The column filters ask about metadata. **Tools ▸ Find label inconsistencies…**
 asks about the labels themselves — which trials have an event without its
-partner, which ran the classes in an order they should not have, which are
-missing a sequence altogether. Type the label ids the way the Sequence
+partner, which carry a label twice, which ran the classes in an order they
+should not have, which are missing a sequence altogether. Type the label ids the way the Sequence
 navigator takes them (`1-2-6-8`) and pick the question:
 
 | | |
 |---|---|
 | **All of them occur** | the classes are all somewhere in the trial, any order |
 | **Some but not all occur** | one event without its partner — the uncoupled case |
+| **Any of them occurs more than once** | a class that should happen once per trial happens twice — a doubled click, a prediction that fired twice |
 | **In this order** | in that order, other labels allowed in between (`1-2-6-6-8` matches `1-2-6-8`) |
 | **In this order, one straight after another** | the same, contiguously (`1-2-6-6-8` does *not* match) |
 

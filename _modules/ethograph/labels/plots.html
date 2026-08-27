@@ -625,7 +625,8 @@
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
 <span class="sd">    confidence_map : dict</span>
-<span class="sd">        {trial: confidence_array (T,)} from load_predictions_folder.</span>
+<span class="sd">        {trial: confidence_array (T,)}, built from ``PredictionsStore.get_confidence``</span>
+<span class="sd">        (see :mod:`ethograph.labels.predictions`).</span>
 <span class="sd">    labels_df : pd.DataFrame</span>
 <span class="sd">        Predictions intervals DataFrame (onset_s, offset_s, labels, trial, individual).</span>
 <span class="sd">    dt : TrialTree</span>
