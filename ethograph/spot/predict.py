@@ -30,7 +30,7 @@ import numpy as np
 import pandas as pd
 
 from ethograph.labels.intervals import LABELING_AUTOMATED, NO_RECIPIENT
-from ethograph.spot.confidence import CurveStats, confidence_of, curve_stats, densify, window_samples
+from ethograph.spot.confidence import DEFAULT_RULE, CurveStats, confidence_of, curve_stats, densify, window_samples
 from ethograph.spot.config import ResolvedClip, SpotConfig
 
 logger = logging.getLogger(__name__)
@@ -50,10 +50,13 @@ class SpottedEvent:
     #: Seconds on the video's clock (``frame / fps``).
     video_s: float
     stats: CurveStats
+    #: The rule ``confidence`` is read by (``infer.confidence`` / ``confidence_alpha``).
+    rule: str = DEFAULT_RULE
+    alpha: float = 0.5
 
     @property
     def confidence(self) -> float:
-        return confidence_of(self.stats)
+        return confidence_of(self.stats, self.rule, self.alpha)
 
 
 def read_predictions(path: Path) -> list[dict]:
@@ -125,6 +128,8 @@ def spot_entry(
                 frame=full_frame,
                 video_s=full_frame / clip.fps,
                 stats=stats,
+                rule=config.infer.confidence,
+                alpha=config.infer.confidence_alpha,
             )
         )
     return events, curves

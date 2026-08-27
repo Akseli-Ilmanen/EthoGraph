@@ -24,6 +24,10 @@ A run is a record of what a model said at a moment, so its folder is written
 once and never edited. :func:`read_all_curves` reads every run, the newest
 winning per (trial, class) — so re-predicting one class does not erase what an
 earlier run said about another, and the older run is still on disk to compare.
+The Curation section draws from a single chosen run instead of this merge: one
+matching run is used without asking, and with several the reviewer picks —
+by name, or by browsing straight to an ``onset_curves.npz`` — so it is always
+clear whose confidence is on screen.
 
 Layout of one ``onset_curves.npz`` — one entry per trial the run predicted
 into::

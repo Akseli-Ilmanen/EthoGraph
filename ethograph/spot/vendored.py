@@ -160,6 +160,24 @@ def gpu_holders() -> str:
     return out.stdout.strip() or "(nvidia-smi lists no process)"
 
 
+def frame_budget() -> int:
+    """Frames per loader batch the card present holds: the 10 GB measurement scaled by its memory.
+
+    :data:`~ethograph.spot.config.MAX_FRAMES_PER_BATCH` (200) was measured on
+    a 10 GB card; a 24 GB card holds ~480, an 8 GB one ~160. No CUDA device
+    (the CPU, or a test) reads as the measured card, so a config resolves the
+    same on every machine that has none.
+    """
+    import torch
+
+    from ethograph.spot.config import MAX_FRAMES_PER_BATCH, MIN_CLIP_LEN
+
+    if not torch.cuda.is_available():
+        return MAX_FRAMES_PER_BATCH
+    _free, total = torch.cuda.mem_get_info()
+    return max(MIN_CLIP_LEN, int(MAX_FRAMES_PER_BATCH * (total / 1e9) / 10.0))
+
+
 def check_vram(frames_per_batch: int) -> None:
     """Refuse to start a run the card cannot hold.
 

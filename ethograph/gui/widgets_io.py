@@ -30,7 +30,6 @@ from qtpy.QtWidgets import (
 from ethograph.io.catalog import INDIVIDUAL_DIMS
 from ethograph.io.metadata_table import metadata_tsv_path
 from ethograph.io.validation import EPHYS_FILE_FILTER
-from ethograph.labels.export import correct_offsets_trial
 from ethograph.labels.tsv_store import labels_tsv_path, load_labels_tsv
 from ethograph.utils.paths import (
     default_config_dir,
@@ -314,36 +313,11 @@ class IOWidget(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         self.export_panel.setLayout(layout)
 
-        # Correct offsets row
-        co_row = QHBoxLayout()
-        co_row.addWidget(QLabel("Apply offset correction to:"))
-        self.correct_offsets_trial_btn = QPushButton("Single Trial")
-        self.correct_offsets_trial_btn.clicked.connect(lambda: self._apply_correct_offsets("single_trial"))
-        co_row.addWidget(self.correct_offsets_trial_btn)
-        self.correct_offsets_all_trials_btn = QPushButton("All Trials (Filtered only)")
-        self.correct_offsets_all_trials_btn.clicked.connect(lambda: self._apply_correct_offsets("all_trials"))
-        co_row.addWidget(self.correct_offsets_all_trials_btn)
-        co_row.addStretch()
-        layout.addLayout(co_row)
-
-        # Purge small labels row
-        purge_row = QHBoxLayout()
-        purge_row.addWidget(QLabel("Purge labels shorter than:"))
-        self.purge_min_duration_spin = QDoubleSpinBox()
-        self.purge_min_duration_spin.setRange(0.001, 10.0)
-        self.purge_min_duration_spin.setValue(0.01)
-        self.purge_min_duration_spin.setSuffix(" s")
-        self.purge_min_duration_spin.setSingleStep(0.01)
-        self.purge_min_duration_spin.setDecimals(3)
-        purge_row.addWidget(self.purge_min_duration_spin)
-        self.purge_trial_btn = QPushButton("Single Trial")
-        self.purge_trial_btn.clicked.connect(lambda: self._apply_purge_small_labels("single_trial"))
-        purge_row.addWidget(self.purge_trial_btn)
-        self.purge_all_trials_btn = QPushButton("All Trials (Filtered only)")
-        self.purge_all_trials_btn.clicked.connect(lambda: self._apply_purge_small_labels("all_trials"))
-        purge_row.addWidget(self.purge_all_trials_btn)
-        purge_row.addStretch()
-        layout.addLayout(purge_row)
+        # Offset correction and short-label purging moved to Tools ▸ Label
+        # bulk editing… (gui/dialog_bulk_labels.py, CurationPanel.correct_offsets
+        # / .purge_trial_labels) — scoped by the same trial-scope vocabulary
+        # every other bulk action uses, not a single_trial/all_trials pair
+        # local to this panel.
 
         # Save button
         self.save_labels_button = QPushButton("Save labels (Ctrl+S)")
@@ -495,118 +469,6 @@ class IOWidget(QWidget):
         if folder:
             self.remote_backup_edit.setText(folder)
             self.app_state.remote_backup_path = folder
-
-    def _apply_correct_offsets(self, mode: str):
-        if self.app_state.trials_sel is None:
-            return
-
-        total_corrected = 0
-        total_negative = 0
-
-        if mode == "single_trial":
-            trial = self.app_state.trials_sel
-            df, corrected, negative = correct_offsets_trial(self.app_state.get_trial_intervals(trial))
-            total_corrected += corrected
-            total_negative += negative
-            self.app_state.set_trial_intervals(trial, df)
-            self.app_state.label_intervals = df
-            self.app_state.set_trial_meta_attr(trial, "offsets_corrected", 1)
-        elif mode == "all_trials":
-            for trial in self.app_state.trials:
-                df, corrected, negative = correct_offsets_trial(self.app_state.get_trial_intervals(trial))
-                total_corrected += corrected
-                total_negative += negative
-                self.app_state.set_trial_intervals(trial, df)
-                self.app_state.set_trial_meta_attr(trial, "offsets_corrected", 1)
-            self.app_state.label_intervals = self.app_state.get_trial_intervals(self.app_state.trials_sel)
-
-        msg = f"Corrected {total_corrected} offsets with gap < 1e-4 s."
-        if total_negative:
-            msg += f" {total_negative} negative gap(s) found — check for overlapping intervals."
-        notify(msg, "warning" if total_negative else None)
-
-        self._update_correct_offsets_status()
-        self.app_state.changes_saved = False
-        if self.data_widget:
-            self.data_widget.update_main_plot(preserve_x_range=True)
-            if self.data_widget.plot_container:
-                self.data_widget.plot_container.labels_redraw_needed.emit()
-
-    def _update_correct_offsets_status(self):
-        if not hasattr(self, "correct_offsets_trial_btn"):
-            return
-        default_style = ""
-        applied_style = "background-color: green; color: white;"
-
-        if self.app_state.trials_sel is None:
-            self.correct_offsets_trial_btn.setStyleSheet(default_style)
-            self.correct_offsets_all_trials_btn.setStyleSheet(default_style)
-            return
-
-        trial_corrected = self.app_state.get_trial_meta(self.app_state.trials_sel).get("offsets_corrected", 0)
-        self.correct_offsets_trial_btn.setStyleSheet(applied_style if trial_corrected else default_style)
-
-        all_corrected = all(self.app_state.get_trial_meta(t).get("offsets_corrected", 0) for t in self.app_state.trials)
-        self.correct_offsets_all_trials_btn.setStyleSheet(applied_style if all_corrected else default_style)
-
-    def _apply_purge_small_labels(self, mode: str):
-        if self.app_state.trials_sel is None:
-            return
-
-        min_duration = self.purge_min_duration_spin.value()
-
-        from ethograph.labels.intervals import purge_short_intervals
-
-        def purge(df):
-            if df.empty:
-                return df, 0
-            before = len(df)
-            out = purge_short_intervals(df, min_duration)
-            return out.reset_index(drop=True), before - len(out)
-
-        counter = 0
-
-        if mode == "single_trial":
-            trial = self.app_state.trials_sel
-            df, counter = purge(self.app_state.get_trial_intervals(trial))
-            self.app_state.set_trial_intervals(trial, df)
-            self.app_state.label_intervals = df
-            self.app_state.set_trial_meta_attr(trial, "small_labels_purged", 1)
-
-        elif mode == "all_trials":
-            for trial in self.app_state.trials:
-                df, count = purge(self.app_state.get_trial_intervals(trial))
-                counter += count
-                self.app_state.set_trial_intervals(trial, df)
-                self.app_state.set_trial_meta_attr(trial, "small_labels_purged", 1)
-
-            self.app_state.label_intervals = self.app_state.get_trial_intervals(self.app_state.trials_sel)
-
-        notify(f"Purged {counter} label(s) shorter than {min_duration:.3f} s.")
-
-        self._update_purge_small_labels_status()
-        self.app_state.changes_saved = False
-        if self.data_widget:
-            self.data_widget.update_main_plot(preserve_x_range=True)
-            if self.data_widget.plot_container:
-                self.data_widget.plot_container.labels_redraw_needed.emit()
-
-    def _update_purge_small_labels_status(self):
-        if not hasattr(self, "purge_trial_btn"):
-            return
-        default_style = ""
-        applied_style = "background-color: green; color: white;"
-
-        if self.app_state.trials_sel is None:
-            self.purge_trial_btn.setStyleSheet(default_style)
-            self.purge_all_trials_btn.setStyleSheet(default_style)
-            return
-
-        trial_purged = self.app_state.get_trial_meta(self.app_state.trials_sel).get("small_labels_purged", 0)
-        self.purge_trial_btn.setStyleSheet(applied_style if trial_purged else default_style)
-
-        all_purged = all(self.app_state.get_trial_meta(t).get("small_labels_purged", 0) for t in self.app_state.trials)
-        self.purge_all_trials_btn.setStyleSheet(applied_style if all_purged else default_style)
 
     def _create_mapping_row(self, target_layout):
         mapping_row = QWidget()
@@ -785,7 +647,13 @@ class IOWidget(QWidget):
         if not file_path:
             return
 
-        self.app_state._all_labels_df = load_labels_tsv(file_path)
+        try:
+            labels_df = load_labels_tsv(file_path)
+        except (FileNotFoundError, ValueError) as e:
+            notify(str(e), severity="error")
+            return
+
+        self.app_state._all_labels_df = labels_df
         self.app_state.clear_label_history()
         if self.data_widget:
             # With no individual dimension the selector's names come from the
@@ -804,8 +672,6 @@ class IOWidget(QWidget):
         if self.labels_widget:
             self.labels_widget._mark_changes_unsaved()
             self.labels_widget.refresh_labels_shapes_layer()
-        self._update_correct_offsets_status()
-        self._update_purge_small_labels_status()
         if self.data_widget:
             self.data_widget.update_main_plot(preserve_x_range=True)
             if self.data_widget.plot_container:
@@ -831,7 +697,11 @@ class IOWidget(QWidget):
         if not file_path:
             return
 
-        incoming = load_labels_tsv(file_path)
+        try:
+            incoming = load_labels_tsv(file_path)
+        except (FileNotFoundError, ValueError) as e:
+            notify(str(e), severity="error")
+            return
         existing = self.app_state._all_labels_df
 
         if existing is not None and not existing.empty and not incoming.empty:
@@ -867,8 +737,6 @@ class IOWidget(QWidget):
         if self.labels_widget:
             self.labels_widget._mark_changes_unsaved()
             self.labels_widget.refresh_labels_shapes_layer()
-        self._update_correct_offsets_status()
-        self._update_purge_small_labels_status()
         if self.data_widget:
             self.data_widget.update_main_plot(preserve_x_range=True)
             if self.data_widget.plot_container:
@@ -1090,8 +958,6 @@ class IOWidget(QWidget):
         if self.labels_widget:
             self.labels_widget._mark_changes_unsaved()
             self.labels_widget.refresh_labels_shapes_layer()
-        self._update_correct_offsets_status()
-        self._update_purge_small_labels_status()
         if self.data_widget:
             self.data_widget.update_main_plot(preserve_x_range=True)
             if self.data_widget.plot_container:
@@ -1389,8 +1255,6 @@ class IOWidget(QWidget):
         attr = attr_map.get(object_name)
         if attr:
             setattr(self.app_state, attr, None)
-        self._update_correct_offsets_status()
-        self._update_purge_small_labels_status()
 
     # Device controls (populated after load)
     # ------------------------------------------------------------------
@@ -1698,7 +1562,13 @@ class IOWidget(QWidget):
                 if not labels_file_path:
                     return
 
-                self.app_state._all_labels_df = load_labels_tsv(labels_file_path)
+                try:
+                    labels_df = load_labels_tsv(labels_file_path)
+                except (FileNotFoundError, ValueError) as e:
+                    notify(str(e), severity="error")
+                    return
+
+                self.app_state._all_labels_df = labels_df
                 self.app_state.clear_label_history()
                 if self.data_widget:
                     self.data_widget.refresh_individual_choices()
@@ -1711,8 +1581,6 @@ class IOWidget(QWidget):
                 if self.labels_widget:
                     self.labels_widget._mark_changes_unsaved()
                     self.labels_widget.refresh_labels_shapes_layer()
-                self._update_correct_offsets_status()
-                self._update_purge_small_labels_status()
                 if self.data_widget:
                     self.data_widget.update_main_plot(preserve_x_range=True)
                     if self.data_widget.plot_container:

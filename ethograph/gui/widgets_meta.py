@@ -172,8 +172,6 @@ class MetaWidget(GridSectionContainer):
         # console's derived features are removed from.
         self.app_state.trial_changed.connect(self._on_trial_changed_console)
         self.app_state.trial_changed.connect(self.changepoints_widget._update_cp_status)
-        self.app_state.trial_changed.connect(self.io_widget._update_correct_offsets_status)
-        self.app_state.trial_changed.connect(self.io_widget._update_purge_small_labels_status)
         self.changepoints_widget.changepoint_correction_checkbox.stateChanged.connect(
             self.update_changepoints_widget_title
         )

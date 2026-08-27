@@ -174,6 +174,13 @@ class TestTrialFilters:
         trials.apply_column_filters([{"column": "score", "op": ">=", "value": 0.5}], clear_first=True)
         assert trials.column_filters() == [{"column": "score", "op": ">=", "value": 0.5}]
 
+    def test_all_trials_stays_the_full_set_once_filtered(self, trials):
+        """The basis a "hidden trials" delete scope takes its complement against."""
+        assert trials.all_trials() == [1, 2, 3, 4]
+        trials.apply_column_filters([{"column": "genotype", "values": ["wt"]}])
+        assert trials.app_state.trials == [1, 2]
+        assert trials.all_trials() == [1, 2, 3, 4]
+
 
 # ----------------------------------------------------------------------
 # The runner

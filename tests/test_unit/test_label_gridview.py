@@ -811,6 +811,8 @@ class _PanelStub:
         self._mode = mode
         self.curated: list[dict] = []
         self.reviews: list[tuple[dict, str]] = []
+        self.session_active = False
+        self.restarted = 0
 
     def mode(self):
         return self._mode
@@ -822,6 +824,9 @@ class _PanelStub:
     def start_review_at(self, inst, field):
         self.reviews.append((inst, field))
         return True
+
+    def restart_review(self):
+        self.restarted += 1
 
 
 class _NavStub2:
@@ -906,6 +911,24 @@ class TestGridVerdicts:
         grid.mode_bar.apply_done()
         panel = grid._meta.labels_widget.curation_panel
         assert [i["trial"] for i in panel.curated] == ["2"]  # not the clicked one, not the manual one
+
+    def test_done_restarts_an_active_frame_review(self, grid):
+        """Done may curate a label the frame-by-frame session is reviewing —
+        its queue must be rebuilt, not left stale."""
+        panel = grid._meta.labels_widget.curation_panel
+        panel.session_active = True
+        _set_grid_mode(grid, "curate")
+        grid._on_tile_clicked(grid._entries[1])
+        grid.mode_bar.apply_done()
+        assert panel.restarted == 1
+
+    def test_done_leaves_an_inactive_review_alone(self, grid):
+        panel = grid._meta.labels_widget.curation_panel
+        assert not panel.session_active
+        _set_grid_mode(grid, "curate")
+        grid._on_tile_clicked(grid._entries[1])
+        grid.mode_bar.apply_done()
+        assert panel.restarted == 0
 
     def test_mark_low_confidence_exists_only_where_a_click_means_uncurated(self, grid):
         grid.threshold_edit.setValue(0.5)

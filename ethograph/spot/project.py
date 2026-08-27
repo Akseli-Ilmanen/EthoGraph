@@ -168,7 +168,7 @@ class Project:
 
     def resolved_clip(self) -> ResolvedClip:
         """The frame counts this config's durations imply for the exported rate."""
-        return self._config.clip.resolve(_dataset_fps(self._config))
+        return self._config.resolve_clip(_dataset_fps(self._config))
 
     def train_teacher(self) -> Path:
         """Stage 1 of the distillation recipe: the pose-only teacher, on the listed ``features:``.
@@ -186,7 +186,7 @@ class Project:
             raise ValueError("features: is empty — the teacher needs the pose (see docs/.../spot/multimodal.md)")
         first = load_split(cfg, "train")[0]
         fps = float(read_trial_features(cfg.features_dir / f"{first}.npz")["fps"])
-        clip = cfg.clip.resolve(fps)
+        clip = cfg.resolve_clip(fps)
         check_vram(max(1, clip.frames_per_batch // 8))  # the teacher is small; the card still has to be there
         return train_teacher(cfg, clip)
 
@@ -391,9 +391,7 @@ class Project:
             stem = spec.label
             split = replace(cfg.train.split, holdout_sessions=[spec.source])
             train = replace(cfg.train, split=split, run_name=f"fold_{stem}")
-            # The uncropped frames folder; the fold's own frames_dir adds the same crop suffix.
-            frames = cfg.frames if cfg.frames is not None else cfg.root / "frames"
-            fold_cfg = replace(cfg, train=train, root=cfg.cross_validation_dir / stem, frames=frames)
+            fold_cfg = replace(cfg, train=train, root=cfg.cross_validation_dir / stem, frames=cfg.frames_dir)
             fold = Project(fold_cfg)
             logger.info("Fold %d/%d: holding out %s", len(folds) + 1, len(specs), stem)
             fold.materialise(workers=workers)

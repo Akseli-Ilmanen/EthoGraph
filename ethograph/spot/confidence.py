@@ -38,25 +38,23 @@ from ethograph.labels.curve_confidence import (
     tallest_peak,
     window_samples,
 )
-
-#: The statistic the pixel spotter writes as ``confidence``.
-STATISTIC = "shape"
+from ethograph.labels.rescore import DEFAULT_RULE, rule_value
 
 __all__ = [
-    "focus_window_s",
-    "STATISTIC",
+    "DEFAULT_RULE",
     "CurveStats",
     "confidence_of",
     "curve_stats",
     "densify",
+    "focus_window_s",
     "tallest_peak",
     "window_samples",
 ]
 
 
-def confidence_of(stats: CurveStats) -> float:
-    """The number written beside a spotted event."""
-    return stats.statistic(STATISTIC)
+def confidence_of(stats: CurveStats, rule: str = DEFAULT_RULE, alpha: float = 0.5) -> float:
+    """The number written beside a spotted event, under *rule* (``infer.confidence``)."""
+    return rule_value(stats, rule, alpha)
 
 
 def densify(frames: np.ndarray, scores: np.ndarray, length: int) -> np.ndarray:

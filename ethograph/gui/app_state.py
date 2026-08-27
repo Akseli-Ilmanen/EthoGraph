@@ -131,6 +131,11 @@ class AppStateSpec:
         # there is nothing to re-review. On by default; a reviewing
         # preference like curation_next_curates.
         "frame_review_automated_only": (bool, True, True),
+        # Frame-by-frame review order: "trial" (every boundary of a trial,
+        # then the next trial) or "label" (every instance of a class across
+        # trials, then the next class) — see labels/curation.REVIEW_ORDERS.
+        # A reviewing preference like curation_next_curates.
+        "curation_review_order": (str, "trial", True),
         # curation_active: is anyone curating this session? Off until the user
         # drops label rows into the scope area or curates something — only then
         # does the per-trial verdict get a metadata file to live in, and only
@@ -209,6 +214,13 @@ class AppStateSpec:
         # threshold of 0.0002 is as easy to set as 0.5
         # (dialog_label_gridview.ConfidenceEdit).
         "grid_confidence_threshold": (float, wf.DEFAULT_CONFIDENCE, True),
+        # The confidence knob beside the grids' Histogram… button
+        # (labels/rescore.py): which reading of a prediction's curve is the
+        # confidence, the slider of the custom rule, and the "same event"
+        # window in ms. A review preference, remembered like the threshold.
+        "grid_confidence_rule": (str, "product", True),
+        "grid_confidence_alpha": (float, 0.5, True),
+        "grid_confidence_window_ms": (float, 100.0, True),
         # The grids' "Labeling method" filter: a key of
         # dialog_label_gridview.GRID_METHOD_FILTERS ("all" | "manual" |
         # "curated" | "human" | "automated"). Global like the rest of the grid

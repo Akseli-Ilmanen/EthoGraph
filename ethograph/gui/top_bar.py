@@ -132,6 +132,7 @@ class TopBarBuilder:
         self._video_feature_rank_dialog = None
         self._label_inconsistency_dialog = None
         self._spot_crop_dialog = None
+        self._bulk_labels_dialog = None
 
     # ------------------------------------------------------------------
     # Public entry point
@@ -167,6 +168,10 @@ class TopBarBuilder:
         # metadata column can answer (an event without its partner, a broken
         # order). See dialog_label_inconsistencies.py.
         menu.addAction("Labels: Find label inconsistencies…", self._open_label_inconsistencies)
+        # Curate/delete/purge across many trials at once — see
+        # gui/dialog_bulk_labels.py; the Curation section keeps only the
+        # Ctrl+C shortcut and the two review grids.
+        menu.addAction("Labels: Bulk editing…", self._open_bulk_labels)
 
         menu.addSeparator()
         # Drag a box on the video and read off the source pixels it covers,
@@ -274,6 +279,18 @@ class TopBarBuilder:
         self._label_inconsistency_dialog.show()
         self._label_inconsistency_dialog.raise_()
         self._label_inconsistency_dialog.activateWindow()
+
+    def _open_bulk_labels(self):
+        """Curate / delete / purge labels across many trials at once (Tools)."""
+        from .dialog_bulk_labels import LabelBulkEditDialog
+
+        # Rebuilt when reopened so the label-class checklist reflects the
+        # loaded session's mapping, like the other session-dependent dialogs.
+        if self._bulk_labels_dialog is None or not self._bulk_labels_dialog.isVisible():
+            self._bulk_labels_dialog = LabelBulkEditDialog(self.meta, parent=self.shell)
+        self._bulk_labels_dialog.show()
+        self._bulk_labels_dialog.raise_()
+        self._bulk_labels_dialog.activateWindow()
 
     def _open_spot_crop(self):
         """Arm the rectangle tool on the clicked camera and report the box."""

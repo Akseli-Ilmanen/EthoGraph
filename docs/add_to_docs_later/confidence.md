@@ -66,6 +66,13 @@ $$
 
 ![peak, focus and ratio on a sharp bump, a broad bump, and a curve with a rival](../source/_static/media/confidence_curve_stats.png)
 
+**Two curves read `0` whatever their shape**: one that is nearly nothing
+everywhere (its tallest peak below 0.05 — otherwise a single surviving blip
+would be the cleanest bump imaginable and read `1`), and one with no
+interior peak at all, or higher at an edge than at any peak inside (still
+climbing at the trial's end — the event may lie past it). Whatever rule is
+chosen, such a label's confidence is `0`: flagged for review, never dropped.
+
 **The window is the user's timescale, not a constant.** $w = 2 \times$ the
 tolerance the labels are believed to: the onset model takes it from its own
 `tolerance_s`, the pixel model from `infer.focus_window_ms` (twice the label
@@ -100,6 +107,42 @@ label sits on, the rival that pulled `ratio` down, the smear that pulled
 **How often a model is right is a verdict on the model, not on a label.**
 Training reports the held-out hit rate per class (*peck: 6/8 within
 0.05 s*); it is never folded into any label's confidence.
+
+## Changing the rule in the GUI
+
+Which reading is the confidence is a review preference, so it is set where
+its effect is seen: the **Histogram…** popup of the label grid and the video
+grid carries a *Confidence rule* panel above the bars, whenever the session
+has a prediction run with curves beside it (every run merged, newest per
+class).
+
+- **Rule** — `focus × ratio` (the default the pixel model writes), `ratio`
+  alone (one candidate or two), `focus` alone (sharp or smeared), `peak`, or
+  **custom**: `ratio × (α + (1 − α)·focus)` with one slider — α = 1 is
+  `ratio`, α = 0 is the product.
+- **Same event within** — the window $w$ in ms.
+
+Every change redraws the histogram and restyles the grid's tiles at once, so
+leaning toward candidates or sharpness is judged on the distribution it
+produces, with the threshold line in the same picture. **Apply to labels**
+confirms it: the values are written into the labels — only automated labels
+that have a curve; manual and curated ones are a human's word and never
+change — as one undo step per trial (`Ctrl+Z` takes it back). Closing the
+popup without applying puts the original values back. The rule, α and window
+are remembered across sessions.
+
+**Copy for project.yaml** puts the same choice on the clipboard as the
+`infer:` lines of a spot project config —
+
+```yaml
+infer:
+  confidence: ratio
+  focus_window_ms: 100
+```
+
+— so the next `inference()` writes confidence the way the review settled on,
+and the grid and the pipeline never disagree about what the number means
+(`infer.confidence`, `infer.confidence_alpha` for the custom rule).
 
 ## Reviewing by confidence
 

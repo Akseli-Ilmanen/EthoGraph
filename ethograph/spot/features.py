@@ -44,7 +44,7 @@ import numpy as np
 
 from ethograph.features.columns import enumerate_columns, extract_features, sampling_rate
 from ethograph.segment.sessions import Session
-from ethograph.spot.config import SpotConfig
+from ethograph.spot.config import ResolvedClip, SpotConfig
 from ethograph.spot.dataset import TrialRecord
 
 logger = logging.getLogger(__name__)
@@ -179,14 +179,22 @@ def strided(raw: dict[str, np.ndarray], stride: int, fps: float) -> np.ndarray:
     return raw["x"][::stride].astype(np.float32)
 
 
-def export_block(config: SpotConfig, video_ids: list[str] | None = None, *, stats: Stats | None = None) -> Path:
+def export_block(
+    config: SpotConfig,
+    video_ids: list[str] | None = None,
+    *,
+    stats: Stats | None = None,
+    clip: "ResolvedClip | None" = None,
+) -> Path:
     """Write ``features/block/`` for *video_ids* (default: every trial of every split).
 
     *stats* ``None`` fits the scaling on the training split and saves it;
     passing the saved one is how a session predicted later is put on the
-    training split's scale rather than its own. Each file is ``features
-    (T', F)`` on the strided clock plus ``stride``/``fps``, the shape the
-    vendored trainer's ``--fuse_dir`` loader reads.
+    training split's scale rather than its own. *clip* is the run's, for a
+    session predicted later — its stride, not the one this card would pick
+    (:meth:`~ethograph.spot.config.SpotConfig.resolve_clip`). Each file is
+    ``features (T', F)`` on the strided clock plus ``stride``/``fps``, the
+    shape the vendored trainer's ``--fuse_dir`` loader reads.
     """
     if not config.features:
         raise ValueError("features: is empty — there is no block to export")
@@ -196,7 +204,10 @@ def export_block(config: SpotConfig, video_ids: list[str] | None = None, *, stat
         raise ValueError("block: no trials to export")
     raw = {v: read_trial_features(config.features_dir / f"{v}.npz") for v in video_ids}
     fps = float(next(iter(raw.values()))["fps"])
-    clip = config.clip.resolve(fps)
+    if clip is None:
+        clip = config.resolve_clip(fps)
+    elif not np.isclose(clip.fps, fps, rtol=1e-3):
+        raise ValueError(f"the run's clip is at {clip.fps:g} fps but these features are at {fps:g}")
     out_dir = config.block_dir
     out_dir.mkdir(parents=True, exist_ok=True)
     if stats is None:
@@ -220,9 +231,9 @@ def block_dim(config: SpotConfig) -> int:
     return int(json.loads((config.block_dir / BLOCK_INFO_FILE).read_text(encoding="utf-8"))["dim"])
 
 
-def export_block_for_inference(config: SpotConfig, video_ids: list[str]) -> Path:
-    """The block of trials predicted after training, on the training split's scale."""
+def export_block_for_inference(config: SpotConfig, video_ids: list[str], clip: "ResolvedClip | None" = None) -> Path:
+    """The block of trials predicted after training, on the training split's scale and the run's stride."""
     stats_path = config.block_dir / STATS_FILE
     if not stats_path.is_file():
         raise FileNotFoundError(f"{stats_path} missing — the run read features but its statistics are gone")
-    return export_block(config, video_ids, stats=Stats.load(stats_path))
+    return export_block(config, video_ids, stats=Stats.load(stats_path), clip=clip)

@@ -55,6 +55,24 @@ class TestStats:
         with pytest.raises(ValueError, match="unknown confidence statistic"):
             CurveStats(0, 1.0, 1.0, 1.0).statistic("mass")
 
+    def test_a_curve_near_zero_everywhere_reads_zero_whatever_its_shape(self):
+        blip = np.zeros(500)
+        blip[250] = 0.02  # the cleanest bump imaginable, and nothing behind it
+        s = curve_stats(blip, window=10)
+        assert s.peak == pytest.approx(0.02) and not s.found
+        assert all(s.statistic(name) == 0.0 for name in STATISTICS)  # even "peak" reads 0: nothing was found
+
+    def test_a_curve_still_climbing_at_the_edge_is_not_an_event(self):
+        rising = np.linspace(0.0, 0.9, 500)
+        s = curve_stats(rising, window=10)
+        assert s.focus == 0.0 and s.ratio == 0.0 and s.shape == 0.0
+
+    def test_an_edge_rising_above_an_interior_bump_is_a_rival(self):
+        curve = _bump(500, 250, 0.4) + np.linspace(0.0, 0.9, 500) ** 8  # small bump, then climbing to 0.9 at the end
+        s = curve_stats(curve, window=10)
+        assert s.index == pytest.approx(250, abs=1)  # the event is still the interior peak
+        assert not s.found and all(s.statistic(name) == 0.0 for name in STATISTICS)  # every rule reads 0
+
     def test_empty_and_flat_curves_are_zero(self):
         assert curve_stats(np.array([]), 5).shape == 0.0
         assert curve_stats(np.zeros(50), 5).peak == 0.0

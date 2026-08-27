@@ -81,11 +81,43 @@ Which one to use is decided by **what is available when the model runs**.
   video-only baseline first, and distil only from a teacher that beats it. A
   student cannot learn from a model that knows less.
 
+### Which stages to run
+
+`scripts/spot.py` runs the stages you name, in order — it has no default
+list, because the right list depends on the case above, and running a stage
+you do not need is not harmless: distilling when pose is always available
+makes the pixel model *approximate* features it could simply be given.
+
+**Pose in every session, now and later** (option 3). The features ride into
+the GRU; no teacher, no distillation:
+
+```bash
+python scripts/spot.py materialise baseline evaluate
+python scripts/spot.py inference --run ctx2s_res10ms_features --sessions 20260308_01
+```
+
+**Video only, no pose anywhere** (option 2). The same two lines with no
+`features:` listed; the run is named `ctx2s_res10ms`.
+
+**Pose for the labelled sessions, none where you will predict** (option 4).
+Train the teacher and the baseline, and read `compare.tsv` before spending a
+run on distillation — a student cannot learn from a model that knows less:
+
+```bash
+python scripts/spot.py materialise teacher baseline evaluate   # the gate
+python scripts/spot.py distil evaluate                         # once; the student is a run like any other
+python scripts/spot.py inference --run ctx2s_res10ms_distil_64d5ef46 --sessions 20260308_01
+```
+
+Distil once; every later session is plain `inference --run <student>`. The
+only reasons to distil again are a changed `features:`/`teacher:` section or
+new labelled data — the fingerprint in the run name tells those apart.
+
 **Every pose input is a variable in your session file**, spelled the way the
 segmentation pipeline spells feature columns — `velocity: {space: [x, y],
-keypoint: [stickTip]}`, `pellet_stickClosest_dist: {}`. Build it with
-`features/geometry.py` or your own code, plot it in the GUI, list it. The
-model gets exactly that; there is no graph, no adjacency, no learned
+keypoint: [stickTip]}`, `pellet_stickClosest_dist: {}`. Build it with 
+`movement.kinematics` or `features/geometry.py` or your own code, 
+plot it in the GUI, list it. The model gets exactly that; there is no graph, no adjacency, no learned
 geometry to reason about. Options 3 and 4 are described in {doc}`multimodal`.
 
 ## Why this shares the segmentation pipeline's workflow
@@ -163,7 +195,7 @@ labels:
 
 clip:
   context_s: 2.0                   # how much video the model sees at once
-  resolution_ms: 10                # how finely a label may be placed
+  resolution_ms: 10                # how finely a label may be placed; unset = as fine as the card allows
   positive_window_ms: 10           # +- this counts as the event during training
 
 model:
@@ -209,7 +241,7 @@ in real time. So this config takes **`context_s`, `resolution_ms` and
 own rate:
 
 ```
-stride     = round(resolution_ms / 1000 * fps)
+stride     = round(resolution_ms / 1000 * fps)     # unset: the smallest stride that fits context_s in the card's frame budget
 clip_len   = round(context_s * fps / stride)
 dilate_len = round(positive_window_ms / 1000 * fps / stride)
 ```
@@ -219,9 +251,10 @@ so an event can only be placed to ±*k*/2 frames. `clip_len` is the number of
 strided frames per clip. A config moved between a 200 fps rig and a 60 fps
 one keeps meaning the same thing. Context and resolution pull against each
 other — more context per clip means a coarser grid at a fixed memory budget —
-so they are the two axes to tune, and `ClipConfig.resolve(fps)` refuses a
-combination whose loader batch would exceed the memory ceiling, naming the
-durations to change.
+so they are the two axes to tune. Left unset, `resolution_ms` is as fine as
+the card's frame budget allows (every frame when it fits); spelled, a
+combination whose loader batch would exceed the budget is refused, naming
+the durations to change. See {doc}`config`.
 
 ```{note}
 The recovered full-rate frame of a strided prediction is the **centre** of its

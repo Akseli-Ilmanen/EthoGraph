@@ -486,10 +486,42 @@ def _run_frame_review(runner: WorkflowRunner, step: wf.WorkflowStep) -> bool:
     return True
 
 
+def _label_ids_kwargs(step: wf.WorkflowStep) -> dict:
+    """``{"label_ids": {...}}`` when the step names explicit classes, else
+    ``{}`` — omitting the keyword lets the panel method's own default fall
+    back to the curation scope (the scope area, or an earlier ``scope`` step),
+    exactly as the bulk-editing dialog's own *All* checkbox would."""
+    ids = [int(i) for i in step.value("label_ids") or []]
+    return {"label_ids": set(ids)} if ids else {}
+
+
 def _run_curate_trials(runner: WorkflowRunner, step: wf.WorkflowStep) -> bool:
     panel = _require_panel(runner.meta)
-    n = panel.curate_visible_trials()
+    n = panel.curate_trial_labels(str(step.value("which")), **_label_ids_kwargs(step))
     runner.note.emit(f"Curated {n} label(s).")
+    return False
+
+
+def _run_delete_labels(runner: WorkflowRunner, step: wf.WorkflowStep) -> bool:
+    panel = _require_panel(runner.meta)
+    n = panel.delete_trial_labels(str(step.value("which")), **_label_ids_kwargs(step))
+    runner.note.emit(f"Deleted {n} label(s).")
+    return False
+
+
+def _run_purge_labels(runner: WorkflowRunner, step: wf.WorkflowStep) -> bool:
+    panel = _require_panel(runner.meta)
+    n = panel.purge_trial_labels(
+        str(step.value("which")), float(step.value("min_duration_s")), **_label_ids_kwargs(step)
+    )
+    runner.note.emit(f"Purged {n} label(s).")
+    return False
+
+
+def _run_correct_offsets(runner: WorkflowRunner, step: wf.WorkflowStep) -> bool:
+    panel = _require_panel(runner.meta)
+    n = panel.correct_offsets(str(step.value("which")))
+    runner.note.emit(f"Corrected {n} offset(s).")
     return False
 
 
@@ -512,6 +544,9 @@ _HANDLERS: dict[str, Callable[[WorkflowRunner, wf.WorkflowStep], bool]] = {
     "video_grid": _run_video_grid,
     "frame_review": _run_frame_review,
     "curate_trials": _run_curate_trials,
+    "delete_labels": _run_delete_labels,
+    "purge_labels": _run_purge_labels,
+    "correct_offsets": _run_correct_offsets,
     "save_labels": _run_save_labels,
 }
 
@@ -600,6 +635,18 @@ def describe_step(step: wf.WorkflowStep) -> str:
     if step.kind == "frame_review":
         scope = "automated only" if step.value("automated_only") else "every label in scope"
         return f"{float(step.value('window_s')):.2f} s window · {scope}"
+    if step.kind in ("curate_trials", "delete_labels"):
+        noun = wf.TRIAL_SCOPE_CHOICES.get(str(step.value("which")), "?")
+        ids = step.value("label_ids") or []
+        classes = ", ".join(str(i) for i in ids) if ids else "the curation scope"
+        return f"{noun} · {classes}"
+    if step.kind == "purge_labels":
+        noun = wf.TRIAL_SCOPE_CHOICES.get(str(step.value("which")), "?")
+        ids = step.value("label_ids") or []
+        classes = ", ".join(str(i) for i in ids) if ids else "the curation scope"
+        return f"{noun} · {classes} · shorter than {float(step.value('min_duration_s')):g} s"
+    if step.kind == "correct_offsets":
+        return wf.TRIAL_SCOPE_CHOICES.get(str(step.value("which")), "?")
     return step.spec().summary
 
 

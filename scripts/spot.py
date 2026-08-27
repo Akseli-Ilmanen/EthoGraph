@@ -1,25 +1,26 @@
-"""Run the spot pipeline on data/spot/project.yaml, stage by stage.
+"""Run the spot pipeline on data/spot/project.yaml, stage by stage — you name the stages.
 
-    python run.py                      # everything, in order, skipping finished stages
-    python run.py teacher              # one stage: materialise | teacher | baseline | distil | evaluate | inference
-    python run.py evaluate             # the test summary of the newest run (test_metrics.yaml + a table)
-    python run.py crossval             # leave-one-session-out: train on the others, predict + score the held-out one
-    python run.py inference --run ctx2s_res10ms_distil_64d5ef46 --sessions 20260308_01   # one model, one new session
-    python run.py distil inference     # several
-    python run.py --limit 20 baseline  # a quick pass on the first 20 trials per session
+Which stages you need is decided by what is available when the model runs
+(docs/add_to_docs_later/spot/index.md, "Which stages to run"):
 
-A quick pass needs the frame budget cut as well as the trials — an epoch costs
-epoch_frames, not trials (~6.5 min per 250k at 3.2 it/s):
+    # pose in every session, now and later: features ride into the GRU, no teacher, no distil
+    python scripts/spot.py materialise baseline evaluate
+    python scripts/spot.py inference --run ctx2s_res10ms_features --sessions 20260308_01
 
-    python run.py --limit 20 --set train.epochs=3 train.epoch_frames=50000 \
-        distil.epochs=2 distil.head_epochs=2 distil.epoch_frames=50000
+    # video only, no pose anywhere
+    python scripts/spot.py materialise baseline evaluate           # with no features: listed
 
-Stages go first on the command line, options after (both take several words).
+    # pose for the labelled sessions only, none where you will predict:
+    # a pose teacher, distilled into the pixel model once, then video-only inference
+    python scripts/spot.py materialise teacher baseline evaluate    # the gate: does the teacher beat the baseline?
+    python scripts/spot.py distil evaluate
+    python scripts/spot.py inference --run ctx2s_res10ms_distil_64d5ef46 --sessions 20260308_01
 
-Every stage is a method on eto.spot.Project; this file only orders them and
-skips what is already done, so it can be re-run after a crash. Outputs land
-under data/spot/ (frames_crop.../, dataset/, features/, teacher/, runs/) and
-predictions beside each session under labels/predictions_spot_*/.
+    python scripts/spot.py crossval                                # one fold per session
+
+Stages: materialise | teacher | baseline | distil | evaluate | inference | crossval.
+`evaluate` scores every run (teachers included) and writes runs/compare.tsv;
+`--run` names the run `inference` predicts with (default: the newest under runs/).
 """
 
 from __future__ import annotations
@@ -32,7 +33,7 @@ import ethograph as eto
 from ethograph.utils.logging import enable_console_logging
 
 CONFIG = "data/spot/project.yaml"
-STAGES = ("materialise", "teacher", "baseline", "distil", "evaluate", "inference", "crossval")
+STAGES = ("materialise", "teacher", "baseline", "evaluate", "distil", "crossval", "inference")
 
 
 def finished_run(run_dir, epochs: int) -> bool:
@@ -41,11 +42,11 @@ def finished_run(run_dir, epochs: int) -> bool:
 
 def main(argv: list[str]) -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("stages", nargs="*", choices=STAGES, help="which stages; default all")
+    parser.add_argument("stages", nargs="+", choices=STAGES, help="which stages, in this order — see the recipes above")
     parser.add_argument("--limit", type=int, default=None, help="first N trials per session (a smoke run)")
     parser.add_argument("--sessions", nargs="*", default=None, help="sessions to predict into (default: all)")
     parser.add_argument(
-        "--run", default=None, help="run to evaluate/predict with, a name under runs/ (default: newest)"
+        "--run", default=None, help="run to predict with, a name under runs/ (default: the newest)"
     )
     parser.add_argument("--force", action="store_true", help="rerun stages that look finished")
     parser.add_argument(
@@ -56,7 +57,7 @@ def main(argv: list[str]) -> None:
     )
     parser.add_argument("--set", nargs="*", default=[], metavar="KEY=VALUE", help="dotted config overrides")
     args = parser.parse_args(argv)
-    stages = args.stages or list(STAGES)
+    stages = args.stages
     enable_console_logging("run")  # the pipelines already print their own records on import
     for noisy in ("ethograph.io", "ethograph.gui", "ethograph.labels"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
@@ -82,17 +83,14 @@ def main(argv: list[str]) -> None:
         else:
             project.train()
 
-    student = None
     if "distil" in stages:
-        student = project.distil()
-
-    run = student.run_dir if student is not None else args.run
+        project.distil()
 
     if "evaluate" in stages:
-        # The student this call trained, else every trained run: the baseline and each distilled student.
+        # Every run — teachers, baselines, distilled students — so compare.tsv is complete.
         from ethograph.spot.inference import resolve_run_dir, run_reads_features, teacher_runs, trained_runs
 
-        for run_dir in [run] if run is not None else teacher_runs(cfg) + trained_runs(cfg):
+        for run_dir in teacher_runs(cfg) + trained_runs(cfg):
             project.evaluate(run=run_dir)
             if run_reads_features(resolve_run_dir(cfg, run_dir)):
                 # what the features contribute: the same model, features zeroed
@@ -106,7 +104,7 @@ def main(argv: list[str]) -> None:
             log.info("fold: %s -> %s", fold.name, fold.run_dir / "test_metrics.yaml")
 
     if "inference" in stages:
-        for tsv in project.inference(run=run, sessions=args.sessions, workers=args.workers):
+        for tsv in project.inference(run=args.run, sessions=args.sessions, workers=args.workers):
             log.info("predictions: %s", tsv)
 
 

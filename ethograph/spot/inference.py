@@ -273,17 +273,15 @@ def flag_out_of_order(events: list[SpottedEvent], config: SpotConfig) -> list[Sp
             logger.warning(
                 "%s: events out of class order (%s) — flagged", video_id, [(e.label, e.frame) for e in ranked]
             )
-            found = [
-                SpottedEvent(e.video_id, e.label, e.frame, e.video_s, replace(e.stats, peak=0.0, focus=0.0, ratio=0.0))
-                for e in found
-            ]
+            found = [replace(e, stats=replace(e.stats, peak=0.0, focus=0.0, ratio=0.0, found=False)) for e in found]
         out.extend(found)
     return out
 
 
 def _curve_time(curve: np.ndarray, clip: ResolvedClip, offset: float) -> np.ndarray:
     """Trial-relative seconds of each strided prediction bin (bin centres)."""
-    return np.array([clip.to_frame(i) / clip.fps + offset for i in range(len(curve))], dtype=np.float64)
+    bins = np.arange(len(curve), dtype=np.float64)
+    return clip.to_frame(bins) / clip.fps + offset
 
 
 def infer_session(
@@ -293,11 +291,14 @@ def infer_session(
     session: Session,
     out_dir: Path,
     workers: int | None = None,
+    loaded: tuple[object, dict] | None = None,
 ) -> Path:
     """Predict one session with one epoch of one run; returns the labels TSV.
 
     The video is decoded straight into the model (:mod:`ethograph.spot.stream`);
-    no frame folder is written or read — that is training's.
+    no frame folder is written or read — that is training's. *loaded* is the
+    run's model already in memory (:func:`~ethograph.spot.stream.load_run_model`),
+    passed by :func:`inference` so one checkpoint read serves every session.
     """
     records = dataset_stage.plan_session(session, config, require_events=False)
     if not records:
@@ -315,7 +316,9 @@ def infer_session(
         from ethograph.spot.features import export_block_for_inference, export_features
 
         export_features(config, [session], records)
-        block_dir = export_block_for_inference(config, [r.video_id for r in records])
+        # The block on the run's own stride: the features' rate is the pose's,
+        # and the run recorded its stride on the video's clock.
+        block_dir = export_block_for_inference(config, [r.video_id for r in records], clip=clip)
         for r in records:
             with np.load(block_dir / f"{r.video_id}.npz") as npz:
                 blocks[r.video_id] = np.asarray(npz["features"], dtype=np.float32)
@@ -337,6 +340,7 @@ def infer_session(
         blocks=blocks,
         jpeg_roundtrip=config.infer.jpeg_roundtrip,
         workers=workers,
+        loaded=loaded,
     )
 
     events = []
@@ -381,12 +385,16 @@ def inference(
     A session is named by its ``name``, its full ``source`` path or the
     file's stem — how a cross-validation fold asks for the one it held out.
     """
+    from ethograph.spot.stream import load_run_model
+    from ethograph.utils.device import resolve_device
+
     run_dir = resolve_run_dir(config, run)
     epoch = best_epoch(run_dir, config)
+    loaded = load_run_model(run_dir, epoch, len(config.labels.classes), resolve_device())
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     written: list[Path] = []
     for spec in config.select_sessions(sessions):
         session = open_session(spec)
         out_dir = onset_curves.run_dir(session.source, timestamp, model=f"{MODEL_NAME}_{run_label(run_dir)}")
-        written.append(infer_session(config, run_dir, epoch, session, out_dir, workers=workers))
+        written.append(infer_session(config, run_dir, epoch, session, out_dir, workers=workers, loaded=loaded))
     return written

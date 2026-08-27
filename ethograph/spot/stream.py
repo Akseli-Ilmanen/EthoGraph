@@ -33,7 +33,6 @@ import json
 import logging
 import sys
 import threading
-from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -97,24 +96,16 @@ def prepare_frame(frame: np.ndarray, record: TrialRecord, jpeg_roundtrip: bool =
         image.save(buffer, format="JPEG", quality=JPEG_QUALITY)
         buffer.seek(0)
         image = Image.open(buffer).convert("RGB")
-    return np.asarray(image)
+    return np.array(image)
 
 
-def frames_of(
-    record: TrialRecord, jpeg_roundtrip: bool = True, decode_threads: int | None = None
-) -> Iterator[np.ndarray]:
-    for frame in _iter_frames(record.video_path, decode_threads):
-        yield prepare_frame(frame, record, jpeg_roundtrip)
+def normalise(frames: torch.Tensor, crop_dim: int | None, modality: str) -> torch.Tensor:
+    """``(L, H, W, C)`` uint8 → ``(L, C, crop_dim, crop_dim)``: the vendored eval transform.
 
-
-def to_tensor(frames: list[np.ndarray], crop_dim: int | None, modality: str, device: str = "cpu") -> torch.Tensor:
-    """``(L, C, crop_dim, crop_dim)`` — the vendored eval transform: ``/255``, centre crop, normalise.
-
-    The frames go to *device* as uint8 and are converted there: the float
-    conversion and normalisation of a 200-frame window are a CPU-side cost
-    the GPU does for free.
+    ``/255``, centre crop, normalise. Runs where *frames* live: on the GPU the float conversion and
+    normalisation of a 200-frame window are a CPU-side cost it does for free.
     """
-    x = torch.from_numpy(np.stack(frames)).to(device).permute(0, 3, 1, 2).float() / 255.0
+    x = frames.permute(0, 3, 1, 2).float() / 255.0
     if crop_dim:
         from torchvision.transforms.functional import center_crop
 
@@ -144,10 +135,9 @@ def _side_clip(block: np.ndarray | None, start: int, clip_len: int, stride: int)
         return None
     out = np.zeros((clip_len, block.shape[1]), np.float32)
     first = start // stride
-    for i in range(clip_len):
-        j = first + i
-        if 0 <= j < len(block):
-            out[i] = block[j]
+    lo, hi = max(first, 0), min(first + clip_len, len(block))
+    if hi > lo:
+        out[lo - first : hi - first] = block[lo:hi]
     return out
 
 
@@ -169,6 +159,12 @@ def predict_trial(
     its last frame is decoded, from a buffer that never holds more than one
     window, so a long trial costs no more memory than a short one. *gpu_lock*
     serialises the model when several trials are decoded in parallel threads.
+
+    Every window starts on the stride grid, so only every *stride*-th frame
+    can ever enter one: the others are decoded (a codec reads sequentially)
+    and dropped before the resize and JPEG. A frame that is kept is prepared
+    and uploaded **once**, as uint8 on the model's device; the two windows
+    that overlap on it slice it from there.
     """
     clip_len, stride = int(stored["clip_len"]), int(stored.get("stride", 1))
     crop_dim, modality = stored.get("crop_dim"), stored["modality"]
@@ -196,8 +192,10 @@ def predict_trial(
             scores.append(np.asarray(s, dtype=np.float32))
         pending.clear()
 
-    def window(start: int, buffer: list[np.ndarray], first: int, total: int | None) -> torch.Tensor:
-        """The clip at *start* from *buffer* (whose first frame is *first*), zero-padded past either end."""
+    def window(start: int, buffer: list[torch.Tensor], grid_first: int, total: int | None) -> torch.Tensor:
+        """The clip at *start* from *buffer* (first frame = strided index *grid_first*), padded past either end."""
+        if start % stride:
+            raise RuntimeError(f"{record.video_id}: window start {start} is off the stride grid ({stride})")
         frames = []
         n_pad_start = n_pad_end = 0
         for frame_num in range(start, start + span, stride):
@@ -206,36 +204,42 @@ def predict_trial(
             elif total is not None and frame_num >= total:
                 n_pad_end += 1
             else:
-                frames.append(buffer[frame_num - first])
-        x = to_tensor(frames, crop_dim, modality, str(model.device))
+                frames.append(buffer[frame_num // stride - grid_first])
+        x = normalise(torch.stack(frames), crop_dim, modality)
         if n_pad_start or n_pad_end:
             x = torch.nn.functional.pad(x, (0, 0, 0, 0, 0, 0, n_pad_start, n_pad_end))
         return x
 
-    buffer: list[np.ndarray] = []
-    first = 0  # frame index of buffer[0]
+    device = str(model.device)
+    buffer: list[torch.Tensor] = []  # the frames on the stride grid, uint8 (H, W, C) on the model's device
+    grid_first = 0  # strided index of buffer[0]
     next_start = -PAD_LEN * stride
     decoded = 0
-    for frame in frames_of(record, jpeg_roundtrip, decode_threads):
-        buffer.append(frame)
+    for frame in _iter_frames(record.video_path, decode_threads):
+        if decoded % stride == 0:
+            buffer.append(torch.from_numpy(prepare_frame(frame, record, jpeg_roundtrip)).to(device))
         decoded += 1
         # every window whose last frame is now decoded
         while next_start + span <= decoded:
             pending.append(
-                (next_start, window(next_start, buffer, first, None), _side_clip(block, next_start, clip_len, stride))
+                (
+                    next_start,
+                    window(next_start, buffer, grid_first, None),
+                    _side_clip(block, next_start, clip_len, stride),
+                )
             )
             if len(pending) >= batch_size:
                 flush()
             next_start += step
-        keep_from = max(0, next_start)
-        if keep_from > first:
-            del buffer[: keep_from - first]
-            first = keep_from
+        grid_keep = max(0, next_start) // stride
+        if grid_keep > grid_first:
+            del buffer[: grid_keep - grid_first]
+            grid_first = grid_keep
     total = decoded
     # the windows the folder path would still run at the tail, padded past the end
     while next_start < max(0, total - overlap * stride):
         pending.append(
-            (next_start, window(next_start, buffer, first, total), _side_clip(block, next_start, clip_len, stride))
+            (next_start, window(next_start, buffer, grid_first, total), _side_clip(block, next_start, clip_len, stride))
         )
         next_start += step
     flush()
@@ -278,18 +282,23 @@ def predict_records(
     jpeg_roundtrip: bool = True,
     device: str | None = None,
     workers: int | None = None,
+    loaded: tuple[object, dict] | None = None,
 ) -> tuple[list[dict], dict[str, int]]:
     """Every record's recall entry, streamed; plus each trial's decoded frame count.
 
     Trials are decoded in parallel threads — decode, resize and JPEG all
     release the GIL — feeding the one model through a lock: the GPU is far
     faster than one thread's decode chain, so several chains keep it busy.
+
+    *loaded* is a ``(model, stored config)`` pair from :func:`load_run_model`,
+    so a caller predicting many sessions loads the checkpoint once.
     """
     from ethograph.spot.dataset import default_workers
     from ethograph.utils.device import resolve_device
 
-    device = device or resolve_device()
-    model, stored = load_run_model(run_dir, epoch, len(class_names), device)
+    if loaded is None:
+        loaded = load_run_model(run_dir, epoch, len(class_names), device or resolve_device())
+    model, stored = loaded
     stride = int(stored.get("stride", 1))
     for record in records:
         if stored.get("fuse_dim") and (blocks or {}).get(record.video_id) is None:

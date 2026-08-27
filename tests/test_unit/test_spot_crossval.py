@@ -69,6 +69,6 @@ def test_a_fold_keeps_the_frames_and_names_its_holdout(tmp_path, monkeypatch):
     except StopIteration:
         pass
     (fold,) = seen
-    assert fold.frames_dir == cfg.frames_dir  # the crop suffix once, the same folder
+    assert fold.frames_dir == cfg.frames_dir  # every fold reads the project's one frames folder
     assert [Path(p) for p in fold.train.split.holdout_sessions] == [Path(cfg.sessions[1].source)]
     assert fold.train.run_name == "fold_s2"

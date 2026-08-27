@@ -56,6 +56,33 @@ class TestResolve:
         # at 20 ms resolution the bin is already wider than the window.
         assert clip.dilate_len * clip.resolution_ms == pytest.approx(10.0, abs=clip.resolution_ms)
 
+    def test_unset_resolution_is_the_finest_grid_the_budget_allows(self):
+        """The default: every frame when it fits, else the smallest stride that does."""
+        cfg = ClipConfig(context_s=2.0)  # resolution_ms unset
+        assert cfg.resolve(25.0).stride == 1  # 50 frames fit outright
+        assert cfg.resolve(200.0, max_frames=200).stride == 2  # 400 frames do not: every second one
+        assert cfg.resolve(200.0, max_frames=480).stride == 1  # a bigger card: every frame
+        assert cfg.resolve(200.0, max_frames=100).stride == 4
+        for fps, budget in ((25.0, 200), (200.0, 200), (200.0, 480), (200.0, 100)):
+            assert cfg.resolve(fps, max_frames=budget).clip_len <= budget
+
+    def test_a_spelled_resolution_is_pinned_and_refused_when_it_does_not_fit(self):
+        pinned = ClipConfig(context_s=2.0, resolution_ms=10.0)
+        assert pinned.resolve(200.0, max_frames=480).stride == 2  # a bigger card changes nothing
+        with pytest.raises(ValueError, match="raise resolution_ms"):
+            pinned.resolve(200.0, max_frames=100)
+
+    def test_the_budget_scales_with_the_card_and_is_the_measured_one_without(self, monkeypatch):
+        import torch
+
+        from ethograph.spot.vendored import frame_budget
+
+        monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
+        assert frame_budget() == MAX_FRAMES_PER_BATCH
+        monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+        monkeypatch.setattr(torch.cuda, "mem_get_info", lambda: (1.0e9, 24.0e9))
+        assert frame_budget() == 480
+
     def test_refuses_what_will_not_fit_and_names_the_duration(self):
         with pytest.raises(ValueError, match="context_s"):
             ClipConfig(context_s=8.0, resolution_ms=5.0).resolve(200.0)
@@ -124,6 +151,15 @@ class TestConfigFile:
             config_from_dict(data, tmp_path)
         cfg = config_from_dict(self._minimal(tmp_path) | {"features": {"speed": {}}}, tmp_path)
         assert cfg.fusing
+
+    def test_the_confidence_rule_is_a_config_key_and_is_validated(self, tmp_path):
+        custom = {"infer": {"confidence": "custom", "confidence_alpha": 0.8}}
+        cfg = config_from_dict(self._minimal(tmp_path) | custom, tmp_path)
+        assert (cfg.infer.confidence, cfg.infer.confidence_alpha) == ("custom", 0.8)
+        with pytest.raises(ValueError, match="infer.confidence must be one of"):
+            config_from_dict(self._minimal(tmp_path) | {"infer": {"confidence": "entropy"}}, tmp_path)
+        with pytest.raises(ValueError, match="confidence_alpha"):
+            config_from_dict(self._minimal(tmp_path) | {"infer": {"confidence_alpha": 2.0}}, tmp_path)
 
     def test_no_classes_is_refused(self, tmp_path):
         data = self._minimal(tmp_path) | {"labels": {"classes": []}}
@@ -250,7 +286,7 @@ class TestConfidence:
         assert broad.focus < sharp.focus
 
     def test_an_empty_curve_is_zero_not_a_crash(self):
-        assert curve_stats(np.zeros(100), window=10) == CurveStats(index=0, peak=0.0, focus=0.0, ratio=0.0)
+        assert curve_stats(np.zeros(100), window=10) == CurveStats(index=0, peak=0.0, focus=0.0, ratio=0.0, found=False)
         assert curve_stats(np.array([]), window=10).shape == 0.0
 
     def test_a_rising_edge_is_not_a_peak(self):
@@ -314,6 +350,15 @@ class TestSessionNaming:
         assert config_from_dict(base, tmp_path).frames_dir == (tmp_path / "frames").resolve()
         shared = config_from_dict(base | {"frames": "../shared_frames"}, tmp_path)
         assert shared.frames_dir == (tmp_path / ".." / "shared_frames").resolve()
+
+    def test_a_crop_does_not_rename_the_frames_folder(self, tmp_path):
+        """One folder per project; export.json per trial is what tells a stale crop apart."""
+        source = tmp_path / "ses-01.nc"
+        source.touch()
+        base = {"sessions": [str(source)], "labels": {"classes": [31]}}
+        crop = {"crop": {"x0": 0, "y0": 0, "x1": 8, "y1": 8}}
+        cropped = config_from_dict(base | {"labels": base["labels"] | crop}, tmp_path)
+        assert cropped.frames_dir == config_from_dict(base, tmp_path).frames_dir
 
     def test_a_numeric_looking_name_must_be_quoted(self, tmp_path):
         """YAML 1.1 reads `name: 20260304_01` as 2026030401 and the spelling is lost."""

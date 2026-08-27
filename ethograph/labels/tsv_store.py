@@ -107,21 +107,40 @@ def labels_tsv_path(nc_path: str | Path, suffix: str = "") -> Path:
 
 REQUIRED_COLUMNS = {"onset_s", "offset_s", "labels", "individual", "trial"}
 
+#: Columns that must carry a value on *every* row. ``offset_s`` is excluded —
+#: a point event legitimately stores it as NaN.
+REQUIRED_NONNULL_COLUMNS = ("trial", "individual", "labels", "onset_s")
+
 
 def validate_labels_tsv(df: pd.DataFrame, path: str | Path = "") -> None:
-    """Validate that a labels DataFrame has all required columns.
+    """Validate that a labels DataFrame has all required columns and values.
 
     Raises
     ------
     ValueError
         If any of ``onset_s``, ``offset_s``, ``labels``, ``individual``, ``trial``
-        are missing from the DataFrame columns.
+        are missing from the DataFrame columns, or if any row is missing a
+        value in one of :data:`REQUIRED_NONNULL_COLUMNS` (``offset_s`` aside,
+        since a point event's is legitimately blank).
     """
     missing = REQUIRED_COLUMNS - set(df.columns)
     if missing:
         raise ValueError(
             f"Labels file {path} is missing required columns: {sorted(missing)}. Required: {sorted(REQUIRED_COLUMNS)}"
         )
+
+    for col in REQUIRED_NONNULL_COLUMNS:
+        # astype(str) covers both plain-object and pandas' newer StringDtype
+        # columns; a numeric column's values never stringify to "".
+        blank = df[col].isna() | (df[col].astype(str).str.strip() == "")
+        n_blank = int(blank.sum())
+        if n_blank:
+            # +2: 1 for the header row, 1 for 1-indexing.
+            rows = (blank[blank].index[:10] + 2).tolist()
+            raise ValueError(
+                f"Labels file {path} has {n_blank} row(s) with a missing '{col}' value "
+                f"(e.g. line(s) {rows}). Every row must have a '{col}'."
+            )
 
 
 def load_labels_tsv(path: str | Path) -> pd.DataFrame:

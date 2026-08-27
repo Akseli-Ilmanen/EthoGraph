@@ -54,7 +54,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pyqtgraph as pg
-from qtpy.QtCore import QEventLoop, QLocale, QRect, Qt, QTimer, Signal
+from qtpy.QtCore import QEventLoop, QLocale, QObject, QRect, Qt, QTimer, Signal
 from qtpy.QtGui import (
     QColor,
     QDoubleValidator,
@@ -85,6 +85,7 @@ from qtpy.QtWidgets import (
     QProgressDialog,
     QPushButton,
     QScrollArea,
+    QSlider,
     QSpinBox,
     QTabWidget,
     QVBoxLayout,
@@ -106,6 +107,7 @@ from ethograph.labels.intervals import (
     LABELING_CURATED,
     LABELING_MANUAL,
 )
+from ethograph.labels.rescore import RULES
 from ethograph.labels.workflow import DEFAULT_CONFIDENCE
 
 logger = logging.getLogger(__name__)
@@ -1174,15 +1176,28 @@ class ConfidenceHistogramsDialog(QDialog):
 
     threshold_changed = Signal(float)
 
-    def __init__(self, groups: list[ConfidenceGroup], threshold: float = 0.0, parent=None):
+    def __init__(
+        self,
+        groups: list[ConfidenceGroup],
+        threshold: float = 0.0,
+        parent=None,
+        rule_controller: "ConfidenceRuleController | None" = None,
+    ):
         super().__init__(parent)
         self.setWindowTitle("Confidence histograms")
         self.setModal(False)
         self.setAttribute(Qt.WA_DeleteOnClose)
         self._groups = list(groups)
         self._plots: list[tuple[ConfidenceGroup, pg.PlotWidget]] = []
+        #: The confidence knob, when the host has curves to re-read: which
+        #: reading of a prediction's curve is its confidence. Every change is
+        #: previewed on the grid and these bars; Apply confirms it.
+        self._controller = rule_controller if (rule_controller is not None and rule_controller.curves()) else None
+        self._applied = False
 
         layout = QVBoxLayout(self)
+        if self._controller is not None:
+            layout.addWidget(self._build_rule_panel(self._controller))
         bar = QHBoxLayout()
         bar.addWidget(QLabel("Flag confidence below:"))
         self.threshold_edit = ConfidenceEdit(threshold)
@@ -1228,9 +1243,130 @@ class ConfidenceHistogramsDialog(QDialog):
         rows = math.ceil(len(self._groups) / _HIST_COLUMNS) if self._groups else 1
         self.resize(columns * (_HIST_MIN_SIZE[0] + 20) + 40, min(rows, 2) * (_HIST_MIN_SIZE[1] + 20) + 120)
 
+    def _build_rule_panel(self, controller: "ConfidenceRuleController") -> QGroupBox:
+        rule, alpha, window_ms = controller.settings()
+        box = QGroupBox("Confidence rule — what the number is read off the prediction's curve")
+        lay = QVBoxLayout(box)
+        intro = QLabel(
+            "ratio asks whether there was one candidate or two; focus whether the bump is sharp or smeared. "
+            "Change the rule and watch the bars move; Apply writes it into the automated labels that have a curve."
+        )
+        intro.setStyleSheet("color: grey; font-size: 10px;")
+        intro.setWordWrap(True)
+        lay.addWidget(intro)
+        row = QHBoxLayout()
+        row.addWidget(QLabel("Rule:"))
+        self.rule_combo = QComboBox()
+        for key, text in RULES.items():
+            self.rule_combo.addItem(text, key)
+        self.rule_combo.setCurrentIndex(max(0, self.rule_combo.findData(rule)))
+        self.rule_combo.currentIndexChanged.connect(self._on_rule)
+        row.addWidget(self.rule_combo)
+        row.addSpacing(12)
+        row.addWidget(QLabel("α:"))
+        self.alpha_slider = QSlider(Qt.Horizontal)
+        self.alpha_slider.setRange(0, 100)
+        self.alpha_slider.setValue(int(round(alpha * 100)))
+        self.alpha_slider.setFixedWidth(140)
+        self.alpha_slider.setToolTip("custom rule only — 1 = ratio alone (candidates); 0 = focus × ratio")
+        self.alpha_slider.valueChanged.connect(self._on_rule)
+        row.addWidget(self.alpha_slider)
+        self.alpha_label = QLabel("")
+        self.alpha_label.setMinimumWidth(32)
+        row.addWidget(self.alpha_label)
+        row.addSpacing(12)
+        row.addWidget(QLabel("Same event within:"))
+        self.window_spin = QDoubleSpinBox()
+        self.window_spin.setRange(1.0, 5000.0)
+        self.window_spin.setDecimals(0)
+        self.window_spin.setSingleStep(10.0)
+        self.window_spin.setSuffix(" ms")
+        self.window_spin.setValue(window_ms)
+        self.window_spin.setToolTip(
+            "± this around the peak counts as the same event: mass inside it is focus,\n"
+            "a second peak outside it is a rival. Twice the precision you believe the labels to."
+        )
+        self.window_spin.valueChanged.connect(self._on_rule)
+        row.addWidget(self.window_spin)
+        row.addStretch()
+        self.apply_btn = QPushButton("Apply to labels")
+        self.apply_btn.setAutoDefault(False)
+        self.apply_btn.setToolTip(
+            "Write the previewed confidences into the automated labels that have a curve\n"
+            "(one undo step per trial). Manual and curated labels are never touched.\n"
+            "Closing without applying puts the original values back."
+        )
+        self.apply_btn.clicked.connect(self._apply_rule)
+        row.addWidget(self.apply_btn)
+        self.copy_btn = QPushButton("Copy for project.yaml")
+        self.copy_btn.setAutoDefault(False)
+        self.copy_btn.setToolTip(
+            "Put the `infer:` lines for this rule on the clipboard — paste them into a spot\n"
+            "project.yaml and the next inference() writes confidence the same way."
+        )
+        self.copy_btn.clicked.connect(self._copy_rule)
+        row.addWidget(self.copy_btn)
+        lay.addLayout(row)
+        scored, total = controller.coverage()
+        self.coverage = QLabel(
+            f"{scored} of {total} automated labels here have a curve and follow the rule; "
+            "the rest keep their confidence."
+        )
+        self.coverage.setStyleSheet("color: grey; font-size: 10px;")
+        lay.addWidget(self.coverage)
+        self._sync_alpha()
+        return box
+
+    def rule(self) -> tuple[str, float, float]:
+        """The rule the panel shows: ``(rule, alpha, window_ms)``."""
+        return str(self.rule_combo.currentData()), self.alpha_slider.value() / 100.0, float(self.window_spin.value())
+
+    def _sync_alpha(self) -> None:
+        rule, alpha, _ = self.rule()
+        self.alpha_slider.setEnabled(rule == "custom")
+        self.alpha_label.setText(f"{alpha:.2f}")
+
+    def _on_rule(self, *_args) -> None:
+        self._sync_alpha()
+        self._applied = False
+        assert self._controller is not None
+        self._controller.preview(*self.rule())
+
+    def _apply_rule(self) -> None:
+        assert self._controller is not None
+        self._applied = True
+        self._controller.apply()
+
+    def _copy_rule(self) -> None:
+        """The rule as the `infer:` lines of a spot project.yaml, on the clipboard."""
+        from ethograph.labels.rescore import yaml_snippet
+
+        snippet = yaml_snippet(*self.rule())
+        QApplication.clipboard().setText(snippet)
+        notify("Copied for project.yaml:\n" + snippet.rstrip())
+
+    @property
+    def rule_applied(self) -> bool:
+        return self._applied
+
+    def closeEvent(self, event):
+        if self._controller is not None and not self._applied:
+            self._controller.revert()  # the preview was only ever a preview
+        super().closeEvent(event)
+
     def set_threshold(self, value: float) -> None:
         """Follow the grid's threshold (a no-op when it already matches)."""
         self.threshold_edit.setValue(float(value))
+
+    def set_groups(self, groups: list[ConfidenceGroup]) -> None:
+        """Replace the plotted values — the confidence knob previewing another rule."""
+        by_key = {(g.label_id, g.individual or ""): g for g in groups}
+        for i, (group, _plot) in enumerate(self._plots):
+            fresh = by_key.get((group.label_id, group.individual or ""))
+            if fresh is not None:
+                self._plots[i] = (fresh, _plot)
+        self._groups = list(groups)
+        self._redraw()
 
     def _on_threshold(self, value: float) -> None:
         self.threshold_changed.emit(float(value))
@@ -1277,6 +1413,101 @@ class ConfidenceHistogramsDialog(QDialog):
 def curation_panel_of(meta):
     """The Labels tab's curation panel, when the host GUI has one."""
     return getattr(getattr(meta, "labels_widget", None), "curation_panel", None)
+
+
+class ConfidenceRuleController(QObject):
+    """The confidence knob's arithmetic on a grid: preview on its entries, apply to the labels.
+
+    Both grids own one; the histogram popup drives it. Entries are the
+    grid's tiles (``FrameEntry`` / ``ClipEntry``): their ``confidence`` is
+    overwritten for the preview and put back by :meth:`revert` when the popup
+    closes without Apply. The curves are the session's, every run merged
+    newest-per-class (:func:`~ethograph.labels.onset_curves.read_all_curves`).
+    """
+
+    changed = Signal()
+
+    def __init__(self, meta, entries_fn, parent=None):
+        super().__init__(parent)
+        self.meta = meta
+        self.app_state = meta.app_state
+        self._entries_fn = entries_fn
+        self._curves = None
+        self._originals: dict[int, float] = {}
+        self._rule: tuple[str, float, float] | None = None
+
+    def curves(self) -> dict:
+        if self._curves is None:
+            from ethograph.labels.onset_curves import read_all_curves
+
+            session = getattr(self.app_state, "nc_file_path", None)
+            self._curves = read_all_curves(session) if session else {}
+        return self._curves
+
+    def settings(self) -> tuple[str, float, float]:
+        """The remembered rule: ``(rule, alpha, window_ms)``."""
+        state = self.app_state
+        return (
+            str(state.get_with_default("grid_confidence_rule")),
+            float(state.get_with_default("grid_confidence_alpha")),
+            float(state.get_with_default("grid_confidence_window_ms")),
+        )
+
+    def coverage(self) -> tuple[int, int]:
+        """``(automated labels with a curve, automated labels)`` in the grid — labels, not tiles."""
+        curves = self.curves()
+
+        def has_curve(e) -> bool:
+            return str(e.trial) in curves and e.label_id in curves[str(e.trial)][1]
+
+        automated = [e for e in self._entries_fn() if e.labeling_method == LABELING_AUTOMATED]
+        scored = [e for e in automated if has_curve(e)]
+        return len({entry_key(e) for e in scored}), len({entry_key(e) for e in automated})
+
+    def begin(self) -> None:
+        """Snapshot the entries' confidences: what :meth:`revert` puts back."""
+        self._originals = {id(e): float(e.confidence) for e in self._entries_fn()}
+
+    def preview(self, rule: str, alpha: float, window_ms: float) -> None:
+        """Re-score the grid's entries in memory under the rule; nothing reaches the labels."""
+        from ethograph.labels.rescore import confidence_of
+
+        self._rule = (rule, alpha, window_ms)
+        curves = self.curves()
+        for entry in self._entries_fn():
+            if entry.labeling_method != LABELING_AUTOMATED:
+                continue
+            value = confidence_of(curves, entry.trial, entry.label_id, rule, alpha, window_ms / 1000.0)
+            entry.confidence = self._originals.get(id(entry), entry.confidence) if value is None else float(value)
+        self.changed.emit()
+
+    def revert(self) -> None:
+        for entry in self._entries_fn():
+            if id(entry) in self._originals:
+                entry.confidence = self._originals[id(entry)]
+        self.changed.emit()
+
+    def apply(self) -> None:
+        """Write the previewed rule into the labels: one undo step per trial touched."""
+        from ethograph.labels.rescore import rescore_labels
+
+        if self._rule is None:
+            return
+        rule, alpha, window_ms = self._rule
+        df = getattr(self.app_state, "_all_labels_df", None)
+        new_df, touched, n_changed = rescore_labels(df, self.curves(), rule, alpha, window_ms / 1000.0)
+        for trial in touched:
+            self.app_state.record_label_edit("confidence rule", trial=trial)
+        self.app_state.replace_all_labels(new_df)
+        self.app_state.grid_confidence_rule = rule
+        self.app_state.grid_confidence_alpha = float(alpha)
+        self.app_state.grid_confidence_window_ms = float(window_ms)
+        self._originals = {id(e): float(e.confidence) for e in self._entries_fn()}
+        labels_widget = getattr(self.meta, "labels_widget", None)
+        if labels_widget is not None and hasattr(labels_widget, "_on_label_table_changed"):
+            labels_widget._on_label_table_changed()
+        notify(f"Confidence re-read under '{RULES[rule]}': {n_changed} labels changed in {len(touched)} trials.")
+        self.changed.emit()
 
 
 class GridModeBar(QWidget):
@@ -1395,6 +1626,10 @@ class GridModeBar(QWidget):
             notify("No curation panel to apply the verdicts to.", severity="warning")
             return 0
         n = panel.curate_labels(insts)
+        if panel.session_active:
+            # These verdicts may have curated labels the frame-by-frame
+            # session is reviewing — rebuild its queue against the new state.
+            panel.restart_review()
         done_keys = {
             (
                 str(i["trial"]),
@@ -1502,10 +1737,14 @@ class LabelGridView(QWidget):
         self.histogram_btn.setToolTip(
             "How the confidences are distributed, one histogram per label class\n"
             "(per individual too, when more than one is labelled). The part below\n"
-            "the threshold is red, and the threshold can be set from there."
+            "the threshold is red, and the threshold can be set from there — and so\n"
+            "can the rule the confidence is read off the prediction's curve by."
         )
         self.histogram_btn.clicked.connect(self._show_histograms)
         bar.addWidget(self.histogram_btn)
+        # The confidence rule lives in the histogram popup; this drives it.
+        self.rule_controller = ConfidenceRuleController(meta, entries_fn=lambda: self._entries, parent=self)
+        self.rule_controller.changed.connect(self._on_confidence_rescored)
         bar.addStretch()
         self.count_label = QLabel("")
         bar.addWidget(self.count_label)
@@ -1688,6 +1927,12 @@ class LabelGridView(QWidget):
         if self._hist_dialog is not None:
             self._hist_dialog.set_threshold(threshold)
 
+    def _on_confidence_rescored(self) -> None:
+        """The confidence knob changed the entries' values: restyle, and refresh the histogram."""
+        self._apply_styles()
+        if self._hist_dialog is not None:
+            self._hist_dialog.set_groups(confidence_groups(self._entries))
+
     def _show_histograms(self):
         """Open (or raise) the per-label confidence histograms."""
         if self._hist_dialog is not None:
@@ -1698,7 +1943,10 @@ class LabelGridView(QWidget):
         if not groups:
             notify("No labels to plot confidences for.", severity="warning")
             return
-        self._hist_dialog = ConfidenceHistogramsDialog(groups, self.threshold_edit.value(), parent=self)
+        self.rule_controller.begin()
+        self._hist_dialog = ConfidenceHistogramsDialog(
+            groups, self.threshold_edit.value(), parent=self, rule_controller=self.rule_controller
+        )
         self._hist_dialog.threshold_changed.connect(self.threshold_edit.setValue)
         self._hist_dialog.destroyed.connect(self._on_histograms_closed)
         self._hist_dialog.show()

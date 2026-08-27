@@ -21,6 +21,7 @@ import copy
 import hashlib
 import json
 import logging
+import math
 from dataclasses import asdict, dataclass, field, is_dataclass, replace
 from pathlib import Path
 from typing import Any
@@ -39,10 +40,12 @@ from ethograph.segment.config import (
 
 logger = logging.getLogger(__name__)
 
-#: Frames per loader batch above which a 10 GB card pages instead of training.
-#: Measured, not guessed: 200 frames trains at ~3.7 it/s and 400 frames at
-#: 11.4 GB and 28 frames/s. ``clip_len * batch_size / acc_grad`` must stay at
-#: or below this.
+#: Frames per loader batch a **10 GB** card holds without paging — the one
+#: measured point (200 frames trains at ~3.7 it/s; 400 frames pages at
+#: 11.4 GB and crawls). The budget of the card actually present scales from
+#: it (:func:`ethograph.spot.vendored.frame_budget`); this constant is what
+#: :meth:`ClipConfig.resolve` assumes when no card is asked. ``clip_len *
+#: batch_size / acc_grad`` must stay at or below the budget.
 MAX_FRAMES_PER_BATCH = 200
 
 #: Shortest clip E2E-Spot's GRU head is worth running; below this the temporal
@@ -163,37 +166,50 @@ class ClipConfig:
     #: below ~2 s the model misses events outright.
     context_s: float = 2.0
     #: Milliseconds one model frame spans — the grid a label can land on.
-    #: Buying context by coarsening this stops paying at about 10 ms.
-    resolution_ms: float = 10.0
+    #: ``null`` (the default) = **as fine as the frame budget allows** for
+    #: ``context_s``: every frame when it fits, else the smallest stride that
+    #: does. Spell it to pin the grid across machines (a 10 GB card and a
+    #: 24 GB card would otherwise choose different strides for a 200 fps
+    #: video); buying context by coarsening it stopped paying at ~10 ms on the
+    #: rig this was measured on.
+    resolution_ms: float | None = None
     #: Milliseconds either side of the event that count as positive during
     #: training. Held as a duration so dilation is not confounded with
     #: resolution when the latter changes.
     positive_window_ms: float = 10.0
 
-    def resolve(self, fps: float) -> ResolvedClip:
+    def resolve(self, fps: float, max_frames: int | None = None) -> ResolvedClip:
         """The frame counts *fps* implies, refused if they cannot be trained.
 
-        Raises ``ValueError`` naming the duration to change — never the frame
-        count, which is not something the config spells.
+        *max_frames* is the frame budget of one loader batch — the card's
+        (:func:`~ethograph.spot.vendored.frame_budget`), else the 10 GB
+        measurement :data:`MAX_FRAMES_PER_BATCH`. With ``resolution_ms``
+        unset the stride is the smallest that fits ``context_s`` in it; spelled,
+        it is honoured and refused if it does not fit. Raises ``ValueError``
+        naming the duration to change — never the frame count, which is not
+        something the config spells.
         """
         if fps <= 0:
             raise ValueError(f"Frame rate must be positive, got {fps!r}")
-        stride = max(1, int(round(self.resolution_ms / 1000.0 * fps)))
+        budget = int(max_frames) if max_frames is not None else MAX_FRAMES_PER_BATCH
+        if self.resolution_ms is None:
+            stride = max(1, int(math.ceil(self.context_s * fps / budget - 1e-9)))
+        else:
+            stride = max(1, int(round(self.resolution_ms / 1000.0 * fps)))
         clip_len = int(round(self.context_s * fps / stride))
+        spelled = f"clip.resolution_ms={self.resolution_ms} ms" if self.resolution_ms is not None else "every frame"
         if clip_len < MIN_CLIP_LEN:
             raise ValueError(
-                f"clip.context_s={self.context_s} s at {fps:g} fps and "
-                f"clip.resolution_ms={self.resolution_ms} ms is only {clip_len} model frames. "
+                f"clip.context_s={self.context_s} s at {fps:g} fps and {spelled} is only {clip_len} model frames. "
                 f"Raise context_s or lower resolution_ms until it reaches {MIN_CLIP_LEN}."
             )
-        if clip_len > MAX_FRAMES_PER_BATCH:
-            needed = MAX_FRAMES_PER_BATCH * stride / fps
-            coarser = 1000.0 * self.context_s / MAX_FRAMES_PER_BATCH
+        if clip_len > budget:
+            needed = budget * stride / fps
+            coarser = 1000.0 * self.context_s / budget
             raise ValueError(
-                f"clip.context_s={self.context_s} s at {fps:g} fps and "
-                f"clip.resolution_ms={self.resolution_ms} ms needs {clip_len} frames per batch, "
-                f"above the {MAX_FRAMES_PER_BATCH} that fit in memory. "
-                f"Either drop context_s to {needed:.2f} s or raise resolution_ms to {coarser:.1f}."
+                f"clip.context_s={self.context_s} s at {fps:g} fps and {spelled} needs {clip_len} frames per batch, "
+                f"above the {budget} this card holds. "
+                f"Either drop context_s to {needed:.2f} s or raise resolution_ms to {coarser:.1f} (or unset it)."
             )
         # dilate_len is counted in *strided* frames, so stride and dilation
         # multiply. Deriving it from the duration is what keeps the positive
@@ -203,7 +219,7 @@ class ClipConfig:
         # A duration only ever lands on a whole number of frames. Say so when
         # the rate cannot carry what was asked for, rather than reporting a
         # precision the grid does not have.
-        if abs(resolved.resolution_ms - self.resolution_ms) > 0.5:
+        if self.resolution_ms is not None and abs(resolved.resolution_ms - self.resolution_ms) > 0.5:
             logger.info(
                 "clip.resolution_ms=%g is %g ms at %g fps (stride %d) — the rate cannot divide it finer",
                 self.resolution_ms,
@@ -365,18 +381,35 @@ class InferConfig:
     focus_window_ms: float = 100.0
     #: Below this the prediction is written anyway and flagged, never dropped:
     #: a missing label cannot be reviewed, and review is the point.
-    flag_confidence_below: float = 0.3
+    flag_confidence_below: float = 0.01
     #: Written into every predicted row's ``prediction_source``.
     source: str | None = None
     #: A trial whose predicted events are not in ``labels.classes`` order has
     #: every event's confidence set to 0 — flagged for review, never reordered
     #: or dropped. A repaired sequence would hide exactly the trial that most
     #: needs a look.
-    flag_out_of_order: bool = True
+    flag_out_of_order: bool = False
     #: Inference decodes the video straight into the model; each frame is
     #: passed through JPEG in memory first, so the model sees what training
     #: saw (the export writes JPEGs). Off = an ablation.
     jpeg_roundtrip: bool = True
+    #: Which reading of a prediction's curve is written as its ``confidence``
+    #: (:data:`ethograph.labels.rescore.RULES`): ``product`` (focus × ratio),
+    #: ``ratio``, ``focus``, ``peak``, or ``custom`` = ratio × (α + (1 − α)·focus)
+    #: with ``confidence_alpha``. The grids' histogram popup previews these on
+    #: a session's curves and copies the choice as these lines.
+    confidence: str = "product"
+    confidence_alpha: float = 0.5
+
+    def validate(self) -> None:
+        from ethograph.labels.rescore import RULES
+
+        if self.confidence not in RULES:
+            raise ValueError(f"infer.confidence must be one of {list(RULES)}, got {self.confidence!r}")
+        if not 0.0 <= self.confidence_alpha <= 1.0:
+            raise ValueError(f"infer.confidence_alpha must be in [0, 1], got {self.confidence_alpha!r}")
+        if self.focus_window_ms <= 0:
+            raise ValueError(f"infer.focus_window_ms must be positive, got {self.focus_window_ms!r}")
 
 
 @dataclass
@@ -415,20 +448,30 @@ class SpotConfig:
     #: Where this config was loaded from (not part of the YAML).
     config_path: Path | None = None
 
+    def resolve_clip(self, fps: float) -> ResolvedClip:
+        """The clip at *fps* under the frame budget of the card present (:func:`~ethograph.spot.vendored.frame_budget`).
+
+        The one resolver every stage uses, so the student, the teacher, the
+        feature block and the export agree about the stride. A trained run
+        records its own in ``config.json`` and is read back from there
+        (:func:`~ethograph.spot.inference.run_clip`), so a session predicted on
+        another card still uses the run's stride.
+        """
+        from ethograph.spot.vendored import frame_budget
+
+        return self.clip.resolve(fps, max_frames=frame_budget())
+
     @property
     def frames_dir(self) -> Path:
         """Exported JPEG frames, one folder per trial. The expensive artefact.
 
-        A crop gets its own folder — beside an explicit ``frames:`` too — so
-        cropped frames are never written into a folder another project reads
-        uncropped, and never mistaken for them.
+        One folder per project, whatever the crop: a trial's ``export.json``
+        records the size and crop it was decoded at, and
+        :func:`~ethograph.spot.dataset.export_is_current` re-decodes a trial
+        whose record disagrees with the config, so changing the crop rewrites
+        the frames in place rather than growing a folder per variant.
         """
-        base = self.frames if self.frames is not None else self.root / "frames"
-        crop = self.labels.crop
-        if crop is None:
-            return base
-        x0, y0, x1, y1 = crop.as_tuple()
-        return base.with_name(f"{base.name}_crop{x0}x{y0}_{x1}x{y1}")
+        return self.frames if self.frames is not None else self.root / "frames"
 
     @property
     def features_dir(self) -> Path:
@@ -558,6 +601,7 @@ def config_from_dict(data: dict, base_dir: Path, config_path: Path | None = None
             spec.labels_path = labels_tsv_path(spec.source)
             logger.info("%s: labels_path not set, assuming %s", spec.source, spec.labels_path)
     cfg.teacher.validate()
+    cfg.infer.validate()
     for name, dims in cfg.features.items():
         if not isinstance(dims, dict):
             raise ValueError(f"features.{name}: expected a mapping of dim -> values, got {dims!r}")

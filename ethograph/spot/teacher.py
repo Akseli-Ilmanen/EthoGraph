@@ -296,7 +296,9 @@ def predict_split(config: SpotConfig, run_dir: Path, epoch: int, split: str) -> 
     if not ids:
         raise ValueError(f"{split}.json lists no trials")
     fps = float(read_trial_features(config.features_dir / f"{ids[0]}.npz")["fps"])
-    clip = config.clip.resolve(fps)
+    from ethograph.spot.inference import run_clip
+
+    clip = run_clip(run_dir, fps)  # the stride this teacher was trained at, not the one this card would pick
     model, stats = load_teacher(config, run_dir, epoch, clip, device)
     model.eval()
     trials = load_trials(config, ids, clip)

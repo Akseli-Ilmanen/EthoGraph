@@ -47,6 +47,12 @@ def focus_window_s(tolerance_s: float) -> float:
     return FOCUS_WINDOW_TOLERANCES * float(tolerance_s)
 
 
+#: Below this peak height a curve is "nearly nothing everywhere": its
+#: ``focus`` and ``ratio`` read 0, so every confidence built on them is 0
+#: — flagged for review, never dropped. Without it a single surviving
+#: 3-frame blip at 0.02 would be the cleanest bump imaginable and read 1.0.
+MIN_PEAK = 0.05
+
 #: Every statistic a model may write as its confidence, by name.
 STATISTICS = ("peak", "focus", "ratio", "shape", "shape_peak")
 
@@ -92,6 +98,11 @@ class CurveStats:
     #: local maximum* outside the focus window — another candidate moment,
     #: never the peak's own shoulder. 1.0 = no rival; 0.0 = a tie.
     ratio: float
+    #: False when the curve did not find an event at all: nearly nothing
+    #: anywhere, no interior peak, or an edge rising above the peak (the
+    #: event may lie past the trial's end). Every statistic then reads 0 —
+    #: whatever a model or a reviewer's rule would otherwise pick.
+    found: bool = True
 
     @property
     def shape(self) -> float:
@@ -102,10 +113,10 @@ class CurveStats:
         return float(np.clip(self.focus * self.ratio * self.peak, 0.0, 1.0))
 
     def statistic(self, name: str) -> float:
-        """The named statistic (:data:`STATISTICS`)."""
+        """The named statistic (:data:`STATISTICS`); 0 when the curve found no event."""
         if name not in STATISTICS:
             raise ValueError(f"unknown confidence statistic {name!r}; one of {STATISTICS}")
-        return float(getattr(self, name))
+        return float(getattr(self, name)) if self.found else 0.0
 
 
 def window_samples(window_s: float, fs: float) -> int:
@@ -121,21 +132,38 @@ def curve_stats(curve: np.ndarray, window: int) -> CurveStats:
     *window* is the focus half-width **in samples of this curve's own clock**;
     the caller resolves it from a duration (:func:`window_samples`), because a
     count of frames means different things at different rates.
+
+    Two curves read as "not found" whatever their shape — ``focus`` and
+    ``ratio`` both 0: one whose tallest peak is below :data:`MIN_PEAK`, and
+    one with no interior local maximum (still climbing at the trial's edge).
+    A curve that has an interior peak *and* rises higher at an edge keeps the
+    peak but reads the edge as a rival, so it is flagged rather than trusted.
     """
     curve = np.asarray(curve, dtype=np.float64)
     if curve.size == 0:
-        return CurveStats(index=0, peak=0.0, focus=0.0, ratio=0.0)
+        return CurveStats(index=0, peak=0.0, focus=0.0, ratio=0.0, found=False)
     index, peak = tallest_peak(curve)
-    if peak <= 0.0:
-        return CurveStats(index=index, peak=0.0, focus=0.0, ratio=0.0)
+    if peak < MIN_PEAK or not find_peaks(curve)[0].size:
+        # Nearly nothing anywhere, or no interior maximum at all (a curve
+        # still climbing at the trial's edge): the event was not found, and
+        # no statistic may say otherwise.
+        return CurveStats(index=index, peak=peak, focus=0.0, ratio=0.0, found=False)
     positions = np.arange(curve.size)
     near = np.abs(positions - index) <= window
     mass = float(np.clip(curve, 0.0, None).sum())
     focus = float(np.clip(curve[near], 0.0, None).sum()) / mass if mass > 0 else 0.0
     # A rival is another *peak*, not the tallest sample outside the window:
     # a broad bump's own flank would otherwise read as a second candidate,
-    # and width is ``focus``'s job.
+    # and width is ``focus``'s job. The trial's two ends count as candidates
+    # too — a curve still climbing at the edge is the model saying "maybe
+    # after the end", which a smaller interior bump must not outrank.
     others = [p for p in find_peaks(curve)[0] if not near[p]]
+    edges = [edge for edge in (0, curve.size - 1) if not near[edge]]
+    if edges and float(curve[edges].max()) > peak:
+        # The curve is higher at the trial's end than at any peak inside it:
+        # the event may lie past the end — not found, confidence 0.
+        return CurveStats(index=index, peak=peak, focus=0.0, ratio=0.0, found=False)
+    others += edges
     rival = float(curve[others].max()) if others else 0.0
     return CurveStats(
         index=index,

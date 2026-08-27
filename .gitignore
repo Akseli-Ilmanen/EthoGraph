@@ -20,6 +20,7 @@ docs/build_preview/
 *.npz
 *paper.pdf
 screenshots/
+spot_frames_crop164x0_367x164/
 
 # Upstream repos cloned for reference only — never committed (they carry their
 # own .git, so `git add` would record them as submodule gitlinks). Anything we

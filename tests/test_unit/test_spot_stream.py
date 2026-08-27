@@ -148,3 +148,58 @@ class TestStreamMatchesTheFolder:
         reference = acc / support[:, None]
         np.testing.assert_allclose(streamed, reference, atol=2e-2)
         assert not torch.allclose(torch.from_numpy(streamed), torch.full_like(torch.from_numpy(streamed), 1 / 3))
+
+
+class _Recorder:
+    """A model that only remembers what it was fed; no clone needed."""
+
+    device = "cpu"
+    _num_classes = 3
+
+    def __init__(self) -> None:
+        self.seen: list = []
+
+    def predict(self, seq, use_amp=False, fuse=None):
+        import torch
+
+        self.seen.append((seq.clone(), None if fuse is None else fuse.clone()))
+        per_frame = seq.float().mean(dim=(2, 3, 4))
+        return None, torch.stack([per_frame, per_frame * 2, per_frame * 3], -1).numpy()
+
+
+class TestRollingBuffer:
+    """The one-window buffer must hand every window the frames a full decode would: the stride grid,
+    the head/tail padding, the eviction — and only the grid frames, never a neighbour off it."""
+
+    @pytest.mark.parametrize("num_frames,clip_len,stride", [(61, 8, 2), (7, 8, 1), (100, 10, 3)])
+    def test_windows_are_cut_from_the_full_decode(self, tmp_path, num_frames, clip_len, stride):
+        import torch
+
+        from ethograph.spot.dataset import _iter_frames
+        from ethograph.spot.stream import normalise
+
+        record = _record(tmp_path, n_frames=num_frames, crop=(4, 2, 60, 46))
+        stored = {"clip_len": clip_len, "stride": stride, "crop_dim": 24, "modality": "rgb"}
+        block = np.arange(num_frames // stride * 2, dtype=np.float32).reshape(-1, 2)
+        model = _Recorder()
+        scores, total = predict_trial(model, stored, record, block=block, batch_frames=3 * clip_len)
+        assert total == num_frames
+
+        # the reference: decode everything, build each window by hand
+        prepared = [prepare_frame(f, record) for f in _iter_frames(record.video_path)]
+        seen = [(s, f) for batch, fb in model.seen for s, f in zip(batch, fb)]
+        starts = window_starts(num_frames, clip_len, stride, clip_len // 2)
+        assert len(seen) == len(starts)
+        for start, (seq, fuse) in zip(starts, seen):
+            grid = list(range(start, start + clip_len * stride, stride))
+            inside = [i for i in grid if 0 <= i < num_frames]
+            expected = normalise(torch.from_numpy(np.stack([prepared[i] for i in inside])), 24, "rgb")
+            head, tail = sum(i < 0 for i in grid), sum(i >= num_frames for i in grid)
+            expected = torch.nn.functional.pad(expected, (0, 0, 0, 0, 0, 0, head, tail))
+            assert torch.equal(seq, expected)
+            rows = np.zeros((clip_len, 2), np.float32)
+            for k, i in enumerate(grid):
+                if 0 <= i // stride < len(block) and i >= 0:
+                    rows[k] = block[i // stride]
+            assert np.array_equal(fuse.numpy(), rows)
+        assert scores.shape == (num_frames // stride, 3)
