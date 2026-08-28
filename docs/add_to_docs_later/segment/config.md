@@ -49,10 +49,38 @@ the one folder searched for it (no project-level list to fall through).
 |---|---|---|
 | `name` | `default` | Materialised dataset name → `{root}/data/{name}`. |
 | `columns` | required | `feature → dim → values`. Every dim of a feature must be pinned except the individual dim (pinned per sample). A second individual dim is spelled `other: "*"` — the remaining individuals in dataset order. |
+| `sin_cos` | `[]` | Features in `columns` that are **angles** — see below. |
 | `individuals` | dataset's individual coord | Which individuals become samples. Required when the dataset has no individual dim but the labels name individuals. |
 | `labels.mapping` | required | `mapping.txt` (`id name [branch] [event_type]`). |
 | `labels.branch` | `0` | The one branch this model predicts. |
 | `labels.classes` | all state classes of the branch | Subset of label ids to predict. |
+
+### `features.sin_cos`
+
+An angle read as a plain number lies about its own geometry: 359° and 1° are
+two degrees apart and the column says they are the furthest apart it ever
+gets, and no amount of z-scoring repairs that jump. Name the feature here and
+each of its columns is replaced by the two components of its angle:
+
+```yaml
+features:
+  columns:
+    angles: {keypoint: [beakTip, stickTip]}
+  sin_cos: [angles]
+```
+
+gives `angles|keypoint=beakTip|sin`, `angles|keypoint=beakTip|cos`, and the
+same pair for `stickTip` — the raw column is gone, not supplemented. The
+units are the variable's own `units` attr (`rad` / `deg`, either spelling,
+which is what {mod}`ethograph.features.geometry` writes); a variable that
+declares none has them read off its values, logged at INFO, since a full turn
+is 6.28 one way and 360 the other. A `units` that is not angular at all is an
+error — it says the feature is not an angle.
+
+The components live in `[-1, 1]` and mean what they say there, so they are
+never z-scored or percentile-clipped, exactly like a column carrying
+`attrs["normalise"] = 0`. Naming a feature that `columns` does not select is
+an error.
 
 ### `features.changepoint_features`
 
@@ -156,6 +184,15 @@ ethograph/segment/dlc2action/config/model/{architecture}.yaml
 One name differs from its file: `mstcn` reads `ms_tcn3.yaml`. Every other
 architecture matches.
 
+The two skeleton-graph architectures (`specscalpel`, `lady`) are the
+exception to "params are architecture hyperparameters only": their `params`
+also carry the **joint layout** — `keypoints` (the ordered keypoint names) and
+`skeleton` (a skeleton-config YAML, an ndx-pose `.nwb`, or `[a, b]` pairs) — and,
+for `lady`, the root-frame landmarks `root`/`spine`/`left`/`right`. These are
+structural, not tunable, so `eto.segment.tunable_params(name)` lists only the
+network numbers. Their defaults live in
+`ethograph/segment/{specscalpel,lady}/config/defaults.yaml`.
+
 An unknown key is an error naming the valid ones, so a typo cannot silently do
 nothing — and it is raised *before* training starts, not by the constructor
 half-way into a search.
@@ -192,12 +229,12 @@ For what each architecture is good at, see {doc}`index`.
 | `f1_thresholds` | `[0.5, 0.75, 0.9]` | IoU thresholds of the segmental F1 scores. |
 | `seed`, `device` | `0`, auto | `device` = `cuda`, `mps`, `cpu`; auto picks the best available. |
 | `drop_kinds` | `[]` | Feature categories to leave out of this run — the ablation axis (see {doc}`../variable_schema`). `[video_feature]` trains the same model without S3D. Applied to the materialised dataset's columns, so an ablation costs a run rather than a re-materialisation; columns whose `kind` is undeclared are always kept. |
-| `frame_weight` | `1.0` | Weight of `train.loss` in the total. `0` trains a query-head architecture on its set objective alone (upstream's setting for `baformer`); anything else keeps the frame loss as an auxiliary. |
+| `frame_weight` | `1.0` | Weight of `train.loss` in the total. `0` leaves `train.circle` as the only thing training. |
 | `subsample` | `1` | Train and predict at `fs / subsample` — the temporal-resolution axis, run-level like `drop_kinds`, so one materialised dataset serves every rate. Every frame count the run reports (its metrics, its `_probs.npz`) is then in *its* frames, so runs at different rates are only comparable once their predictions are scored back on one grid (`scripts/experiment2_smoothing.py` does that). Striding, with no anti-alias filter. |
 
 ### Losses
 
-The total objective is a sum of up to four terms, each independently
+The total objective is a sum of up to two terms, each independently
 switched on by its own weight — `Objective` in
 {mod}`ethograph.segment.losses` computes and itemises them, and every
 weighted term's value lands in `metrics.tsv`/the console log by the name
@@ -207,15 +244,10 @@ moving.
 | Term | Weight key | Default | Config section | Needs |
 |---|---|---|---|---|
 | frame (CE + consistency) | `train.frame_weight` | `1.0` | `train.loss` | any architecture |
-| boundary | `train.boundary.weight` | `0` | `train.boundary` | `asrf`, `baformer` |
-| query set | *(no separate weight — see `train.queries`)* | — | `train.queries` | query-emitting architectures (`baformer`) |
 | circle (metric-learning) | `train.circle.weight` | `0` | `train.circle` | any architecture |
 
-`frame_weight: 0` and every other weight left at `0` is a `ValueError`
-("nothing to train on") — at least one term must be active. A positive
-`boundary`/`queries` weight against an architecture without that head is
-also an error, naming the architectures that do have it, rather than a
-weight that silently does nothing.
+`frame_weight: 0` with `circle.weight` left at `0` is a `ValueError`
+("nothing to train on") — at least one term must be active.
 
 ### `train.loss`
 
@@ -225,7 +257,7 @@ stops the output flickering between classes mid-behaviour.
 
 | Key | Default | Meaning |
 |---|---|---|
-| `alpha` | `0.001` | Weight of the consistency term. Raise it if predictions flicker; lower it if short behaviours are being swallowed by their neighbours. |
+| `alpha` | `0.001` | Weight of the consistency term. Raise it if predictions flicker; lower it if short behaviours are being swallowed by their neighbours. The default is DLC2Action's, at which the term barely registers; MS-TCN's published value is `0.15`, which is what the earlier CETNet training script used and what `scripts/bench.py` pins when it asks whether the term helps at all. |
 | `tau` | `4` | How large a frame-to-frame jump in log-probability that term still penalises; beyond `tau` it is truncated, so a genuine class change is not punished without limit. Ours, not a key of a config file upstream: DLC2Action writes MS-TCN's `tau` of 4 into the arithmetic as `clamp(..., max=16)`. Both it and `alpha` were tuned in the literature at 15–30 fps, so at a high sampling rate they are worth re-tuning together — that is what `scripts/experiment2_smoothing.py` sweeps. |
 | `focal` | `true` | Focus the loss on frames the model still gets wrong, instead of ones it already has right. |
 | `gamma` | `2` | How sharply `focal` does that. Higher = more focus on hard frames. No effect when `focal: false`. |
@@ -244,44 +276,12 @@ on each, live in `ethograph/segment/dlc2action/config/losses.yaml`.
 
 **TODO**: See if inverse_frequency weights loss is detrimental
 
-### `train.boundary`
-
-The class-agnostic boundary branch — see {doc}`boundaries`. Needs an
-architecture that has the head (`asrf`, `baformer`); a positive `weight`
-against one that does not is an error naming them, not a setting that quietly
-does nothing.
-
-| Key | Default | Meaning |
-|---|---|---|
-| `weight` | `0` | `w_b`, the weight of the boundary BCE in the total loss. `0` leaves the head built but untrained, which is the ablation. |
-| `tolerance_s` | `0` | How far either side of a true transition still counts as a boundary, **in seconds**. `0` is the single-frame target ASRF uses. The literature's "±4 frames" was tuned at 15–30 fps; at 200 Hz it is ±20 ms, which is a different instruction — so this is a duration and the frame half-width is derived from the dataset's own rate. |
-| `pos_weight` | `null` | Positive-class weight. `null` recomputes `n_negative / n_positive` per batch, which is honest for a channel whose positives are ~1% of frames and whose density varies by trial. Whichever was used is recorded in the run's `test_metrics.yaml`. |
-| `focal` | `false` | Use the focal form of the BCE instead of `pos_weight`. The two are alternatives, not a stack. |
-| `focal_gamma` | `2` | How sharply, when `focal` is on. |
-
-### `train.queries`
-
-BaFormer's set-prediction objective — read only when the architecture emits
-queries. The three matched terms are both the matching cost and the gradient,
-so the assignment and the loss agree about what a good segment is.
-
-| Key | Default | Meaning |
-|---|---|---|
-| `class_weight` | `2.0` | Weight of the matched classification cross-entropy. |
-| `mask_weight` | `5.0` | Weight of the matched mask focal loss. |
-| `dice_weight` | `5.0` | Weight of the matched dice loss — the IoU-shaped term. |
-| `boundary_weight` | `1.0` | Weight of the global boundary query's BCE. Its target dilation and positive weighting come from `train.boundary`. |
-| `eos_coef` | `0.1` | Weight of the "no segment" class the unmatched queries are pushed towards. Without it the head learns that predicting nothing is safe. |
-| `label_smoothing` | `0` | Label smoothing on that cross-entropy. |
-| `deep_supervision` | `true` | Match and score every decoder level, not just the last. It is what makes a ten-level decoder trainable. |
-
 ### `train.circle`
 
 A deep metric-learning term over the finest-stage logits (Sun et al. 2020,
 circle loss) — pulls same-class frames' logit vectors together and pushes
 different-class ones apart, independent of the frame cross-entropy above.
-Architecture-agnostic (every registered model produces logits, unlike the
-boundary/query heads above).
+Architecture-agnostic — every registered model produces logits.
 
 | Key | Default | Meaning |
 |---|---|---|
@@ -292,8 +292,23 @@ boundary/query heads above).
 
 ```yaml
 train:
-  circle: {weight: 0}   # explicit off, same as the default
+  circle: {weight: 0.001}   # the weighting it was ported with; 0 (the default) switches it off
 ```
+
+#### Choosing a weight
+
+Start at **`0.001`**, with `m` and `gamma` at their defaults. The term is a
+softplus of a log-sum-exp over every same-class and different-class pair,
+scaled by `gamma` = 128, so its raw value runs to tens where the frame
+cross-entropy sits below 1 — the weight is what brings the two onto one
+scale, and `0.001` is exactly the weighting the CETNet training script this
+was ported from used (`0.001 * CircleLoss(m=0.25, gamma=128)`). One
+difference to keep in mind: that script applied it to the encoder's feature
+map, whereas here it reads the class logits, a vector only as wide as the
+number of classes, so the same weight is a starting point rather than a
+tuned answer. Whether the term earns its place is what `scripts/bench.py`
+measures — every architecture, with and without it, cross-validated per
+individual.
 
 ### `train.augment`
 
@@ -502,10 +517,9 @@ Sidecars go to `{root}/video_features/`.
 
 ### `infer.postprocess`
 
-(Re-cut) → purge → stitch → snap → purge. The interval steps go through the
-same functions as the GUI's changepoint correction; the optional first step is
-the one that is not about intervals at all, and it needs a boundary head. Also
-used for the *post-processed* numbers in `test_metrics.yaml`.
+Purge → stitch → snap → purge, through the same functions as the GUI's
+changepoint correction. Also used for the *post-processed* numbers in
+`test_metrics.yaml`.
 
 The interval steps are the GUI's *CP Correction* section under other names,
 and the default way to fill them is to **take the GUI's numbers**:
@@ -523,9 +537,9 @@ carries the resolved values explicitly (plus the path they came from), so a
 finished run does not change when the GUI does. The GUI's step checkboxes
 read as zeroed parameters (purge off → `min_duration_s: 0`, stitch off →
 `stitch_gap_s: 0`, snap off → `changepoint_correction: false`). Spell the
-values instead when one project needs settings the GUI does not hold. The
-boundary-head keys and `changepoints` have no GUI counterpart and are always
-the config's. See `docs/adr/0006-postprocess-from-gui-settings.md`.
+values instead when one project needs settings the GUI does not hold.
+`changepoints` has no GUI counterpart and is always the config's. See
+`docs/adr/0006-postprocess-from-gui-settings.md`.
 
 | Key | Default | Meaning |
 |---|---|---|
@@ -535,10 +549,7 @@ the config's. See `docs/adr/0006-postprocess-from-gui-settings.md`.
 | `stitch_gap_s` | `0` | Merge same-label predictions separated by less than this. |
 | `changepoint_correction` | `false` | Snap onsets/offsets to the session's changepoint masks (xarray sessions only; see {doc}`../variable_schema`). |
 | `changepoints` | `{}` | Selections pinning those variables (e.g. `{keypoint: beakTip}`); the individual is pinned per sample. |
-| `max_expansion_s`, `max_shrink_s` | `0.05`, `0.05` | How far a boundary may move outwards / inwards when snapping. |
-| `boundary_refinement` | `none` | `none` / `predicted` / `hybrid` — whether to re-cut the *dense* prediction at the model's own boundary peaks before it becomes intervals, and whether to restrict those peaks to the detected changepoints. See {doc}`boundaries`. A run whose architecture has no boundary head ignores this. |
-| `boundary_threshold` | `0.5` | Below this, a local maximum of the boundary probability is not a peak. |
-| `boundary_snap_s` | `0.05` | `hybrid` only: how far a predicted peak may be moved onto a detected changepoint. A peak with nothing that close is dropped. |
+| `max_expansion_s`, `max_shrink_s` | `0.05`, `0.05` | How far an interval edge may move outwards / inwards when snapping. |
 
 ## What a run writes
 

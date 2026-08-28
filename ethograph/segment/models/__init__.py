@@ -14,19 +14,9 @@ The training loss averages over stages; **inference reads the last stage**, so
 a builder whose upstream model emits its stages the other way round must flip
 them (see ``DLC2ActionModel(reverse_stages=True)`` for the C2F U-Nets).
 
-A model with heads beyond the class logits returns a :class:`ModelOutput`
-instead of the bare tensor. ``logits`` means the same thing either way — every
-consumer that only wants dense class scores reads
-``as_output(model(x, mask)).logits`` and never learns which heads exist. The
-extra fields are what the objective and the refinement need:
-
-* ``boundary`` ``(S, B, 1, T)`` — the class-agnostic boundary channel
-  (:mod:`ethograph.segment.boundary`), ASRF's second branch.
-* ``query_logits`` ``(L, B, Q, C+1)`` and ``query_masks`` ``(L, B, Q, T)`` —
-  the segment-query head (:mod:`ethograph.segment.queries`), one entry per
-  decoder level for deep supervision.
-
-In every case the first axis is stages and **the last one is the prediction**.
+A builder may return the bare ``(S, B, C, T)`` tensor or a
+:class:`ModelOutput` wrapping it; every consumer reads
+``as_output(model(x, mask)).logits``, so the two are interchangeable.
 
 Every vendored architecture is a DLC2Action model — see
 ``dlc2action/NOTICE.md``.
@@ -54,27 +44,20 @@ Builder = Callable[[dict[str, Any], int, int], nn.Module]
 
 @dataclass(frozen=True)
 class ModelOutput:
-    """One forward pass: the class logits, and whatever heads the model also has.
+    """One forward pass' class logits.
 
     ``logits`` is always ``(S, B, C, T)`` with the last stage the prediction —
-    the contract every consumer reads. The rest is ``None`` unless the
-    architecture builds that head.
+    the contract every consumer reads.
     """
 
     logits: torch.Tensor
-    #: ``(S, B, 1, T)`` boundary logits (ASRF's branch), or ``None``.
-    boundary: torch.Tensor | None = None
-    #: ``(L, B, Q, C+1)`` per-query class logits, or ``None``.
-    query_logits: torch.Tensor | None = None
-    #: ``(L, B, Q, T)`` per-query mask logits, or ``None``.
-    query_masks: torch.Tensor | None = None
 
 
 def as_output(result: torch.Tensor | ModelOutput) -> ModelOutput:
     """Normalise what a model returned to a :class:`ModelOutput`.
 
-    A model with no extra heads returns the bare ``(S, B, C, T)`` tensor, so
-    this is the one place that difference is absorbed.
+    A builder may return the bare ``(S, B, C, T)`` tensor, so this is the one
+    place that difference is absorbed.
     """
     return result if isinstance(result, ModelOutput) else ModelOutput(logits=result)
 
@@ -97,7 +80,7 @@ def register_architecture(name: str) -> Callable[[Builder], Builder]:
 
 def _load_builtin() -> None:
     # Imported for their registration side effect only.
-    from ethograph.segment.models import asrf, baformer, vendored  # noqa: F401
+    from ethograph.segment.models import skeleton_graph, vendored  # noqa: F401
 
 
 def _load_entry_points() -> None:

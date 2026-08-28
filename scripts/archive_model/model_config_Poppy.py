@@ -3,8 +3,9 @@ import os
 import subprocess
 import sys
 
-import ethograph as eto
 from ethograph.model.dataset import save_config
+
+import ethograph as eto
 
 params_rigid = {
     "Note": "Purge, stich and other changepoint_params determiend in configs/changepoints_settings.yaml",

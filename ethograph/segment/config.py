@@ -91,9 +91,9 @@ def read_gui_postprocess(path: Path) -> dict[str, Any]:
     """The ``infer.postprocess`` values the GUI's ``gui_settings.yaml`` at *path* expresses.
 
     Only the correction keys (:data:`GUI_POSTPROCESS_KEYS` + the step boxes);
-    the boundary-head settings and the ``changepoints`` selection have no GUI
-    counterpart and are left to the config. Missing: a config that asks for
-    a GUI file that is not there is an error, not a silent default.
+    the ``changepoints`` selection has no GUI counterpart and is left to the
+    config. Missing: a config that asks for a GUI file that is not there is an
+    error, not a silent default.
     """
     if not path.is_file():
         raise FileNotFoundError(
@@ -356,6 +356,20 @@ class FeaturesConfig:
     #: at session-open time; ``None`` = sessions keep only what their own
     #: ``.nc``/sidecar already declares.
     changepoint_features: ChangepointFeaturesConfig | None = None
+    #: Features in ``columns`` that are **angles**: each is replaced by the
+    #: two components of its ``(sin, cos)`` encoding, in radians or degrees
+    #: as the variable's ``units`` attr says (or as its values imply). A
+    #: circular quantity read as a plain number puts its two ends maximally
+    #: far apart, and the components are bounded, so they are never z-scored.
+    sin_cos: list[str] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        unknown = [name for name in self.sin_cos if name not in self.columns]
+        if unknown:
+            raise ValueError(
+                f"features.sin_cos names {unknown}, which features.columns does not select "
+                f"(it has {sorted(self.columns)})."
+            )
 
 
 @dataclass
@@ -431,32 +445,6 @@ class SplitConfig:
 
 
 @dataclass
-class BoundaryConfig:
-    """The class-agnostic boundary branch's training term (ASRF's second head).
-
-    Off by default (``weight: 0``), so an architecture that has the head
-    trains exactly as it did without it and turning it on is one line — which
-    is what makes it an ablation rather than a fork.
-
-    ``tolerance_s`` is in **seconds**, always. The literature's ±4 frames was
-    tuned at 15–30 fps; the same number of frames at 200 Hz is ±20 ms, which
-    is not the tolerance those papers meant. The frame half-width is resolved
-    against the materialised dataset's own sampling rate
-    (:func:`~ethograph.segment.boundary.tolerance_frames`).
-    """
-
-    #: Weight of the boundary BCE in the total loss; ``0`` leaves the head untrained.
-    weight: float = 0.0
-    #: Half-width the binary target is dilated by, in seconds. ``0`` = a single frame.
-    tolerance_s: float = 0.0
-    #: Positive-class weight; ``None`` recomputes ``n_negative / n_positive`` per batch.
-    pos_weight: float | None = None
-    #: Use the focal form of the BCE instead of the positive weight.
-    focal: bool = False
-    focal_gamma: float = 2.0
-
-
-@dataclass
 class CircleConfig:
     """Deep metric-learning term over the finest-stage logits (Sun et al. 2020, circle loss).
 
@@ -491,29 +479,6 @@ class CircleConfig:
             raise ValueError(f"train.circle.gamma must be positive, got {self.gamma}")
         if self.max_frames is not None and self.max_frames < 2:
             raise ValueError(f"train.circle.max_frames must be at least 2 (need a pair), got {self.max_frames}")
-
-
-@dataclass
-class QueryLossConfig:
-    """BaFormer's set-prediction objective — used only by a query-head architecture.
-
-    The three matched terms (class / mask / dice) are both the matching cost
-    and the gradient, so the assignment and the loss agree about what a good
-    segment is. ``eos_coef`` down-weights the "no segment" class the unmatched
-    queries are pushed towards; without it the head learns that predicting
-    nothing is safe.
-    """
-
-    class_weight: float = 2.0
-    mask_weight: float = 5.0
-    dice_weight: float = 5.0
-    #: Weight of the boundary query's BCE within the set loss. The target's
-    #: dilation and positive weighting come from ``train.boundary``.
-    boundary_weight: float = 1.0
-    eos_coef: float = 0.1
-    label_smoothing: float = 0.0
-    #: Match and score every decoder level, not just the last.
-    deep_supervision: bool = True
 
 
 @dataclass
@@ -561,15 +526,9 @@ class TrainConfig:
     #: ``MS_TCN_Loss``; we write no default for it. See
     #: :func:`ethograph.segment.losses.build_loss`.
     loss: dict[str, Any] = field(default_factory=dict)
-    #: Weight of the frame-wise loss above in the total. ``0`` trains a
-    #: query-head architecture on its set objective alone (upstream's setting);
-    #: leave it at 1 to keep the frame loss as an auxiliary.
+    #: Weight of the frame-wise loss above in the total; ``0`` leaves the
+    #: circle term as the only thing training.
     frame_weight: float = 1.0
-    #: The boundary branch's term. Needs an architecture with the head
-    #: (``asrf``, ``baformer``); a positive weight against one without is an error.
-    boundary: BoundaryConfig = field(default_factory=BoundaryConfig)
-    #: The segment-query objective. Read only when the architecture emits queries.
-    queries: QueryLossConfig = field(default_factory=QueryLossConfig)
     #: The circle (deep metric-learning) term. Architecture-agnostic.
     circle: CircleConfig = field(default_factory=CircleConfig)
     augment: AugmentConfig = field(default_factory=AugmentConfig)
@@ -676,19 +635,7 @@ class SearchConfig:
 
 @dataclass
 class PostprocessConfig:
-    """(Re-cut at predicted boundaries) → purge → stitch → (snap to changepoints) → purge.
-
-    The two boundary steps are different things and both are available:
-    ``boundary_refinement`` re-cuts the dense prediction using the *model's*
-    boundary head before it ever becomes intervals, and
-    ``changepoint_correction`` snaps the resulting interval edges onto
-    *detected* changepoints. The four combinations are the comparison the
-    boundary head is worth doing at all::
-
-        none      + changepoint_correction   the existing pipeline
-        predicted                            snap to the model's own peaks
-        hybrid    + changepoint_correction   the model's peaks, restricted to
-                                             the detected changepoints
+    """Purge → stitch → (snap to changepoints) → purge.
 
     The interval steps are the GUI's changepoint correction, and
     ``gui_settings`` lets a config *take* the GUI's numbers instead of
@@ -712,33 +659,9 @@ class PostprocessConfig:
     changepoints: dict[str, str] = field(default_factory=dict)
     max_expansion_s: float = 0.05
     max_shrink_s: float = 0.05
-    #: ``none`` | ``predicted`` | ``hybrid`` — see
-    #: :data:`~ethograph.segment.boundary.REFINEMENT_MODES`. Anything but
-    #: ``none`` needs an architecture with a boundary head.
-    boundary_refinement: str = "none"
-    #: A boundary probability below this is not a peak.
-    boundary_threshold: float = 0.5
-    #: ``hybrid`` only: how far a predicted peak may be moved onto a detected
-    #: changepoint, in seconds. A peak with nothing that close is dropped.
-    boundary_snap_s: float = 0.05
 
     def __post_init__(self) -> None:
         self.label_thresholds = {int(k): float(v) for k, v in self.label_thresholds.items()}
-        # Local import: boundary → dataset → config, so the modes cannot be
-        # imported at module level without a cycle.
-        from ethograph.segment.boundary import REFINEMENT_MODES
-
-        if self.boundary_refinement not in REFINEMENT_MODES:
-            raise ValueError(
-                f"infer.postprocess.boundary_refinement={self.boundary_refinement!r} is not one of "
-                f"{list(REFINEMENT_MODES)}"
-            )
-        if self.boundary_refinement == "hybrid" and not self.changepoint_correction:
-            raise ValueError(
-                "infer.postprocess.boundary_refinement='hybrid' restricts the model's boundary peaks to "
-                "the detected changepoints, so it needs changepoint_correction: true (and the "
-                "changepoints selection that goes with it)."
-            )
 
 
 @dataclass
@@ -895,8 +818,6 @@ _NESTED: dict[str, type] = {
     "features": FeaturesConfig,
     "model": ModelConfig,
     "augment": AugmentConfig,
-    "boundary": BoundaryConfig,
-    "queries": QueryLossConfig,
     "circle": CircleConfig,
     "split": SplitConfig,
     "train": TrainConfig,

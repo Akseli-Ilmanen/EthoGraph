@@ -513,6 +513,24 @@ def test_write_comparison_pdf(tmp_path: Path):
     assert path.is_file() and path.stat().st_size > 0
 
 
+def test_write_factorial_pdf_uneven_grid(tmp_path: Path):
+    """An interrupted bench leaves holes: a cell with one fold, an architecture one group never trained."""
+    from ethograph.segment.plotting import FactorCell, write_factorial_pdf
+    from ethograph.segment.samples import ClassTable
+
+    classes = ClassTable([0, 1, 2], ["background", "a", "b"])
+    cells = [
+        FactorCell("g1", "mlp", "all", [_fake_run_eval("f1", 1), _fake_run_eval("f2", 2)]),
+        FactorCell("g1", "mlp", "no_circle", [_fake_run_eval("f1", 3)]),
+        FactorCell("g2", "mlp", "all", [_fake_run_eval("f1", 4), _fake_run_eval("f2", 5)]),
+        FactorCell("g2", "mstcn", "no_circle", [_fake_run_eval("f1", 6), _fake_run_eval("f2", 7)]),
+    ]
+    path = write_factorial_pdf(tmp_path / "factorial.pdf", cells, classes, title="fake", stamp="stamp")
+    assert path.is_file() and path.stat().st_size > 0
+    with pytest.raises(ValueError, match="at least one fold"):
+        write_factorial_pdf(tmp_path / "empty.pdf", [FactorCell("g1", "mlp", "all", [])], classes)
+
+
 def test_layout_mismatch_is_an_error(project: Path):
     from ethograph.segment.inference import inference
     from ethograph.segment.train import train

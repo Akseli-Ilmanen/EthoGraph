@@ -1,22 +1,14 @@
-"""The training loss: DLC2Action's own :class:`MS_TCN_Loss`, plus the heads.
+"""The training loss: DLC2Action's own :class:`MS_TCN_Loss`, plus the circle term.
 
-:func:`build_objective` is what training calls. It composes the three terms a
+:func:`build_objective` is what training calls. It composes the two terms a
 run can have, each weighted by the config and each reported separately so a
 metrics row says where the loss went:
 
 * the **frame** loss below (``train.frame_weight``) — upstream's, near enough
   unmodified;
-* the **boundary** loss (``train.boundary.weight``) — ASRF's second head, see
-  :mod:`ethograph.segment.boundary`;
-* the **query** set loss — BaFormer's, see :mod:`ethograph.segment.queries`,
-  applied whenever the architecture emits queries at all;
 * the **circle** loss (``train.circle.weight``) — a deep metric-learning term
-  over the finest-stage logits, see :class:`CircleLoss`. Architecture-agnostic
-  (every registered model produces logits), unlike the two above.
-
-An architecture with no boundary/query head simply never contributes those
-terms; asking for one it does not have is an error naming the architectures
-that do, rather than a weight that silently does nothing.
+  over the finest-stage logits, see :class:`CircleLoss`. Architecture-agnostic,
+  since every registered model produces logits.
 
 The frame loss itself is cross-entropy (optionally focal) plus upstream's consistency term — the
 truncated MSE between consecutive log-probabilities, weighted by ``alpha`` —
@@ -60,14 +52,9 @@ import torch.nn.functional as F
 import yaml
 from torch import nn
 
-from ethograph.segment.boundary import BoundaryLoss, tolerance_frames
 from ethograph.segment.config import DLC2ACTION_CONFIG, SegmentConfig
 from ethograph.segment.dlc2action.loss import MS_TCN_Loss
 from ethograph.segment.models import ModelOutput
-from ethograph.segment.queries import HungarianMatcher, SetCriterion
-
-BOUNDARY_ARCHITECTURES = ("asrf", "baformer")
-"""The architectures that build a boundary head, named in the error when one is needed."""
 
 LOSS_CONFIG = DLC2ACTION_CONFIG / "losses.yaml"
 """Upstream's ``dlc2action/config/losses.yaml`` — the defaults, verbatim."""
@@ -235,7 +222,7 @@ def circle_term(
 
 
 class Objective(nn.Module):
-    """The whole training loss: frame + boundary + query + circle, weighted and itemised.
+    """The whole training loss: frame + circle, weighted and itemised.
 
     ``forward`` returns ``(total, parts)`` where *parts* holds each term's own
     value as a plain float — that is what the run's ``metrics.tsv`` and log
@@ -247,9 +234,6 @@ class Objective(nn.Module):
         self,
         frame_loss: nn.Module,
         frame_weight: float = 1.0,
-        boundary_loss: BoundaryLoss | None = None,
-        boundary_weight: float = 0.0,
-        query_loss: SetCriterion | None = None,
         circle_loss: CircleLoss | None = None,
         circle_weight: float = 0.0,
         circle_max_frames: int | None = None,
@@ -257,9 +241,6 @@ class Objective(nn.Module):
         super().__init__()
         self.frame_loss = frame_loss
         self.frame_weight = float(frame_weight)
-        self.boundary_loss = boundary_loss
-        self.boundary_weight = float(boundary_weight)
-        self.query_loss = query_loss
         self.circle_loss = circle_loss
         self.circle_weight = float(circle_weight)
         self.circle_max_frames = circle_max_frames
@@ -273,22 +254,6 @@ class Objective(nn.Module):
             frame = self.frame_loss(output.logits, y)
             total = total + self.frame_weight * frame
             parts["frame"] = float(frame.detach())
-        if self.boundary_weight:
-            if output.boundary is None:
-                raise ValueError(
-                    f"train.boundary.weight={self.boundary_weight} but this architecture has no boundary "
-                    f"head, so the term would train nothing. Use one of {list(BOUNDARY_ARCHITECTURES)} "
-                    "(model.architecture: asrf keeps your current encoder as its backbone), or set the "
-                    "weight to 0."
-                )
-            assert self.boundary_loss is not None
-            boundary = self.boundary_loss(output.boundary, y, mask)
-            total = total + self.boundary_weight * boundary
-            parts["boundary"] = float(boundary.detach())
-        if output.query_logits is not None and self.query_loss is not None:
-            query, query_parts = self.query_loss(output.query_logits, output.query_masks, output.boundary, y, mask)
-            total = total + query
-            parts.update(query_parts)
         if self.circle_weight:
             assert self.circle_loss is not None
             circle = circle_term(self.circle_loss, output.logits, y, mask, self.circle_max_frames)
@@ -297,51 +262,22 @@ class Objective(nn.Module):
                 parts["circle"] = float(circle.detach())
         if not parts:
             raise ValueError(
-                "Every loss term is switched off (train.frame_weight=0 and no head with a weight) — "
+                "Every loss term is switched off (train.frame_weight=0 and train.circle.weight=0) — "
                 "there is nothing to train on."
             )
         parts["total"] = float(total.detach())
         return total, parts
 
 
-def build_objective(config: SegmentConfig, n_classes: int, fs: float) -> tuple[Objective, dict[str, Any]]:
-    """The objective this run trains against, with the settings it resolved to.
-
-    *fs* is the materialised dataset's sampling rate, and it is the only
-    reason this needs the dataset at all: ``train.boundary.tolerance_s`` is a
-    duration, and turning it into a frame half-width is the one conversion
-    that must not be guessed.
-    """
+def build_objective(config: SegmentConfig, n_classes: int) -> tuple[Objective, dict[str, Any]]:
+    """The objective this run trains against, with the settings it resolved to."""
     tcfg = config.train
     frame_loss, frame_settings = build_loss(tcfg.loss, n_classes)
-    tolerance = tolerance_frames(tcfg.boundary.tolerance_s, fs)
-    boundary_loss = BoundaryLoss(
-        tolerance=tolerance,
-        pos_weight=tcfg.boundary.pos_weight,
-        focal=tcfg.boundary.focal,
-        gamma=tcfg.boundary.focal_gamma,
-    )
-    qcfg = tcfg.queries
-    query_loss = SetCriterion(
-        n_classes=n_classes,
-        matcher=HungarianMatcher(qcfg.class_weight, qcfg.mask_weight, qcfg.dice_weight),
-        class_weight=qcfg.class_weight,
-        mask_weight=qcfg.mask_weight,
-        dice_weight=qcfg.dice_weight,
-        boundary_weight=qcfg.boundary_weight,
-        eos_coef=qcfg.eos_coef,
-        label_smoothing=qcfg.label_smoothing,
-        deep_supervision=qcfg.deep_supervision,
-        boundary_loss=boundary_loss,
-    )
     ccfg = tcfg.circle
     circle_loss = CircleLoss(m=ccfg.m, gamma=ccfg.gamma) if ccfg.weight else None
     objective = Objective(
         frame_loss=frame_loss,
         frame_weight=tcfg.frame_weight,
-        boundary_loss=boundary_loss,
-        boundary_weight=tcfg.boundary.weight,
-        query_loss=query_loss,
         circle_loss=circle_loss,
         circle_weight=ccfg.weight,
         circle_max_frames=ccfg.max_frames,
@@ -349,13 +285,6 @@ def build_objective(config: SegmentConfig, n_classes: int, fs: float) -> tuple[O
     settings = {
         "frame_weight": tcfg.frame_weight,
         "frame": frame_settings,
-        "boundary": {
-            "weight": tcfg.boundary.weight,
-            "tolerance_s": tcfg.boundary.tolerance_s,
-            "tolerance_frames": tolerance,
-            "pos_weight": tcfg.boundary.pos_weight,
-            "focal": tcfg.boundary.focal,
-        },
         "circle": {"weight": ccfg.weight, "m": ccfg.m, "gamma": ccfg.gamma, "max_frames": ccfg.max_frames},
     }
     return objective, settings

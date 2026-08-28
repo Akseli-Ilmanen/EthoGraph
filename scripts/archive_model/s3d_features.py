@@ -1,12 +1,12 @@
 import os
 from contextlib import redirect_stdout
 
+from ethograph.video_features.extract_s3d import ExtractS3D as Extractor
+from ethograph.video_features.utils import form_list_from_user_input, sanity_check
 from omegaconf import OmegaConf
 from tqdm import tqdm
 
 import ethograph as eto
-from ethograph.video_features.extract_s3d import ExtractS3D as Extractor
-from ethograph.video_features.utils import form_list_from_user_input, sanity_check
 
 
 def s3d_features(args_cli):

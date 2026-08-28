@@ -13,6 +13,8 @@ import numpy as np
 
 from ethograph.labels.ml import get_labels_start_end_indices
 
+METRICS_FILE = "metrics.tsv"
+"""One row per validation: val metrics (selects ``best.pt``) + test raw/postprocessed, by epoch."""
 TEST_METRICS_FILE = "test_metrics.yaml"
 EVAL_ARRAYS_FILE = "test_eval.npz"
 """The matched-segment IoUs and onset/offset deltas :func:`evaluate` returns —

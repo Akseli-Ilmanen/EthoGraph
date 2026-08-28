@@ -15,12 +15,12 @@ import random
 
 import torch
 import yaml
-
-import ethograph as eto
-from ethograph.labels.intervals import load_mapping
 from ethograph.model.batch_gen import BatchGenerator
 from ethograph.model.cetnet_encoder import *
 from ethograph.model.dataset import get_data_dict, get_trial_dict, write_bundle_list
+
+import ethograph as eto
+from ethograph.labels.intervals import load_mapping
 
 if not torch.cuda.is_available():
     raise EnvironmentError("CUDA not available. Please check your PyTorch installation.")

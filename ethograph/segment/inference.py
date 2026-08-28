@@ -5,6 +5,7 @@ LightGBM onset-model runs use, see :mod:`ethograph.labels.onset_curves`), one
 folder per call to :func:`infer`, named ``predictions_{run_name}_{timestamp}``
 so a re-run never overwrites an earlier one::
 
+<<<<<<< HEAD
     labels/
         predictions_{run_name}_{timestamp}/
             {stem}_predictions.tsv   # the GUI's native labels format, labeling_method=automated
@@ -12,10 +13,13 @@ so a re-run never overwrites an earlier one::
                                 # and "{key}_boundary" → (T,) where the run has that head
             config.yaml         # the run's own config, as trained
             inference.yaml      # the run's name and the infer: settings applied here
+=======
+    {stem}_labels.tsv   # the GUI's native labels format, labeling_method=automated
+    {stem}_probs.npz    # per sample: "{key}" → (T, C) float16, "{key}_time" → (T,)
+>>>>>>> 2c2b2f41aef4c9bc61d62a973b430becbbabb386
 
 The TSV is what the GUI loads and compares; the ``.npz`` exists only for the
-confidence overlay and, for a run with a boundary head, for plotting the
-boundary curve against the speed trace it was supposed to have learnt.
+confidence overlay.
 """
 
 from __future__ import annotations
@@ -35,11 +39,10 @@ from ethograph.labels.intervals import LABELING_AUTOMATED, NO_RECIPIENT
 from ethograph.labels.ml import dense_to_intervals
 from ethograph.labels.onset_curves import labels_dir, write_provenance
 from ethograph.labels.tsv_store import save_labels_tsv
-from ethograph.segment.boundary import boundary_probabilities
-from ethograph.segment.config import SegmentConfig, config_to_dict, load_config
+from ethograph.segment.config import SegmentConfig, load_config
 from ethograph.segment.materialise import COLUMNS_FILE
 from ethograph.segment.models import as_output, build_model
-from ethograph.segment.postprocess import postprocess_intervals, refine_dense
+from ethograph.segment.postprocess import postprocess_intervals
 from ethograph.segment.preprocess import NormStats
 from ethograph.segment.samples import ClassTable, ColumnLayout, build_sample_features, sample_key
 from ethograph.segment.sessions import Session, changepoint_times, filter_trials, open_session
@@ -127,22 +130,15 @@ def load_run(run_dir: Path, device: str | None = None) -> Run:
     return Run(run_dir, config, layout, classes, stats, model, dev, keep=None if keep.all() else keep)
 
 
-def predict_probabilities(run: Run, x: np.ndarray) -> tuple[np.ndarray, np.ndarray | None]:
-    """``(F, T)`` preprocessed features → ``(T, C)`` probabilities and the ``(T,)`` boundary curve.
-
-    The boundary curve is ``None`` unless the run's architecture has that head
-    — which is exactly what makes ``infer.postprocess.boundary_refinement``
-    a no-op for every run trained before it existed.
-    """
+def predict_probabilities(run: Run, x: np.ndarray) -> np.ndarray:
+    """``(F, T)`` preprocessed features → ``(T, C)`` probabilities."""
     if run.keep is not None:
         x = x[run.keep]
     xn = torch.from_numpy(np.ascontiguousarray(run.stats.apply(x))).unsqueeze(0).to(run.device)
     mask = torch.ones(1, 1, xn.shape[-1], device=run.device)
     with torch.no_grad():
         output = as_output(run.model(xn, mask))
-        probs = torch.softmax(output.logits[-1], dim=1)[0].T.cpu().numpy()
-        boundary = boundary_probabilities(output.boundary)[0].cpu().numpy() if output.boundary is not None else None
-    return probs, boundary
+        return torch.softmax(output.logits[-1], dim=1)[0].T.cpu().numpy()
 
 
 def _segment_confidence(conf: np.ndarray, time: np.ndarray, onset: float, offset: float) -> float:
@@ -165,13 +161,13 @@ def infer_session(config: SegmentConfig, run: Run, session: Session, out_dir: Pa
             run.layout.check(layout, f"{session.id} trial {window.trial} individual {individual}")
             if step > 1:  # the rate this run was trained at, so its receptive field means the same thing
                 time, x = time[::step], x[:, ::step]
-            probs, boundary = predict_probabilities(run, x)
+            probs = predict_probabilities(run, x)
             cp = (
                 changepoint_times(session, window.trial, {**pcfg.changepoints}) if pcfg.changepoint_correction else None
             )
             if cp is not None and len(cp) == 0:
                 trials_without_cp.append(window.trial)
-            indices = refine_dense(probs.argmax(axis=1), boundary, layout.fs / step, pcfg, time, cp)
+            indices = probs.argmax(axis=1)
             conf = probs.max(axis=1)
             ids = run.classes.ids(indices)
             intervals = dense_to_intervals(ids, [individual], time_coord=time)
@@ -179,8 +175,6 @@ def infer_session(config: SegmentConfig, run: Run, session: Session, out_dir: Pa
             key = sample_key(session.id, window.trial, individual)
             arrays[key] = probs.astype(np.float16)
             arrays[f"{key}_time"] = time.astype(np.float64)
-            if boundary is not None:
-                arrays[f"{key}_boundary"] = boundary.astype(np.float16)
             for _, seg in intervals.iterrows():
                 rows.append(
                     {

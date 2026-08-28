@@ -6,23 +6,31 @@ values and zeros on padded frames.
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 torch = pytest.importorskip("torch")
+pytest.importorskip("einops")  # the vendored MotionBERT needs it; the `model` extra declares it
 
 import ethograph as eto  # noqa: E402
 import ethograph.segment.models.vendored  # noqa: E402, F401
 from ethograph.segment.models import ARCHITECTURES  # noqa: E402
 from ethograph.segment.models.vendored import C2F_MIN_FRAMES  # noqa: E402
 
-VENDORED = ["mstcn", "asformer", "c2f_tcn", "c2f_transformer", "edtcn", "mlp"]
-HEADS = ["asrf", "baformer"]
-"""Ours: an extra head over a vendored encoder, returning a ``ModelOutput``."""
+VENDORED = ["mstcn", "asformer", "c2f_tcn", "c2f_transformer", "edtcn", "mlp", "motionbert"]
+
+PARAMS: dict[str, dict[str, Any]] = {"motionbert": {"num_joints": 1}}
+"""What an architecture cannot be built without — upstream's ``???`` keys."""
 N_FEATURES = 7
 N_CLASSES = 3
 B = 2
 T = 1024
 N_PADDED = 100
+
+
+def _params(name: str) -> dict[str, Any]:
+    return dict(PARAMS.get(name, {}))
 
 
 def _inputs(n_frames: int = T) -> tuple[torch.Tensor, torch.Tensor]:
@@ -39,7 +47,7 @@ def test_registry_contains_vendored_names() -> None:
 
 @pytest.mark.parametrize("name", VENDORED)
 def test_forward_contract(name: str) -> None:
-    model = ARCHITECTURES[name]({}, N_FEATURES, N_CLASSES)
+    model = ARCHITECTURES[name](_params(name), N_FEATURES, N_CLASSES)
     x, mask = _inputs()
     model.train()
     out = model(x, mask)
@@ -55,7 +63,7 @@ def test_forward_contract(name: str) -> None:
 
 @pytest.mark.parametrize("name", VENDORED)
 def test_eval_is_deterministic(name: str) -> None:
-    model = ARCHITECTURES[name]({}, N_FEATURES, N_CLASSES).eval()
+    model = ARCHITECTURES[name](_params(name), N_FEATURES, N_CLASSES).eval()
     x, mask = _inputs()
     with torch.no_grad():
         first = model(x, mask)
@@ -80,7 +88,7 @@ def test_params_override_defaults() -> None:
 
 @pytest.mark.parametrize("name", ["c2f_tcn", "c2f_transformer"])
 def test_c2f_minimum_frames(name: str) -> None:
-    model = ARCHITECTURES[name]({}, N_FEATURES, N_CLASSES).eval()
+    model = ARCHITECTURES[name](_params(name), N_FEATURES, N_CLASSES).eval()
     x, mask = _inputs(C2F_MIN_FRAMES)
     with torch.no_grad():
         assert tuple(model(x, mask).shape[1:]) == (B, N_CLASSES, C2F_MIN_FRAMES)
@@ -97,6 +105,7 @@ CONFIG_STEMS = {
     "c2f_transformer": "c2f_transformer",
     "edtcn": "edtcn",
     "mlp": "mlp",
+    "motionbert": "motionbert",
 }
 
 
@@ -129,18 +138,22 @@ def test_upstream_defaults_refuses_an_unknown_model() -> None:
         upstream_defaults("not_a_model", N_FEATURES)
 
 
-def test_every_vendored_architecture_maps_to_an_upstream_config() -> None:
-    """The vendored ones read their defaults from upstream's YAML; the heads do not.
+def test_every_dlc2action_architecture_maps_to_an_upstream_config() -> None:
+    """Every DLC2Action architecture reads its defaults from upstream's YAML.
 
-    ``asrf`` and ``baformer`` are ours — a wrapper and a head over one of
-    those encoders — so they have no upstream config file of their own and are
-    the only registered names outside ``_STEMS``.
+    The registry also holds the skeleton-graph architectures (``specscalpel``,
+    ``lady``), which are not DLC2Action and read their own vendored defaults —
+    covered by ``test_segment_skeleton_graph.py``. So the DLC2Action stems are a
+    subset of the registry, and everything else is exactly those two.
     """
     from ethograph.segment.models import available_architectures
+    from ethograph.segment.models.skeleton_graph import _DEFAULTS_FILE
     from ethograph.segment.models.vendored import _STEMS
 
     assert _STEMS == CONFIG_STEMS
-    assert sorted(set(_STEMS) | set(HEADS)) == available_architectures()
+    registered = set(available_architectures())
+    assert set(_STEMS) <= registered
+    assert registered - set(_STEMS) == set(_DEFAULTS_FILE)
 
 
 @pytest.mark.parametrize("name", sorted(CONFIG_STEMS))
@@ -158,7 +171,7 @@ def test_tunable_params_are_exactly_what_build_model_accepts(name: str) -> None:
         "a dataset-derived key is not a hyperparameter the user sets"
     )
     for key, default in tunable.items():
-        build_model(name, {key: default}, N_FEATURES, N_CLASSES)
+        build_model(name, {**_params(name), key: default}, N_FEATURES, N_CLASSES)
 
 
 def test_a_param_the_architecture_does_not_take_is_refused_before_training() -> None:
@@ -205,6 +218,27 @@ def test_c2f_puts_its_full_resolution_stage_last(name: str) -> None:
     assert step[-1] > 10 * step[0], f"stages are not ordered coarse -> fine: {step}"
 
 
+def test_motionbert_returns_its_windows_in_order() -> None:
+    """MotionBERT sees a fixed window; the trial is folded into windows and back.
+
+    The fold is a reshape and a permute, and the wrong permute still returns
+    ``(S, B, C, T)`` and still trains — it just hands every frame another
+    window's prediction. So compare against running the windows by hand.
+    """
+    model = ARCHITECTURES["motionbert"](_params("motionbert"), N_FEATURES, N_CLASSES).eval()
+    window = model.window
+    n_frames = 2 * window + window // 2  # deliberately not a whole number of windows
+    x, mask = _inputs(n_frames)
+    with torch.no_grad():
+        whole = model(x, mask)
+        by_hand = torch.cat(
+            [model(x[..., i : i + window], mask[..., i : i + window]) for i in range(0, n_frames, window)],
+            dim=-1,
+        )
+    assert tuple(whole.shape) == (1, B, N_CLASSES, n_frames)
+    assert torch.allclose(whole, by_hand, atol=1e-5)
+
+
 def test_build_model_dispatches_vendored() -> None:
     from ethograph.segment.models import available_architectures, build_model
 
@@ -212,204 +246,3 @@ def test_build_model_dispatches_vendored() -> None:
     model = build_model("mlp", {}, N_FEATURES, N_CLASSES)
     x, mask = _inputs()
     assert tuple(model(x, mask).shape) == (1, B, N_CLASSES, T)
-
-
-# ---------------------------------------------------------------------------
-# The heads: asrf and baformer
-# ---------------------------------------------------------------------------
-
-HEAD_T = 512
-"""Shorter than the vendored sweep: the query head is O(Q x T) per level."""
-
-BAFORMER_PARAMS = {"num_layers": 3, "num_decode": 3, "num_queries": 16, "num_f_maps": 32, "nheads": 4}
-"""A small but complete BaFormer — every level, every head, few enough to be quick."""
-
-
-def _head_inputs(n_frames: int = HEAD_T) -> tuple[torch.Tensor, torch.Tensor]:
-    torch.manual_seed(0)
-    x = torch.randn(B, N_FEATURES, n_frames)
-    mask = torch.ones(B, 1, n_frames)
-    mask[1, :, -N_PADDED:] = 0
-    return x, mask
-
-
-def _build_head(name: str):
-    from ethograph.segment.models import build_model
-
-    params = BAFORMER_PARAMS if name == "baformer" else {"backbone_params": {"num_decoders": 0, "num_layers": 4}}
-    return build_model(name, params, N_FEATURES, N_CLASSES)
-
-
-@pytest.mark.parametrize("name", HEADS)
-def test_head_honours_the_logits_contract(name: str) -> None:
-    """A ``ModelOutput`` still carries ``(S, B, C, T)`` logits, zeroed on padding.
-
-    Everything downstream of the model reads ``.logits`` and nothing else, so
-    a head that broke this would break metrics, confidence and inference at
-    once.
-    """
-    from ethograph.segment.models import ModelOutput, as_output
-
-    model = _build_head(name)
-    x, mask = _head_inputs()
-    out = model(x, mask)
-    assert isinstance(out, ModelOutput)
-    assert as_output(out) is out
-    assert out.logits.dim() == 4
-    assert tuple(out.logits.shape[1:]) == (B, N_CLASSES, HEAD_T)
-    assert torch.isfinite(out.logits).all()
-    assert (out.logits[:, 1, :, -N_PADDED:] == 0).all()
-
-
-@pytest.mark.parametrize("name", HEADS)
-def test_head_emits_a_boundary_channel(name: str) -> None:
-    model = _build_head(name)
-    x, mask = _head_inputs()
-    out = model(x, mask)
-    assert out.boundary is not None
-    assert out.boundary.dim() == 4
-    assert tuple(out.boundary.shape[1:]) == (B, 1, HEAD_T)
-    assert torch.isfinite(out.boundary).all()
-    assert (out.boundary[:, 1, :, -N_PADDED:] == 0).all()
-
-
-@pytest.mark.parametrize("name", HEADS)
-def test_head_trains_both_outputs(name: str) -> None:
-    model = _build_head(name)
-    x, mask = _head_inputs()
-    out = model(x, mask)
-    (out.logits.mean() + out.boundary.mean()).backward()
-    assert any(p.grad is not None and torch.isfinite(p.grad).all() for p in model.parameters())
-
-
-def test_asrf_keeps_its_backbone_intact() -> None:
-    """The wrapper adds a head; it must not change what the encoder computes.
-
-    An ASRF whose class logits differ from the plain backbone's would make
-    every comparison against the encoder-only baseline meaningless.
-    """
-    from ethograph.segment.models import build_model
-
-    backbone_params = {"num_decoders": 0, "num_layers": 4}
-    torch.manual_seed(0)
-    plain = build_model("asformer", backbone_params, N_FEATURES, N_CLASSES).eval()
-    torch.manual_seed(0)
-    wrapped = build_model("asrf", {"backbone_params": backbone_params}, N_FEATURES, N_CLASSES).eval()
-    wrapped.inner.load_state_dict(plain.inner.state_dict())
-    x, mask = _head_inputs()
-    with torch.no_grad():
-        assert torch.allclose(plain(x, mask), wrapped(x, mask).logits, atol=1e-5)
-
-
-def test_asrf_defaults_to_the_asformer_encoder() -> None:
-    from ethograph.segment.models.asrf import DEFAULT_BACKBONE, ASRFModel, build_asrf
-    from ethograph.segment.models.vendored import ASFormer
-
-    assert DEFAULT_BACKBONE == "asformer"
-    model = build_asrf({"backbone_params": {"num_layers": 2}}, N_FEATURES, N_CLASSES)
-    assert isinstance(model, ASRFModel)
-    assert isinstance(model.inner, ASFormer)
-
-
-def test_asrf_boundary_stages_follow_brb_stages() -> None:
-    from ethograph.segment.models import build_model
-
-    model = build_model(
-        "asrf",
-        {"backbone_params": {"num_decoders": 0, "num_layers": 3}, "brb_stages": 3, "brb_layers": 2},
-        N_FEATURES,
-        N_CLASSES,
-    )
-    x, mask = _head_inputs(256)
-    assert model(x, mask).boundary.shape[0] == 3
-
-
-def test_asrf_refuses_a_backbone_with_no_usable_trunk() -> None:
-    """C2F pools the timeline and declares no trunk shape.
-
-    Caught when the model is built, not on the first forward pass — by then
-    the dataset is materialised and the run directory exists.
-    """
-    from ethograph.segment.models import build_model
-
-    with pytest.raises(ValueError, match="keeps the time axis"):
-        build_model("asrf", {"backbone": "c2f_tcn"}, N_FEATURES, N_CLASSES)
-
-
-def test_asrf_refuses_to_wrap_itself() -> None:
-    from ethograph.segment.models import build_model
-
-    with pytest.raises(ValueError, match="not 'asrf' itself"):
-        build_model("asrf", {"backbone": "asrf"}, N_FEATURES, N_CLASSES)
-
-
-@pytest.mark.parametrize(
-    "name,params,match",
-    [
-        ("asrf", {"num_f_maps": 64}, "backbone_params"),
-        ("baformer", {"num_decoders": 3}, "baformer settings"),
-    ],
-)
-def test_a_head_param_it_does_not_take_is_refused_before_training(name: str, params: dict, match: str) -> None:
-    from ethograph.segment.models import build_model
-
-    with pytest.raises(ValueError, match=match):
-        build_model(name, params, N_FEATURES, N_CLASSES)
-
-
-def test_baformer_exposes_one_query_set_per_decoder_level() -> None:
-    model = _build_head("baformer")
-    x, mask = _head_inputs()
-    out = model(x, mask)
-    levels = BAFORMER_PARAMS["num_decode"] + 1  # the heads are read before the first level too
-    assert tuple(out.query_logits.shape) == (levels, B, BAFORMER_PARAMS["num_queries"], N_CLASSES + 1)
-    assert tuple(out.query_masks.shape) == (levels, B, BAFORMER_PARAMS["num_queries"], HEAD_T)
-    assert out.boundary.shape[0] == levels
-
-
-def test_baformer_logits_are_log_probabilities() -> None:
-    """``softmax(logits)`` must be a distribution — confidence depends on it."""
-    model = _build_head("baformer").eval()
-    x, mask = _head_inputs()
-    with torch.no_grad():
-        probs = torch.softmax(model(x, mask).logits[-1], dim=1)
-    valid = probs[0]
-    assert torch.allclose(valid.sum(dim=0), torch.ones(HEAD_T), atol=1e-5)
-
-
-def test_baformer_votes_only_in_eval_mode() -> None:
-    """Training composes the queries softly; eval hardens them into spans.
-
-    The hard vote is what makes an edge an edge, and it is not differentiable
-    — so evaluating a BaFormer left in train mode silently measures the blurred
-    version. The two must therefore differ.
-    """
-    model = _build_head("baformer")
-    x, mask = _head_inputs()
-    model.eval()
-    with torch.no_grad():
-        voted = model(x, mask).logits
-    model.train()
-    with torch.no_grad():
-        soft = model(x, mask).logits
-    assert not torch.allclose(voted, soft)
-    # The voted prediction is constant inside every boundary-delimited span,
-    # so it can only change class where the boundary head put a peak.
-    from ethograph.segment.boundary import boundary_peaks
-
-    with torch.no_grad():
-        model.eval()
-        out = model(x, mask)
-    peaks = set(boundary_peaks(torch.sigmoid(out.boundary[-1, 0, 0]).numpy(), model.boundary_threshold).tolist())
-    labels = out.logits[-1, 0].argmax(dim=0)
-    changes = set((torch.nonzero(labels[1:] != labels[:-1]).flatten() + 1).tolist())
-    assert changes <= peaks
-
-
-def test_baformer_decode_levels_cannot_exceed_encoder_layers() -> None:
-    from ethograph.segment.models import build_model
-
-    model = build_model("baformer", {**BAFORMER_PARAMS, "num_layers": 2, "num_decode": 3}, N_FEATURES, N_CLASSES)
-    x, mask = _head_inputs(128)
-    with pytest.raises(ValueError, match="must not exceed"):
-        model(x, mask)

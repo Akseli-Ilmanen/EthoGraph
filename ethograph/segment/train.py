@@ -17,7 +17,6 @@ compare the run::
     test_metrics.yaml   # test metrics of best.pt, raw and post-processed
     test_eval.npz       # matched-segment IoUs + onset/offset deltas behind those metrics
     eval.pdf            # class-wise F1 + boundary-delta histograms
-    boundary.pdf        # boundary head only: its curve against the true transitions
 
 Checkpoint selection (``best.pt``) is keyed on validation only, never test —
 the periodic test readout in ``metrics.tsv`` is a training-time diagnostic,
@@ -42,13 +41,13 @@ import torch
 import yaml
 from torch.utils.data import DataLoader
 
-from ethograph.segment.boundary import boundary_probabilities, boundary_scores, tolerance_frames
 from ethograph.segment.config import PostprocessConfig, SegmentConfig, TrainConfig, save_config
 from ethograph.segment.dataset import MaterialisedStore, SampleDataset, collate
 from ethograph.segment.losses import build_objective
 from ethograph.segment.materialise import COLUMNS_FILE, materialise
 from ethograph.segment.metrics import (
     EVAL_ARRAYS_FILE,
+    METRICS_FILE,
     TEST_METRICS_FILE,
     evaluate,
     save_eval_arrays,
@@ -66,11 +65,6 @@ logger = logging.getLogger(__name__)
 BEST_FILE = "best.pt"
 LAST_FILE = "last.pt"
 STATS_FILE = "stats.npz"
-METRICS_FILE = "metrics.tsv"
-BOUNDARY_FILE = "boundary.pdf"
-
-BOUNDARY_PANELS = 4
-"""How many test samples the boundary diagnostic shows — a figure, not a dump."""
 
 
 # ---------------------------------------------------------------------------
@@ -168,6 +162,8 @@ class RunResult:
     run_dir: Path
     best_epoch: int
     best_score: float
+    #: Wall-clock time spent in the training loop (excludes materialisation, final test eval, plotting).
+    train_seconds: float
     test_metrics: dict[str, Any] | None
 
 
@@ -195,36 +191,27 @@ def _new_run_dir(config: SegmentConfig, base_name: str) -> Path:
 
 @dataclass
 class DensePredictions:
-    """What one pass over a loader produced, per sample key.
-
-    *boundary* is empty for an architecture with no boundary head, which is
-    what tells the post-processing and the metrics that the boundary
-    refinement modes are not available for this run.
-    """
+    """What one pass over a loader produced, per sample key."""
 
     pred: dict[str, np.ndarray]
     gt: dict[str, np.ndarray]
     conf: dict[str, np.ndarray]
-    boundary: dict[str, np.ndarray]
 
 
 def _predict_dense(model: torch.nn.Module, loader: DataLoader, device: torch.device) -> DensePredictions:
-    """Argmax predictions, ground truth, max-probability confidence and boundary probabilities."""
+    """Argmax predictions, ground truth and max-probability confidence."""
     model.eval()
-    out = DensePredictions({}, {}, {}, {})
+    out = DensePredictions({}, {}, {})
     with torch.no_grad():
         for x, y, mask, keys in loader:
             result = as_output(model(x.to(device), mask.to(device)))
             probs = torch.softmax(result.logits[-1], dim=1)
             p_max, p_arg = probs.max(dim=1)
-            bounds = boundary_probabilities(result.boundary) if result.boundary is not None else None
             for i, key in enumerate(keys):
                 n = int(mask[i, 0].sum().item())
                 out.pred[key] = p_arg[i, :n].cpu().numpy()
                 out.conf[key] = p_max[i, :n].cpu().numpy()
                 out.gt[key] = y[i, :n].numpy()
-                if bounds is not None:
-                    out.boundary[key] = bounds[i, :n].cpu().numpy()
     model.train()
     return out
 
@@ -232,29 +219,8 @@ def _predict_dense(model: torch.nn.Module, loader: DataLoader, device: torch.dev
 def _postprocess_all(
     dense: DensePredictions, fs: float, classes: ClassTable, cfg: PostprocessConfig
 ) -> dict[str, np.ndarray]:
-    """Post-process every sample of *dense*, giving each its own boundary curve."""
-    return {
-        key: postprocess_dense(value, fs, classes, cfg, boundary=dense.boundary.get(key))
-        for key, value in dense.pred.items()
-    }
-
-
-def _boundary_metrics(
-    dense: DensePredictions, fs: float, tcfg: TrainConfig, pcfg: PostprocessConfig
-) -> dict[str, float]:
-    """How well the boundary head localises, pooled over samples; empty without one.
-
-    Scored at the same tolerance the head was *trained* at
-    (``train.boundary.tolerance_s``), so the number answers "did it learn the
-    target it was given" rather than a second, unrelated question.
-    """
-    if not dense.boundary:
-        return {}
-    tolerance = tolerance_frames(tcfg.boundary.tolerance_s, fs)
-    scores = [
-        boundary_scores(dense.gt[key], prob, pcfg.boundary_threshold, tolerance) for key, prob in dense.boundary.items()
-    ]
-    return {name: float(np.mean([s[name] for s in scores])) for name in scores[0]}
+    """Post-process every sample of *dense*."""
+    return {key: postprocess_dense(value, fs, classes, cfg) for key, value in dense.pred.items()}
 
 
 def _seed(seed: int) -> None:
@@ -358,7 +324,7 @@ def _train_run(
 
     n_classes = store.classes.n_classes
     model = build_model(config.model.architecture, config.model.params, layout.n_features, n_classes).to(device)
-    objective, loss_settings = build_objective(config, n_classes, store.layout.fs)
+    objective, loss_settings = build_objective(config, n_classes)
     objective = objective.to(device)
     logger.info("Objective: %s", yaml.safe_dump(loss_settings, sort_keys=False, default_flow_style=True).strip())
     # Constant learning rate, as upstream trains these models. A schedule would
@@ -432,7 +398,6 @@ def _train_run(
         if val_loader is not None and (epoch % tcfg.eval_every == 0 or is_last):
             val = _predict_dense(model, val_loader, device)
             m = evaluate(val.gt, val.pred, tcfg.f1_thresholds, store.layout.fs)
-            m.update(_boundary_metrics(val, store.layout.fs, tcfg, config.infer.postprocess))
             if select_on not in m:
                 raise ValueError(
                     f"train.select_on={select_on!r} is not a metric; available: {sorted(scalar_metrics(m))}"
@@ -470,18 +435,19 @@ def _train_run(
     if not (run_dir / BEST_FILE).is_file():
         shutil.copy(run_dir / LAST_FILE, run_dir / BEST_FILE)
         best_epoch = epoch
-    logger.info("Trained %d epochs in %.0f s; best epoch %d", epoch, _time.time() - t_start, best_epoch)
+    train_seconds = _time.time() - t_start
+    logger.info("Trained %d epochs in %.0f s; best epoch %d", epoch, train_seconds, best_epoch)
 
     test_metrics = None
     if test_loader is not None:
         model.load_state_dict(torch.load(run_dir / BEST_FILE, map_location=device, weights_only=True))
         held = _predict_dense(model, test_loader, device)
         raw = evaluate(held.gt, held.pred, tcfg.f1_thresholds, store.layout.fs)
-        raw.update(_boundary_metrics(held, store.layout.fs, tcfg, config.infer.postprocess))
         processed_pred = _postprocess_all(held, store.layout.fs, store.classes, config.infer.postprocess)
         processed = evaluate(held.gt, processed_pred, tcfg.f1_thresholds, store.layout.fs)
         test_metrics = {
             "best_epoch": best_epoch,
+            "train_seconds": train_seconds,
             "select_on": select_on,
             "objective": loss_settings,
             "thresholds": list(tcfg.f1_thresholds),
@@ -493,25 +459,14 @@ def _train_run(
         from ethograph.segment.plotting import write_eval_pdf
 
         write_eval_pdf(run_dir / "eval.pdf", raw, processed, store.classes, tcfg.f1_thresholds)
-        if held.boundary:
-            from ethograph.segment.plotting import BoundaryPanel, write_boundary_pdf
-
-            write_boundary_pdf(
-                run_dir / BOUNDARY_FILE,
-                [
-                    BoundaryPanel(
-                        key=key,
-                        time=np.arange(len(prob)) / store.layout.fs,
-                        probability=prob,
-                        gt=held.gt[key],
-                        pred=held.pred[key],
-                        threshold=config.infer.postprocess.boundary_threshold,
-                    )
-                    for key, prob in list(held.boundary.items())[:BOUNDARY_PANELS]
-                ],
-            )
         logger.info("Test %s: raw %.2f, post-processed %.2f", select_on, raw[select_on], processed[select_on])
-    return RunResult(run_dir=run_dir, best_epoch=best_epoch, best_score=float(best_score), test_metrics=test_metrics)
+    return RunResult(
+        run_dir=run_dir,
+        best_epoch=best_epoch,
+        best_score=float(best_score),
+        train_seconds=train_seconds,
+        test_metrics=test_metrics,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -535,7 +490,12 @@ def compare_runs(runs_dir: Path) -> pd.DataFrame:
             continue
         data = yaml.safe_load(test_path.read_text(encoding="utf-8"))
         cfg = yaml.safe_load((run_dir / "config.yaml").read_text(encoding="utf-8"))
-        row = {"run": run_dir.name, "architecture": cfg["model"]["architecture"], "best_epoch": data["best_epoch"]}
+        row = {
+            "run": run_dir.name,
+            "architecture": cfg["model"]["architecture"],
+            "best_epoch": data["best_epoch"],
+            "train_seconds": data.get("train_seconds"),
+        }
         for stage in ("raw", "postprocessed"):
             for k, v in data[stage].items():
                 if k != "classwise":

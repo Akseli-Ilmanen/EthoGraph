@@ -1,340 +1,512 @@
-"""Try every architecture variant, then cross-validate the winner.
+"""Which loss terms and which feature groups earn their place — per individual, per architecture.
 
-Stage 1 runs once per **variant**, because a hyperparameter space is
-per-architecture: the models share almost no names (``mlp`` takes
-``f_maps_list``, ``mstcn`` takes ``num_f_maps``), and
-``eto.segment.tunable_params(name)`` prints what each one accepts. A variant
-may also be one architecture set up two ways — ``asformer_enc`` pins
-``num_decoders: 0`` while ``asformer_dec`` searches over ``1..3``, which is a
-question about the architecture that a single study cannot answer cleanly.
+Two axes, crossed where it is worth the GPU. The **objective** is a sum of up
+to three terms (``docs/add_to_docs_later/segment/config.md``, *Losses*): the
+frame cross-entropy, the consistency (smoothing) term it carries at
+``train.loss.alpha``, and the circle metric-learning term at
+``train.circle.weight``. The **inputs** fall into three declared kinds
+(``ethograph/io/schema.py``): the pose-derived columns
+(``kinematic_feature``), the S3D video columns (``video_feature``), and the
+columns ``features.changepoint_features`` expands out of the raw changepoint
+masks (``changepoint_feature``).
 
-**A variant is swept or searched, decided by its space.** ``is_exhaustible()``
-checks every entry of ``{**SHARED_SPACE, **spec["space"]}`` — the variant's
-own space *plus* ``SHARED_SPACE``, merged, not either one alone. All-categorical
-(or empty) → *sweep*: ``cells()`` enumerates every combination and trains each
-exactly once, no Optuna. Any ``float``/``int`` entry, in either half of that
-merge → *search*: Optuna's TPE draws ``N_TRIALS`` configurations from the
-whole space. Because the check runs on the merge, one continuous entry left in
-``SHARED_SPACE`` pushes *every* variant into search mode, even one whose own
-``space`` is empty or all-categorical — the per-variant comments about "3
-values of tau, 3 runs" only hold while ``SHARED_SPACE`` is empty/categorical
-too; check both before trusting a variant's own comment.
+An arm is one point of :data:`LOSS_TERMS` × :data:`FEATURE_SETS`, named
+``{loss}_{features}``:
 
-Search over an exhaustible space is also the wrong tool even when nothing
-forces it: TPE samples *with replacement* and ``train.seed`` is fixed, so
-``n_trials`` above the size of the grid buys the same runs again — 12 trials
-over 3 values of ``tau`` is 3 answers and 9 repeats, at a full training run
-each. A sweep is also the thing you can resume after editing the grid, which
-an Optuna study is not: its ``study.db`` pins the choices a parameter was
-created with and refuses a new set ("CategoricalDistribution does not support
-dynamic value space").
+=====================  ==================================================
+``all``                every term, every column — the reference
+``no_smooth``          ``train.loss.alpha = 0`` — no consistency term
+``no_circle``          ``train.circle.weight = 0`` — no circle term
+``all_no_cp``          every term, no changepoint columns
+``all_no_kin``         every term, no pose columns (S3D + changepoints only)
+``all_no_s3d``         every term, no video columns
+``no_smooth_no_cp``    no consistency term, no changepoint columns
+``no_smooth_no_kin``   no consistency term, no pose columns
+``no_smooth_no_s3d``   no consistency term, no video columns
+=====================  ==================================================
 
-Both modes score the same number — ``train.select_on`` on the **val** split —
-so the variants stay comparable however each one was run, and ``test`` stays
-untouched.
+The circle term is crossed with nothing: :data:`LOSS_TERMS` asks whether it
+earns its place at all, and :data:`FEATURE_SETS` is crossed with the two
+objectives worth ablating features under.
 
-Every run trains its full ``train.epochs`` budget: the metrics curve in
-``metrics.tsv`` records what happened and ``best.pt`` keeps the best **val**
-epoch, but nothing cuts a run short. Architectures converge at different
-speeds, so read the curve rather than trusting one number.
+Every knob is pinned in every arm rather than read from the project config:
+the "with" values are :data:`SMOOTHING_ALPHA` and :data:`CIRCLE_WEIGHT`, so
+what an arm trained with is in this file and in the run's ``config.yaml``,
+nowhere else. Dropping a feature group is ``train.drop_kinds`` — the
+run-level ablation axis — never a second column list, so one materialised
+dataset per individual serves every arm. That only works if the session
+declares its kinds: run ``python scripts/describe_sessions.py`` once (it
+writes each session's ``.ethograph/schema.yaml``), or
+:func:`check_kinds_declared` refuses to train an arm that would silently drop
+nothing.
 
-Stage 2 runs once, on the variant that scored best: a cross-validation costs
-one training run per session, so it is not something to spend on the variants
-that already lost.
+**One model per individual.** Each entry of :data:`INDIVIDUALS` is a config
+beside the project's — ``data/crow1.yaml`` inherits ``project.yaml`` through
+``base:`` and lists only that individual's sessions under its own
+``features.name`` — and every cell is ``Project.cross_validate()`` on it:
+leave-one-session-out, so a cell's score is the mean over sessions the
+model never saw, with one dot per session in every figure. The stem of the
+config is how the individual is named in every output (``crow 1``); nothing
+here knows anything else about it.
 
-Both stages resume. A swept cell already in ``bench_cells.tsv`` is skipped and
-its score read back; a search resumes its study.
+**Resumable, fold by fold.** A cross-validation's folds are ordinary runs
+under ``runs/cv_{run_name}/fold-{session}_{timestamp}/``, and each writes
+its ``test_metrics.yaml`` + ``test_eval.npz`` as it finishes. A cell whose
+sessions all have such a fold is read back, never retrained; a cell with some
+missing holds out only those, through ``cross_validate(folds=...)``; a fold
+that evaluated but crashed before writing its prediction set gets that set by
+inference alone. Every cell is sequential — they all want the GPU.
 
-Every run writes its own ``test_metrics.yaml`` + ``test_eval.npz`` as it
-finishes, so an interrupted bench loses nothing already trained: point
-``eto.segment.plotting.write_comparison_pdf`` at whichever run dirs you want
-(they are in ``bench_cells.tsv`` / ``searches/{name}/trials.tsv``) to draw the
-comparison afterwards.
+The output is ``data/bench_loss.pdf`` (:func:`ethograph.segment.plotting.write_factorial_pdf`):
+the summary grids first — segmental F1 at every threshold and the frame-level
+scores, one row per individual plus all of them pooled, architectures along
+x and a bar per arm — then one page per individual × architecture with the
+arms' IoU distributions, boundary deltas and class-wise F1 side by side.
+``data/bench_loss.tsv`` holds every fold's numbers.
 
-    python scripts/bench.py
+    python scripts/bench.py                 # train what is missing, then draw
+    python scripts/bench.py --report-only   # draw from what has finished
 """
 
 from __future__ import annotations
 
-import itertools
+import argparse
+import datetime as dt
 import logging
 import os
+import re
+import time
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
+import torch
+import yaml
 
 import ethograph as eto
+from ethograph.io.schema import CHANGEPOINT_FEATURE, KINEMATIC_FEATURE, VIDEO_FEATURE
+from ethograph.labels.onset_model import session_id
+from ethograph.segment.crossval import cross_validation_name_for
+from ethograph.segment.inference import PREDICTIONS_PREFIX, prediction_run_dir
+from ethograph.segment.materialise import COLUMNS_FILE, read_layout
+from ethograph.segment.metrics import EVAL_ARRAYS_FILE, TEST_METRICS_FILE
+from ethograph.segment.plotting import FactorCell, load_run_eval, write_factorial_pdf
+from ethograph.segment.samples import ClassTable
 
-#: The project config. Set BENCH_CONFIG to point at another machine's copy.
-CONFIG = Path(os.environ.get("BENCH_CONFIG") or Path(__file__).resolve().parent / "data" / "model" / "project.yaml")
+#: Where the configs live. Set BENCH_CONFIG_DIR to point at another machine's copy.
+CONFIG_DIR = Path(os.environ.get("BENCH_CONFIG_DIR") or Path(__file__).resolve().parents[1] / "data")
 
-#: Append-only, one row per swept cell — what makes a sweep resumable.
-CELLS_FILE = CONFIG.with_name("bench_cells.tsv")
+#: One config per individual, ``{stem}.yaml`` in :data:`CONFIG_DIR`; the stem
+#: names the individual everywhere (``crow1`` → ``crow 1``).
+INDIVIDUALS = ["crow1", "crow2", "crow3"]
 
-#: Varied for every architecture — these keys mean the same thing to all of them.
-SHARED_SPACE: dict[str, dict] = {
-    "train.learning_rate": {"type": "float", "low": 1.0e-5, "high": 1.0e-2, "log": True},
-    "train.loss.alpha": {"type": "float", "low": 0.0, "high": 1.0},
-    # "train.augment.noise_std": {"type": "float", "low": 0.0, "high": 0.1},
+#: Compared at their upstream defaults (``model.params: {}``): the bench asks
+#: about the objective and the inputs, not the hyperparameters — those are
+#: ``bench_search.py``'s.
+ARCHITECTURES = ["mlp", "c2f_tcn", "c2f_transformer", "mstcn"]
+
+#: ``train.loss.alpha`` of the arms that keep the smoothing term: DLC2Action's
+#: own YAML default, so ``all`` is the objective the project config trains
+#: with and every other arm is read against it. MS-TCN's published λ is
+#: ``0.15`` (what the archived CETNet script used, ``0.15 * mse_loss``), two
+#: orders of magnitude up — at ``0.001`` the term is a light touch, so expect
+#: ``all`` and ``no_smooth`` to sit close and read the gap accordingly.
+SMOOTHING_ALPHA = 0.001
+
+#: ``train.circle.weight`` of the arms that keep the circle term — the same
+#: script's ``0.001 * CircleLoss(m=0.25, gamma=128)``; ``m`` and ``gamma`` stay
+#: at those defaults.
+CIRCLE_WEIGHT = 0.001
+
+#: The objective axis: what each arm's loss is made of.
+LOSS_TERMS: dict[str, dict[str, Any]] = {
+    "all": {"train.loss.alpha": SMOOTHING_ALPHA, "train.circle.weight": CIRCLE_WEIGHT},
+    "no_smooth": {"train.loss.alpha": 0.0, "train.circle.weight": CIRCLE_WEIGHT},
+    "no_circle": {"train.loss.alpha": SMOOTHING_ALPHA, "train.circle.weight": 0.0},
 }
 
-#: One entry per **variant**, not per architecture — two variants may share an
-#: architecture and differ only in what is pinned versus varied (the two
-#: asformers below). The variant name becomes the run name and the study name.
-#:
-#: `params` is what stays fixed; `space` is what varies — enumerated when every
-#: entry is categorical, sampled by Optuna otherwise. Every `model.params.*`
-#: key must come from `eto.segment.tunable_params(arch)` — anything else is
-#: refused before training starts, naming what that architecture does take.
-VARIANTS: dict[str, dict] = {
-    "mstcn": {
-        "architecture": "mstcn",
-        "params": {},
-        "space": {
-            "model.params.num_f_maps": {"type": "categorical", "choices": [64, 128, 256]},
-            "model.params.num_R": {"type": "int", "low": 1, "high": 3},
-            "model.params.dropout_rate": {"type": "float", "low": 0.1, "high": 0.6},
-        },
-    },
-    "c2f_tcn": {
-        "architecture": "c2f_tcn",
-        "params": {},
-        "space": {"model.params.num_f_maps": {"type": "categorical", "choices": [64, 128, 256]}},
-    },
-    "edtcn": {
-        "architecture": "edtcn",
-        "params": {},
-        "space": {"model.params.kernel_size": {"type": "int", "low": 9, "high": 33, "step": 4}},
-    },
-    "mlp": {  # the floor: no temporal context at all
-        "architecture": "mlp",
-        "params": {},
-        "space": {"model.params.dropout_rates": {"type": "float", "low": 0.1, "high": 0.7}},
-    },
-    # ASFormer's encoder (num_decoders=0, the same backbone `asformer_enc_alpha`
-    # below tunes) plus ASRF's boundary branch. `backbone_params` is pinned,
-    # not searched — the encoder axis is what `asformer_enc_alpha` already
-    # covers, so this variant asks only "does the branch earn its cost", not
-    # "which encoder". `train.boundary.weight` must be > 0 here or the branch
-    # is built but never trained (its default is 0.0 — off).
-    "asrf": {
-        "architecture": "asrf",
-        "params": {"backbone": "asformer", "backbone_params": {"num_decoders": 0}},
-        "space": {
-            "model.params.brb_stages": {"type": "int", "low": 1, "high": 3},
-            "train.boundary.weight": {"type": "float", "low": 0.3, "high": 2.0},
-        },
-    },
-    # The same encoder under BaFormer's query-voting head instead of ASRF's
-    # boundary branch. Encoder keys mirror `asformer_enc_alpha`'s, so this
-    # asks the same "which encoder" question through a different head; the
-    # head's own settings (`num_queries`, `nheads`, ...) are left at their
-    # defaults — `num_queries` in particular is meant to be set from the
-    # data's own segment counts (see `build_baformer`'s docstring), not
-    # searched blind, and `train.queries.*`'s defaults already train it.
-    "baformer": {
-        "architecture": "baformer",
-        "params": {},
-        "space": {
-            "model.params.num_f_maps": {"type": "categorical", "choices": [64, 128, 256]},
-            "model.params.num_layers": {"type": "int", "low": 6, "high": 12},
-        },
-    },
-    # ASFormer - slower, run at end
-    # ASFormer, encoder only: no refinement decoders, one output stage.
-    # An all-categorical space, so this one is swept: 3 values of tau, 3 runs.
-    "asformer_enc_alpha": {
-        "architecture": "asformer",
-        "params": {"num_decoders": 0},
-        "space": {
-            "model.params.num_f_maps": {"type": "categorical", "choices": [64, 128, 256]},
-            "model.params.num_layers": {"type": "int", "low": 6, "high": 12},
-            # "model.params.channel_masking_rate": {"type": "float", "low": 0.0, "high": 0.5},
-        },
-    },
-    # # ASFormer as published: the encoder's prediction refined by `num_decoders`
-    # # decoders (S = num_decoders + 1 stages, the last one read). Searching it
-    # # asks "does refinement earn its cost here?" — each decoder is another full
-    # # pass, and this architecture already runs one sample at a time, so this is
-    # # the most expensive variant in the sweep by some way.
-    "asformer_dec": {
-        "architecture": "asformer",
-        "params": {},
-        "space": {
-            "model.params.num_decoders": {"type": "int", "low": 1, "high": 3},
-            "model.params.num_f_maps": {"type": "categorical", "choices": [64, 128, 256]},
-            "model.params.num_layers": {"type": "int", "low": 6, "high": 12},
-            # "model.params.channel_masking_rate": {"type": "float", "low": 0.0, "high": 0.5},
-        },
-    },
+#: The input axis: which declared kind each arm withholds. ``""`` keeps every
+#: column and is the half of a name that is left unwritten (``all``, not
+#: ``all_full``). ``scripts/describe_sessions.py`` is what puts these kinds on
+#: the sessions in the first place.
+FEATURE_SETS: dict[str, list[str]] = {
+    "": [],
+    "no_cp": [CHANGEPOINT_FEATURE],
+    "no_kin": [KINEMATIC_FEATURE],
+    "no_s3d": [VIDEO_FEATURE],
 }
 
-#: How many configurations Optuna draws — for a *searched* variant only. A
-#: swept variant trains its whole grid, however large that is.
-#:
-#: What bounds a search's cost per variant is ``search.prune``
-#: (``SearchConfig.prune``, default ``True``): a trial below the running median
-#: of *other trials in this study* at the same epoch is abandoned (Optuna's
-#: ``MedianPruner``), so a diverged ``train.learning_rate`` draw does not cost
-#: a full run. It needs something to compare against, though — ``MedianPruner``
-#: does not prune until 5 trials have completed (its ``n_startup_trials``
-#: default), so below that it never fires. 6–10 is enough for TPE to learn from
-#: and for pruning to help on the later trials.
-N_TRIALS = 8
+#: Which points of ``LOSS_TERMS`` × ``FEATURE_SETS`` are trained. The full
+#: cross is 12 cells per individual per architecture; dropping a feature group
+#: under ``no_circle`` as well would answer nothing the other two do not.
+CROSS: list[tuple[str, str]] = [
+    ("all", ""),
+    ("no_smooth", ""),
+    ("no_circle", ""),
+    ("all", "no_cp"),
+    ("all", "no_kin"),
+    ("all", "no_s3d"),
+    ("no_smooth", "no_cp"),
+    ("no_smooth", "no_kin"),
+    ("no_smooth", "no_s3d"),
+]
 
-#: Appended to every variant name, so one feature set's runs stay together.
-SUFFIX = "model_comp"
+
+def arm_name(loss: str, features: str) -> str:
+    """``("all", "no_cp")`` → ``"all_no_cp"``; the full feature set adds nothing."""
+    return f"{loss}_{features}" if features else loss
+
+
+#: The arms, in the order the figures draw them. Every knob is spelled in
+#: every arm, so no arm inherits one.
+ARMS: dict[str, dict[str, Any]] = {
+    arm_name(loss, features): {**LOSS_TERMS[loss], "train.drop_kinds": FEATURE_SETS[features]}
+    for loss, features in CROSS
+}
+
+#: Appended to every run name, so one bench's folds stay together under ``runs/``.
+SUFFIX = "loss"
+
+OUTPUT = CONFIG_DIR / "bench_loss.pdf"
+TABLE = CONFIG_DIR / "bench_loss.tsv"
+
+#: Every run appends a timestamped log here, so a night that ended in a
+#: killed process can still be read the next morning.
+LOG_DIR = CONFIG_DIR / "bench_logs"
+
+#: Stop a pass after this many cells fail back to back. One cell failing is
+#: weather (a locked file, a CUDA OOM); this many in a row is something
+#: systemic, and grinding through the remaining hundred would only bury the
+#: first traceback under a hundred copies of itself.
+MAX_CONSECUTIVE_FAILURES = 8
+
+#: :func:`main` exit codes — ``scripts/bench_watch.ps1`` reads them.
+EXIT_DONE, EXIT_MORE_TO_DO, EXIT_NO_PROGRESS = 0, 1, 2
 
 logger = logging.getLogger("bench")
 
 
-def run_name(variant: str) -> str:
-    """The base run name, which also names the study or the sweep's runs."""
-    return f"{variant}_{SUFFIX}"
+def display_name(individual: str) -> str:
+    """``crow1`` → ``crow 1`` — the config stem, as the figures spell it."""
+    return re.sub(r"(?<=\D)(\d+)$", r" \1", individual)
 
 
-def base_overrides(variant: str, spec: dict) -> dict[str, Any]:
-    """What every run of *variant* shares: its architecture, its pinned params, its name.
-
-    A distinct run name per variant, which also names the study
-    (``searches/search_{run_name}/``) — otherwise two variants of one
-    architecture would pool incomparable trials into a single ``study.db``.
-    """
-    return {
-        "model.architecture": spec["architecture"],
-        "model.params": spec["params"],
-        "train.run_name": run_name(variant),
-    }
+def run_name(individual: str, architecture: str, arm: str) -> str:
+    """The cell's base run name; its cross-validation is ``cv_`` + this."""
+    return f"{individual}_{architecture}_{arm}_{SUFFIX}"
 
 
-def is_exhaustible(space: dict[str, dict]) -> bool:
-    """True when the space is a finite grid — enumerate it rather than sample it."""
-    return all(entry["type"] == "categorical" for entry in space.values())
-
-
-def cells(space: dict[str, dict]) -> list[dict[str, Any]]:
-    """Every combination of an exhaustible *space* — the sweep's work list."""
-    grid = {key: list(entry["choices"]) for key, entry in space.items()}
-    return [dict(zip(grid, values)) for values in itertools.product(*grid.values())] or [{}]
-
-
-def tag_for(params: dict[str, Any]) -> str:
-    """``{"train.loss.tau": 4.0}`` → ``tau=4.0`` — the cell's name, in its run dir and its row."""
-    return ",".join(f"{key.rsplit('.', 1)[-1]}={value}" for key, value in sorted(params.items())) or "default"
-
-
-def trained_cells(variant: str) -> pd.DataFrame:
-    """The cells of *variant* already trained, so an interrupted sweep resumes."""
-    if not CELLS_FILE.is_file():
-        return pd.DataFrame(columns=["variant", "cell", "val_score"])
-    done = pd.read_csv(CELLS_FILE, sep="\t")
-    return done[done["variant"] == variant]
-
-
-def append_cell(row: dict[str, Any]) -> None:
-    """One row, appended as its cell finishes — never rewritten in bulk."""
-    pd.DataFrame([row]).to_csv(CELLS_FILE, sep="\t", mode="a", header=not CELLS_FILE.is_file(), index=False)
-
-
-def sweep(variant: str, spec: dict, space: dict[str, dict], select_on: str) -> tuple[dict[str, Any], float]:
-    """Train every cell of an exhaustible space once, and return the best draw.
-
-    No Optuna and no ``study.db``: the work list is the grid, the objective is
-    the same number a search trial returns (``train.select_on`` on the val
-    split), and the only state is ``bench_cells.tsv``.
-    """
-    work = cells(space)
-    done = trained_cells(variant)
-    logger.info("Sweep %r: %d cell(s) over %s, maximising val %s", variant, len(work), sorted(space), select_on)
-
-    scored: list[tuple[dict[str, Any], float]] = []
-    for params in work:
-        tag = tag_for(params)
-        previous = done[done["cell"] == tag] if not done.empty else done
-        if not previous.empty:
-            score = float(previous["val_score"].iloc[-1])
-            logger.info("[%s] %s — trained already, val %s = %.4f", variant, tag, select_on, score)
-            scored.append((params, score))
-            continue
-
-        logger.info("[%s] %s", variant, tag)
-        overrides = eto.segment.as_overrides(
-            {
-                **base_overrides(variant, spec),
-                # Nested one level, like a study's trials, so `compare_runs` —
-                # which reads only the top level of runs/ — keeps showing the
-                # runs trained by hand.
-                "train.run_name": f"sweep_{run_name(variant)}/{tag}",
-                **params,
-            }
-        )
-        result = eto.segment.Project(CONFIG, *overrides).train()
-        append_cell(
-            {
-                "variant": variant,
-                "cell": tag,
-                "val_score": result.best_score,
-                "best_epoch": result.best_epoch,
-                "run_dir": str(result.run_dir),
-                **params,
-            }
-        )
-        logger.info("[%s] %s val %s = %.4f at epoch %d", variant, tag, select_on, result.best_score, result.best_epoch)
-        scored.append((params, result.best_score))
-
-    return max(scored, key=lambda item: item[1])
-
-
-def search(variant: str, spec: dict, space: dict[str, dict]) -> tuple[dict[str, Any], float]:
-    """Optuna over a space that cannot be enumerated: ``N_TRIALS`` draws, scored on val."""
+def project_for(individual: str, architecture: str, arm: str) -> eto.segment.Project:
+    """The individual's config with the cell's architecture, arm and run name pinned."""
     overrides = eto.segment.as_overrides(
-        {**base_overrides(variant, spec), "search.params": space, "search.n_trials": N_TRIALS}
+        {
+            "model.architecture": architecture,
+            "train.run_name": run_name(individual, architecture, arm),
+            **ARMS[arm],
+        }
     )
-    result = eto.segment.Project(CONFIG, *overrides).search()
-    return result.best_params, result.best_score
+    return eto.segment.Project(CONFIG_DIR / f"{individual}.yaml", *overrides)
 
 
-def main() -> None:
-    # Materialise once: every architecture and every cell reads the same
-    # features, so this is not part of what stage 1 varies.
-    # eto.segment.Project(CONFIG).materialise()
+def finished_folds(project: eto.segment.Project) -> dict[str, Path]:
+    """Session source → its newest fold run that finished its test evaluation.
 
-    select_on = eto.segment.Project(CONFIG).config.train.select_on
-    rows = []
-    winners: dict[str, dict[str, Any]] = {}
-    for variant, spec in VARIANTS.items():
-        space: dict[str, dict] = {}  # {} -> no Optuna,  {**SHARED_SPACE, **spec["space"]} -> Optuna
-        exhaustible = is_exhaustible(space)
-        if exhaustible:
-            params, score = sweep(variant, spec, space, select_on)
-        else:
-            params, score = search(variant, spec, space)
-        winners[variant] = {**base_overrides(variant, spec), **params}
-        rows.append(
-            {
-                "variant": variant,
-                "architecture": spec["architecture"],
-                "mode": "sweep" if exhaustible else "search",
-                "val_score": score,
-                **params,
-            }
+    A fold interrupted before ``test_eval.npz`` does not count, so rerunning
+    the bench trains it again rather than reading half a result.
+    """
+    config = project.config
+    folds_dir = config.runs_dir / cross_validation_name_for(config)
+    done: dict[str, Path] = {}
+    for spec in config.sessions:
+        candidates = sorted(folds_dir.glob(f"fold-{session_id(spec.source)}_*"))
+        finished = [d for d in candidates if (d / TEST_METRICS_FILE).is_file() and (d / EVAL_ARRAYS_FILE).is_file()]
+        if finished:
+            done[str(spec.source)] = finished[-1]
+    return done
+
+
+def has_predictions(source: str, run_dir: Path) -> bool:
+    """Whether *run_dir*'s prediction set for the session at *source* was written beside it."""
+    labels = prediction_run_dir(Path(source), run_dir.name, "").parent
+    return any(labels.glob(f"{PREDICTIONS_PREFIX}_{run_dir.name}_*/*_predictions.tsv"))
+
+
+def check_kinds_declared(project: eto.segment.Project, arm: str) -> None:
+    """Materialise if needed, and refuse an ablation the layout cannot perform.
+
+    ``train.drop_kinds`` names a kind, and a column that declares none is
+    always kept: an arm asking for a kind the materialised layout does not
+    hold would train the *reference* model under an ablation's name and
+    quietly report it as a result. The layout is a derived artefact, so a
+    session described since it was written is fixed by materialising again
+    (the feature arrays come out identical — ``kind`` is a label, and only
+    ``normalise`` changes arithmetic); a kind still missing after that is the
+    session's to declare, not this bench's to guess.
+    """
+    wanted = set(ARMS[arm]["train.drop_kinds"])
+    if not wanted:
+        return
+    data_dir = project.config.data_dir
+    if (data_dir / COLUMNS_FILE).is_file():
+        if wanted <= set(read_layout(data_dir).kinds) - {None}:
+            return
+        logger.info("%s declares no column of kind %s — materialising again", data_dir, sorted(wanted))
+    project.materialise()
+    missing = sorted(wanted - (set(read_layout(data_dir).kinds) - {None}))
+    if missing:
+        raise RuntimeError(
+            f"Arm {arm!r} drops kind(s) {missing}, which no column of {data_dir} declares, so it would "
+            f"train the full model under an ablation's name. Run `python scripts/describe_sessions.py` "
+            f"to write each session's .ethograph/schema.yaml, then try again."
         )
-        logger.info("%s: best val %s = %.4f %s", variant, select_on, score, params)
 
-    table = pd.DataFrame(rows).sort_values("val_score", ascending=False)
-    table.to_csv(CONFIG.with_name("architecture_search.tsv"), sep="\t", index=False)
-    print(table.to_string(index=False))
 
-    # Stage 2 on the winner only — one fold per session, each predicting the
-    # session it never saw, for the GUI. Rebuilt from the variant's own
-    # overrides plus what won: a search's `best.yaml` inherits the *project*
-    # config, so on its own it would not carry the architecture the variant pinned.
-    winner = str(table.iloc[0]["variant"])
-    logger.info("Cross-validating %s (val %.4f) %s", winner, table.iloc[0]["val_score"], winners[winner])
-    folds = eto.segment.Project(CONFIG, *eto.segment.as_overrides(winners[winner])).cross_validate()
-    print(folds.to_string(index=False))
+def cross_validate_cell(individual: str, architecture: str, arm: str) -> dict[str, Path]:
+    """Train the cell's missing folds, if any, and return every session's finished fold.
+
+    A fold evaluates before it predicts, so a crash between the two (the
+    session file locked by another process, say) leaves a fold with metrics
+    and no prediction set. Those are completed here by inference alone —
+    the trained run is on disk — never by training again.
+    """
+    project = project_for(individual, architecture, arm)
+    check_kinds_declared(project, arm)
+    sessions = [str(s.source) for s in project.config.sessions]
+    done = finished_folds(project)
+    missing = [s for s in sessions if s not in done]
+    label = f"{display_name(individual)} / {architecture} / {arm}"
+    if missing:
+        logger.info("[%s] %d of %d folds to train: %s", label, len(missing), len(sessions), ARMS[arm])
+        project.cross_validate(folds=missing)
+        done = finished_folds(project)
+        still_missing = [s for s in sessions if s not in done]
+        if still_missing:
+            raise RuntimeError(
+                f"[{label}] cross_validate returned, but these folds wrote no test evaluation: {still_missing}"
+            )
+    else:
+        logger.info("[%s] every fold finished — read back", label)
+    for source, run_dir in done.items():
+        if not has_predictions(source, run_dir):
+            logger.info("[%s] %s evaluated but never predicted its session — predicting now", label, run_dir.name)
+            project.inference(run=run_dir, sessions=[source])
+    return done
+
+
+#: How long to wait before the one retry of a cell that hit a transient HDF5 failure.
+HDF_RETRY_S = 60.0
+
+
+def run_cell(individual: str, architecture: str, arm: str) -> dict[str, Path]:
+    """:func:`cross_validate_cell`, retried once if netCDF/HDF5 fails to open a session.
+
+    ``NetCDF: HDF error`` is what the HDF5 library reports for a file it could
+    not open at that moment — a lock held by another process, an antivirus
+    pass over a large file — and it has been seen once in a night of folds on
+    a file that opens fine before and after. The work already done is on
+    disk, so the retry only picks up what the failure interrupted (the
+    prediction set, usually). Anything else is raised as is.
+    """
+    try:
+        return cross_validate_cell(individual, architecture, arm)
+    except RuntimeError as exc:
+        if "HDF error" not in str(exc):
+            raise
+        logger.warning(
+            "[%s / %s / %s] %s — waiting %.0f s, then retrying once",
+            display_name(individual),
+            architecture,
+            arm,
+            exc,
+            HDF_RETRY_S,
+        )
+        time.sleep(HDF_RETRY_S)
+        return cross_validate_cell(individual, architecture, arm)
+
+
+def cells() -> list[tuple[str, str, str]]:
+    """Every (individual, architecture, arm) the bench trains, in order."""
+    return [(i, a, m) for i in INDIVIDUALS for a in ARCHITECTURES for m in ARMS]
+
+
+def cell_is_finished(individual: str, architecture: str, arm: str) -> bool:
+    """Whether every fold of this cell has both its test evaluation and its prediction set.
+
+    Read-only and cheap (a YAML read and a glob), so the sweep can skip what
+    is done without building a model or opening a session.
+    """
+    project = project_for(individual, architecture, arm)
+    done = finished_folds(project)
+    if len(done) != len(project.config.sessions):
+        return False
+    return all(has_predictions(source, run_dir) for source, run_dir in done.items())
+
+
+def train_all(passes: int) -> list[str]:
+    """Train every unfinished cell, surviving the ones that fail; return what is still unfinished.
+
+    A cell that raises is logged with its traceback and left for the next
+    pass rather than taking the other hundred down with it — the point of an
+    unattended run is that the morning finds 107 finished cells and one
+    traceback, not one traceback. Everything already on disk is skipped, so a
+    pass costs nothing for the cells that finished earlier (or in an earlier
+    process, after a crash).
+    """
+    for pass_no in range(1, passes + 1):
+        todo = [c for c in cells() if not cell_is_finished(*c)]
+        if not todo:
+            logger.info("Every one of the %d cells has finished.", len(cells()))
+            return []
+        logger.info("Pass %d of %d: %d of %d cells to do", pass_no, passes, len(todo), len(cells()))
+        failed: list[str] = []
+        consecutive = 0
+        for done_count, (individual, architecture, arm) in enumerate(todo, start=1):
+            label = f"{display_name(individual)} / {architecture} / {arm}"
+            try:
+                run_cell(individual, architecture, arm)
+                consecutive = 0
+            except Exception:
+                logger.exception("[%s] failed — leaving it for the next pass", label)
+                failed.append(label)
+                consecutive += 1
+                # A CUDA OOM leaves its allocation behind; the next cell would
+                # inherit a card that is already full and fail for a reason
+                # that is not its own.
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                if consecutive >= MAX_CONSECUTIVE_FAILURES:
+                    logger.error(
+                        "%d cells failed in a row — stopping this pass rather than burying the first "
+                        "traceback under a hundred copies of it",
+                        consecutive,
+                    )
+                    untried = [f"{display_name(i)} / {a} / {m}" for i, a, m in todo[done_count:]]
+                    return failed + untried
+        if failed:
+            logger.warning("Pass %d left %d cell(s) unfinished: %s", pass_no, len(failed), failed)
+    return [f"{display_name(i)} / {a} / {m}" for i, a, m in cells() if not cell_is_finished(i, a, m)]
+
+
+def collect() -> tuple[list[FactorCell], pd.DataFrame, ClassTable | None]:
+    """Every cell with at least one finished fold, its folds loaded, plus one row per fold."""
+    cells: list[FactorCell] = []
+    rows: list[dict[str, Any]] = []
+    classes: ClassTable | None = None
+    for individual in INDIVIDUALS:
+        for architecture in ARCHITECTURES:
+            for arm in ARMS:
+                project = project_for(individual, architecture, arm)
+                done = finished_folds(project)
+                if not done:
+                    logger.warning("%s / %s / %s: no finished fold", display_name(individual), architecture, arm)
+                    continue
+                folds = []
+                for spec in project.config.sessions:
+                    run_dir = done.get(str(spec.source))
+                    if run_dir is None:
+                        continue
+                    e = load_run_eval(run_dir, name=session_id(spec.source))
+                    folds.append(e)
+                    row: dict[str, Any] = {
+                        "individual": display_name(individual),
+                        "architecture": architecture,
+                        "arm": arm,
+                        "session": e.name,
+                        "run_dir": str(run_dir),
+                        "train_seconds": e.train_seconds,
+                    }
+                    for stage, metrics in (("raw", e.raw), ("postprocessed", e.processed)):
+                        row.update({f"{stage}.{k}": v for k, v in metrics.items() if k != "classwise"})
+                    rows.append(row)
+                    if classes is None:
+                        classes = ClassTable.from_dict(
+                            yaml.safe_load((run_dir / "classes.yaml").read_text(encoding="utf-8"))
+                        )
+                cells.append(FactorCell(display_name(individual), architecture, arm, folds))
+    return cells, pd.DataFrame(rows), classes
+
+
+def setup_logging() -> Path:
+    """Log to the console and to a timestamped file under :data:`LOG_DIR`."""
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    path = LOG_DIR / f"bench_{dt.datetime.now():%Y%m%d-%H%M%S}.log"
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(message)s",
+        handlers=[logging.StreamHandler(), logging.FileHandler(path, encoding="utf-8")],
+    )
+    return path
+
+
+def draw_report() -> None:
+    """Write the TSV and the PDF from whatever has finished."""
+    cells_, table, classes = collect()
+    if not cells_ or classes is None:
+        raise SystemExit("No finished folds under any individual's runs/ — nothing to draw.")
+    table.to_csv(TABLE, sep="\t", index=False)
+    select_on = eto.segment.Project(CONFIG_DIR / f"{INDIVIDUALS[0]}.yaml").config.train.select_on
+    column = f"postprocessed.{select_on}"
+    summary = (
+        table.groupby(["individual", "architecture", "arm"])[column]
+        .mean()
+        .unstack("arm")
+        .reindex(columns=list(ARMS))
+    )
+    print(f"\nMean post-processed {select_on} over held-out sessions:\n{summary.round(1).to_string()}\n")
+
+    title = (
+        f"Loss + changepoint-feature ablation — {len(INDIVIDUALS)} individuals × "
+        f"{len(ARCHITECTURES)} architectures, cross-validated"
+    )
+    path = write_factorial_pdf(
+        OUTPUT,
+        cells_,
+        classes,
+        title=title,
+        classwise_key=select_on if select_on.startswith("f1@") else None,
+    )
+    logger.info("Wrote %s and %s", path, TABLE)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
+    parser.add_argument("--report-only", action="store_true", help="draw from the folds that finished; train nothing")
+    parser.add_argument(
+        "--passes",
+        type=int,
+        default=2,
+        help="sweep the unfinished cells this many times before giving up on them (default 2)",
+    )
+    args = parser.parse_args()
+    log_path = setup_logging()
+    logger.info("Logging to %s", log_path)
+
+    if args.report_only:
+        draw_report()
+        return EXIT_DONE
+
+    before = sum(cell_is_finished(*c) for c in cells())
+    unfinished = train_all(args.passes)
+    after = sum(cell_is_finished(*c) for c in cells())
+    logger.info("Cells finished: %d → %d of %d", before, after, len(cells()))
+
+    # The report is worth having even when cells are missing, and a failure to
+    # draw it must not be read as "the training is unfinished" — that is what
+    # decides whether the supervisor starts another process.
+    try:
+        draw_report()
+    except Exception:
+        logger.exception("Could not draw the report from what has finished")
+
+    if not unfinished:
+        return EXIT_DONE
+    logger.warning("%d cell(s) still unfinished:\n  %s", len(unfinished), "\n  ".join(unfinished))
+    if after > before:
+        logger.info("Progress was made this run — rerunning continues from here.")
+        return EXIT_MORE_TO_DO
+    logger.error("No cell finished this run. Rerunning would repeat it; read the traceback above first.")
+    return EXIT_NO_PROGRESS
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
