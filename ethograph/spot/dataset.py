@@ -33,8 +33,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Iterator
 
+import numpy as np
 import pandas as pd
 
+from ethograph.io.video_decode import iter_rgb_frames
 from ethograph.labels.intervals import LABELING_AUTOMATED
 from ethograph.labels.tsv_store import get_trial_from_tsv
 from ethograph.segment.config import SessionSpec
@@ -142,7 +144,7 @@ def plan_session(session: Session, config: SpotConfig, *, require_events: bool =
     every trial that has video, which is what ``require_events=False`` gives.
     """
     alignment = session.result.nwb_alignment
-    camera = config.labels.camera
+    camera = session.video_device(config.labels.camera)
     records: list[TrialRecord] = []
     for trial in filter_trials(session, config.trials):
         events = point_events(session, trial, config.labels.classes)
@@ -181,18 +183,9 @@ def plan_session(session: Session, config: SpotConfig, *, require_events: bool =
     return records
 
 
-def _iter_frames(video: Path, decode_threads: int | None = None) -> Iterator:
-    """Decoded RGB frames of *video*, in order. *decode_threads* caps the codec's own threads
-    (``None`` = the codec decides): one per container when several containers decode at once."""
-    import av
-
-    with av.open(str(video)) as container:
-        stream = container.streams.video[0]
-        stream.thread_type = "AUTO"
-        if decode_threads is not None:
-            stream.codec_context.thread_count = int(decode_threads)
-        for frame in container.decode(stream):
-            yield frame.to_ndarray(format="rgb24")
+def _iter_frames(video: Path, decode_threads: int | None = None) -> Iterator[np.ndarray]:
+    """Decoded RGB frames of *video*, in order (:func:`ethograph.io.video_decode.iter_rgb_frames`)."""
+    return iter_rgb_frames(video, threads=decode_threads)
 
 
 def export_is_current(out_dir: Path, record: TrialRecord) -> bool:
@@ -274,8 +267,8 @@ def default_workers() -> int:
 def export_all(records: list[TrialRecord], frames_dir: Path, workers: int | None = None) -> list[TrialRecord]:
     """Decode every record, in parallel, and return the ones that came out whole.
 
-    The cost is the YUV-to-RGB conversion rather than the H.264 decode or the
-    JPEG write, which is why this spends cores on it — with **threads**: the
+    The cost is the resize and the JPEG encode rather than the H.264 decode,
+    which is why this spends cores on it — with **threads**: the
     conversion, the resize and the encode all run in C and release the GIL,
     and a process pool would spawn workers that re-import the caller's
     script, which on Windows re-runs a ``run.py`` without a ``__main__`` guard

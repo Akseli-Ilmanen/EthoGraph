@@ -201,7 +201,6 @@ labels. Both are ordinary runs under `runs/{baseline}_distil_{fingerprint}/`.
 | Key | Default | Meaning |
 |---|---|---|
 | `focus_window_ms` | `100` | ± this around the tallest peak counts as the same event when reading `focus`/`ratio` off a curve — twice the precision you believe your labels to (the onset model takes it from its `tolerance_s`). See the confidence page. |
-| `flag_confidence_below` | `0.01` | Below this a prediction is written anyway and counted in the log as flagged, never dropped: a missing label cannot be reviewed, and review is the point. |
 | `flag_out_of_order` | `false` | A trial whose predicted events are not in `labels.classes` order has every event's confidence set to 0 — flagged, never reordered or dropped. |
 | `source` | `spot:{run}@{epoch}` | Written into every predicted row's `prediction_source`. |
 | `jpeg_roundtrip` | `true` | Inference decodes the video straight into the model; each frame passes through JPEG in memory first, so the model sees what training saw (the export writes JPEGs). Off = an ablation. |

@@ -326,10 +326,28 @@ class TestSessionNaming:
             p.touch()
         return a, b
 
-    def test_same_stem_without_names_is_refused(self, tmp_path):
+    def test_same_stem_without_names_is_told_apart_by_folder(self, tmp_path):
         a, b = self._two(tmp_path)
+        cfg = config_from_dict({"sessions": [str(a), str(b)], "labels": {"classes": [31]}}, tmp_path)
+        assert [s.label for s in cfg.sessions] == ["ses-01_Trial_data3", "ses-02_Trial_data3"]
+        assert [s.label for s in cfg.select_sessions(["ses-02_Trial_data3"])] == ["ses-02_Trial_data3"]
+
+    def test_the_distinguishing_folder_may_be_higher_up(self, tmp_path):
+        a = tmp_path / "AK" / "ses-01" / "behav" / "Trial_data3.nc"
+        b = tmp_path / "AI" / "ses-01" / "behav" / "Trial_data3.nc"
+        for p in (a, b):
+            p.parent.mkdir(parents=True)
+            p.touch()
+        cfg = config_from_dict({"sessions": [str(a), str(b)], "labels": {"classes": [31]}}, tmp_path)
+        assert [s.label for s in cfg.sessions] == ["AK_Trial_data3", "AI_Trial_data3"]
+
+    def test_explicit_names_and_a_twice_listed_source_are_still_refused(self, tmp_path):
+        a, b = self._two(tmp_path)
+        named = [{"source": str(a), "name": "x"}, {"source": str(b), "name": "x"}]
         with pytest.raises(ValueError, match="distinct `name:`"):
-            config_from_dict({"sessions": [str(a), str(b)], "labels": {"classes": [31]}}, tmp_path)
+            config_from_dict({"sessions": named, "labels": {"classes": [31]}}, tmp_path)
+        with pytest.raises(ValueError, match="listed more than once"):
+            config_from_dict({"sessions": [str(a), str(a)], "labels": {"classes": [31]}}, tmp_path)
 
     def test_names_disambiguate_and_select(self, tmp_path):
         a, b = self._two(tmp_path)

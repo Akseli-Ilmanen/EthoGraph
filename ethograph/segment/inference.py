@@ -10,6 +10,8 @@ so a re-run never overwrites an earlier one::
             {stem}_predictions.tsv   # the GUI's native labels format, labeling_method=automated
             {stem}_probs.npz    # per sample: "{key}" → (T, C) float16, "{key}_time" → (T,),
                                 # and "{key}_boundary" → (T,) where the run has that head
+            config.yaml         # the run's own config, as trained
+            inference.yaml      # the run's name and the infer: settings applied here
 
 The TSV is what the GUI loads and compares; the ``.npz`` exists only for the
 confidence overlay and, for a run with a boundary head, for plotting the
@@ -31,10 +33,10 @@ import yaml
 
 from ethograph.labels.intervals import LABELING_AUTOMATED, NO_RECIPIENT
 from ethograph.labels.ml import dense_to_intervals
-from ethograph.labels.onset_curves import labels_dir
+from ethograph.labels.onset_curves import labels_dir, write_provenance
 from ethograph.labels.tsv_store import save_labels_tsv
 from ethograph.segment.boundary import boundary_probabilities
-from ethograph.segment.config import SegmentConfig, load_config
+from ethograph.segment.config import SegmentConfig, config_to_dict, load_config
 from ethograph.segment.materialise import COLUMNS_FILE
 from ethograph.segment.models import as_output, build_model
 from ethograph.segment.postprocess import postprocess_intervals, refine_dense
@@ -237,6 +239,17 @@ def infer_session(config: SegmentConfig, run: Run, session: Session, out_dir: Pa
     )
     save_labels_tsv(tsv_path, df)
     np.savez_compressed(npz_path, **arrays)
+    write_provenance(
+        out_dir,
+        model_config=run.run_dir / "config.yaml",
+        inference={
+            "model": "segment",
+            "run": run.name,
+            "run_dir": str(run.run_dir),
+            "session": str(session.source),
+            "infer": config_to_dict(config)["infer"],
+        },
+    )
     logger.info("%s: %d predicted labels → %s", session.id, len(rows), tsv_path)
     return tsv_path, npz_path
 

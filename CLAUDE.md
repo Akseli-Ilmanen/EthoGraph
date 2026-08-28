@@ -142,7 +142,7 @@ ethograph/spot/               # Pixel point-event spotting (E2E-Spot); docs: doc
     predict.py                # A run's scores → labels TSV + onset_curves
     project.py                # Project — materialise / train / inference / cross_validate, the segment pipeline's words
     inference.py              # Stage 4: best epoch by the sweep → test_e2e.py → labels TSV + onset_curves per session
-    stream.py                 # Inference decodes the video straight into the model (rolling one-window buffer, JPEG round trip in memory; only the stride grid is prepared + uploaded, once each — tests/test_unit/test_spot_stream.py TestRollingBuffer); never the frame folder
+    stream.py                 # Inference decodes the video straight into the model (rolling one-window buffer, JPEG round trip in memory; only the stride grid is converted + prepared, once each; the forward is a replayed CUDA graph — tests/test_unit/test_spot_stream.py TestRollingBuffer); never the frame folder
     metrics.py                # evaluate(): a run's chosen epoch on a labelled split → test_metrics.yaml (misses, error in ms, hit rate per tolerance)
     vendored.py               # Locating and driving the E2E-Spot clone
     msagsm.py                 # MultiScaleGatedShift from the paper, on the BSD GSM; `rny008_msagsm` (dilations are durations)

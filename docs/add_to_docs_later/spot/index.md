@@ -179,7 +179,7 @@ path per trial, its frame rate, its offset — so a session is one line:
 ```yaml
 sessions:
   - source: /data/derivatives/ses-01/behav/Trial_data.nc
-    name: '20260307_01'             # the session id in every output; else the file's stem (quote digits)
+    name: '20260307_01'             # optional — see "The session lines" below
   - source: /data/derivatives/ses-02/behav/Trial_data.nc
     name: '20260309_01'
 
@@ -213,6 +213,48 @@ features:                          # optional — options 3 and 4, see multimoda
 
 There is no preprocessing and no individuals. A point event's subject comes
 from the labels; the pixels are whatever the camera saw.
+
+(target-spot-session-lines)=
+### The session lines
+
+`sessions:` is read the same way by both pipelines (`SessionSpec`, shared
+with {doc}`the segmentation pipeline <../segment/index>`): a session is a
+`source` plus whatever the stage you run needs from it.
+
+- **`source`** — the session file. Always.
+- **`labels_path`** — its curated labels TSV. Unset, it is `{stem}_labels.tsv`
+  beside `source` (the GUI's own convention; the log says what was assumed).
+  Training, the teacher and `evaluate()` read it. A session you only
+  **predict into** needs none — a `labels_path` naming a file that does not
+  exist simply means the session has no labels, and it contributes nothing to
+  a training set.
+- **`video_dir`** — the folder searched for a trial's video when the
+  alignment does not already resolve it. Optional when the alignment carries
+  the paths; either way, a trial without a video for `labels.camera` can be
+  neither trained on nor predicted, so for this pipeline the video has to be
+  findable.
+- **`name`** — the session id in every output (run folders, prediction
+  sources, fold names). Optional: unset, it is the file's stem, and sessions
+  whose stems collide — `Trial_data3.nc` in every `behav/` folder — are named
+  by the nearest folder that tells them apart,
+  `ses-000_date-20250309_01_Trial_data3`, listed in the log. Quote a name
+  that is all digits, or YAML reads it as a number.
+
+So a session to train on and one to predict into sit side by side:
+
+```yaml
+sessions:
+  - source: C:/data/derivatives/sub-01/ses-000_date-20250503_02/behav/Trial_data3.nc
+    labels_path: C:/data/derivatives/sub-01/ses-000_date-20250503_02/behav/Trial_data_labels.tsv
+    video_dir: C:/VidData/20250503_02_Ivy
+  - source: C:/data/derivatives/sub-01/ses-000_date-20250506_02/behav/Trial_data3.nc   # no labels: predict into it
+    video_dir: C:/VidData/20250506_02_Ivy
+```
+
+`inference()` covers every listed session unless `sessions=` narrows it, so
+that is the stage an unlabelled session is listed for. `cross_validate()` is
+for labelled sessions only: each fold scores the session it held out, which
+takes labels to score against.
 
 `labels.crop` is cut from the decoded frame before the resize, so a tight
 crop spends the model's pixels on less scene rather than shrinking the frame.
@@ -302,6 +344,9 @@ look systematically early by half a stride.
     The epoch is the one the sweep ranks first on the run's own validation
     predictions. A features run exports the sessions' features first.
     Decodes the video directly — no frames are exported for a predicted session.
+    The folder also holds `config.yaml` (the run's, as trained) and
+    `inference.yaml` (run, epoch, the `infer:` settings), so it can be
+    reconstructed without the project.
   - Minutes.
 * - `cross_validate()`
   - One fold per session: hold it out, train on the rest, score it, predict

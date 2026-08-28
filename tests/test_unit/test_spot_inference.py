@@ -13,7 +13,7 @@ import json
 import pytest
 
 from ethograph.spot.config import config_from_dict
-from ethograph.spot.inference import best_epoch, resolve_run_dir, run_clip, stage_checkpoint
+from ethograph.spot.inference import best_epoch, resolve_run_dir, run_clip, run_config_file, stage_checkpoint
 
 
 def _config(tmp_path):
@@ -43,6 +43,19 @@ def _pred(run_dir, epoch, frame, score=0.9):
     events = [] if frame is None else [{"label": "label_31", "frame": frame, "score": score}]
     with gzip.open(run_dir / f"pred-val.{epoch}.recall.json.gz", "wt") as fh:
         json.dump([{"video": "v", "fps": 100.0, "num_frames": 500, "events": events}], fh)
+
+
+class TestRunConfigFile:
+    """The config copied beside a run's predictions: ours when the run has one, a student's from its run folder."""
+
+    def test_own_then_parents_then_upstreams(self, tmp_path):
+        run_dir = _run(tmp_path)
+        assert run_config_file(run_dir) == run_dir / "config.json"  # a run trained before configs were written
+        (run_dir / "config.yaml").write_text("x: 1\n")
+        assert run_config_file(run_dir) == run_dir / "config.yaml"
+        student = run_dir / "stage3"
+        student.mkdir()
+        assert run_config_file(student) == run_dir / "config.yaml"
 
 
 class TestToLabelsFrame:

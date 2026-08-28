@@ -34,13 +34,16 @@ import logging
 import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 
 import numpy as np
 import torch
 from PIL import Image
 
-from ethograph.spot.dataset import JPEG_QUALITY, TrialRecord, _iter_frames
+from ethograph.io.video_decode import RGBConverter, decode_frames
+from ethograph.spot.dataset import JPEG_QUALITY, TrialRecord
 from ethograph.spot.vendored import clone_root
 
 logger = logging.getLogger(__name__)
@@ -51,10 +54,11 @@ IMAGENET_STD = (0.229, 0.224, 0.225)
 PAD_LEN = 5
 INFERENCE_BATCH_FRAMES = 400
 RECALL_THRESHOLD = 0.01
-#: Decode chains in flight at once. Measured on six 200 fps trials (one GPU, 24 cores):
-#: 1 thread 113 fps, 2 → 131, 3 → 192, 6 → collapsed to 2 fps (thrash). Three it is
-#: until a run on an idle card says otherwise.
-STREAM_WORKERS_MAX = 3
+#: Decode chains in flight at once. Measured on eight 200 fps trials (RTX 3080, 24 cores,
+#: graph replay, warm): 2 threads 1,045 fps, 3 → 1,051, 4 → 1,110, 6 → 1,065, 8 → 1,007.
+#: Flat from two on: the limit is the Python that feeds the card, and more threads only
+#: crowd it.
+STREAM_WORKERS_MAX = 4
 
 
 def load_run_model(run_dir: Path, epoch: int, n_classes: int, device: str):
@@ -83,6 +87,89 @@ def load_run_model(run_dir: Path, epoch: int, n_classes: int, device: str):
         raise FileNotFoundError(f"{run_dir} has no checkpoint for epoch {epoch}")
     model.load(torch.load(checkpoint, map_location=device))
     return model, stored
+
+
+#: ``(seq (B, L, C, H, W) float on the model's device, fuse (B, L, F) | None) → scores (B, L, K + 1)`` float32:
+#: the model's softmax per frame, the way the vendored ``predict`` returns it.
+Forward = Callable[[torch.Tensor, torch.Tensor | None], np.ndarray]
+
+
+def eager_forward(model) -> Forward:
+    """The vendored ``predict``, op by op — the CPU path, and what :class:`GraphedForward` is checked against."""
+    # mixed precision only where it exists; on CPU the cuda autocast is a warning, not a speed-up
+    use_amp = str(model.device).startswith("cuda")
+
+    def run(seq: torch.Tensor, fuse: torch.Tensor | None) -> np.ndarray:
+        _, scores = model.predict(seq, use_amp=use_amp, fuse=fuse)
+        return np.asarray(scores, dtype=np.float32)
+
+    return run
+
+
+@dataclass
+class _Captured:
+    graph: torch.cuda.CUDAGraph
+    x: torch.Tensor
+    fuse: torch.Tensor | None
+    out: torch.Tensor
+
+
+class GraphedForward:
+    """The model's forward on one window, captured once as a CUDA graph and replayed.
+
+    Eagerly, a window is hundreds of small kernels — the gated shifts most of
+    all — each launched from Python under the GIL. Decode threads share that
+    GIL, so the launching thread waits at every kernel and the card idles
+    between them: measured 650 fps at two decode threads and *falling* with
+    each thread added, while shortening ``sys.setswitchinterval`` alone bought
+    18 % — the tell. A replay is one launch per window. The numbers are the
+    eager ones to the bit (max |Δ| = 0 on a held window), a window runs
+    121 → 111 ms, and the thread count is a decode question again.
+
+    One graph per input shape, captured on first sight; every call runs under
+    the caller's GPU lock.
+    """
+
+    def __init__(self, model) -> None:
+        self._net = model._model.eval()
+        self._device = model.device
+        self._graphs: dict[tuple, _Captured] = {}
+
+    def _capture(self, x: torch.Tensor, fuse: torch.Tensor | None) -> _Captured:
+        static_x, static_fuse = x.clone(), None if fuse is None else fuse.clone()
+        side = torch.cuda.Stream()
+        side.wait_stream(torch.cuda.current_stream())
+        # warm-up on a side stream first, as torch.cuda.graph documents
+        with torch.cuda.stream(side), torch.no_grad(), torch.autocast("cuda", cache_enabled=False):
+            for _ in range(3):
+                self._net(static_x, fuse=static_fuse)
+        torch.cuda.current_stream().wait_stream(side)
+        graph = torch.cuda.CUDAGraph()
+        with torch.cuda.graph(graph), torch.no_grad(), torch.autocast("cuda", cache_enabled=False):
+            out = self._net(static_x, fuse=static_fuse)
+        if isinstance(out, tuple):  # the vendored predict's own two normalisations
+            out = out[0]
+        if out.dim() > 3:
+            out = out[-1]
+        return _Captured(graph, static_x, static_fuse, out)
+
+    def __call__(self, seq: torch.Tensor, fuse: torch.Tensor | None) -> np.ndarray:
+        scores = []
+        for i in range(seq.shape[0]):
+            x = seq[i : i + 1]
+            f = None if fuse is None else fuse[i : i + 1].to(self._device)
+            key = (tuple(x.shape), None if f is None else tuple(f.shape))
+            captured = self._graphs.get(key)
+            if captured is None:
+                captured = self._graphs[key] = self._capture(x, f)
+            captured.x.copy_(x)
+            if f is not None:
+                assert captured.fuse is not None
+                captured.fuse.copy_(f)
+            captured.graph.replay()
+            # softmax in the output's own dtype, as predict() does it outside autocast
+            scores.append(torch.softmax(captured.out, 2)[0].float().cpu().numpy())
+        return np.stack(scores)
 
 
 def prepare_frame(frame: np.ndarray, record: TrialRecord, jpeg_roundtrip: bool = True) -> np.ndarray:
@@ -141,6 +228,18 @@ def _side_clip(block: np.ndarray | None, start: int, clip_len: int, stride: int)
     return out
 
 
+@dataclass
+class _Window:
+    """One clip waiting for the card: its frames inside the video, and how many pad frames sit either side."""
+
+    start: int
+    #: ``(n_inside, H, W, C)`` uint8, prepared; in pinned host memory when the model is on a card.
+    frames: torch.Tensor
+    pad_start: int
+    pad_end: int
+    fuse: np.ndarray | None
+
+
 def predict_trial(
     model,
     stored: dict,
@@ -151,6 +250,7 @@ def predict_trial(
     batch_frames: int = INFERENCE_BATCH_FRAMES,
     gpu_lock: threading.Lock | None = None,
     decode_threads: int | None = None,
+    forward: Forward | None = None,
 ) -> tuple[np.ndarray, int]:
     """``(scores (T', K + 1), num_frames)`` for one trial, streamed from its video.
 
@@ -158,13 +258,21 @@ def predict_trial(
     score is the mean over the windows that saw it. A window is run as soon as
     its last frame is decoded, from a buffer that never holds more than one
     window, so a long trial costs no more memory than a short one. *gpu_lock*
-    serialises the model when several trials are decoded in parallel threads.
+    serialises the model when several trials are decoded in parallel threads;
+    *forward* is how the model is run (default :func:`eager_forward`).
 
     Every window starts on the stride grid, so only every *stride*-th frame
     can ever enter one: the others are decoded (a codec reads sequentially)
-    and dropped before the resize and JPEG. A frame that is kept is prepared
-    and uploaded **once**, as uint8 on the model's device; the two windows
+    and dropped before the colour conversion, resize and JPEG. A frame that
+    is kept is prepared **once**, as uint8 in host memory; the two windows
     that overlap on it slice it from there.
+
+    A decode thread owns nothing on the card. Its windows wait as uint8 on
+    the host and go to the device — upload, normalise, forward — only inside
+    *gpu_lock*, so the card holds one batch and the model's own peak whatever
+    the thread count. Float windows parked on the device per thread (120 MB
+    each at 200 × 224²) beside a 2.4 GB forward paged the card and, on a
+    10 GB card with a GUI open, four decode threads ran at 74 fps.
     """
     clip_len, stride = int(stored["clip_len"]), int(stored.get("stride", 1))
     crop_dim, modality = stored.get("crop_dim"), stored["modality"]
@@ -173,26 +281,33 @@ def predict_trial(
     span = clip_len * stride
     batch_size = max(1, batch_frames // clip_len)
     n_classes = model._num_classes
+    device = str(model.device)
+    on_card = device.startswith("cuda")
+    run = forward if forward is not None else eager_forward(model)
 
     scores: list[np.ndarray] = []  # per window, (clip_len, K + 1)
     starts: list[int] = []
-    pending: list[tuple[int, torch.Tensor, np.ndarray | None]] = []
+    pending: list[_Window] = []
+
+    def to_device(w: _Window) -> torch.Tensor:
+        x = normalise(w.frames.to(device, non_blocking=True), crop_dim, modality)
+        if w.pad_start or w.pad_end:
+            x = torch.nn.functional.pad(x, (0, 0, 0, 0, 0, 0, w.pad_start, w.pad_end))
+        return x
 
     def flush() -> None:
         if not pending:
             return
-        seq = torch.stack([p[1] for p in pending])
-        fuse = np.stack([p[2] for p in pending]) if pending[0][2] is not None else None
-        # mixed precision only where it exists; on CPU the cuda autocast is a warning, not a speed-up
-        use_amp = str(model.device).startswith("cuda")
+        fuse = None if block is None else np.stack([w.fuse for w in pending if w.fuse is not None])
         with gpu_lock if gpu_lock is not None else threading.Lock():
-            _, batch_scores = model.predict(seq, use_amp=use_amp, fuse=None if fuse is None else torch.from_numpy(fuse))
-        for (start, _, _), s in zip(pending, batch_scores):
-            starts.append(start)
-            scores.append(np.asarray(s, dtype=np.float32))
+            seq = torch.stack([to_device(w) for w in pending])
+            batch_scores = run(seq, None if fuse is None else torch.from_numpy(fuse))
+        for w, s in zip(pending, batch_scores):
+            starts.append(w.start)
+            scores.append(s)
         pending.clear()
 
-    def window(start: int, buffer: list[torch.Tensor], grid_first: int, total: int | None) -> torch.Tensor:
+    def window(start: int, buffer: list[np.ndarray], grid_first: int, total: int | None) -> _Window:
         """The clip at *start* from *buffer* (first frame = strided index *grid_first*), padded past either end."""
         if start % stride:
             raise RuntimeError(f"{record.video_id}: window start {start} is off the stride grid ({stride})")
@@ -205,29 +320,24 @@ def predict_trial(
                 n_pad_end += 1
             else:
                 frames.append(buffer[frame_num // stride - grid_first])
-        x = normalise(torch.stack(frames), crop_dim, modality)
-        if n_pad_start or n_pad_end:
-            x = torch.nn.functional.pad(x, (0, 0, 0, 0, 0, 0, n_pad_start, n_pad_end))
-        return x
+        # torch stacks with the GIL released (numpy may not), and pinned memory makes the upload asynchronous
+        stacked = torch.stack([torch.from_numpy(f) for f in frames])
+        if on_card:
+            stacked = stacked.pin_memory()
+        return _Window(start, stacked, n_pad_start, n_pad_end, _side_clip(block, start, clip_len, stride))
 
-    device = str(model.device)
-    buffer: list[torch.Tensor] = []  # the frames on the stride grid, uint8 (H, W, C) on the model's device
+    buffer: list[np.ndarray] = []  # the frames on the stride grid, uint8 (H, W, C), prepared
     grid_first = 0  # strided index of buffer[0]
     next_start = -PAD_LEN * stride
     decoded = 0
-    for frame in _iter_frames(record.video_path, decode_threads):
+    to_rgb = RGBConverter()
+    for raw in decode_frames(record.video_path, threads=decode_threads):
         if decoded % stride == 0:
-            buffer.append(torch.from_numpy(prepare_frame(frame, record, jpeg_roundtrip)).to(device))
+            buffer.append(prepare_frame(to_rgb(raw), record, jpeg_roundtrip))
         decoded += 1
         # every window whose last frame is now decoded
         while next_start + span <= decoded:
-            pending.append(
-                (
-                    next_start,
-                    window(next_start, buffer, grid_first, None),
-                    _side_clip(block, next_start, clip_len, stride),
-                )
-            )
+            pending.append(window(next_start, buffer, grid_first, None))
             if len(pending) >= batch_size:
                 flush()
             next_start += step
@@ -238,9 +348,7 @@ def predict_trial(
     total = decoded
     # the windows the folder path would still run at the tail, padded past the end
     while next_start < max(0, total - overlap * stride):
-        pending.append(
-            (next_start, window(next_start, buffer, grid_first, total), _side_clip(block, next_start, clip_len, stride))
-        )
+        pending.append(window(next_start, buffer, grid_first, total))
         next_start += step
     flush()
     if not starts:
@@ -283,12 +391,15 @@ def predict_records(
     device: str | None = None,
     workers: int | None = None,
     loaded: tuple[object, dict] | None = None,
+    cuda_graph: bool = True,
 ) -> tuple[list[dict], dict[str, int]]:
     """Every record's recall entry, streamed; plus each trial's decoded frame count.
 
     Trials are decoded in parallel threads — decode, resize and JPEG all
     release the GIL — feeding the one model through a lock: the GPU is far
     faster than one thread's decode chain, so several chains keep it busy.
+    On a card the model runs as a replayed graph (:class:`GraphedForward`);
+    *cuda_graph* off is the eager path, for checking one against the other.
 
     *loaded* is a ``(model, stored config)`` pair from :func:`load_run_model`,
     so a caller predicting many sessions loads the checkpoint once.
@@ -305,6 +416,8 @@ def predict_records(
             raise ValueError(f"{record.video_id}: the run reads a feature block and none was given")
     gpu_lock = threading.Lock()
     n_workers = min(workers or default_workers(), STREAM_WORKERS_MAX, max(1, len(records)))
+    on_card = str(model.device).startswith("cuda")
+    forward = GraphedForward(model) if on_card and cuda_graph else eager_forward(model)
 
     def one(record: TrialRecord) -> tuple[dict, int]:
         block = (blocks or {}).get(record.video_id)
@@ -316,6 +429,7 @@ def predict_records(
             jpeg_roundtrip=jpeg_roundtrip,
             gpu_lock=gpu_lock,
             decode_threads=None,  # the codec's own threading measured faster than one thread per container
+            forward=forward,
         )
         logger.info("%s: %d frames streamed", record.video_id, total)
         return recall_entry(record.video_id, scores, record.fps / stride, class_names), total

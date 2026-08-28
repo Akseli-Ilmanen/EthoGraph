@@ -142,6 +142,12 @@ class AppStateSpec:
         # then does the sync timer run. Never saved: opening the GUI curates
         # nothing, so it must not come back armed.
         "curation_active": (bool, False, False),
+        # Which run's onset_curves.npz frame-by-frame review draws as the
+        # confidence overlay. Session-only (never saved, reset when a dataset
+        # comes or goes): set once by the onset-model Predict dialog when more
+        # than one run exists (labels/onset_curves.py), so review itself never
+        # has to ask — asking there re-fired on every restart_review().
+        "curve_run_path": (str | None, None, False),
         # How the plot x-limits are derived: "interval" (follows slider scope:
         # trial/label/sequence extent + before/after padding) or "fixed"
         # (fixed-size window from t=0). User preference, not tied to how the
@@ -175,6 +181,16 @@ class AppStateSpec:
         "pred_store": (object, None, False),
         "pred_confidence_threshold": (float, 0.75, True),
         "pred_segment_confidence_threshold": (float, 0.6, True),
+        # Import Predictions panel's "Load as" combo — "overlay" or "labels".
+        # A global preference like import_labels_nc_data: it's how the user
+        # tends to use predictions, not something tied to one dataset.
+        "pred_load_mode": (str, "overlay", True),
+        # Import Predictions panel's "Merge with existing labels" checkbox,
+        # shown only when importing as labels onto a session that already has
+        # some. Off by default (import replaces), a global preference like
+        # import_labels_nc_data — it says how the user wants imports to
+        # behave, not something tied to one dataset.
+        "merge_imported_predictions": (bool, False, True),
         "trial_conditions": (list | None, None, False),
         "keypoints": (list[str], [], False),
         # Global preference: the "Import labels" checkbox is remembered across

@@ -90,7 +90,6 @@ from qtpy.QtWidgets import (
 )
 
 from ethograph.gui.dialog_label_gridview import confidence_display
-from ethograph.gui.file_dialogs import browse_open_file
 from ethograph.gui.label_drawing_mixin import draw_key
 from ethograph.gui.notify import notify
 from ethograph.gui.shortcuts import typing_in_text_field
@@ -1114,6 +1113,7 @@ class CurationPanel(QGroupBox):
     def _on_ready_changed(self, *_args) -> None:
         """A dataset came or went — curation starts off again."""
         self.deactivate()
+        self.app_state.curve_run_path = None
 
     def _on_trial_changed(self) -> None:
         if not self.app_state.ready:
@@ -1317,44 +1317,23 @@ class CurationPanel(QGroupBox):
     def _resolve_curve_source(self) -> Path | None:
         """Which run's ``onset_curves.npz`` to draw for this review session.
 
-        One matching run is used without asking. With several, silently
-        merging newest-per-class hid which model's confidence was actually
-        on screen — so the reviewer is asked to pick, either by name or by
-        browsing the session's ``labels/`` folder directly.
+        Review itself never asks — that popped up on every ``_begin``,
+        including the one ``restart_review`` fires after each commit, asking
+        again mid-review. The pick lives on ``app_state.curve_run_path``,
+        session-only, set once by :func:`~ethograph.gui.dialog_onset_model.
+        predict_onsets`'s caller when more than one run exists. With exactly
+        one run and nothing chosen yet, that one is used without asking.
         """
+        chosen = self.app_state.curve_run_path
+        if chosen and Path(chosen).is_file():
+            return Path(chosen)
         session = self.app_state.nc_file_path
         if not session:
             return None
         folders = onset_curves.run_dirs(session)
-        if not folders:
-            return None
         if len(folders) == 1:
             return folders[0] / onset_curves.CURVES_FILE
-        return self._ask_curve_run(session, folders)
-
-    def _ask_curve_run(self, session: str, folders: list[Path]) -> Path | None:
-        """More than one run has curves — ask which one to show, or none."""
-        box = QMessageBox(self)
-        box.setIcon(QMessageBox.Question)
-        box.setWindowTitle("Multiple prediction runs")
-        box.setText(
-            f"This session has {len(folders)} prediction runs with confidence curves.\n"
-            "Pick which run's curves to show during review."
-        )
-        pick_btn = box.addButton("Pick file…", QMessageBox.AcceptRole)
-        box.addButton("Don't show curves", QMessageBox.RejectRole)
-        box.exec()
-        if box.clickedButton() is not pick_btn:
-            return None
-
-        chosen = browse_open_file(
-            self,
-            self.app_state,
-            "Choose onset_curves.npz",
-            f"Onset curves ({onset_curves.CURVES_FILE})",
-            preferred_dir=onset_curves.labels_dir(session),
-        )
-        return Path(chosen) if chosen else None
+        return None
 
     def _load_curves(self) -> dict[str, onset_curves.TrialCurves]:
         """This session's chosen run's curves, keyed by trial id.

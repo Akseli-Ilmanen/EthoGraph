@@ -35,7 +35,7 @@ disturbs the GUI's navigation state.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Iterator
@@ -57,6 +57,7 @@ from qtpy.QtWidgets import (
     QLineEdit,
     QListWidget,
     QListWidgetItem,
+    QMessageBox,
     QPushButton,
     QSpinBox,
     QTreeWidget,
@@ -65,6 +66,7 @@ from qtpy.QtWidgets import (
 )
 
 from ethograph.gui.dialog_label_gridview import ConfidenceEdit, confidence_display
+from ethograph.gui.file_dialogs import browse_open_file
 from ethograph.gui.notify import notify
 from ethograph.io.catalog import PynappleLoader, XarrayLoader
 from ethograph.labels import onset_curves
@@ -181,22 +183,73 @@ class PredictionOutcome:
         return " ".join(parts)
 
 
-def _save_curves(app_state, curves_by_trial: dict) -> Path | None:
+def _save_curves(app_state, curves_by_trial: dict, config: om.OnsetModelConfig, applied: dict) -> Path | None:
     """Write this run's probability curves to its own folder under ``labels/``.
 
     An aid to review, not part of the prediction: a session with no path on
     disk yet simply keeps none, and a failed write is logged rather than
-    losing the predictions it belongs to.
+    losing the predictions it belongs to. *config* is the trained bundle's —
+    what actually ran, not the model folder's editable ``config.yaml`` — and
+    *applied* how it was run; both land beside the curves so the folder
+    says what produced it.
     """
     if not curves_by_trial or not app_state.nc_file_path:
         return None
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     folder = onset_curves.run_dir(app_state.nc_file_path, timestamp)
     try:
-        return onset_curves.write_curves(folder / onset_curves.CURVES_FILE, curves_by_trial)
+        written = onset_curves.write_curves(folder / onset_curves.CURVES_FILE, curves_by_trial)
+        onset_curves.write_provenance(folder, model_config=asdict(config), inference=applied)
+        return written
     except OSError as exc:
         logger.warning("Could not write onset curves to %s: %s", folder, exc)
         return None
+
+
+def ensure_curve_run_chosen(parent, app_state) -> None:
+    """After a predict run, make sure ``app_state.curve_run_path`` names one run.
+
+    Frame-by-frame review (``CurationPanel._resolve_curve_source``) never
+    asks — it only reads this. Asked here instead, once: with at most one run
+    to choose from it resolves silently; with several and nothing picked yet,
+    this prompts and the answer sticks in ``curve_run_path`` (session-only)
+    for the rest of the session, however many more predict runs follow.
+    """
+    session = app_state.nc_file_path
+    if not session:
+        return
+    current = app_state.curve_run_path
+    if current and Path(current).is_file():
+        return
+    folders = onset_curves.run_dirs(session)
+    if not folders:
+        return
+    if len(folders) == 1:
+        app_state.curve_run_path = str(folders[0] / onset_curves.CURVES_FILE)
+        return
+
+    box = QMessageBox(parent)
+    box.setIcon(QMessageBox.Question)
+    box.setWindowTitle("Multiple prediction runs")
+    box.setText(
+        f"This session now has {len(folders)} prediction runs with confidence curves.\n"
+        "Pick which run's curves frame-by-frame review should show — remembered for "
+        "the rest of this session."
+    )
+    pick_btn = box.addButton("Pick file…", QMessageBox.AcceptRole)
+    box.addButton("Don't show curves", QMessageBox.RejectRole)
+    box.exec()
+    if box.clickedButton() is not pick_btn:
+        return
+    chosen = browse_open_file(
+        parent,
+        app_state,
+        "Choose onset_curves.npz",
+        f"Onset curves ({onset_curves.CURVES_FILE})",
+        preferred_dir=onset_curves.labels_dir(session),
+    )
+    if chosen:
+        app_state.curve_run_path = chosen
 
 
 def predict_onsets(
@@ -306,7 +359,18 @@ def predict_onsets(
     finally:
         QApplication.restoreOverrideCursor()
 
-    _save_curves(app_state, curves_by_trial)
+    _save_curves(
+        app_state,
+        curves_by_trial,
+        config,
+        {
+            "model": onset_curves.LIGHTGBM,
+            "name": name,
+            "individual": individual,
+            "min_confidence": float(min_confidence),
+            "session": str(app_state.nc_file_path),
+        },
+    )
     if outcome.n_predicted:
         refresh_after_prediction(meta)
     if outcome.errors:
@@ -1183,6 +1247,7 @@ class PredictOnsetDialog(QDialog):
         self._reviewable = (outcome.label_ids(), outcome.trials)
         self.review_btn.setEnabled(bool(outcome.n_predicted))
         self.status_label.setText(outcome.message())
+        ensure_curve_run_chosen(self, self.app_state)
 
     def _review(self):
         """Drop what was just predicted into curation scope and open the Labels tab."""

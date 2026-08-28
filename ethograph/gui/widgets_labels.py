@@ -37,6 +37,7 @@ from ethograph.io.metadata_table import (
     metadata_tsv_path,
     save_metadata_tsv,
 )
+from ethograph.labels import onset_curves
 from ethograph.labels.intervals import (
     EVENT_TYPE_POINT,
     EVENT_TYPE_STATE,
@@ -52,8 +53,8 @@ from ethograph.labels.intervals import (
     subject_mask,
 )
 from ethograph.labels.plots import plot_confidence_pdf
-from ethograph.labels.predictions import PredictionsStore
-from ethograph.labels.tsv_store import load_labels_tsv
+from ethograph.labels.predictions import PredictionsStore, merge_as_labels
+from ethograph.labels.tsv_store import get_trial_from_tsv, load_labels_tsv
 
 # Glyphs used to indicate the kind of a label in the table.
 #   ━ (horizontal bar) = state event — visually conveys "spans across time"
@@ -829,7 +830,22 @@ class LabelsWidget(QWidget):
         except (FileNotFoundError, ValueError, AssertionError) as e:
             notify(str(e), severity="error")
             return
+        self._pin_curve_run(folder)
         self._finish_predictions_import(labels_df, store, folder)
+
+    def _pin_curve_run(self, folder: str) -> None:
+        """A folder picked here by hand is the frame-review confidence source too.
+
+        Picking a specific folder is a stronger, more explicit signal than
+        anything ``CurationPanel._resolve_curve_source`` could infer on its
+        own — no reason to leave it to guess (or show nothing) among several
+        run folders under ``labels/`` once the user has pointed straight at
+        one. A folder without its own :data:`onset_curves.CURVES_FILE`
+        (e.g. imported from a plain ``.tsv``) leaves the existing pick alone.
+        """
+        curves_file = Path(folder) / onset_curves.CURVES_FILE
+        if curves_file.is_file():
+            self.app_state.curve_run_path = str(curves_file)
 
     def _import_predictions_from_tsv(self):
         """A plain labels TSV as predictions — e.g. a second annotator's file, for comparison.
@@ -854,7 +870,15 @@ class LabelsWidget(QWidget):
         self._finish_predictions_import(labels_df, None, path)
 
     def _finish_predictions_import(self, labels_df, store, source_text: str):
-        """Shared wiring once a predictions set is loaded, whichever way in."""
+        """A predictions set was loaded — dispatch on the panel's Load-as combo.
+
+        "Import as labels" writes it into the working labels themselves and
+        never touches the overlay state; everything below is the overlay
+        ("compare with ground truth") path.
+        """
+        if self.io_widget.pred_load_mode() == "labels":
+            self._import_predictions_as_labels(labels_df, source_text)
+            return
         threshold = self.io_widget.pred_confidence_threshold_spin.value()
         self.app_state.pred_labels_df = labels_df
         self.app_state.pred_store = store
@@ -872,6 +896,41 @@ class LabelsWidget(QWidget):
             if self.data_widget.plot_container:
                 self.data_widget.plot_container.labels_redraw_needed.emit()
         self.refresh_labels_shapes_layer()
+
+    def _import_predictions_as_labels(self, predicted_df, source_text: str) -> None:
+        """Write a loaded prediction set straight into the working labels.
+
+        Merge (the panel's checkbox) keeps every existing row and only adds
+        predictions for (trial, class, individual) pairs the current labels
+        don't already cover (:func:`~ethograph.labels.predictions.merge_as_labels`,
+        the onset model's own "never override" rule); unticked, the prediction
+        set replaces the working labels outright. What this is about to do is
+        said in the panel itself (``IOWidget.pred_labels_warning_label``, red
+        text beside the combo) rather than a confirmation popup here — it
+        stays visible while the combo and checkbox are still being decided,
+        instead of springing the choice back at click time. Not an undoable
+        label edit either way, like curating visible trials.
+        """
+        existing = self.app_state._all_labels_df
+        has_existing = existing is not None and not existing.empty
+        merge = has_existing and self.io_widget.pred_merge_checkbox.isChecked()
+        merged = merge_as_labels(existing, predicted_df) if merge else predicted_df
+        self.app_state._all_labels_df = merged
+        self.app_state.clear_label_history()
+        self.app_state.changes_saved = False
+        current = getattr(self.app_state, "trials_sel", None)
+        if current is not None:
+            self.app_state.label_intervals = get_trial_from_tsv(merged, current)
+        if self.data_widget:
+            self.data_widget.refresh_individual_choices()
+            self.data_widget.update_main_plot(preserve_x_range=True)
+            if self.data_widget.plot_container:
+                self.data_widget.plot_container.labels_redraw_needed.emit()
+        self.refresh_labels_shapes_layer()
+        self.curation_panel.note_labels_edited()
+        self.io_widget.pred_file_path_edit.setText(source_text)
+        verb = "Merged" if merge else "Imported"
+        notify(f"{verb} {len(predicted_df)} prediction row(s) as labels. Save with Ctrl+S.")
 
     def _on_confidence_threshold_changed(self, _value):
         self.app_state.pred_confidence_threshold = self.io_widget.pred_confidence_threshold_spin.value()

@@ -17,7 +17,20 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-PYTHON="${PYTHON:-$HOME/anaconda3/envs/ethograph/python.exe}"
+# Git Bash's $HOME can point somewhere the Windows profile isn't, and neither
+# $USERPROFILE nor $HOMEDRIVE is guaranteed to reach bash, so try each in turn.
+if [ -z "${PYTHON:-}" ]; then
+    profile="${USERPROFILE:-${HOMEDRIVE:-}${HOMEPATH:-}}"
+    for root in "${profile//\\//}" "${HOME:-}" /c/Users/"${USERNAME:-$(id -un)}"; do
+        [ -n "$root" ] || continue
+        for conda in anaconda3 miniconda3 miniforge3; do
+            candidate="$root/$conda/envs/ethograph/python.exe"
+            [ -x "$candidate" ] && PYTHON="$candidate" && break 2
+        done
+    done
+fi
+[ -x "${PYTHON:-}" ] || { echo "ethograph python not found; set PYTHON=/path/to/python.exe" >&2; exit 1; }
+echo "python: $PYTHON"
 export PYTHONUTF8=1
 mkdir -p data/spot/runs
 

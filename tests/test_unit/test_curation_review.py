@@ -788,44 +788,55 @@ class TestOnsetCurves:
         panel._stop()
         assert container.hidden > before
 
-    def test_one_run_is_used_without_asking(self, panel, tmp_path, monkeypatch):
+    def test_one_run_is_used_without_asking(self, panel, tmp_path):
         _write_curves(panel.app_state, tmp_path)
-        monkeypatch.setattr(panel, "_ask_curve_run", lambda *a: pytest.fail("must not ask"))
         container = _ContainerStub()
         panel.set_plot_container(container)
         _set_mode(panel, "frame")
         assert panel.start_review()
         assert set(container.shown[-1][1]) == {4, 6}
 
-    def test_several_runs_ask_which_one(self, panel, tmp_path):
+    def test_several_runs_with_none_chosen_show_nothing(self, panel, tmp_path):
+        """Review never asks — that popped up on every restart_review(). With
+        several runs and no app_state.curve_run_path set, it just shows none."""
         _write_curves(panel.app_state, tmp_path, timestamp="20260824_120000")
         _write_curves(panel.app_state, tmp_path, timestamp="20260825_090000")
-        session = panel.app_state.nc_file_path
-        chosen = onset_curves.run_dirs(session)[0] / onset_curves.CURVES_FILE
-        asked = []
-
-        def _ask(session_, folders):
-            asked.append((session_, folders))
-            return chosen
-
-        panel._ask_curve_run = _ask
-        container = _ContainerStub()
-        panel.set_plot_container(container)
-        _set_mode(panel, "frame")
-        assert panel.start_review()
-        assert len(asked) == 1
-        assert len(asked[0][1]) == 2
-        assert set(container.shown[-1][1]) == {4, 6}
-
-    def test_declining_the_choice_shows_no_curves(self, panel, tmp_path):
-        _write_curves(panel.app_state, tmp_path, timestamp="20260824_120000")
-        _write_curves(panel.app_state, tmp_path, timestamp="20260825_090000")
-        panel._ask_curve_run = lambda *a: None
         container = _ContainerStub()
         panel.set_plot_container(container)
         _set_mode(panel, "frame")
         assert panel.start_review()
         assert container.shown == []
+
+    def test_curve_run_path_picks_among_several_runs(self, panel, tmp_path):
+        """The pick lives on app_state, set once elsewhere (the onset-model
+        Predict dialog) — review just reads it."""
+        _write_curves(panel.app_state, tmp_path, timestamp="20260824_120000")
+        _write_curves(panel.app_state, tmp_path, timestamp="20260825_090000")
+        session = panel.app_state.nc_file_path
+        chosen = onset_curves.run_dirs(session)[0] / onset_curves.CURVES_FILE
+        panel.app_state.curve_run_path = str(chosen)
+        container = _ContainerStub()
+        panel.set_plot_container(container)
+        _set_mode(panel, "frame")
+        assert panel.start_review()
+        assert set(container.shown[-1][1]) == {4, 6}
+
+    def test_restart_review_does_not_re_resolve_a_dialog(self, panel, tmp_path, monkeypatch):
+        """restart_review() calls _begin() again on every label commit — it must
+        never pop anything up (the bug this whole mechanism replaced)."""
+        _write_curves(panel.app_state, tmp_path, timestamp="20260824_120000")
+        _write_curves(panel.app_state, tmp_path, timestamp="20260825_090000")
+
+        def _fail_if_called(*_a, **_k):
+            pytest.fail("CurationPanel must never pop up a dialog to pick curves")
+
+        monkeypatch.setattr("ethograph.gui.widgets_curation.QMessageBox", _fail_if_called)
+        container = _ContainerStub()
+        panel.set_plot_container(container)
+        _set_mode(panel, "frame")
+        assert panel.start_review()
+        panel.restart_review()
+        panel.restart_review()
 
 
 def test_qt_key_names(qapp):

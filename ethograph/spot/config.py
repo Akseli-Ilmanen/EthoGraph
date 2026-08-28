@@ -35,6 +35,7 @@ from ethograph.segment.config import (
     TrialsConfig,
     apply_overrides,
     build_dataclass,
+    name_colliding_sessions,
     read_yaml_chain,
 )
 
@@ -609,15 +610,7 @@ def config_from_dict(data: dict, base_dir: Path, config_path: Path | None = None
         raise ValueError(f"train.features_dropout must be in [0, 1), got {cfg.train.features_dropout!r}")
     if cfg.labels.crop is not None:
         cfg.labels.crop.validate()
-    labels = [s.label for s in cfg.sessions]
-    clashes = sorted({n for n in labels if labels.count(n) > 1})
-    if clashes:
-        # Two sessions with one label would write their trials under the same
-        # video ids and silently overwrite each other's frames.
-        raise ValueError(
-            f"config.sessions: {clashes} name more than one session — give each a distinct `name:` "
-            "(the default is the source file's stem)."
-        )
+    name_colliding_sessions(cfg.sessions)
     return cfg
 
 

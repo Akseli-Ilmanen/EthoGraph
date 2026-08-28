@@ -135,6 +135,34 @@ class _FakeSession:
     def media_path(self, trial, stream: str = "video", device: str | None = None):
         return self._video_path
 
+    def video_device(self, camera):
+        return camera
+
+
+class TestVideoDevice:
+    """`labels.camera` is the config's name; the alignment may number its cameras and still point at `…-cam-1.mp4`."""
+
+    def _session(self, tmp_path, cameras, media):
+        from types import SimpleNamespace
+
+        from ethograph.segment.config import SessionSpec
+        from ethograph.segment.sessions import Session
+
+        alignment = SimpleNamespace(cameras=cameras, get_media=lambda trial, stream, device: media.get(device))
+        result = SimpleNamespace(nwb_alignment=alignment, trial_ids=[1, 2])
+        return Session(spec=SessionSpec(source=tmp_path / "s.nc"), id="s", result=result)
+
+    def test_own_name_numbered_camera_and_no_match(self, tmp_path):
+        named = self._session(tmp_path, ["cam-1", "cam-2"], {"cam-1": "x-cam-1.mp4"})
+        assert named.video_device("cam-1") == "cam-1"
+        assert named.video_device(None) is None
+        files = {"0": "2025-05-12_002_Ivy-cam-1.mp4", "1": "2025-05-12_002_Ivy-cam-2.mp4"}
+        numbered = self._session(tmp_path, ["0", "1"], files)
+        assert numbered.video_device("cam-1") == "0"
+        assert numbered.video_device("cam-2") == "1"
+        with pytest.raises(ValueError, match=r"no camera 'cam-3'.*\['0', '1'\]"):
+            numbered.video_device("cam-3")
+
 
 def _labels_df(onset_s: float = 1.0, label: int = 31) -> pd.DataFrame:
     return pd.DataFrame(

@@ -6,8 +6,8 @@ exactly what vendoring is meant to avoid. What this module adds is what a
 subprocess cannot do for itself — resume after a crash, and mirror the output
 to a log beside the run.
 
-The clone's location is ``$ETHOGRAPH_SPOT_ROOT`` if set, else a ``spot/``
-folder beside the repository root. When it graduates from proof of principle
+The clone's location is ``$ETHOGRAPH_SPOT_ROOT`` if set, else a ``spot/`` or
+``repos/spot/`` folder beside the repository root. When it graduates from proof of principle
 it moves under this package as ``ethograph/spot/e2espot/``, the way
 ``ethograph/segment/dlc2action/`` is laid out, with its own ``NOTICE.md``.
 """
@@ -41,11 +41,12 @@ def clone_root() -> Path:
         return root
     here = Path(__file__).resolve()
     for parent in here.parents:
-        candidate = parent / "spot"
-        if (candidate / "train_e2e.py").is_file():
-            return candidate
+        for candidate in (parent / "spot", parent / "repos" / "spot"):
+            if (candidate / "train_e2e.py").is_file():
+                return candidate
     raise FileNotFoundError(
-        f"No E2E-Spot clone found. Clone it beside the repository root as `spot/`, or point {_ENV_VAR} at it."
+        f"No E2E-Spot clone found. Clone it as `spot/` or `repos/spot/` beside the "
+        f"repository root, or point {_ENV_VAR} at it."
     )
 
 

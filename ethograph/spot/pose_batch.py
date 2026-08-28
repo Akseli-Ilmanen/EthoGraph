@@ -105,8 +105,9 @@ def fill_and_export_video(
 def session_clips(session: Session, config: SpotConfig) -> dict[int | str, Path]:
     """Trial -> video, for every trial passing the filter that has one."""
     out: dict[int | str, Path] = {}
+    camera = session.video_device(config.labels.camera)
     for trial in filter_trials(session, config.trials):
-        video = session.media_path(trial, "video", device=config.labels.camera)
+        video = session.media_path(trial, "video", device=camera)
         if video is not None:
             out[trial] = video
     return out
@@ -176,13 +177,14 @@ def merge_keypoints(
     if dt is None:
         raise ValueError(f"{session.source}: merging needs an xarray (.nc) session")
     alignment = session.result.nwb_alignment
+    camera = session.video_device(config.labels.camera)
     merged = 0
     for trial, video in session_clips(session, config).items():
         export = keypoints_dataset_path(video)
         if not export.is_file():
             continue
         pose = xr.load_dataset(export)
-        offset = float(alignment.stream_offset_for_trial(trial, "video", device=config.labels.camera))
+        offset = float(alignment.stream_offset_for_trial(trial, "video", device=camera))
         dt.update_trial(trial, lambda ds, p=pose, o=offset: sample_onto_trial(ds, p, o, var))
         merged += 1
     if merged == 0:

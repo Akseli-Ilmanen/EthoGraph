@@ -6,6 +6,8 @@ the dialog, so no classifier is ever fitted here.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -15,9 +17,15 @@ from qtpy.QtWidgets import QApplication
 
 from ethograph.gui.app_state import ObservableAppState
 from ethograph.gui.dialog_label_gridview import LabelGridViewDialog
-from ethograph.gui.dialog_onset_model import FeatureTree, LabelInputTree, PredictOnsetDialog
+from ethograph.gui.dialog_onset_model import (
+    FeatureTree,
+    LabelInputTree,
+    PredictOnsetDialog,
+    ensure_curve_run_chosen,
+)
 from ethograph.gui.widgets_curation import CurationPanel
 from ethograph.io.catalog import XarrayLoader
+from ethograph.labels import onset_curves
 from ethograph.labels import onset_model as om
 from ethograph.labels.label_inputs import LabelInput
 
@@ -125,6 +133,120 @@ class TestReviewHandOff:
         assert curation_panel.scope_area.ids() == []
         assert curation_panel.app_state.curation_active is False
         assert predict_dialog.meta.collapsible_widgets[1].expanded is False
+
+
+class _FakeButton:
+    def __init__(self, role):
+        self.role = role
+
+
+class _FakeMessageBox:
+    """Stands in for QMessageBox so a test never blocks on a real exec().
+
+    Set ``picked_role`` on the class before use to say which button the
+    "click" lands on.
+    """
+
+    AcceptRole = "accept"
+    RejectRole = "reject"
+    Question = "question"
+    picked_role: str | None = None
+
+    def __init__(self, parent=None):
+        self._buttons: list[_FakeButton] = []
+
+    def setIcon(self, *_a):
+        pass
+
+    def setWindowTitle(self, *_a):
+        pass
+
+    def setText(self, *_a):
+        pass
+
+    def addButton(self, _label, role):
+        btn = _FakeButton(role)
+        self._buttons.append(btn)
+        return btn
+
+    def exec(self):
+        return 0
+
+    def clickedButton(self):
+        return next((b for b in self._buttons if b.role == self.picked_role), None)
+
+
+class TestEnsureCurveRunChosen:
+    """dialog_onset_model.ensure_curve_run_chosen: picked once, remembered.
+
+    Frame-by-frame review (widgets_curation.CurationPanel) never asks itself
+    — it only reads app_state.curve_run_path. This is where the ask happens,
+    right after a predict run, and only when it actually needs to.
+    """
+
+    def _write_run(self, session, timestamp):
+        onset_curves.write_curves(
+            onset_curves.run_dir(session, timestamp) / onset_curves.CURVES_FILE,
+            {"0": (np.linspace(0.0, 1.0, 5), {1: np.full(5, 0.5)})},
+        )
+
+    def test_no_session_path_is_a_noop(self, predict_dialog):
+        predict_dialog.app_state.nc_file_path = ""
+        ensure_curve_run_chosen(predict_dialog, predict_dialog.app_state)
+        assert predict_dialog.app_state.curve_run_path is None
+
+    def test_no_runs_is_a_noop(self, predict_dialog, tmp_path):
+        predict_dialog.app_state.nc_file_path = str(tmp_path / "session.nc")
+        ensure_curve_run_chosen(predict_dialog, predict_dialog.app_state)
+        assert predict_dialog.app_state.curve_run_path is None
+
+    def test_one_run_is_used_without_asking(self, predict_dialog, tmp_path, monkeypatch):
+        session = tmp_path / "session.nc"
+        predict_dialog.app_state.nc_file_path = str(session)
+        self._write_run(session, "20260824_120000")
+        monkeypatch.setattr(
+            "ethograph.gui.dialog_onset_model.QMessageBox",
+            lambda *a, **k: pytest.fail("must not ask with only one run"),
+        )
+        ensure_curve_run_chosen(predict_dialog, predict_dialog.app_state)
+        assert predict_dialog.app_state.curve_run_path is not None
+        assert Path(predict_dialog.app_state.curve_run_path).is_file()
+
+    def test_an_existing_choice_is_left_alone(self, predict_dialog, tmp_path, monkeypatch):
+        session = tmp_path / "session.nc"
+        predict_dialog.app_state.nc_file_path = str(session)
+        self._write_run(session, "20260824_120000")
+        self._write_run(session, "20260825_090000")
+        chosen = onset_curves.run_dirs(session)[0] / onset_curves.CURVES_FILE
+        predict_dialog.app_state.curve_run_path = str(chosen)
+        monkeypatch.setattr(
+            "ethograph.gui.dialog_onset_model.QMessageBox",
+            lambda *a, **k: pytest.fail("must not ask when curve_run_path is already valid"),
+        )
+        ensure_curve_run_chosen(predict_dialog, predict_dialog.app_state)
+        assert predict_dialog.app_state.curve_run_path == str(chosen)
+
+    def test_several_runs_prompts_and_remembers_the_pick(self, predict_dialog, tmp_path, monkeypatch):
+        session = tmp_path / "session.nc"
+        predict_dialog.app_state.nc_file_path = str(session)
+        self._write_run(session, "20260824_120000")
+        self._write_run(session, "20260825_090000")
+        picked = onset_curves.run_dirs(session)[1] / onset_curves.CURVES_FILE
+        _FakeMessageBox.picked_role = _FakeMessageBox.AcceptRole
+        monkeypatch.setattr("ethograph.gui.dialog_onset_model.QMessageBox", _FakeMessageBox)
+        monkeypatch.setattr("ethograph.gui.dialog_onset_model.browse_open_file", lambda *a, **k: str(picked))
+        ensure_curve_run_chosen(predict_dialog, predict_dialog.app_state)
+        assert predict_dialog.app_state.curve_run_path == str(picked)
+
+    def test_declining_leaves_it_unset(self, predict_dialog, tmp_path, monkeypatch):
+        session = tmp_path / "session.nc"
+        predict_dialog.app_state.nc_file_path = str(session)
+        self._write_run(session, "20260824_120000")
+        self._write_run(session, "20260825_090000")
+        _FakeMessageBox.picked_role = _FakeMessageBox.RejectRole
+        monkeypatch.setattr("ethograph.gui.dialog_onset_model.QMessageBox", _FakeMessageBox)
+        ensure_curve_run_chosen(predict_dialog, predict_dialog.app_state)
+        assert predict_dialog.app_state.curve_run_path is None
 
 
 class TestRestrictedGrid:

@@ -272,6 +272,44 @@ for architecture in ("c2f_tcn", "mstcn", "mlp"):
 print(eto.segment.Project("project.yaml").compare())
 ```
 
+(target-segment-session-lines)=
+### The session lines
+
+`sessions:` is read the same way by both pipelines (`SessionSpec`, shared
+with {doc}`pixel event spotting <../spot/index>`): a session is a `source`
+plus whatever the stage you run needs from it.
+
+- **`source`** — the session file. Always.
+- **`labels_path`** — its curated labels TSV. Unset, it is `{stem}_labels.tsv`
+  beside `source` (the GUI's own convention; the log says what was assumed).
+  Training and scoring read it. A session you only **predict into** needs
+  none — a `labels_path` naming a file that does not exist simply means the
+  session has no labels, and it contributes nothing to a training set.
+- **`video_dir`** — the folder searched for a trial's video when the
+  alignment does not already resolve it. Optional here: this pipeline reads
+  feature columns, and only the S3D video features
+  ({doc}`video_features`) ever open a video.
+- **`name`** — the session id in every output (fold names, prediction
+  sources, log lines). Optional: unset, it is the file's stem, and sessions
+  whose stems collide — `Trial_data3.nc` in every `behav/` folder — are named
+  by the nearest folder that tells them apart,
+  `ses-000_date-20250309_01_Trial_data3`, listed in the log. Quote a name
+  that is all digits, or YAML reads it as a number.
+
+So a session to train on and one to predict into sit side by side:
+
+```yaml
+sessions:
+  - source: ../sub-01/ses-000_date-20250503_02/behav/Trial_data3.nc
+    labels_path: ../sub-01/ses-000_date-20250503_02/behav/Trial_data_labels.tsv
+  - source: ../sub-01/ses-000_date-20250506_02/behav/Trial_data3.nc     # no labels: predict into it
+```
+
+`inference()` covers every listed session unless `sessions=` narrows it, so
+that is the stage an unlabelled session is listed for. `cross_validate()` is
+for labelled sessions only: each fold scores the session it held out, which
+takes labels to score against.
+
 ## What a sample is
 
 One **(trial, individual)**. Its columns are the configured features with

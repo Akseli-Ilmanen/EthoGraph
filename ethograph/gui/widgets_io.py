@@ -498,6 +498,48 @@ class IOWidget(QWidget):
         pred_group_layout.setSpacing(2)
         self.pred_group.setLayout(pred_group_layout)
 
+        # Row 0: load-as — overlay (the default, non-destructive) or
+        # straight into the working labels, plus (import-as-labels only, and
+        # only once a labels table already exists to merge onto) whether to
+        # keep the existing labels and only add what they're missing.
+        mode_row = QHBoxLayout()
+        mode_row.setContentsMargins(0, 0, 0, 0)
+        mode_row.addWidget(QLabel("Load as:"))
+        self.pred_load_mode_combo = QComboBox()
+        self.pred_load_mode_combo.addItem("Overlay (compare with ground truth)", "overlay")
+        self.pred_load_mode_combo.addItem("Import as labels", "labels")
+        self.pred_load_mode_combo.setToolTip(
+            "Overlay: draws the prediction set beside the ground truth for comparison — "
+            "the working labels are untouched.\n"
+            "Import as labels: writes the prediction set into the working labels themselves."
+        )
+        saved_mode = self.app_state.pred_load_mode
+        idx = self.pred_load_mode_combo.findData(saved_mode)
+        if idx >= 0:
+            self.pred_load_mode_combo.setCurrentIndex(idx)
+        self.pred_load_mode_combo.currentIndexChanged.connect(self._on_pred_load_mode_changed)
+        mode_row.addWidget(self.pred_load_mode_combo, stretch=1)
+        pred_group_layout.addLayout(mode_row)
+
+        self.pred_merge_checkbox = QCheckBox("Merge with existing labels")
+        self.pred_merge_checkbox.setToolTip(
+            "Ticked: keep the current labels and only add predictions for (trial, class,\n"
+            "individual) combinations they don't already cover.\n"
+            "Unticked: the imported predictions replace the working labels outright."
+        )
+        self.pred_merge_checkbox.setChecked(bool(self.app_state.merge_imported_predictions))
+        self.pred_merge_checkbox.toggled.connect(self._on_pred_merge_toggled)
+        pred_group_layout.addWidget(self.pred_merge_checkbox)
+        self.pred_merge_checkbox.setVisible(False)
+
+        # What "Import as labels" is actually about to do — said here, up
+        # front, instead of a confirmation popup at click time.
+        self.pred_labels_warning_label = QLabel("")
+        self.pred_labels_warning_label.setWordWrap(True)
+        self.pred_labels_warning_label.setStyleSheet("color: #ff5555; font-size: 10px;")
+        pred_group_layout.addWidget(self.pred_labels_warning_label)
+        self.pred_labels_warning_label.setVisible(False)
+
         # Row 1: path + import (two ways in: a run's folder, or a plain .tsv)
         folder_row = QHBoxLayout()
         folder_row.setContentsMargins(0, 0, 0, 0)
@@ -539,26 +581,73 @@ class IOWidget(QWidget):
         )
         controls_row.addWidget(self.pred_confidence_threshold_spin)
 
-        controls_row.addWidget(QLabel("Segment thr:"))
+        controls_row.addWidget(QLabel("Segment thr (state labels only):"))
         self.pred_segment_confidence_threshold_spin = QDoubleSpinBox()
         self.pred_segment_confidence_threshold_spin.setRange(0.0, 1.0)
         self.pred_segment_confidence_threshold_spin.setSingleStep(0.05)
         self.pred_segment_confidence_threshold_spin.setDecimals(2)
         self.pred_segment_confidence_threshold_spin.setValue(0.6)
         self.pred_segment_confidence_threshold_spin.setToolTip(
-            "Segment-level mean confidence threshold — segments below this are highlighted red."
+            "Segment-level mean confidence threshold — segments below this are highlighted red.\n"
+            "Meaningful for state labels only: a point event has no span to average over, so this "
+            "threshold has no effect on it."
         )
         controls_row.addWidget(self.pred_segment_confidence_threshold_spin)
 
         self.pred_confidence_pdf_btn = QPushButton("Update confidence (+ PDF)")
         self.pred_confidence_pdf_btn.setToolTip(
-            "Regenerate confidence PDF with current thresholds and update low/high confidence classification."
+            "Regenerate confidence PDF with current thresholds and update low/high confidence classification.\n"
+            "The segment threshold only affects state labels — point events have no span to average over."
         )
         self.pred_confidence_pdf_btn.setEnabled(False)
         controls_row.addWidget(self.pred_confidence_pdf_btn)
 
         pred_group_layout.addLayout(controls_row)
         target_layout.addRow(self.pred_group)
+        # The saved mode may already be "labels" — reflect that immediately
+        # rather than waiting for the combo's first change.
+        self._update_pred_merge_visibility()
+
+    def pred_load_mode(self) -> str:
+        """``"overlay"`` or ``"labels"`` — the Predictions panel's Load-as combo."""
+        return self.pred_load_mode_combo.currentData()
+
+    def _on_pred_load_mode_changed(self, *_args) -> None:
+        """Remembered globally (gui_settings.yaml) — a viewing/import habit,
+        not something tied to one dataset."""
+        self.app_state.pred_load_mode = self.pred_load_mode()
+        self._update_pred_merge_visibility()
+
+    def _update_pred_merge_visibility(self, *_args) -> None:
+        """The merge checkbox only matters for "Import as labels" onto a
+        session that already has some — a fresh session has nothing to merge
+        onto, so "replace" and "import" are the same thing.
+
+        What clicking Import is about to do is said here, live, instead of a
+        confirmation popup at click time — so it stays visible while the
+        combo and checkbox are still being decided, not sprung afterwards.
+        """
+        existing = getattr(self.app_state, "_all_labels_df", None)
+        has_existing = existing is not None and not existing.empty
+        show_merge = self.pred_load_mode() == "labels" and has_existing
+        self.pred_merge_checkbox.setVisible(show_merge)
+
+        if self.pred_load_mode() != "labels":
+            self.pred_labels_warning_label.setVisible(False)
+            return
+        if show_merge and self.pred_merge_checkbox.isChecked():
+            text = (
+                "Adds predictions only for (trial, class, individual) combinations the "
+                "current labels don't already cover — nothing existing is overridden."
+            )
+        else:
+            text = "Replaces the working labels outright. Nothing reaches disk until you save."
+        self.pred_labels_warning_label.setText(text)
+        self.pred_labels_warning_label.setVisible(True)
+
+    def _on_pred_merge_toggled(self, checked: bool) -> None:
+        self.app_state.merge_imported_predictions = checked
+        self._update_pred_merge_visibility()
 
     def _create_labels_row_at_index(self):
         """Create two labels rows: input (browse) and output (auto-generated TSV)."""

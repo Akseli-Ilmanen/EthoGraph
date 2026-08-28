@@ -16,8 +16,16 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from ethograph.io.video_decode import iter_rgb_frames
 from ethograph.spot.dataset import TrialRecord, export_frames
-from ethograph.spot.stream import load_run_model, predict_trial, prepare_frame, window_starts
+from ethograph.spot.stream import (
+    GraphedForward,
+    eager_forward,
+    load_run_model,
+    predict_trial,
+    prepare_frame,
+    window_starts,
+)
 from ethograph.spot.vendored import clone_root
 
 
@@ -101,6 +109,37 @@ class TestWindows:
             {"a": 1}, str(labels), str(tmp_path), "bw", clip_len, overlap_len=clip_len // 2, stride=stride
         )
         assert window_starts(num_frames, clip_len, stride, clip_len // 2) == [s for _, s in ds._clips]
+
+
+class TestDecode:
+    def test_rgb_frames_are_pyavs_own(self, tmp_path):
+        """One conversion context kept for the whole video must give PyAV's per-frame pixels."""
+        av = pytest.importorskip("av")
+        record = _record(tmp_path, n_frames=12)
+        ours = list(iter_rgb_frames(record.video_path))
+        with av.open(str(record.video_path)) as container:
+            theirs = [f.to_ndarray(format="rgb24") for f in container.decode(container.streams.video[0])]
+        assert len(ours) == 12
+        assert all(np.array_equal(a, b) for a, b in zip(ours, theirs))
+        assert len(list(iter_rgb_frames(record.video_path, step=5))) == 3
+
+
+class TestGraphedForward:
+    @pytest.mark.filterwarnings("ignore::FutureWarning")  # the vendored predict's torch.cuda.amp.autocast
+    def test_replay_is_the_eager_forward(self, tmp_path):
+        """A captured graph must give the eager scores, on the first input and on every input after it."""
+        import torch
+
+        if not torch.cuda.is_available():
+            pytest.skip("no CUDA device")
+        run_dir = _fake_run(tmp_path)
+        model, _ = load_run_model(run_dir, 0, 2, "cuda")
+        seq = torch.rand(2, 8, 1, 32, 32, device="cuda")
+        eager = eager_forward(model)(seq, None)
+        graphed = GraphedForward(model)
+        np.testing.assert_allclose(graphed(seq, None), eager, atol=1e-3)
+        np.testing.assert_allclose(graphed(seq.flip(0), None), eager[::-1], atol=1e-3)
+        assert len(graphed._graphs) == 1
 
 
 class TestFrame:

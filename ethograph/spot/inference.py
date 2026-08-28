@@ -37,7 +37,7 @@ from ethograph.labels import onset_curves
 from ethograph.labels.tsv_store import save_labels_tsv
 from ethograph.segment.sessions import Session, open_session
 from ethograph.spot import dataset as dataset_stage
-from ethograph.spot.config import ResolvedClip, SpotConfig
+from ethograph.spot.config import ResolvedClip, SpotConfig, config_to_dict
 from ethograph.spot.predict import SpottedEvent, flagged, read_predictions, spot_entry, to_labels_frame
 from ethograph.spot.vendored import clone_root, run_logged
 
@@ -72,10 +72,17 @@ def trained_runs(config: SpotConfig) -> list[Path]:
 
 
 def teacher_runs(config: SpotConfig) -> list[Path]:
-    """Every pose teacher under ``teacher/``, oldest first — scored by ``evaluate()`` like any run."""
+    """Every pose teacher under ``teacher/``, oldest first — scored by ``evaluate()`` like any run.
+
+    A folder left behind by an architecture this package no longer builds is
+    not a teacher: it is skipped rather than handed to the pixel model's
+    ``test_e2e.py``, which reads keys its ``config.json`` never carried.
+    """
+    from ethograph.spot.teacher import is_teacher_run
+
     if not config.teacher_dir.is_dir():
         return []
-    found = [p for p in config.teacher_dir.glob("*") if (p / "config.json").is_file()]
+    found = [p for p in config.teacher_dir.glob("*") if is_teacher_run(p)]
     return sorted(found, key=lambda p: p.stat().st_mtime)
 
 
@@ -98,6 +105,19 @@ def resolve_run_dir(config: SpotConfig, run: str | Path | None) -> Path:
     if (named / "stage3" / "config.json").is_file():  # a distilled student, named by its run folder
         return named / "stage3"
     raise FileNotFoundError(f"No run {run!r}: neither {path} nor {named} (or its stage3/) holds a config.json")
+
+
+def run_config_file(run_dir: Path) -> Path:
+    """The config a run was trained from, to copy beside its predictions.
+
+    Our ``config.yaml`` — a distilled student's sits one level up, beside its
+    ``stage2``/``stage3`` — else upstream's ``config.json``, which every run
+    has, for one trained before this project wrote configs.
+    """
+    for candidate in (run_dir / "config.yaml", run_dir.parent / "config.yaml"):
+        if candidate.is_file():
+            return candidate
+    return run_dir / "config.json"
 
 
 def run_reads_features(run_dir: Path) -> bool:
@@ -324,7 +344,7 @@ def infer_session(
                 blocks[r.video_id] = np.asarray(npz["features"], dtype=np.float32)
 
     alignment = session.result.nwb_alignment
-    camera = config.labels.camera
+    camera = session.video_device(config.labels.camera)
     trials = {
         r.video_id: (r.trial, float(alignment.stream_offset_for_trial(r.trial, "video", device=camera)))
         for r in records
@@ -361,6 +381,20 @@ def infer_session(
     tsv_path = out_dir / f"{session.stem}_predictions.tsv"
     save_labels_tsv(tsv_path, df)
     onset_curves.write_curves(out_dir / onset_curves.CURVES_FILE, per_trial)
+    onset_curves.write_provenance(
+        out_dir,
+        model_config=run_config_file(run_dir),
+        inference={
+            "model": MODEL_NAME,
+            "run": run_label(run_dir),
+            "run_dir": str(run_dir),
+            "epoch": int(epoch),
+            "checkpoint": f"checkpoint_{epoch:03d}.pt",
+            "session": str(session.source),
+            "trials": len(records),
+            "infer": config_to_dict(config)["infer"],
+        },
+    )
     low = flagged(events, config)
     logger.info(
         "%s: %d predicted events over %d trials, %d flagged below %.2f -> %s",

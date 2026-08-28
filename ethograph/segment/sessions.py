@@ -47,6 +47,7 @@ class Session:
     id: str
     result: LoadResult
     _sidecar: dict[str, dict[str, Any]] | None = field(default=None, repr=False)
+    _video_devices: dict[str, str] = field(default_factory=dict, repr=False)
 
     @property
     def source(self) -> Path:
@@ -143,6 +144,43 @@ class Session:
             return True
         ds = self.trial_dataset(self.trial_ids[0])
         return ds is not None and any(schema.kind_of(var) for var in ds.data_vars.values())
+
+    def video_device(self, camera: str | None) -> str | None:
+        """The alignment's own name for *camera* (``None`` = the default camera, passed through).
+
+        The alignment's name when it has one so called; else the one camera
+        whose video files carry the tag — an alignment written with its
+        cameras numbered ``0``, ``1`` still points at ``…-cam-1.mp4`` — said
+        once in the log. A camera nothing matches is an error naming what the
+        alignment has, instead of every trial skipped one warning at a time.
+        """
+        if camera is None or camera in self._video_devices:
+            return None if camera is None else self._video_devices[camera]
+        alignment = self.result.nwb_alignment
+        cameras = [str(c) for c in alignment.cameras]
+        if camera in cameras:
+            self._video_devices[camera] = camera
+            return camera
+        tagged = [
+            c
+            for c in cameras
+            if any(camera in str(alignment.get_media(t, "video", c) or "") for t in self.trial_ids)
+        ]
+        if len(tagged) != 1:
+            raise ValueError(
+                f"{self.spec.label}: no camera {camera!r} in the alignment (it has {cameras}), "
+                f"and {'no' if not tagged else 'several'} camera's files carry that name — "
+                "set labels.camera to one of them"
+            )
+        logger.warning(
+            "%s: the alignment names its cameras %s; %r taken as camera %r from its file names",
+            self.spec.label,
+            cameras,
+            camera,
+            tagged[0],
+        )
+        self._video_devices[camera] = tagged[0]
+        return tagged[0]
 
     def media_path(self, trial: int | str, stream: str = "video", device: str | None = None) -> Path | None:
         """Resolve a media file for *trial*: the alignment's own path, else ``spec.video_dir``."""

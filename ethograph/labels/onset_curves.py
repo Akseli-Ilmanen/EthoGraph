@@ -17,11 +17,16 @@ the label backups use::
     labels/
         predictions_lightgbm_20260824_151107/
             onset_curves.npz
+            config.yaml         # the model's own config, as it was trained
+            inference.yaml      # how it was applied: run, epoch, the infer settings
         predictions_lightgbm_20260824_162244/
-            onset_curves.npz
+            ...
 
 A run is a record of what a model said at a moment, so its folder is written
-once and never edited. :func:`read_all_curves` reads every run, the newest
+once and never edited — and it says what wrote it: every model drops its
+training config and the inference settings beside its predictions
+(:func:`write_provenance`), so a folder found months later can be
+reconstructed without the project that made it. :func:`read_all_curves` reads every run, the newest
 winning per (trial, class) — so re-predicting one class does not erase what an
 earlier run said about another, and the older run is still on disk to compare.
 The Curation section draws from a single chosen run instead of this merge: one
@@ -40,9 +45,11 @@ into::
 from __future__ import annotations
 
 import logging
+import shutil
 from pathlib import Path
 
 import numpy as np
+import yaml
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +65,30 @@ LIGHTGBM = "lightgbm"
 
 #: The curves file inside a run folder.
 CURVES_FILE = "onset_curves.npz"
+
+#: The model's own config, copied into the run folder as it was trained.
+CONFIG_FILE = "config.yaml"
+#: How that model was applied here: run, epoch, the inference settings.
+INFERENCE_FILE = "inference.yaml"
+
+
+def write_provenance(folder: str | Path, model_config: Path | dict, inference: dict) -> Path:
+    """Drop what produced a run beside its predictions: :data:`CONFIG_FILE` and :data:`INFERENCE_FILE`.
+
+    *model_config* is the file the model was trained from (copied verbatim,
+    whatever its name) or the config as data; *inference* is whatever the
+    caller knows about how it was applied — run, epoch, thresholds — plain
+    YAML-able values. Returns the run folder.
+    """
+    folder = Path(folder)
+    folder.mkdir(parents=True, exist_ok=True)
+    if isinstance(model_config, Path):
+        shutil.copy2(model_config, folder / CONFIG_FILE)
+    else:
+        (folder / CONFIG_FILE).write_text(yaml.safe_dump(model_config, sort_keys=False), encoding="utf-8")
+    (folder / INFERENCE_FILE).write_text(yaml.safe_dump(inference, sort_keys=False), encoding="utf-8")
+    return folder
+
 
 #: One trial's curves: ``(time, {label: curve})``.
 TrialCurves = tuple[np.ndarray, dict[int, np.ndarray]]

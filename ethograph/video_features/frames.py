@@ -12,6 +12,7 @@ from pathlib import Path
 
 import numpy as np
 
+from ethograph.io.video_decode import iter_rgb_frames
 from ethograph.io.video_probe import VideoProbe, probe_video
 
 __all__ = ["VideoProbe", "iter_frame_chunks", "iter_frames", "probe_video"]
@@ -19,16 +20,7 @@ __all__ = ["VideoProbe", "iter_frame_chunks", "iter_frames", "probe_video"]
 
 def iter_frames(path: str | Path, *, step: int = 1) -> Iterator[np.ndarray]:
     """Yield every *step*-th frame as an ``(H, W, 3)`` RGB ``uint8`` array."""
-    import av
-
-    if step < 1:
-        raise ValueError(f"step must be >= 1, got {step}")
-    with av.open(str(path)) as container:
-        stream = container.streams.video[0]
-        stream.thread_type = "AUTO"
-        for i, frame in enumerate(container.decode(stream)):
-            if i % step == 0:
-                yield frame.to_ndarray(format="rgb24")
+    return iter_rgb_frames(path, step=step)
 
 
 def iter_frame_chunks(path: str | Path, *, step: int = 1, chunk: int = 128) -> Iterator[np.ndarray]:

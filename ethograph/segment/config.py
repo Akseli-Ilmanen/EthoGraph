@@ -186,6 +186,41 @@ class SessionSpec:
         return self.source.name if self.source.is_dir() else self.source.stem
 
 
+def name_colliding_sessions(specs: list[SessionSpec]) -> None:
+    """Sessions whose default labels collide get a ``name`` from the folder that tells them apart.
+
+    ``Trial_data3.nc`` in every session's ``behav/`` folder is the normal
+    layout, not a mistake, so the nearest ancestor whose name differs within
+    the group (``ses-000_date-20250309_01``) is prefixed to the stem. A
+    session named explicitly is never renamed — two explicit names that
+    collide are refused, as is a source listed twice, which no folder can
+    tell apart. Two sessions with one label would otherwise write their
+    trials under the same ids and silently overwrite each other.
+    """
+    groups: dict[str, list[SessionSpec]] = {}
+    for spec in specs:
+        groups.setdefault(spec.label, []).append(spec)
+    taken = set(groups)
+    for label, group in groups.items():
+        if len(group) < 2:
+            continue
+        if any(s.name for s in group):
+            raise ValueError(f"config.sessions: {label!r} names more than one session — give each a distinct `name:`")
+        paths = [s.source.resolve() for s in group]
+        for depth in range(min(len(p.parents) for p in paths)):
+            names = [f"{p.parents[depth].name}_{s.label}" for p, s in zip(paths, group)]
+            if len(set(names)) == len(names) and not taken.intersection(names):
+                for spec, name in zip(group, names):
+                    spec.name = name
+                taken.update(names)
+                logger.info(
+                    "config.sessions: %d sessions are called %r; named by their folders: %s", len(group), label, names
+                )
+                break
+        else:
+            raise ValueError(f"config.sessions: {label!r} is listed more than once from the same place: {paths}")
+
+
 @dataclass
 class TrialsConfig:
     """Trial filter applied in every stage: metadata column → allowed values."""
@@ -1068,6 +1103,7 @@ def config_from_dict(data: dict, base_dir: Path, config_path: Path | None = None
     for spec in cfg.sessions:
         if spec.labels_path is None:
             _default_labels_path(spec)
+    name_colliding_sessions(cfg.sessions)
     if cfg.individual is not None:
         if cfg.features.individuals is None:
             cfg.features.individuals = [cfg.individual]

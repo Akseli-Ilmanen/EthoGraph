@@ -389,6 +389,12 @@ def test_train_infer_compare_roundtrip(project: Path):
     tsv = next(p for p in written if p.name == "s2_predictions.tsv")
     assert tsv.parent.parent == project.parent / "sessions" / "s2" / "labels"
     assert tsv.parent.name.startswith(f"predictions_{run_dir.name}_")
+    # the folder says what wrote it: the run's own config, and how it was applied
+    assert (tsv.parent / "config.yaml").read_text(encoding="utf-8") == (run_dir / "config.yaml").read_text(
+        encoding="utf-8"
+    )
+    applied = yaml.safe_load((tsv.parent / "inference.yaml").read_text(encoding="utf-8"))
+    assert applied["run"] == run_dir.name and "postprocess" in applied["infer"]
     df = load_labels_tsv(tsv)
     if not df.empty:
         assert set(df["labeling_method"]) == {LABELING_AUTOMATED}

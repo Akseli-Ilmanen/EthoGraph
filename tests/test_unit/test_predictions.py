@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from ethograph.labels.predictions import PredictionsStore
+from ethograph.labels.predictions import PredictionsStore, merge_as_labels
 from ethograph.labels.tsv_store import TSV_COLUMNS, save_labels_tsv
 
 
@@ -91,3 +91,46 @@ def test_get_confidence_none_without_npz(tmp_path: Path):
     folder = _prediction_folder(tmp_path, {})
     store = PredictionsStore(folder)
     assert store.get_confidence(1, dt=None, individual="A") is None
+
+
+def _row(trial, labels, individual="A", individual_rec="", onset_s=1.0, method="manual"):
+    return {
+        "trial": trial,
+        "labels": labels,
+        "individual": individual,
+        "individual_rec": individual_rec,
+        "onset_s": onset_s,
+        "offset_s": onset_s + 1.0,
+        "event_type": "state",
+        "confidence": 1.0,
+        "labeling_method": method,
+    }
+
+
+class TestMergeAsLabels:
+    """merge_as_labels: predictions added, ground truth never overridden."""
+
+    def test_empty_existing_returns_predicted(self):
+        predicted = pd.DataFrame([_row(1, 3, method="automated")])
+        merged = merge_as_labels(None, predicted)
+        assert len(merged) == 1
+        assert merged.iloc[0]["labeling_method"] == "automated"
+
+    def test_a_trial_class_pair_already_labelled_is_never_overridden(self):
+        existing = pd.DataFrame([_row(1, 3, onset_s=5.0, method="manual")])
+        predicted = pd.DataFrame([_row(1, 3, onset_s=1.0, method="automated")])
+        merged = merge_as_labels(existing, predicted)
+        assert len(merged) == 1
+        assert merged.iloc[0]["onset_s"] == pytest.approx(5.0)  # existing kept, predicted dropped
+
+    def test_a_new_trial_class_pair_is_added(self):
+        existing = pd.DataFrame([_row(1, 3, method="manual")])
+        predicted = pd.DataFrame([_row(1, 4, method="automated"), _row(2, 3, method="automated")])
+        merged = merge_as_labels(existing, predicted)
+        assert len(merged) == 3
+
+    def test_different_subject_is_a_different_track(self):
+        existing = pd.DataFrame([_row(1, 3, individual="A", method="manual")])
+        predicted = pd.DataFrame([_row(1, 3, individual="B", method="automated")])
+        merged = merge_as_labels(existing, predicted)
+        assert len(merged) == 2

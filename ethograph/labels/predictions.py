@@ -23,6 +23,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from ethograph.labels.intervals import SUBJECT_COLUMNS
+
 logger = logging.getLogger(__name__)
 
 
@@ -58,6 +60,28 @@ def prediction_to_labels_and_confidence(
 
     # Shape (T,) — already dense labels
     return pred.astype(int), None
+
+
+def merge_as_labels(existing: pd.DataFrame | None, predicted: pd.DataFrame) -> pd.DataFrame:
+    """*predicted* rows added onto *existing*, ground truth left untouched.
+
+    A row is skipped when *existing* already has an interval for the same
+    ``(trial, labels, individual, individual_rec)`` — the onset model's own
+    rule (:func:`~ethograph.gui.dialog_onset_model.predict_onsets`): a trial
+    already carrying an event for a class is never overridden, whichever
+    pipeline predicted it. The alternative to merging is a plain replace,
+    which the caller does itself — this function is only the "keep what I
+    have, add what's missing" half.
+    """
+    if existing is None or existing.empty:
+        return predicted.reset_index(drop=True)
+    if predicted.empty:
+        return existing.reset_index(drop=True)
+    key_cols = ["trial", "labels", *SUBJECT_COLUMNS]
+    existing_keys = set(existing[key_cols].astype(str).itertuples(index=False, name=None))
+    predicted_keys = predicted[key_cols].astype(str).apply(tuple, axis=1)
+    new_rows = predicted[~predicted_keys.isin(existing_keys)]
+    return pd.concat([existing, new_rows], ignore_index=True)
 
 
 class PredictionsStore:

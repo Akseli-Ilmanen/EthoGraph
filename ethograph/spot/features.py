@@ -107,7 +107,8 @@ def _events_on_trial_clock(session: Session, record: TrialRecord, config: SpotCo
     ``VideoSync`` convention) takes them back to the clock the features are on.
     """
     alignment = session.result.nwb_alignment
-    offset = float(alignment.stream_offset_for_trial(record.trial, "video", device=config.labels.camera))
+    camera = session.video_device(config.labels.camera)
+    offset = float(alignment.stream_offset_for_trial(record.trial, "video", device=camera))
     return {config.class_label(name): frame / record.fps + offset for name, frame in record.events.items()}
 
 

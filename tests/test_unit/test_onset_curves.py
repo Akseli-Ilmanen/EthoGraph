@@ -20,6 +20,20 @@ def test_a_run_writes_under_the_sessions_labels_folder(tmp_path):
     assert folder.name == "predictions_lightgbm_20260824_151107"
 
 
+def test_provenance_lands_beside_the_curves(tmp_path):
+    """A run folder says what wrote it: the model's config (file or data) and how it was applied."""
+    import yaml
+
+    folder = oc.run_dir(tmp_path / "s.nc", "20260824_120000")
+    trained = tmp_path / "config.yaml"
+    trained.write_text("model: {architecture: rny008_gsm}\n", encoding="utf-8")
+    oc.write_provenance(folder, model_config=trained, inference={"run": "ctx2s", "epoch": 3})
+    assert yaml.safe_load((folder / oc.CONFIG_FILE).read_text()) == {"model": {"architecture": "rny008_gsm"}}
+    assert yaml.safe_load((folder / oc.INFERENCE_FILE).read_text()) == {"run": "ctx2s", "epoch": 3}
+    oc.write_provenance(folder, model_config={"targets": {31: "a"}}, inference={"model": "lightgbm"})
+    assert yaml.safe_load((folder / oc.CONFIG_FILE).read_text()) == {"targets": {31: "a"}}
+
+
 def test_missing_file_reads_as_empty(tmp_path):
     assert oc.read_curves(tmp_path / "nothing.npz") == {}
     assert oc.read_all_curves(tmp_path / "Trial_data.nc") == {}

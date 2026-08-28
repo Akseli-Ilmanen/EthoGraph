@@ -161,7 +161,7 @@ GRID_MODES = {
 #: one), plots per row and each plot's floor.
 _HIST_BG = "#1a1d21"
 _HIST_COLUMNS = 3
-_HIST_MIN_SIZE = (300, 210)
+_HIST_MIN_SIZE = (300, 320)
 _HIST_BINS = 20
 
 #: A label class drawn in its own colour would hide the flagged part of its
@@ -1241,7 +1241,14 @@ class ConfidenceHistogramsDialog(QDialog):
         self._redraw()
         columns = min(_HIST_COLUMNS, max(1, len(self._groups)))
         rows = math.ceil(len(self._groups) / _HIST_COLUMNS) if self._groups else 1
-        self.resize(columns * (_HIST_MIN_SIZE[0] + 20) + 40, min(rows, 2) * (_HIST_MIN_SIZE[1] + 20) + 120)
+        width = columns * (_HIST_MIN_SIZE[0] + 20) + 40
+        height = rows * (_HIST_MIN_SIZE[1] + 20) + 120
+        screen = QApplication.primaryScreen()
+        if screen is not None:
+            avail = screen.availableGeometry()
+            width = min(width, int(avail.width() * 0.95))
+            height = min(height, int(avail.height() * 0.9))
+        self.resize(width, height)
 
     def _build_rule_panel(self, controller: "ConfidenceRuleController") -> QGroupBox:
         rule, alpha, window_ms = controller.settings()
