@@ -1,21 +1,44 @@
-"""Which loss terms earn their place — per individual, per architecture, cross-validated.
+"""Which loss terms and which feature groups earn their place — per individual, per architecture.
 
-The objective is a sum of up to three terms (``docs/add_to_docs_later/segment/config.md``,
-*Losses*): the frame cross-entropy, the consistency (smoothing) term it
-carries at ``train.loss.alpha``, and the circle metric-learning term at
-``train.circle.weight``. This bench trains every architecture in
-:data:`ARCHITECTURES` under three arms and asks what each term buys:
+Two axes, crossed where it is worth the GPU. The **objective** is a sum of up
+to three terms (``docs/add_to_docs_later/segment/config.md``, *Losses*): the
+frame cross-entropy, the consistency (smoothing) term it carries at
+``train.loss.alpha``, and the circle metric-learning term at
+``train.circle.weight``. The **inputs** fall into three declared kinds
+(``ethograph/io/schema.py``): the pose-derived columns
+(``kinematic_feature``), the S3D video columns (``video_feature``), and the
+columns ``features.changepoint_features`` expands out of the raw changepoint
+masks (``changepoint_feature``).
 
-=============  ==================================================
-``all``        cross-entropy + smoothing + circle
-``no_smooth``  ``train.loss.alpha = 0`` — no consistency term
-``no_circle``  ``train.circle.weight = 0`` — no circle term
-=============  ==================================================
+An arm is one point of :data:`LOSS_TERMS` × :data:`FEATURE_SETS`, named
+``{loss}_{features}``:
 
-Both weights are pinned in every arm rather than read from the project
-config: the "with" values are :data:`SMOOTHING_ALPHA` and
-:data:`CIRCLE_WEIGHT`, so what an arm trained with is in this file and in
-the run's ``config.yaml``, nowhere else.
+=====================  ==================================================
+``all``                every term, every column — the reference
+``no_smooth``          ``train.loss.alpha = 0`` — no consistency term
+``no_circle``          ``train.circle.weight = 0`` — no circle term
+``all_no_cp``          every term, no changepoint columns
+``all_no_kin``         every term, no pose columns (S3D + changepoints only)
+``all_no_s3d``         every term, no video columns
+``no_smooth_no_cp``    no consistency term, no changepoint columns
+``no_smooth_no_kin``   no consistency term, no pose columns
+``no_smooth_no_s3d``   no consistency term, no video columns
+=====================  ==================================================
+
+The circle term is crossed with nothing: :data:`LOSS_TERMS` asks whether it
+earns its place at all, and :data:`FEATURE_SETS` is crossed with the two
+objectives worth ablating features under.
+
+Every knob is pinned in every arm rather than read from the project config:
+the "with" values are :data:`SMOOTHING_ALPHA` and :data:`CIRCLE_WEIGHT`, so
+what an arm trained with is in this file and in the run's ``config.yaml``,
+nowhere else. Dropping a feature group is ``train.drop_kinds`` — the
+run-level ablation axis — never a second column list, so one materialised
+dataset per individual serves every arm. That only works if the session
+declares its kinds: run ``python scripts/describe_sessions.py`` once (it
+writes each session's ``.ethograph/schema.yaml``), or
+:func:`check_kinds_declared` refuses to train an arm that would silently drop
+nothing.
 
 **One model per individual.** Each entry of :data:`INDIVIDUALS` is a config
 beside the project's — ``data/crow1.yaml`` inherits ``project.yaml`` through
@@ -30,14 +53,15 @@ here knows anything else about it.
 under ``runs/cv_{run_name}/fold-{session}_{timestamp}/``, and each writes
 its ``test_metrics.yaml`` + ``test_eval.npz`` as it finishes. A cell whose
 sessions all have such a fold is read back, never retrained; a cell with some
-missing holds out only those, through ``cross_validate(folds=...)``. Every
-cell is sequential — they all want the GPU.
+missing holds out only those, through ``cross_validate(folds=...)``; a fold
+that evaluated but crashed before writing its prediction set gets that set by
+inference alone. Every cell is sequential — they all want the GPU.
 
 The output is ``data/bench_loss.pdf`` (:func:`ethograph.segment.plotting.write_factorial_pdf`):
 the summary grids first — segmental F1 at every threshold and the frame-level
 scores, one row per individual plus all of them pooled, architectures along
 x and a bar per arm — then one page per individual × architecture with the
-three arms' IoU distributions, boundary deltas and class-wise F1 side by side.
+arms' IoU distributions, boundary deltas and class-wise F1 side by side.
 ``data/bench_loss.tsv`` holds every fold's numbers.
 
     python scripts/bench.py                 # train what is missing, then draw
@@ -50,6 +74,7 @@ import argparse
 import logging
 import os
 import re
+import time
 from pathlib import Path
 from typing import Any
 
@@ -57,8 +82,11 @@ import pandas as pd
 import yaml
 
 import ethograph as eto
+from ethograph.io.schema import CHANGEPOINT_FEATURE, KINEMATIC_FEATURE, VIDEO_FEATURE
 from ethograph.labels.onset_model import session_id
 from ethograph.segment.crossval import cross_validation_name_for
+from ethograph.segment.inference import PREDICTIONS_PREFIX, prediction_run_dir
+from ethograph.segment.materialise import COLUMNS_FILE, read_layout
 from ethograph.segment.metrics import EVAL_ARRAYS_FILE, TEST_METRICS_FILE
 from ethograph.segment.plotting import FactorCell, load_run_eval, write_factorial_pdf
 from ethograph.segment.samples import ClassTable
@@ -71,26 +99,67 @@ CONFIG_DIR = Path(os.environ.get("BENCH_CONFIG_DIR") or Path(__file__).resolve()
 INDIVIDUALS = ["crow1", "crow2", "crow3"]
 
 #: Compared at their upstream defaults (``model.params: {}``): the bench asks
-#: about the loss, not the hyperparameters — those are ``bench_search.py``'s.
+#: about the objective and the inputs, not the hyperparameters — those are
+#: ``bench_search.py``'s.
 ARCHITECTURES = ["mlp", "c2f_tcn", "c2f_transformer", "mstcn"]
 
-#: ``train.loss.alpha`` of the arms that keep the smoothing term. MS-TCN's
-#: published λ, and what the archived CETNet script trained with
-#: (``segment/archive/cetnet_encoder.py``, ``0.15 * mse_loss``). DLC2Action's
-#: YAML default is ``0.001``, at which the term barely registers — an ablation
-#: against *that* would compare two nearly identical objectives.
-SMOOTHING_ALPHA = 0.15
+#: ``train.loss.alpha`` of the arms that keep the smoothing term: DLC2Action's
+#: own YAML default, so ``all`` is the objective the project config trains
+#: with and every other arm is read against it. MS-TCN's published λ is
+#: ``0.15`` (what the archived CETNet script used, ``0.15 * mse_loss``), two
+#: orders of magnitude up — at ``0.001`` the term is a light touch, so expect
+#: ``all`` and ``no_smooth`` to sit close and read the gap accordingly.
+SMOOTHING_ALPHA = 0.001
 
 #: ``train.circle.weight`` of the arms that keep the circle term — the same
 #: script's ``0.001 * CircleLoss(m=0.25, gamma=128)``; ``m`` and ``gamma`` stay
 #: at those defaults.
 CIRCLE_WEIGHT = 0.001
 
-#: The arms. Every weight is spelled in every arm, so no arm inherits one.
-LOSSES: dict[str, dict[str, Any]] = {
+#: The objective axis: what each arm's loss is made of.
+LOSS_TERMS: dict[str, dict[str, Any]] = {
     "all": {"train.loss.alpha": SMOOTHING_ALPHA, "train.circle.weight": CIRCLE_WEIGHT},
     "no_smooth": {"train.loss.alpha": 0.0, "train.circle.weight": CIRCLE_WEIGHT},
     "no_circle": {"train.loss.alpha": SMOOTHING_ALPHA, "train.circle.weight": 0.0},
+}
+
+#: The input axis: which declared kind each arm withholds. ``""`` keeps every
+#: column and is the half of a name that is left unwritten (``all``, not
+#: ``all_full``). ``scripts/describe_sessions.py`` is what puts these kinds on
+#: the sessions in the first place.
+FEATURE_SETS: dict[str, list[str]] = {
+    "": [],
+    "no_cp": [CHANGEPOINT_FEATURE],
+    "no_kin": [KINEMATIC_FEATURE],
+    "no_s3d": [VIDEO_FEATURE],
+}
+
+#: Which points of ``LOSS_TERMS`` × ``FEATURE_SETS`` are trained. The full
+#: cross is 12 cells per individual per architecture; dropping a feature group
+#: under ``no_circle`` as well would answer nothing the other two do not.
+CROSS: list[tuple[str, str]] = [
+    ("all", ""),
+    ("no_smooth", ""),
+    ("no_circle", ""),
+    ("all", "no_cp"),
+    ("all", "no_kin"),
+    ("all", "no_s3d"),
+    ("no_smooth", "no_cp"),
+    ("no_smooth", "no_kin"),
+    ("no_smooth", "no_s3d"),
+]
+
+
+def arm_name(loss: str, features: str) -> str:
+    """``("all", "no_cp")`` → ``"all_no_cp"``; the full feature set adds nothing."""
+    return f"{loss}_{features}" if features else loss
+
+
+#: The arms, in the order the figures draw them. Every knob is spelled in
+#: every arm, so no arm inherits one.
+ARMS: dict[str, dict[str, Any]] = {
+    arm_name(loss, features): {**LOSS_TERMS[loss], "train.drop_kinds": FEATURE_SETS[features]}
+    for loss, features in CROSS
 }
 
 #: Appended to every run name, so one bench's folds stay together under ``runs/``.
@@ -107,18 +176,18 @@ def display_name(individual: str) -> str:
     return re.sub(r"(?<=\D)(\d+)$", r" \1", individual)
 
 
-def run_name(individual: str, architecture: str, loss: str) -> str:
+def run_name(individual: str, architecture: str, arm: str) -> str:
     """The cell's base run name; its cross-validation is ``cv_`` + this."""
-    return f"{individual}_{architecture}_{loss}_{SUFFIX}"
+    return f"{individual}_{architecture}_{arm}_{SUFFIX}"
 
 
-def project_for(individual: str, architecture: str, loss: str) -> eto.segment.Project:
-    """The individual's config with the cell's architecture, loss weights and run name pinned."""
+def project_for(individual: str, architecture: str, arm: str) -> eto.segment.Project:
+    """The individual's config with the cell's architecture, arm and run name pinned."""
     overrides = eto.segment.as_overrides(
         {
             "model.architecture": architecture,
-            "train.run_name": run_name(individual, architecture, loss),
-            **LOSSES[loss],
+            "train.run_name": run_name(individual, architecture, arm),
+            **ARMS[arm],
         }
     )
     return eto.segment.Project(CONFIG_DIR / f"{individual}.yaml", *overrides)
@@ -141,25 +210,103 @@ def finished_folds(project: eto.segment.Project) -> dict[str, Path]:
     return done
 
 
-def cross_validate_cell(individual: str, architecture: str, loss: str) -> dict[str, Path]:
-    """Train the cell's missing folds, if any, and return every session's finished fold."""
-    project = project_for(individual, architecture, loss)
+def has_predictions(source: str, run_dir: Path) -> bool:
+    """Whether *run_dir*'s prediction set for the session at *source* was written beside it."""
+    labels = prediction_run_dir(Path(source), run_dir.name, "").parent
+    return any(labels.glob(f"{PREDICTIONS_PREFIX}_{run_dir.name}_*/*_predictions.tsv"))
+
+
+def check_kinds_declared(project: eto.segment.Project, arm: str) -> None:
+    """Materialise if needed, and refuse an ablation the layout cannot perform.
+
+    ``train.drop_kinds`` names a kind, and a column that declares none is
+    always kept: an arm asking for a kind the materialised layout does not
+    hold would train the *reference* model under an ablation's name and
+    quietly report it as a result. The layout is a derived artefact, so a
+    session described since it was written is fixed by materialising again
+    (the feature arrays come out identical — ``kind`` is a label, and only
+    ``normalise`` changes arithmetic); a kind still missing after that is the
+    session's to declare, not this bench's to guess.
+    """
+    wanted = set(ARMS[arm]["train.drop_kinds"])
+    if not wanted:
+        return
+    data_dir = project.config.data_dir
+    if (data_dir / COLUMNS_FILE).is_file():
+        if wanted <= set(read_layout(data_dir).kinds) - {None}:
+            return
+        logger.info("%s declares no column of kind %s — materialising again", data_dir, sorted(wanted))
+    project.materialise()
+    missing = sorted(wanted - (set(read_layout(data_dir).kinds) - {None}))
+    if missing:
+        raise RuntimeError(
+            f"Arm {arm!r} drops kind(s) {missing}, which no column of {data_dir} declares, so it would "
+            f"train the full model under an ablation's name. Run `python scripts/describe_sessions.py` "
+            f"to write each session's .ethograph/schema.yaml, then try again."
+        )
+
+
+def cross_validate_cell(individual: str, architecture: str, arm: str) -> dict[str, Path]:
+    """Train the cell's missing folds, if any, and return every session's finished fold.
+
+    A fold evaluates before it predicts, so a crash between the two (the
+    session file locked by another process, say) leaves a fold with metrics
+    and no prediction set. Those are completed here by inference alone —
+    the trained run is on disk — never by training again.
+    """
+    project = project_for(individual, architecture, arm)
+    check_kinds_declared(project, arm)
     sessions = [str(s.source) for s in project.config.sessions]
     done = finished_folds(project)
     missing = [s for s in sessions if s not in done]
-    label = f"{display_name(individual)} / {architecture} / {loss}"
-    if not missing:
+    label = f"{display_name(individual)} / {architecture} / {arm}"
+    if missing:
+        logger.info("[%s] %d of %d folds to train: %s", label, len(missing), len(sessions), ARMS[arm])
+        project.cross_validate(folds=missing)
+        done = finished_folds(project)
+        still_missing = [s for s in sessions if s not in done]
+        if still_missing:
+            raise RuntimeError(
+                f"[{label}] cross_validate returned, but these folds wrote no test evaluation: {still_missing}"
+            )
+    else:
         logger.info("[%s] every fold finished — read back", label)
-        return done
-    logger.info("[%s] %d of %d folds to train: %s", label, len(missing), len(sessions), LOSSES[loss])
-    project.cross_validate(folds=missing)
-    done = finished_folds(project)
-    still_missing = [s for s in sessions if s not in done]
-    if still_missing:
-        raise RuntimeError(
-            f"[{label}] cross_validate returned, but these folds wrote no test evaluation: {still_missing}"
-        )
+    for source, run_dir in done.items():
+        if not has_predictions(source, run_dir):
+            logger.info("[%s] %s evaluated but never predicted its session — predicting now", label, run_dir.name)
+            project.inference(run=run_dir, sessions=[source])
     return done
+
+
+#: How long to wait before the one retry of a cell that hit a transient HDF5 failure.
+HDF_RETRY_S = 60.0
+
+
+def run_cell(individual: str, architecture: str, arm: str) -> dict[str, Path]:
+    """:func:`cross_validate_cell`, retried once if netCDF/HDF5 fails to open a session.
+
+    ``NetCDF: HDF error`` is what the HDF5 library reports for a file it could
+    not open at that moment — a lock held by another process, an antivirus
+    pass over a large file — and it has been seen once in a night of folds on
+    a file that opens fine before and after. The work already done is on
+    disk, so the retry only picks up what the failure interrupted (the
+    prediction set, usually). Anything else is raised as is.
+    """
+    try:
+        return cross_validate_cell(individual, architecture, arm)
+    except RuntimeError as exc:
+        if "HDF error" not in str(exc):
+            raise
+        logger.warning(
+            "[%s / %s / %s] %s — waiting %.0f s, then retrying once",
+            display_name(individual),
+            architecture,
+            arm,
+            exc,
+            HDF_RETRY_S,
+        )
+        time.sleep(HDF_RETRY_S)
+        return cross_validate_cell(individual, architecture, arm)
 
 
 def collect() -> tuple[list[FactorCell], pd.DataFrame, ClassTable | None]:
@@ -169,11 +316,11 @@ def collect() -> tuple[list[FactorCell], pd.DataFrame, ClassTable | None]:
     classes: ClassTable | None = None
     for individual in INDIVIDUALS:
         for architecture in ARCHITECTURES:
-            for loss in LOSSES:
-                project = project_for(individual, architecture, loss)
+            for arm in ARMS:
+                project = project_for(individual, architecture, arm)
                 done = finished_folds(project)
                 if not done:
-                    logger.warning("%s / %s / %s: no finished fold", display_name(individual), architecture, loss)
+                    logger.warning("%s / %s / %s: no finished fold", display_name(individual), architecture, arm)
                     continue
                 folds = []
                 for spec in project.config.sessions:
@@ -185,7 +332,7 @@ def collect() -> tuple[list[FactorCell], pd.DataFrame, ClassTable | None]:
                     row: dict[str, Any] = {
                         "individual": display_name(individual),
                         "architecture": architecture,
-                        "loss": loss,
+                        "arm": arm,
                         "session": e.name,
                         "run_dir": str(run_dir),
                         "train_seconds": e.train_seconds,
@@ -197,7 +344,7 @@ def collect() -> tuple[list[FactorCell], pd.DataFrame, ClassTable | None]:
                         classes = ClassTable.from_dict(
                             yaml.safe_load((run_dir / "classes.yaml").read_text(encoding="utf-8"))
                         )
-                cells.append(FactorCell(display_name(individual), architecture, loss, folds))
+                cells.append(FactorCell(display_name(individual), architecture, arm, folds))
     return cells, pd.DataFrame(rows), classes
 
 
@@ -210,8 +357,8 @@ def main() -> None:
     if not args.report_only:
         for individual in INDIVIDUALS:
             for architecture in ARCHITECTURES:
-                for loss in LOSSES:
-                    cross_validate_cell(individual, architecture, loss)
+                for arm in ARMS:
+                    run_cell(individual, architecture, arm)
 
     cells, table, classes = collect()
     if not cells or classes is None:
@@ -220,14 +367,17 @@ def main() -> None:
     select_on = eto.segment.Project(CONFIG_DIR / f"{INDIVIDUALS[0]}.yaml").config.train.select_on
     column = f"postprocessed.{select_on}"
     summary = (
-        table.groupby(["individual", "architecture", "loss"])[column]
+        table.groupby(["individual", "architecture", "arm"])[column]
         .mean()
-        .unstack("loss")
-        .reindex(columns=list(LOSSES))
+        .unstack("arm")
+        .reindex(columns=list(ARMS))
     )
     print(f"\nMean post-processed {select_on} over held-out sessions:\n{summary.round(1).to_string()}\n")
 
-    title = f"Loss ablation — {len(INDIVIDUALS)} individuals × {len(ARCHITECTURES)} architectures, cross-validated"
+    title = (
+        f"Loss + changepoint-feature ablation — {len(INDIVIDUALS)} individuals × "
+        f"{len(ARCHITECTURES)} architectures, cross-validated"
+    )
     path = write_factorial_pdf(
         OUTPUT,
         cells,

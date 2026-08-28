@@ -156,7 +156,6 @@ def angle_units(values: np.ndarray, declared: Any = None, what: str = "an angle"
     finite = finite[np.isfinite(finite)]
     peak = float(np.max(np.abs(finite))) if finite.size else 0.0
     unit = DEGREES if peak > _RADIAN_CEILING else RADIANS
-    logger.info("%s declares no units; reading it as %s (largest |value| %.4g).", what, unit, peak)
     return unit
 
 

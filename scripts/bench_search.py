@@ -1,7 +1,8 @@
 """Try every architecture variant, then cross-validate the winner.
 
-The hyperparameter bench; ``scripts/bench.py`` is the loss ablation, which
-trains every architecture at its upstream defaults and varies the objective.
+The hyperparameter bench; ``scripts/bench.py`` is the ablation bench, which
+trains every architecture at its upstream defaults and varies the objective
+and the input columns.
 
 Stage 1 runs once per **variant**, because a hyperparameter space is
 per-architecture: the models share almost no names (``mlp`` takes

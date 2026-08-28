@@ -43,7 +43,10 @@ def main(scratch: Path) -> None:
         "sessions": sessions,
         "features": {
             "name": "all",
-            "columns": {"position": {"space": ["x", "y"], "keypoint": ["beak", "tail"]}, "speed": {"keypoint": ["beak"]}},
+            "columns": {
+                "position": {"space": ["x", "y"], "keypoint": ["beak", "tail"]},
+                "speed": {"keypoint": ["beak"]},
+            },
             "labels": {"mapping": "mapping.txt", "branch": 0},
         },
         "model": {"architecture": "mlp", "params": {"f_maps_list": [16]}},
@@ -57,9 +60,11 @@ def main(scratch: Path) -> None:
     bench = _load("bench", REPO / "scripts" / "bench.py")
     bench.INDIVIDUALS[:] = ["crow1"]
     bench.ARCHITECTURES[:] = ["mlp"]
-    for arm in list(bench.LOSSES):
-        if arm == "no_smooth":
-            del bench.LOSSES[arm]
+    # Two arms are enough for the resume logic, and the fixture's columns
+    # declare no kind, so an arm dropping one would refuse to train.
+    for arm in list(bench.ARMS):
+        if arm not in ("all", "no_circle"):
+            del bench.ARMS[arm]
 
     def fold_dirs(cell_project) -> list[Path]:
         cv = cell_project.config.runs_dir / bench.cross_validation_name_for(cell_project.config)
@@ -89,7 +94,24 @@ def main(scratch: Path) -> None:
     assert done[str(project.config.sessions[1].source)] == new[0]
     print("[3] only the broken fold retrained:", new[0].name)
 
-    # 4. the second arm, then the report over both
+    # 4. a fold that evaluated but never predicted gets its prediction set by inference alone
+    import shutil
+
+    source = str(project.config.sessions[0].source)
+    run_dir = done[source]
+    prediction_dirs = lambda: list(  # noqa: E731
+        bench.prediction_run_dir(Path(source), run_dir.name, "").parent.glob(f"predictions_{run_dir.name}_*")
+    )
+    for d in prediction_dirs():
+        shutil.rmtree(d)
+    assert not bench.has_predictions(source, run_dir)
+    before = fold_dirs(project)
+    bench.cross_validate_cell("crow1", "mlp", "all")
+    assert fold_dirs(project) == before, "re-predicting must not retrain"
+    assert bench.has_predictions(source, run_dir) and len(prediction_dirs()) == 1
+    print("[4] missing prediction set written by inference alone:", prediction_dirs()[0].name)
+
+    # 5. the second arm, then the report over both
     bench.cross_validate_cell("crow1", "mlp", "no_circle")
     sys.argv = ["bench.py", "--report-only"]
     bench.main()
@@ -100,7 +122,7 @@ def main(scratch: Path) -> None:
     table = pd.read_csv(bench.TABLE, sep="\t")
     assert set(table["loss"]) == {"all", "no_circle"} and set(table["individual"]) == {"crow 1"}, table
     assert len(table) == 4, table
-    print("[4] report written:", bench.OUTPUT, "rows:", len(table))
+    print("[5] report written:", bench.OUTPUT, "rows:", len(table))
     print("ALL OK")
 
 
