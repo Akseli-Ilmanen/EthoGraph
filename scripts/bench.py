@@ -71,6 +71,7 @@ arms' IoU distributions, boundary deltas and class-wise F1 side by side.
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import logging
 import os
 import re
@@ -79,6 +80,7 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
+import torch
 import yaml
 
 import ethograph as eto
@@ -167,6 +169,19 @@ SUFFIX = "loss"
 
 OUTPUT = CONFIG_DIR / "bench_loss.pdf"
 TABLE = CONFIG_DIR / "bench_loss.tsv"
+
+#: Every run appends a timestamped log here, so a night that ended in a
+#: killed process can still be read the next morning.
+LOG_DIR = CONFIG_DIR / "bench_logs"
+
+#: Stop a pass after this many cells fail back to back. One cell failing is
+#: weather (a locked file, a CUDA OOM); this many in a row is something
+#: systemic, and grinding through the remaining hundred would only bury the
+#: first traceback under a hundred copies of itself.
+MAX_CONSECUTIVE_FAILURES = 8
+
+#: :func:`main` exit codes — ``scripts/bench_watch.ps1`` reads them.
+EXIT_DONE, EXIT_MORE_TO_DO, EXIT_NO_PROGRESS = 0, 1, 2
 
 logger = logging.getLogger("bench")
 
@@ -309,6 +324,69 @@ def run_cell(individual: str, architecture: str, arm: str) -> dict[str, Path]:
         return cross_validate_cell(individual, architecture, arm)
 
 
+def cells() -> list[tuple[str, str, str]]:
+    """Every (individual, architecture, arm) the bench trains, in order."""
+    return [(i, a, m) for i in INDIVIDUALS for a in ARCHITECTURES for m in ARMS]
+
+
+def cell_is_finished(individual: str, architecture: str, arm: str) -> bool:
+    """Whether every fold of this cell has both its test evaluation and its prediction set.
+
+    Read-only and cheap (a YAML read and a glob), so the sweep can skip what
+    is done without building a model or opening a session.
+    """
+    project = project_for(individual, architecture, arm)
+    done = finished_folds(project)
+    if len(done) != len(project.config.sessions):
+        return False
+    return all(has_predictions(source, run_dir) for source, run_dir in done.items())
+
+
+def train_all(passes: int) -> list[str]:
+    """Train every unfinished cell, surviving the ones that fail; return what is still unfinished.
+
+    A cell that raises is logged with its traceback and left for the next
+    pass rather than taking the other hundred down with it — the point of an
+    unattended run is that the morning finds 107 finished cells and one
+    traceback, not one traceback. Everything already on disk is skipped, so a
+    pass costs nothing for the cells that finished earlier (or in an earlier
+    process, after a crash).
+    """
+    for pass_no in range(1, passes + 1):
+        todo = [c for c in cells() if not cell_is_finished(*c)]
+        if not todo:
+            logger.info("Every one of the %d cells has finished.", len(cells()))
+            return []
+        logger.info("Pass %d of %d: %d of %d cells to do", pass_no, passes, len(todo), len(cells()))
+        failed: list[str] = []
+        consecutive = 0
+        for done_count, (individual, architecture, arm) in enumerate(todo, start=1):
+            label = f"{display_name(individual)} / {architecture} / {arm}"
+            try:
+                run_cell(individual, architecture, arm)
+                consecutive = 0
+            except Exception:
+                logger.exception("[%s] failed — leaving it for the next pass", label)
+                failed.append(label)
+                consecutive += 1
+                # A CUDA OOM leaves its allocation behind; the next cell would
+                # inherit a card that is already full and fail for a reason
+                # that is not its own.
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                if consecutive >= MAX_CONSECUTIVE_FAILURES:
+                    logger.error(
+                        "%d cells failed in a row — stopping this pass rather than burying the first "
+                        "traceback under a hundred copies of it",
+                        consecutive,
+                    )
+                    untried = [f"{display_name(i)} / {a} / {m}" for i, a, m in todo[done_count:]]
+                    return failed + untried
+        if failed:
+            logger.warning("Pass %d left %d cell(s) unfinished: %s", pass_no, len(failed), failed)
+    return [f"{display_name(i)} / {a} / {m}" for i, a, m in cells() if not cell_is_finished(i, a, m)]
+
+
 def collect() -> tuple[list[FactorCell], pd.DataFrame, ClassTable | None]:
     """Every cell with at least one finished fold, its folds loaded, plus one row per fold."""
     cells: list[FactorCell] = []
@@ -348,20 +426,22 @@ def collect() -> tuple[list[FactorCell], pd.DataFrame, ClassTable | None]:
     return cells, pd.DataFrame(rows), classes
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
-    parser.add_argument("--report-only", action="store_true", help="draw from the folds that finished; train nothing")
-    args = parser.parse_args()
-    logging.basicConfig(level=logging.INFO, format="%(message)s")
+def setup_logging() -> Path:
+    """Log to the console and to a timestamped file under :data:`LOG_DIR`."""
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    path = LOG_DIR / f"bench_{dt.datetime.now():%Y%m%d-%H%M%S}.log"
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(message)s",
+        handlers=[logging.StreamHandler(), logging.FileHandler(path, encoding="utf-8")],
+    )
+    return path
 
-    if not args.report_only:
-        for individual in INDIVIDUALS:
-            for architecture in ARCHITECTURES:
-                for arm in ARMS:
-                    run_cell(individual, architecture, arm)
 
-    cells, table, classes = collect()
-    if not cells or classes is None:
+def draw_report() -> None:
+    """Write the TSV and the PDF from whatever has finished."""
+    cells_, table, classes = collect()
+    if not cells_ or classes is None:
         raise SystemExit("No finished folds under any individual's runs/ — nothing to draw.")
     table.to_csv(TABLE, sep="\t", index=False)
     select_on = eto.segment.Project(CONFIG_DIR / f"{INDIVIDUALS[0]}.yaml").config.train.select_on
@@ -380,7 +460,7 @@ def main() -> None:
     )
     path = write_factorial_pdf(
         OUTPUT,
-        cells,
+        cells_,
         classes,
         title=title,
         classwise_key=select_on if select_on.startswith("f1@") else None,
@@ -388,5 +468,45 @@ def main() -> None:
     logger.info("Wrote %s and %s", path, TABLE)
 
 
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
+    parser.add_argument("--report-only", action="store_true", help="draw from the folds that finished; train nothing")
+    parser.add_argument(
+        "--passes",
+        type=int,
+        default=2,
+        help="sweep the unfinished cells this many times before giving up on them (default 2)",
+    )
+    args = parser.parse_args()
+    log_path = setup_logging()
+    logger.info("Logging to %s", log_path)
+
+    if args.report_only:
+        draw_report()
+        return EXIT_DONE
+
+    before = sum(cell_is_finished(*c) for c in cells())
+    unfinished = train_all(args.passes)
+    after = sum(cell_is_finished(*c) for c in cells())
+    logger.info("Cells finished: %d → %d of %d", before, after, len(cells()))
+
+    # The report is worth having even when cells are missing, and a failure to
+    # draw it must not be read as "the training is unfinished" — that is what
+    # decides whether the supervisor starts another process.
+    try:
+        draw_report()
+    except Exception:
+        logger.exception("Could not draw the report from what has finished")
+
+    if not unfinished:
+        return EXIT_DONE
+    logger.warning("%d cell(s) still unfinished:\n  %s", len(unfinished), "\n  ".join(unfinished))
+    if after > before:
+        logger.info("Progress was made this run — rerunning continues from here.")
+        return EXIT_MORE_TO_DO
+    logger.error("No cell finished this run. Rerunning would repeat it; read the traceback above first.")
+    return EXIT_NO_PROGRESS
+
+
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
