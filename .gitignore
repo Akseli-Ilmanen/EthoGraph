@@ -1,4 +1,6 @@
 data/
+configs/paper/data
+configs/paper/runs
 !data/model/project.yaml
 logging/
 spot_frames/
