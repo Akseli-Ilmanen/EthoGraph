@@ -63,7 +63,14 @@ class MaterialisedStore:
 
 
 class SampleDataset(Dataset):
-    """Samples by key; augments (training only) then normalises."""
+    """Samples by key; augments (training only), then ablates, then normalises.
+
+    Every item also carries its **candidate frames** — where any raw
+    changepoint mask fires (:meth:`ColumnLayout.candidate_columns`), read off
+    the full sample *before* an ablation drops columns, so ``train.drop_kinds``
+    changes what the model sees and never what the loss is told. All-``False``
+    when the layout has no such column.
+    """
 
     def __init__(
         self,
@@ -88,31 +95,52 @@ class SampleDataset(Dataset):
     def __len__(self) -> int:
         return len(self.keys)
 
-    def __getitem__(self, i: int) -> tuple[torch.Tensor, torch.Tensor, str]:
+    def __getitem__(self, i: int) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, str]:
         key = self.keys[i]
         x, y = self.store.load(key)
+        full = self.store.layout
+        if self.augment_cfg is not None:
+            # On the full sample, so the candidate frames are stretched with it.
+            normalise = np.asarray(full.normalise, dtype=bool)
+            x, y = augment(x, y, self.augment_cfg, full.vector_groups, normalise, self.rng)
+        candidates = self._candidates(x)
         if self.keep is not None:
             x = x[self.keep]
-        if self.augment_cfg is not None:
-            x, y = augment(x, y, self.augment_cfg, self.layout.vector_groups, self.stats.normalise, self.rng)
         x = self.stats.apply(x)
-        return torch.from_numpy(np.ascontiguousarray(x)), torch.from_numpy(np.ascontiguousarray(y)), key
+        return (
+            torch.from_numpy(np.ascontiguousarray(x)),
+            torch.from_numpy(np.ascontiguousarray(y)),
+            torch.from_numpy(candidates),
+            key,
+        )
+
+    def _candidates(self, x: np.ndarray) -> np.ndarray:
+        """``(T,)`` bool: frames where any raw changepoint mask fires (``> 0.5`` survives a stretch's interpolation)."""
+        cols = self.store.layout.candidate_columns()
+        if cols.size == 0:
+            return np.zeros(x.shape[1], dtype=bool)
+        return np.asarray(x[cols] > 0.5).any(axis=0)
 
 
 def collate(
-    batch: list[tuple[torch.Tensor, torch.Tensor, str]],
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, list[str]]:
-    """Pad to the longest sample: ``x (B, F, T)``, ``y (B, T)`` (pad −100), ``mask (B, 1, T)``."""
+    batch: list[tuple[torch.Tensor, torch.Tensor, torch.Tensor, str]],
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, list[str]]:
+    """Pad to the longest sample: ``x (B, F, T)``, ``y (B, T)`` (pad −100), ``mask (B, 1, T)``, ``candidates (B, T)``.
+
+    *candidates* is bool, ``False`` on padding.
+    """
     n_features = batch[0][0].shape[0]
-    t_max = max(x.shape[1] for x, _, _ in batch)
+    t_max = max(x.shape[1] for x, _, _, _ in batch)
     x_out = torch.zeros(len(batch), n_features, t_max, dtype=torch.float32)
     y_out = torch.full((len(batch), t_max), PAD_TARGET, dtype=torch.long)
     mask = torch.zeros(len(batch), 1, t_max, dtype=torch.float32)
+    candidates = torch.zeros(len(batch), t_max, dtype=torch.bool)
     keys = []
-    for i, (x, y, key) in enumerate(batch):
+    for i, (x, y, cand, key) in enumerate(batch):
         t = x.shape[1]
         x_out[i, :, :t] = x
         y_out[i, :t] = y
         mask[i, :, :t] = 1.0
+        candidates[i, :t] = cand
         keys.append(key)
-    return x_out, y_out, mask, keys
+    return x_out, y_out, mask, candidates, keys

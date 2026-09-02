@@ -19,6 +19,7 @@ from typing import Any, Iterable
 import numpy as np
 import pandas as pd
 
+from ethograph.features.changepoints import CP_BINARY_SUFFIX
 from ethograph.features.columns import (
     FeatureColumn,
     column_name,
@@ -125,6 +126,12 @@ class ColumnLayout:
     #: Recorded so an ablation can drop a whole category at train time,
     #: without re-materialising the dataset.
     kinds: list[str | None] = field(default_factory=list)
+    #: The changepoint expansion's resolved scales (``sigmas``, ``horizon``,
+    #: ``max_length``, ``note``), when the config has one — part of the
+    #: layout because two datasets with the same names but different
+    #: horizons are different inputs. ``materialise`` writes it; train and
+    #: infer read their scales back from it.
+    changepoint_features: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
         if not self.kinds:
@@ -133,6 +140,14 @@ class ColumnLayout:
     @property
     def n_features(self) -> int:
         return len(self.names)
+
+    def candidate_columns(self) -> np.ndarray:
+        """Indices of the raw changepoint-mask copies (``{var}_cp_binary``): the candidate frames a loss may read.
+
+        Read off the *full* layout, never an ablated one — which candidates
+        exist is a property of the data, not of what the model was shown.
+        """
+        return np.array([i for i, f in enumerate(self.features) if f.endswith(CP_BINARY_SUFFIX)], dtype=int)
 
     def keep_mask(self, drop_kinds: Iterable[str]) -> np.ndarray:
         """Boolean mask over columns, ``False`` for every column of a dropped kind.
@@ -156,10 +171,11 @@ class ColumnLayout:
             vector_groups=[[remap[i] for i in group] for group in self.vector_groups if all(i in remap for i in group)],
             fs=self.fs,
             kinds=[self.kinds[i] for i in keep],
+            changepoint_features=self.changepoint_features,
         )
 
     def to_dict(self) -> dict:
-        return {
+        out = {
             "fs": float(self.fs),
             "names": list(self.names),
             "features": list(self.features),
@@ -167,6 +183,9 @@ class ColumnLayout:
             "vector_groups": [list(map(int, g)) for g in self.vector_groups],
             "kinds": [None if k is None else str(k) for k in self.kinds],
         }
+        if self.changepoint_features is not None:
+            out["changepoint_features"] = dict(self.changepoint_features)
+        return out
 
     @classmethod
     def from_dict(cls, data: dict) -> ColumnLayout:
@@ -177,6 +196,7 @@ class ColumnLayout:
             vector_groups=[list(g) for g in data.get("vector_groups", [])],
             fs=float(data["fs"]),
             kinds=list(data.get("kinds") or []),
+            changepoint_features=data.get("changepoint_features"),
         )
 
     def check(self, other: ColumnLayout, what: str) -> None:
@@ -187,6 +207,16 @@ class ColumnLayout:
                 f"{what}: column layout differs from the materialised dataset.\n"
                 f"  missing: {missing}\n  extra:   {extra}"
             )
+        mine, theirs = self.changepoint_features, other.changepoint_features
+        if mine is not None and theirs is not None:
+            keys = ("sigmas", "horizon", "max_length")
+            if any(mine.get(k) != theirs.get(k) for k in keys):
+                got = {k: theirs.get(k) for k in keys}
+                want = {k: mine.get(k) for k in keys}
+                raise ValueError(
+                    f"{what}: changepoint features were expanded at different scales than the "
+                    f"materialised dataset's ({got} vs {want})."
+                )
 
 
 def sample_features_spec(

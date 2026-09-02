@@ -24,6 +24,14 @@ things a config file cannot know:
   cannot be honoured and the default here is ``None`` (unweighted
   cross-entropy). Pass an explicit list to ``train.loss.weights`` to weight
   classes by hand.
+* ``candidate_gate`` — ours: whether the consistency term skips the two
+  transitions touching a changepoint candidate (see
+  :class:`TruncatedMSTCNLoss`). The term and the cross-entropy only pull
+  against each other where the true label changes, and those frames sit on
+  the candidates, so exempting exactly them removes the conflict and nothing
+  else: ``alpha`` stops being a compromise between fragments and blur.
+  ``None`` (the default) means *on iff the layout carries a*
+  ``{var}_cp_binary`` *column*; ``true`` without one is refused.
 * ``tau`` — the truncation threshold of the consistency term. Upstream writes
   it into the arithmetic (``clamp(..., max=16)``, i.e. τ = 4, MS-TCN's own
   value), so no config file can reach it. It is the second half of what makes
@@ -81,35 +89,91 @@ DEFAULT_TAU = math.sqrt(UPSTREAM_CLAMP)
 """Upstream's truncation threshold, τ = 4 — the default, so nothing changes unasked."""
 
 TAU_KEY = "tau"
-"""``train.loss.tau``: ours, and the one key :class:`MS_TCN_Loss` does not take."""
+"""``train.loss.tau``: ours, and one of the two keys :class:`MS_TCN_Loss` does not take."""
+
+CANDIDATE_GATE_KEY = "candidate_gate"
+"""``train.loss.candidate_gate``: ours — ``None`` = on iff the layout has a binary changepoint column."""
 
 #: Everything ``MS_TCN_Loss.__init__`` accepts besides ``num_classes``, plus
-#: our own ``tau``, so a typo in ``train.loss`` is refused rather than
-#: silently ignored.
+#: our own ``tau`` and ``candidate_gate``, so a typo in ``train.loss`` is
+#: refused rather than silently ignored.
 LOSS_KEYWORDS = frozenset(
-    {"weights", "exclusive", "ignore_index", "focal", "gamma", "alpha", "hard_negative_weight", TAU_KEY}
+    {
+        "weights",
+        "exclusive",
+        "ignore_index",
+        "focal",
+        "gamma",
+        "alpha",
+        "hard_negative_weight",
+        TAU_KEY,
+        CANDIDATE_GATE_KEY,
+    }
 )
 
 
 class TruncatedMSTCNLoss(MS_TCN_Loss):
-    """Upstream's loss with the consistency term's truncation threshold exposed.
+    """Upstream's loss with the consistency term's truncation threshold exposed, and optionally candidate-gated.
 
     The term penalises ``|log p[t] - log p[t - 1]|`` per class, truncated at
     *tau* so a genuine class change is not punished without limit. Everything
     else — the cross-entropy, the focal weighting, the averaging over stages —
     is inherited untouched.
+
+    With *candidate_gate* the term is simply not applied at the two
+    transitions that touch a changepoint candidate frame ``c`` — the jump
+    into ``c`` and the jump out of it, where an onset and an offset sit — and
+    is averaged over the transitions that remain. No dilation, no weight: the
+    candidate set is the only thing added. Every other transition is
+    penalised exactly as upstream does, so with no candidates the loss is
+    upstream's to the last bit.
     """
 
-    def __init__(self, *, tau: float = DEFAULT_TAU, **kwargs: Any) -> None:
+    def __init__(self, *, tau: float = DEFAULT_TAU, candidate_gate: bool = False, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         if not tau > 0:
             raise ValueError(f"train.loss.tau={tau} — the truncation threshold must be positive (upstream's is 4).")
         self.tau = float(tau)
+        self.candidate_gate = bool(candidate_gate)
 
-    def consistency_loss(self, p: torch.Tensor) -> torch.Tensor:
-        """Upstream's, with its ``max=16`` replaced by ``tau ** 2``."""
+    @staticmethod
+    def transition_keep(candidates: torch.Tensor) -> torch.Tensor:
+        """``(B, 1, T-1)`` float: 0 at the two transitions touching a candidate frame, 1 elsewhere.
+
+        Transition ``t`` (index ``t - 1`` here) is the jump between frames
+        ``t - 1`` and ``t``; candidate frame ``c`` exempts transitions ``c``
+        and ``c + 1``.
+        """
+        candidates = candidates.bool()
+        exempt = candidates[:, 1:] | candidates[:, :-1]
+        return (~exempt).unsqueeze(1)
+
+    def consistency_loss(self, p: torch.Tensor, keep: torch.Tensor | None = None) -> torch.Tensor:
+        """Upstream's, with ``max=16`` replaced by ``tau ** 2``; given *keep*, averaged over kept transitions only."""
         mse = self.mse(self.log_nl(p[:, :, 1:]), self.log_nl(p.detach()[:, :, :-1]))
-        return torch.mean(torch.clamp(mse, min=0, max=self.tau**2))
+        clamped = torch.clamp(mse, min=0, max=self.tau**2)
+        if keep is None:
+            return torch.mean(clamped)
+        keep = keep.to(clamped.dtype)
+        n_kept = keep.sum() * clamped.shape[1]
+        if n_kept == 0:
+            return clamped.new_zeros(())
+        return (clamped * keep).sum() / n_kept
+
+    def forward(  # type: ignore[override]
+        self, predictions: torch.Tensor, target: torch.Tensor, candidates: torch.Tensor | None = None
+    ) -> torch.Tensor:
+        """Upstream's forward; the consistency term is gated when *candidates* ``(B, T)`` come with the gate on."""
+        if not self.candidate_gate or candidates is None:
+            return super().forward(predictions, target)
+        if self.need_init:
+            self._init_weights(predictions.device)
+        keep = self.transition_keep(candidates.to(predictions.device))
+        stages = predictions if predictions.dim() == 4 else predictions.unsqueeze(0)
+        loss = predictions.new_zeros(())
+        for p in stages:
+            loss = loss + self._ce_loss(p, target) + self.alpha * self.consistency_loss(p, keep)
+        return loss / len(stages)
 
 
 def upstream_defaults() -> dict[str, Any]:
@@ -122,15 +186,29 @@ def upstream_defaults() -> dict[str, Any]:
     return dict(config[LOSS_KEY])
 
 
-def build_loss(overrides: dict[str, Any], n_classes: int) -> tuple[nn.Module, dict[str, Any]]:
+def build_loss(
+    overrides: dict[str, Any], n_classes: int, *, has_candidates: bool | None = None
+) -> tuple[nn.Module, dict[str, Any]]:
     """Upstream's loss for this run; returns it with the resolved settings.
 
     *overrides* is the project config's ``train.loss`` — merged over
     :func:`upstream_defaults` key by key, exactly as ``model.params`` is
     merged over an architecture's YAML. The settings come back so the run can
     log what it actually trained with.
+
+    *has_candidates* says whether the layout carries a ``{var}_cp_binary``
+    column: it resolves ``candidate_gate: null`` (on iff it does) and refuses
+    ``candidate_gate: true`` when it does not. ``None`` = unknown — the gate
+    then defaults to off and an explicit ``true`` is taken on trust.
     """
-    settings = {**upstream_defaults(), "exclusive": True, "weights": None, TAU_KEY: DEFAULT_TAU, **overrides}
+    settings = {
+        **upstream_defaults(),
+        "exclusive": True,
+        "weights": None,
+        TAU_KEY: DEFAULT_TAU,
+        CANDIDATE_GATE_KEY: None,
+        **overrides,
+    }
     unknown = set(settings) - LOSS_KEYWORDS
     if unknown:
         raise ValueError(f"train.loss: unknown key(s) {sorted(unknown)}; MS_TCN_Loss takes {sorted(LOSS_KEYWORDS)}")
@@ -140,9 +218,18 @@ def build_loss(overrides: dict[str, Any], n_classes: int) -> tuple[nn.Module, di
             "resolves, and that layer is not vendored here. Give an explicit list of "
             f"{n_classes} weights, or leave it unset for unweighted cross-entropy."
         )
+    gate = settings[CANDIDATE_GATE_KEY]
+    if gate is None:
+        gate = bool(has_candidates)
+    elif gate and has_candidates is False:
+        raise ValueError(
+            "train.loss.candidate_gate is on but the layout has no changepoint candidate column — keep "
+            "`binary` in features.changepoint_features.transforms, or set candidate_gate: false."
+        )
+    settings[CANDIDATE_GATE_KEY] = bool(gate)
     tau = float(settings[TAU_KEY])
-    kwargs = {k: v for k, v in settings.items() if k != TAU_KEY}
-    return TruncatedMSTCNLoss(num_classes=n_classes, tau=tau, **kwargs), settings
+    kwargs = {k: v for k, v in settings.items() if k not in (TAU_KEY, CANDIDATE_GATE_KEY)}
+    return TruncatedMSTCNLoss(num_classes=n_classes, tau=tau, candidate_gate=bool(gate), **kwargs), settings
 
 
 def _label_similarity_pairs(normed: torch.Tensor, label: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
@@ -246,12 +333,15 @@ class Objective(nn.Module):
         self.circle_max_frames = circle_max_frames
 
     def forward(
-        self, output: ModelOutput, y: torch.Tensor, mask: torch.Tensor
+        self, output: ModelOutput, y: torch.Tensor, mask: torch.Tensor, candidates: torch.Tensor | None = None
     ) -> tuple[torch.Tensor, dict[str, float]]:
         total = output.logits.new_zeros(())
         parts: dict[str, float] = {}
         if self.frame_weight:
-            frame = self.frame_loss(output.logits, y)
+            if isinstance(self.frame_loss, TruncatedMSTCNLoss):
+                frame = self.frame_loss(output.logits, y, candidates)
+            else:
+                frame = self.frame_loss(output.logits, y)
             total = total + self.frame_weight * frame
             parts["frame"] = float(frame.detach())
         if self.circle_weight:
@@ -269,10 +359,17 @@ class Objective(nn.Module):
         return total, parts
 
 
-def build_objective(config: SegmentConfig, n_classes: int) -> tuple[Objective, dict[str, Any]]:
-    """The objective this run trains against, with the settings it resolved to."""
+def build_objective(
+    config: SegmentConfig, n_classes: int, layout: Any | None = None
+) -> tuple[Objective, dict[str, Any]]:
+    """The objective this run trains against, with the settings it resolved to.
+
+    *layout* is the materialised dataset's full :class:`~ethograph.segment.samples.ColumnLayout`;
+    it decides the candidate gate's default (see :func:`build_loss`).
+    """
     tcfg = config.train
-    frame_loss, frame_settings = build_loss(tcfg.loss, n_classes)
+    has_candidates = None if layout is None else bool(layout.candidate_columns().size)
+    frame_loss, frame_settings = build_loss(tcfg.loss, n_classes, has_candidates=has_candidates)
     ccfg = tcfg.circle
     circle_loss = CircleLoss(m=ccfg.m, gamma=ccfg.gamma) if ccfg.weight else None
     objective = Objective(

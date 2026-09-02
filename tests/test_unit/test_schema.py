@@ -297,7 +297,7 @@ class TestChangepointProducers:
         """Only the raw binary mask is a changepoint — the smooth features are inputs, not masks."""
         out = add_changepoint_features(ds, sigmas=[2])
         assert schema.changepoint_vars(out) == ["speed_troughs"]
-        assert out["speed_troughs_cp_sigma2"].attrs["normalise"] == 0
+        assert out["speed_troughs_cp_prox0"].attrs["normalise"] == 0
 
 
 class TestAdvisory:
@@ -361,7 +361,7 @@ class TestChangepointLabelVsPredicate:
         from ethograph.features.changepoints import add_changepoint_features
 
         out = add_changepoint_features(self._ds(), sigmas=[2])
-        derived = out["speed_troughs_cp_sigma2"]
+        derived = out["speed_troughs_cp_prox0"]
         # Same category — so one ablation drops the whole family...
         assert schema.kind_of(derived) == schema.CHANGEPOINT_FEATURE
         assert schema.kind_of(out["speed_troughs"]) == schema.CHANGEPOINT_FEATURE
@@ -377,7 +377,7 @@ class TestChangepointLabelVsPredicate:
 
         out = add_changepoint_features(self._ds(), sigmas=[2])
         features = _feature_vars(out)
-        assert "speed_troughs_cp_sigma2" in features
+        assert "speed_troughs_cp_prox0" in features
         assert "speed_troughs" not in features
 
     def test_a_migrated_legacy_mask_reads_as_both(self):

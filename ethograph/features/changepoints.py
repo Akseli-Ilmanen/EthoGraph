@@ -1,12 +1,12 @@
 from collections.abc import Mapping, Sequence
-from typing import Any, List, Literal
+from dataclasses import dataclass
+from typing import Any, Literal
 
 import numpy as np
 import pandas as pd
 import xarray as xr
 from scipy.signal import find_peaks
 
-from ethograph.features.preprocessing import z_normalize
 from ethograph.io import schema
 from ethograph.labels.intervals import (
     purge_short_intervals,
@@ -318,31 +318,153 @@ def merge_changepoints(ds, vars: Sequence[str] | None = None, keep_dims: Sequenc
 # ---------------------------------------------------------------------------
 
 
+def _proximity(changepoint_indices: np.ndarray, seq_length: int, sigma: float, distribution: str) -> np.ndarray:
+    """Sum of one kernel per changepoint; an isolated changepoint reads exactly 1 at its frame."""
+    x = np.arange(seq_length)
+    peak = np.zeros(seq_length)
+    for idx in changepoint_indices:
+        if distribution == "gaussian":
+            peak += np.exp(-0.5 * ((x - idx) / sigma) ** 2)
+        else:
+            peak += np.exp(-np.abs(x - idx) / sigma)
+    return peak
+
+
+def _offsets(changepoint_indices: np.ndarray, seq_length: int, horizon: float) -> tuple[np.ndarray, np.ndarray]:
+    """``(since, until)``: samples since the previous / until the next changepoint, clipped at *horizon*, in ``[0, 1]``.
+
+    Before the first changepoint ``since`` is saturated, after the last
+    ``until`` is — "no candidate in reach".
+    """
+    idx = np.arange(seq_length)
+    n = len(changepoint_indices)
+    if n == 0:
+        return np.ones(seq_length), np.ones(seq_length)
+    prev = np.searchsorted(changepoint_indices, idx, side="right") - 1
+    nxt = np.searchsorted(changepoint_indices, idx, side="left")
+    since = np.where(prev >= 0, idx - changepoint_indices[np.maximum(prev, 0)], horizon)
+    until = np.where(nxt < n, changepoint_indices[np.minimum(nxt, n - 1)] - idx, horizon)
+    return np.minimum(since, horizon) / horizon, np.minimum(until, horizon) / horizon
+
+
+def _segment_lengths(changepoint_indices: np.ndarray, seq_length: int, max_length: float) -> np.ndarray:
+    """Length of the candidate segment each frame sits in, on a log scale saturating at *max_length*, in ``[0, 1]``.
+
+    Segments are cut at every changepoint and at both ends of the trial.
+    ``log1p`` so that 1, 10 and 100 samples are evenly spread — the linear
+    offsets already resolve everything shorter than two horizons, this
+    column's job is the long range.
+    """
+    edges = np.unique(np.concatenate([[0], changepoint_indices, [seq_length]]))
+    out = np.zeros(seq_length)
+    for start, end in zip(edges[:-1], edges[1:]):
+        out[start:end] = end - start
+    return np.minimum(np.log1p(out) / np.log1p(max_length), 1.0)
+
+
+LENGTH_HORIZONS = 16.0
+"""``max_length`` default, in horizons: the length column saturates at ``16 * horizon`` samples."""
+
+SHORT_PERCENTILE = 5.0
+"""The short end of the label durations the horizon is read off."""
+
+LONG_PERCENTILE = 95.0
+"""The long end of the label durations ``max_length`` is read off."""
+
+HORIZON_FRACTION = 0.5
+"""``horizon = HORIZON_FRACTION * p5(duration)``: the largest radius that keeps the shortest label's edges apart."""
+
+SIGMA_DIVISORS: tuple[float, ...] = (16.0, 8.0, 4.0)
+"""The derived kernel ladder, ``horizon / k`` — the widest fades at the horizon (``e^-4``)."""
+
+
+@dataclass(frozen=True)
+class ChangepointScales:
+    """The three temporal scales of the expansion, in samples."""
+
+    horizon: float
+    max_length: float
+    sigmas: tuple[float, ...]
+
+
+def scales_from_durations(durations_s: Sequence[float] | np.ndarray, fs: float) -> ChangepointScales:
+    """Read the expansion's scales off the labelled behaviours' durations.
+
+    Two percentiles, two knobs, no taste: the offsets must resolve the
+    shortest labelled behaviour, so the horizon is half its duration
+    (:data:`HORIZON_FRACTION` × the :data:`SHORT_PERCENTILE` percentile) — any larger and
+    both edges of that label fall inside one horizon; the length column
+    stops being informative where almost nothing labelled is longer, so
+    ``max_length`` is the :data:`LONG_PERCENTILE` percentile. Kernel widths only mean
+    something relative to the boundary radius, so the sigmas are the ladder
+    ``horizon / (16, 8, 4)``. Point events carry no duration and must be
+    left out by the caller.
+    """
+    d = np.asarray(durations_s, dtype=float)
+    d = d[np.isfinite(d) & (d > 0)]
+    if d.size < 2:
+        raise ValueError(
+            f"scales_from_durations needs at least two positive label durations, got {d.size} — "
+            "label some behaviours, or spell sigmas/horizon/max_length in the config"
+        )
+    if not fs > 0:
+        raise ValueError(f"fs must be positive, got {fs}")
+    short_s = float(np.percentile(d, SHORT_PERCENTILE))
+    long_s = float(np.percentile(d, LONG_PERCENTILE))
+    horizon = round(max(1.0, HORIZON_FRACTION * short_s * fs), 4)
+    max_length = round(max(long_s * fs, 2.0 * horizon), 4)
+    return ChangepointScales(horizon, max_length, tuple(round(horizon / k, 4) for k in SIGMA_DIVISORS))
+
+
+def default_horizon(sigmas: Sequence[float]) -> float:
+    """Where the widest proximity kernel has faded: ``4 * max(sigmas)`` samples (``e^-4``, about 2 % of its peak).
+
+    The one default the offset columns have, so the two families reach
+    equally far.
+    """
+    if not sigmas:
+        raise ValueError("horizon must be given explicitly when no sigmas are set (the default is 4 * max(sigmas))")
+    return 4.0 * float(max(sigmas))
+
+
 def more_changepoint_features(
     changepoint_binary: np.ndarray,
-    targ_feat_vals: np.ndarray,
-    sigmas: List[float],
+    sigmas: Sequence[float],
     distribution: Literal["gaussian", "laplacian"] = "laplacian",
+    horizon: float | None = None,
+    scale: np.ndarray | None = None,
+    max_length: float | None = None,
 ) -> np.ndarray:
     """Create changepoint-based features from a binary changepoint array.
 
-    Generates three complementary representations that help a model learn
-    changepoint locations:
+    Four column groups, in this order (see :data:`CP_TRANSFORMS`):
 
-    - **Binary changepoints** — exact changepoint positions (0/1 mask).
+    - **Binary** — the exact changepoint positions (0/1 mask).
       Example: ``0 0 0 0 1 0 0 0 1 0 0 0 0 0``
-    - **Smooth changepoints** — proximity to the nearest changepoint, rendered
-      as Laplacian (or Gaussian) peaks centred at each changepoint index.
-      Example: ``0 0 0 .3 1 .3 0 .3 1 .3 0 0 0 0``
-    - **Segment IDs** — unique identifier for each contiguous region between
-      changepoints (normalised to [0, 1]).
-      Example: ``0 0 0 0 1 1 1 1 2 2 2 2 2 2``
+    - **Proximity** — one column per sigma: a Laplacian (or Gaussian) kernel
+      centred at each changepoint, summed. An isolated changepoint reads 1 at
+      its frame; overlapping kernels add, so a cluster of candidates reads
+      above 1. Nothing is normalised per trial.
+      Example (one sigma): ``0 0 0 .3 1 .3 0 .3 1 .3 0 0 0 0``
+    - **Offset** — two columns: samples *since* the previous changepoint and
+      *until* the next, each clipped at *horizon* and scaled to ``[0, 1]``.
+      A frame reads which side of its nearest candidate it is on, which the
+      symmetric kernels cannot say; before the first / after the last
+      changepoint the column is saturated (no candidate in reach).
+      Example (horizon 4): since ``1 1 1 1 0 .25 .5 .75 0 .25 .5 .75 1 1``,
+      until ``1 .75 .5 .25 0 .75 .5 .25 0 1 1 1 1 1``
+    - **Length** — one column: the length of the candidate segment the frame
+      sits in (cut at every changepoint and at the trial's ends), as
+      ``log1p(length) / log1p(max_length)``, clipped at 1. The offsets
+      already resolve anything shorter than two horizons; this is the long
+      range, where a fragment-prone short segment and a whole bout of rest
+      should not read alike.
 
-    Smooth changepoints use a Laplacian kernel by default:
+    Proximity uses a Laplacian kernel by default:
 
     .. math::
 
-        \\text{smooth}(t) = \\sum_i \\exp\\!\\left(-\\frac{|t - i|}{\\sigma}\\right)
+        \\text{prox}(t) = \\sum_i \\exp\\!\\left(-\\frac{|t - i|}{\\sigma}\\right)
 
     where :math:`i` are the changepoint indices and :math:`\\sigma` controls
     the peak width. Laplacians have a narrow peak that points directly at the
@@ -350,89 +472,93 @@ def more_changepoint_features(
     multiple ``sigmas`` (e.g. ``[0.5, 3, 5]``) yields features at several
     scales.
 
-    Additionally, weighted versions emphasise changepoints where the target
-    feature (e.g. speed) is low, by multiplying the smooth features with
-    :math:`\\exp(-x / (\\bar{x} + \\epsilon))`. This helps the model
-    distinguish speed minima before/after movements (low speed) from minima
-    occurring within different movements.
+    *scale* multiplies every proximity column by :math:`\\exp(-x / \\bar{x})`
+    of that signal, emphasising changepoints where it is low — with speed,
+    the troughs before and after a movement rather than a dip inside one;
+    with an amplitude envelope, the silences between calls. Frames where
+    *scale* is NaN read 0.
 
     Args:
         changepoint_binary: Binary (0/1) array marking changepoint locations.
-        targ_feat_vals: Target feature values (e.g. speed) used to weight the
-            smooth changepoint features.
-        sigmas: Kernel widths for the smooth changepoint representation.
+        sigmas: Kernel widths (samples) for the proximity columns.
         distribution: ``"laplacian"`` (default) or ``"gaussian"`` kernel.
+        horizon: Reach of the offset columns, in samples; ``None`` is
+            :func:`default_horizon`.
+        scale: Optional signal on the same time axis that scales the
+            proximity columns.
+        max_length: Where the length column saturates, in samples; ``None``
+            is :data:`LENGTH_HORIZONS` horizons.
 
     Returns:
-        2D array of shape ``(T, 1 + 2 * len(sigmas) + 1)`` stacking the
-        binary mask, one smooth feature per sigma, their weighted (speed-
-        emphasised, z-normalised) counterparts, and the normalised segment
-        IDs.
+        2D array of shape ``(T, 1 + len(sigmas) + 3)``: the binary mask, one
+        proximity column per sigma, ``since``, ``until``, then ``length``.
     """
-    features = [changepoint_binary]
+    changepoint_binary = np.asarray(changepoint_binary)
     seq_length = len(changepoint_binary)
-    changepoint_indices = np.where(changepoint_binary)[0]
+    changepoint_indices = np.flatnonzero(changepoint_binary)
+    horizon = default_horizon(sigmas) if horizon is None else float(horizon)
+    if not horizon > 0:
+        raise ValueError(f"horizon must be positive, got {horizon}")
+    max_length = LENGTH_HORIZONS * horizon if max_length is None else float(max_length)
+    if not max_length > 0:
+        raise ValueError(f"max_length must be positive, got {max_length}")
 
-    x = np.arange(seq_length)
-    for sigma in sigmas:
-        peak = np.zeros(seq_length)
-        for idx in changepoint_indices:
-            if distribution == "gaussian":
-                peak += np.exp(-0.5 * ((x - idx) / sigma) ** 2)
-            else:
-                peak += np.exp(-np.abs(x - idx) / sigma)
+    proximity = [_proximity(changepoint_indices, seq_length, sigma, distribution) for sigma in sigmas]
+    if scale is not None:
+        scale = np.asarray(scale, dtype=float)
+        if scale.shape != (seq_length,):
+            raise ValueError(f"scale must have shape ({seq_length},), got {scale.shape}")
+        if np.all(np.isnan(scale)):
+            multiplier = np.ones(seq_length)
+        else:
+            multiplier = np.exp(-scale / (np.nanmean(scale) + 1e-8))
+        proximity = [np.nan_to_num(col * multiplier, nan=0.0) for col in proximity]
 
-        if peak.max() > 0:
-            peak /= peak.max()
-        features.append(peak)
-
-    cp_binary_peak = np.column_stack(features)
-
-    multiplier = np.exp(-targ_feat_vals / (np.nanmean(targ_feat_vals) + 1e-8))
-    weighted_cps = cp_binary_peak * multiplier[:, np.newaxis]
-    weighted_cps = np.nan_to_num(weighted_cps, nan=0.0)
-    weighted_cps = z_normalize(weighted_cps)
-
-    segment_ids = np.zeros(seq_length)
-    if len(changepoint_indices) > 0:
-        boundaries = np.unique(np.concatenate([[0], changepoint_indices, [seq_length]]))
-        for i, (start, end) in enumerate(zip(boundaries[:-1], boundaries[1:])):
-            segment_ids[start:end] = i
-        if segment_ids.max() > 0:
-            segment_ids /= segment_ids.max()
-
-    return np.column_stack([cp_binary_peak, weighted_cps, segment_ids])
+    since, until = _offsets(changepoint_indices, seq_length, horizon)
+    length = _segment_lengths(changepoint_indices, seq_length, max_length)
+    return np.column_stack([changepoint_binary.astype(float), *proximity, since, until, length])
 
 
 #: The four column groups ``more_changepoint_features`` produces — the
 #: vocabulary ``add_changepoint_features``'s ``transforms`` and
 #: ``segment.config.ChangepointFeaturesConfig.transforms`` both read.
-#: ``proximity``/``proximity_weighted`` name the *shape* generically because
-#: which kernel they use is a separate choice (``distribution``).
+#: ``proximity`` names the *shape* generically because which kernel it uses
+#: is a separate choice (``distribution``), and whether a signal scales it
+#: another (``scale_by``). Its columns are named by rank (``_cp_prox0`` is
+#: the narrowest), never by the sigma value: the values may be derived from
+#: the labels after the column names are fixed.
 CP_BINARY = "binary"
+CP_BINARY_SUFFIX = "_cp_binary"
+"""How mask ``var``'s ``binary`` column is named (``{var}_cp_binary``): what a layout looks for to find candidates."""
 CP_PROXIMITY = "proximity"
-CP_PROXIMITY_WEIGHTED = "proximity_weighted"
-CP_SEGMENT_ID = "segment_id"
-CP_TRANSFORMS: tuple[str, ...] = (CP_BINARY, CP_PROXIMITY, CP_PROXIMITY_WEIGHTED, CP_SEGMENT_ID)
+CP_OFFSET = "offset"
+CP_LENGTH = "length"
+CP_TRANSFORMS: tuple[str, ...] = (CP_BINARY, CP_PROXIMITY, CP_OFFSET, CP_LENGTH)
 
 
-def _cp_feature_groups(var: str, sigmas: Sequence[float]) -> list[tuple[str, str]]:
-    """``(name, transform_group)`` pairs, in ``more_changepoint_features``'s column order."""
-    smooth = [f"{var}_cp_sigma{sigma:g}" for sigma in sigmas]
-    pairs = [(f"{var}_cp_binary", CP_BINARY)]
-    pairs += [(name, CP_PROXIMITY) for name in smooth]
-    pairs.append((f"{var}_cp_binary_weighted", CP_PROXIMITY_WEIGHTED))
-    pairs += [(f"{name}_weighted", CP_PROXIMITY_WEIGHTED) for name in smooth]
-    pairs.append((f"{var}_cp_segment_id", CP_SEGMENT_ID))
+def _n_sigmas(sigmas: int | Sequence[float]) -> int:
+    return int(sigmas) if isinstance(sigmas, int) else len(sigmas)
+
+
+def _cp_feature_groups(var: str, sigmas: int | Sequence[float]) -> list[tuple[str, str]]:
+    """``(name, transform_group)`` pairs, in ``more_changepoint_features``'s column order.
+
+    *sigmas* is the list or just its length — the names depend on nothing else.
+    """
+    pairs = [(f"{var}{CP_BINARY_SUFFIX}", CP_BINARY)]
+    pairs += [(f"{var}_cp_prox{i}", CP_PROXIMITY) for i in range(_n_sigmas(sigmas))]
+    pairs += [(f"{var}_cp_since", CP_OFFSET), (f"{var}_cp_until", CP_OFFSET)]
+    pairs.append((f"{var}_cp_length", CP_LENGTH))
     return pairs
 
 
-def cp_feature_names(var: str, sigmas: Sequence[float], transforms: Sequence[str] = CP_TRANSFORMS) -> list[str]:
+def cp_feature_names(var: str, sigmas: int | Sequence[float], transforms: Sequence[str] = CP_TRANSFORMS) -> list[str]:
     """Column names ``add_changepoint_features(..., transforms=transforms)`` writes for *var*.
 
     Use this to name the exact columns a ``changepoint_features`` config will
     produce without materialising anything — e.g. to paste into
     ``features.columns`` by hand, or to check a config's generated layout.
+    *sigmas* may be the list or just how many there are.
     """
     unknown = set(transforms) - set(CP_TRANSFORMS)
     if unknown:
@@ -444,10 +570,12 @@ def cp_feature_names(var: str, sigmas: Sequence[float], transforms: Sequence[str
 def add_changepoint_features(
     ds: xr.Dataset,
     sigmas: Sequence[float],
-    target_feature: str | None = None,
     distribution: Literal["gaussian", "laplacian"] = "laplacian",
     transforms: Sequence[str] = CP_TRANSFORMS,
     vars: Sequence[str] | None = None,
+    horizon: float | None = None,
+    scale_by: str | None = None,
+    max_length: float | None = None,
 ) -> xr.Dataset:
     """Expand changepoint variables into the ML features of ``more_changepoint_features``.
 
@@ -458,26 +586,25 @@ def add_changepoint_features(
     for the exact names:
 
     - ``binary`` → ``{var}_cp_binary`` — the mask itself
-    - ``proximity`` → ``{var}_cp_sigma{sigma}`` — one smooth proximity feature per sigma
-    - ``proximity_weighted`` → ``{var}_cp_binary_weighted`` / ``{var}_cp_sigma{sigma}_weighted``
-      — the same, weighted by low values of the target feature and z-normalised
-    - ``segment_id`` → ``{var}_cp_segment_id`` — normalised id of the segment between changepoints
+    - ``proximity`` → ``{var}_cp_prox{i}`` — one kernel column per sigma, in
+      the order given, scaled by *scale_by* when given; the sigma value is in
+      the column's ``description``
+    - ``offset`` → ``{var}_cp_since`` / ``{var}_cp_until`` — samples since the
+      previous / until the next changepoint, clipped at *horizon*
+    - ``length`` → ``{var}_cp_length`` — log length of the candidate segment
+      the frame sits in, saturating at *max_length*
 
-    All of them carry ``attrs["normalise"] = 0`` (already in ``[0, 1]`` or
-    z-normalised) and none is marked as a changepoint variable — neither the
-    ``kind`` nor the legacy ``type`` — so only the raw binary masks remain
-    changepoints: they are the only ones that can be OR-merged, snapped to or
-    drawn as lines.
+    All of them carry ``attrs["normalise"] = 0`` (already on a fixed scale)
+    and none is marked as a changepoint variable — neither the ``kind`` nor
+    the legacy ``type`` — so only the raw binary masks remain changepoints:
+    they are the only ones that can be OR-merged, snapped to or drawn as lines.
 
     Parameters
     ----------
     ds : xr.Dataset
-        Trial dataset holding changepoint vars and their target features.
+        Trial dataset holding changepoint vars (and *scale_by*, if given).
     sigmas : sequence of float
-        Kernel widths (samples) for the smooth features.
-    target_feature : str, optional
-        Feature whose values weight the smooth features; defaults to each
-        changepoint var's own ``attrs["target_feature"]``.
+        Kernel widths (samples) for the proximity columns.
     distribution : ``"laplacian"`` or ``"gaussian"``
         Kernel shape, see ``more_changepoint_features``.
     transforms : subset of :data:`CP_TRANSFORMS`
@@ -486,6 +613,17 @@ def add_changepoint_features(
         Which changepoint variables to expand; default expands every one
         :func:`~ethograph.io.schema.changepoint_vars` finds. Naming a
         variable that is not a changepoint mask is an error.
+    horizon : float, optional
+        Reach of the offset columns in samples; default
+        :func:`default_horizon` (``4 * max(sigmas)``).
+    scale_by : str, optional
+        Feature whose values scale the proximity columns by
+        ``exp(-x / mean x)`` — e.g. ``"speed"`` to emphasise changepoints at
+        rest. It must be on the changepoint var's time axis and carry no dim
+        the changepoint var lacks. Default: unscaled.
+    max_length : float, optional
+        Where the length column saturates, in samples; default
+        :data:`LENGTH_HORIZONS` × *horizon*.
 
     Returns
     -------
@@ -502,39 +640,54 @@ def add_changepoint_features(
             raise ValueError(
                 f"{var!r} is not a changepoint mask in this dataset (available: {schema.changepoint_vars(ds)})"
             )
+    unknown = set(transforms) - set(CP_TRANSFORMS)
+    if unknown:
+        raise ValueError(f"transforms must be a subset of {CP_TRANSFORMS}, got {sorted(unknown)}")
 
     for var in cp_vars:
         cp = ds[var]
         time = get_time_coord(cp).name
-        target_name = target_feature if target_feature is not None else cp.attrs["target_feature"]
-        target = ds[target_name]
-        extra = [d for d in target.dims if d not in cp.dims]
-        if extra:
-            raise ValueError(
-                f"Target feature {target_name!r} has dims {extra} that changepoint var {var!r} "
-                f"({cp.dims}) lacks; pin them first"
+        if scale_by is None:
+            stacked = xr.apply_ufunc(
+                lambda mask: more_changepoint_features(mask, sigmas, distribution, horizon, max_length=max_length),
+                cp,
+                input_core_dims=[[time]],
+                output_core_dims=[[time, "cp_feature"]],
+                vectorize=True,
+                output_dtypes=[np.float64],
             )
-        if time not in target.dims:
-            raise ValueError(f"Target feature {target_name!r} is not on the {time!r} axis of {var!r}")
-
-        stacked = xr.apply_ufunc(
-            lambda mask, vals: more_changepoint_features(mask, vals, sigmas, distribution),
-            cp,
-            target,
-            input_core_dims=[[time], [time]],
-            output_core_dims=[[time, "cp_feature"]],
-            vectorize=True,
-            output_dtypes=[np.float64],
-        )
+        else:
+            scale = ds[scale_by]
+            extra = [d for d in scale.dims if d not in cp.dims]
+            if extra:
+                raise ValueError(
+                    f"scale_by feature {scale_by!r} has dims {extra} that changepoint var {var!r} "
+                    f"({cp.dims}) lacks; pin them first"
+                )
+            if time not in scale.dims:
+                raise ValueError(f"scale_by feature {scale_by!r} is not on the {time!r} axis of {var!r}")
+            stacked = xr.apply_ufunc(
+                lambda mask, vals: more_changepoint_features(mask, sigmas, distribution, horizon, vals, max_length),
+                cp,
+                scale,
+                input_core_dims=[[time], [time]],
+                output_core_dims=[[time, "cp_feature"]],
+                vectorize=True,
+                output_dtypes=[np.float64],
+            )
         all_pairs = _cp_feature_groups(var, sigmas)
         assert stacked.sizes["cp_feature"] == len(all_pairs)
         wanted = set(transforms)
+        scaled = f", scaled by {scale_by}" if scale_by is not None else ""
+        details = {
+            f"{var}_cp_prox{i}": f": proximity, sigma {sigma:g} samples{scaled}" for i, sigma in enumerate(sigmas)
+        }
         for i, (name, group) in enumerate(all_pairs):
             if group not in wanted:
                 continue
             feature = stacked.isel(cp_feature=i, drop=True).transpose(*cp.dims)
             feature.attrs = {
-                "description": f"Changepoint feature of {var} (target {target_name})",
+                "description": f"Changepoint feature of {var}{details.get(name, '')}",
                 schema.KIND: schema.CHANGEPOINT_FEATURE,
                 "normalise": 0,
             }

@@ -17,6 +17,7 @@ normalisation statistics belong to a run, not to the dataset.
 from __future__ import annotations
 
 import logging
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -24,6 +25,7 @@ import pandas as pd
 import yaml
 
 from ethograph.io import schema
+from ethograph.labels.intervals import states_only
 from ethograph.segment.config import SegmentConfig
 from ethograph.segment.samples import (
     ClassTable,
@@ -33,8 +35,9 @@ from ethograph.segment.samples import (
     dense_targets,
     sample_key,
 )
-from ethograph.segment.sessions import Session, filter_trials, open_session
+from ethograph.segment.sessions import Session, expand_changepoint_features, filter_trials, open_session
 from ethograph.utils.logging import log_to_file
+from ethograph.utils.xr_utils import get_time_coord
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +61,11 @@ def _materialise_run(config: SegmentConfig, data_dir: Path, sessions: list[Sessi
 
     rows: list[dict] = []
     layout: ColumnLayout | None = None
-    sessions = sessions if sessions is not None else [open_session(s, config) for s in config.sessions]
+    if sessions is None:
+        sessions = [open_session(s, config, expand_changepoints=False) for s in config.sessions]
+    config = derive_changepoint_scales(config, sessions)
+    for session in sessions:
+        expand_changepoint_features(session, config)
     for session in sessions:
         trials = filter_trials(session, config.trials)
         individuals = session.individuals(config)
@@ -99,6 +106,9 @@ def _materialise_run(config: SegmentConfig, data_dir: Path, sessions: list[Sessi
     if layout is None or not rows:
         raise ValueError("No samples were materialised — check trials.where and the sessions' trials.")
 
+    cpf = config.features.changepoint_features
+    if cpf is not None:
+        layout.changepoint_features = cpf.scales()
     pd.DataFrame(rows).to_csv(data_dir / INDEX_FILE, sep="\t", index=False)
     (data_dir / COLUMNS_FILE).write_text(yaml.safe_dump(layout.to_dict(), sort_keys=False), encoding="utf-8")
     (data_dir / CLASSES_FILE).write_text(yaml.safe_dump(classes.to_dict(), sort_keys=False), encoding="utf-8")
@@ -107,6 +117,80 @@ def _materialise_run(config: SegmentConfig, data_dir: Path, sessions: list[Sessi
     )
     logger.info("Materialised %d samples × %d columns → %s", len(rows), layout.n_features, data_dir)
     return data_dir
+
+
+def derive_changepoint_scales(config: SegmentConfig, sessions: list[Session]) -> SegmentConfig:
+    """The config with ``features.changepoint_features``'s scales read off the labels.
+
+    Every unset one of ``sigmas`` / ``horizon`` / ``max_length`` is derived
+    from the durations of the curated state labels of the branch's classes,
+    over the trials the config selects in every session, at the rate of the
+    first mask being expanded (:func:`~ethograph.features.changepoints.scales_from_durations`).
+    A config that is already resolved, or has no changepoint section, comes
+    back unchanged.
+    """
+    cpf = config.features.changepoint_features
+    if cpf is None or not cpf.unresolved:
+        return config
+    classes = class_table(config)
+    durations: list[np.ndarray] = []
+    n_sessions = 0
+    for session in sessions:
+        n_sessions += 1
+        for tid in filter_trials(session, config.trials):
+            labels = session.curated_labels(tid)
+            if labels.empty:
+                continue
+            df = states_only(labels)
+            df = df[df["labels"].astype(int).isin(classes.id_to_index)]
+            durations.append((df["offset_s"] - df["onset_s"]).to_numpy(dtype=float))
+    d = np.concatenate(durations) if durations else np.array([], dtype=float)
+    fs = _mask_rate(sessions[0], next(iter(cpf.inputs)))
+    context = f"{d.size} manual/curated state labels of {n_sessions} session(s)"
+    resolved = cpf.resolve(d, fs, context)
+    logger.info("features.changepoint_features: %s", resolved.note)
+    return replace(config, features=replace(config.features, changepoint_features=resolved))
+
+
+def _mask_rate(session: Session, var: str) -> float:
+    """Sampling rate of changepoint mask *var*, off its own time coordinate in the first trial."""
+    ds = session.trial_dataset(session.trial_ids[0])
+    if ds is None:
+        raise ValueError(f"{session.source}: changepoint expansion needs an xarray session")
+    if var not in ds.data_vars:
+        raise ValueError(f"{session.source}: no variable {var!r} to read a sampling rate off")
+    time = get_time_coord(ds[var])
+    if time is None or time.size < 2:
+        raise ValueError(f"{session.source}: {var!r} has no time coordinate to read a sampling rate off")
+    return float(1.0 / np.median(np.diff(np.asarray(time.values, dtype=float))))
+
+
+def resolved_config(config: SegmentConfig) -> SegmentConfig:
+    """The config with the changepoint scales the materialised dataset recorded.
+
+    What every stage after ``materialise`` calls before it opens a session or
+    saves a run config, so the numbers a run trains and predicts with are
+    the ones ``columns.yaml`` holds, never re-derived. A config that is
+    already resolved comes back unchanged; one that is unresolved with no
+    materialised dataset to read from is an error naming the fix.
+    """
+    cpf = config.features.changepoint_features
+    if cpf is None or not cpf.unresolved:
+        return config
+    path = config.data_dir / COLUMNS_FILE
+    if not path.is_file():
+        raise ValueError(
+            "features.changepoint_features leaves sigmas/horizon/max_length to be derived from the labels, "
+            f"which happens at materialise — and {config.data_dir} holds no materialised dataset yet. "
+            "Run Project.materialise() first, or spell the three values (samples) in the config."
+        )
+    scales = read_layout(config.data_dir).changepoint_features
+    if scales is None:
+        raise ValueError(
+            f"{path} records no changepoint scales — it was materialised by a config without "
+            "features.changepoint_features. Re-materialise, or spell sigmas/horizon/max_length in the config."
+        )
+    return replace(config, features=replace(config.features, changepoint_features=cpf.with_scales(scales)))
 
 
 def _check_fs(fs_ref: float, fs: float, key: str) -> None:

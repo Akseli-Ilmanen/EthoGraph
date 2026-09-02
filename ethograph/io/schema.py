@@ -146,7 +146,7 @@ def is_changepoint(var: Any) -> bool:
     ``merge_changepoints`` ORs together, what ``validate_changepoints``
     range-checks, and what the catalog hides from the feature list. It is
     deliberately **not** :data:`KIND`: the smooth expansions of a mask
-    (``*_cp_sigma3``, ``*_cp_segment_id``, …) are ordinary model inputs that
+    (``*_cp_sigma3``, ``*_cp_since``, …) are ordinary model inputs that
     share the ``changepoint_feature`` *label* but are not masks, and treating
     them as masks would OR float curves into an all-True mask and hide them
     from the GUI. Giving the marker its own attr is what lets :data:`KIND`

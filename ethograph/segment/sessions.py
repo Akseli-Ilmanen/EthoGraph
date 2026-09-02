@@ -162,9 +162,7 @@ class Session:
             self._video_devices[camera] = camera
             return camera
         tagged = [
-            c
-            for c in cameras
-            if any(camera in str(alignment.get_media(t, "video", c) or "") for t in self.trial_ids)
+            c for c in cameras if any(camera in str(alignment.get_media(t, "video", c) or "") for t in self.trial_ids)
         ]
         if len(tagged) != 1:
             raise ValueError(
@@ -189,12 +187,17 @@ class Session:
         return Path(found) if found else None
 
 
-def open_session(spec: SessionSpec, config: SegmentConfig | None = None) -> Session:
+def open_session(
+    spec: SessionSpec, config: SegmentConfig | None = None, *, expand_changepoints: bool = True
+) -> Session:
     """Open one session with the GUI's loaders (no Qt involved).
 
     *config* is only consulted for ``features.changepoint_features``; a
     pipeline with no feature engineering at all (``ethograph.spot``) passes
-    ``None``.
+    ``None``. ``materialise`` opens with ``expand_changepoints=False``, reads
+    the labels, and expands afterwards through
+    :func:`expand_changepoint_features` — that is where a config whose
+    scales are still to be derived gets them.
     """
     source = spec.source
     if not source.exists():
@@ -204,30 +207,43 @@ def open_session(spec: SessionSpec, config: SegmentConfig | None = None) -> Sess
     sid = session_id(source)
     logger.info("Opened session %s (%s backend, %d trials)", sid, result.data_loader.backend, len(result.trial_ids))
     session = Session(spec=spec, id=sid, result=result)
-    _expand_changepoint_features(session, config)
+    if expand_changepoints:
+        expand_changepoint_features(session, config)
     return session
 
 
-def _expand_changepoint_features(session: Session, config: SegmentConfig | None) -> None:
+def expand_changepoint_features(session: Session, config: SegmentConfig | None) -> None:
     """Apply ``config.features.changepoint_features`` (if set) to every trial, once.
 
     Runs before anything reads the session, so ``trial_windows``,
     ``trial_dataset`` and ``variable_attrs`` all see the expanded columns
-    consistently — materialise and infer share this one call site
-    (:func:`open_session`).
+    consistently. A config whose scales are unresolved is resolved from the
+    materialised dataset's ``columns.yaml`` (:func:`~ethograph.segment.materialise.resolved_config`),
+    so every stage after ``materialise`` expands at the recorded scale; a
+    session already expanded is left alone.
     """
     cfg = None if config is None else config.features.changepoint_features
     if cfg is None:
         return
+    assert config is not None
     if session.result.dt is None:
         raise ValueError(
             f"{session.source}: features.changepoint_features is set but this session has no "
             "xr.Dataset backend (pynapple changepoints are event times, not a dense mask — "
             "changepoint expansion is only implemented for xarray sessions)."
         )
+    if cfg.unresolved:
+        from ethograph.segment.materialise import resolved_config  # circular: materialise imports sessions
+
+        cfg = resolved_config(config).features.changepoint_features
+        assert cfg is not None and not cfg.unresolved
     from ethograph.features.changepoints import add_changepoint_features, merge_changepoints
 
+    generated = list(cfg.expanded_columns())
+
     def _expand(ds):
+        if generated and all(name in ds.data_vars for name in generated):
+            return ds
         # add_changepoint_features already recognises the legacy
         # `attrs["type"] = "changepoints"` spelling without migration (see
         # schema.kind_of/is_changepoint); migrate here anyway to normalise
@@ -246,6 +262,9 @@ def _expand_changepoint_features(session: Session, config: SegmentConfig | None)
             distribution=cfg.distribution,
             transforms=cfg.transforms,
             vars=vars,
+            horizon=cfg.horizon,
+            scale_by=cfg.scale_by,
+            max_length=cfg.max_length,
         )
 
     session.result.dt = session.result.dt.map_trials(_expand)

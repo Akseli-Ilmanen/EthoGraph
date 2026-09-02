@@ -88,7 +88,7 @@ Optional. Expands named raw changepoint masks into
 {func}`~ethograph.features.changepoints.more_changepoint_features` once per
 session, at `materialise`/`infer` time, and **merges the generated columns
 straight into `features.columns`** — you never spell out a name like
-`speed_troughs_cp_sigma2_weighted` yourself. See {doc}`../../api/changepoints`
+`speed_troughs_cp_since` yourself. See {doc}`../../api/changepoints`
 and `examples/segment_changepoint_features.ipynb` for what each output column
 looks like. This is the one exception to "features are built with the
 session, never by the pipeline": it is a deterministic expansion of a mask
@@ -96,10 +96,14 @@ already in the file, not a new modelling choice.
 
 | Key | Default | Meaning |
 |---|---|---|
-| `sigmas` | required | Kernel widths (in samples) for the Laplacian/Gaussian proximity curves, e.g. `[2.0, 3.0, 5.0]`. |
+| `sigmas` | derived | Kernel widths (in samples) of the proximity columns, e.g. `[2.0, 3.0, 5.0]`; the columns are named by rank (`_cp_prox0` is the narrowest). Left out, the ladder `horizon / (16, 8, 4)` is derived at materialise. |
 | `distribution` | `laplacian` | `laplacian` or `gaussian`. |
 | `inputs` | required | `feature → dim → values` — which raw changepoint masks to expand, dims pinned the same way as `features.columns` (the individual dim is still pinned per sample). |
-| `transforms` | all four | Subset of `binary`, `proximity`, `proximity_weighted`, `segment_id` — which of `more_changepoint_features`'s column groups to keep. `binary` duplicates the raw mask (just marked `normalise=0`), so drop it if you already select the mask itself. |
+| `transforms` | all four | Subset of `binary`, `proximity`, `offset`, `length` — which of `more_changepoint_features`'s column groups to keep. `binary` duplicates the raw mask (just marked `normalise=0`), so drop it if you already select the mask itself; `offset` is two columns, samples *since* the previous and *until* the next candidate, so a frame knows which side of its nearest candidate it is on; `length` is the log length of the candidate segment the frame sits in, the long range the offsets saturate on. |
+| `horizon` | derived | Where the `offset` columns saturate, in samples. Left out, materialise reads it off the curated labels: half the 5th-percentile duration, the largest radius that keeps both edges of the shortest behaviour apart. |
+| `scale_by` | unscaled | A feature whose values scale the proximity columns by `exp(−x / mean x)`, emphasising candidates where it is low — `speed` favours the troughs at rest over a dip inside a movement; an amplitude envelope favours the silences between calls. Pinned like the mask (it may carry no dim the mask lacks). |
+| `max_length` | derived | Where the `length` column saturates, in samples. Left out, materialise reads it off the curated labels: the 95th-percentile duration. |
+| `note` | written | Filled in by materialise when it derived any of the three — what was read off which labels — and carried into the run's `config.yaml`. Never set it by hand. |
 | `merge` | `false` | OR every mask named in `inputs` into one `changepoints` mask before expanding, so the whole section costs **one** block of columns instead of one per mask × pinned dim. All merged masks must share a `target_feature`. |
 
 Use `merge: true` when what matters is *that* something changed, not which
@@ -111,17 +115,29 @@ changepoints either way.
 Xarray sessions only — pynapple changepoints are event times, not a dense
 mask, so a pynapple session with this set raises immediately.
 
+**The scales are read off the labels.** With `sigmas`, `horizon` and
+`max_length` left out, `materialise` derives them from the durations of the
+curated state labels of the branch's classes (over the trials the config
+selects, at the rate of the first mask), writes them into the dataset's
+`columns.yaml` under `changepoint_features` together with a `note` saying
+exactly what was read off what, and every later stage reads them back from
+there: `train` saves them into the run's `config.yaml`, and `inference`
+expands each session at the run's scales, labelled or not. Until then the
+config is *unresolved*, and opening a session through it is an error that
+says to materialise first. Spell any of the three (in samples) to pin it;
+the note then lists only what was derived.
+
 ```yaml
 features:
   changepoint_features:
-    sigmas: [2.0, 3.0, 5.0]
-    transforms: [proximity, proximity_weighted, segment_id]
+    transforms: [proximity, offset, length]
+    scale_by: speed
     inputs:
       speed_troughs: {keypoint: [beakTip, stickTip]}
       speed_turning_points: {keypoint: [beakTip, stickTip]}
 ```
 
-This generates every `speed_troughs_cp_sigma*`/`speed_turning_points_cp_sigma*`
+This generates every `speed_troughs_cp_prox*`/`speed_turning_points_cp_prox*`
 (etc.) column for both keypoints and merges them into `features.columns` —
 naming `speed_troughs`/`speed_turning_points` there too, or under `inputs`
 again elsewhere, is a config error (`config.features.columns already names
@@ -258,6 +274,7 @@ stops the output flickering between classes mid-behaviour.
 | Key | Default | Meaning |
 |---|---|---|
 | `alpha` | `0.001` | Weight of the consistency term. Raise it if predictions flicker; lower it if short behaviours are being swallowed by their neighbours. The default is DLC2Action's, at which the term barely registers; MS-TCN's published value is `0.15`, which is what the earlier CETNet training script used and what `scripts/bench.py` pins when it asks whether the term helps at all. |
+| `candidate_gate` | `null` | Do not smooth across changepoint candidates. The consistency term normally penalises every frame-to-frame change in the prediction, including the ones at real boundaries; with the gate on it skips the change into and out of each candidate frame, so a boundary that sits on a candidate is free and everything else is smoothed as before. `null` = on when the inputs include a `{var}_cp_binary` column, off otherwise; `true` / `false` force it. |
 | `tau` | `4` | How large a frame-to-frame jump in log-probability that term still penalises; beyond `tau` it is truncated, so a genuine class change is not punished without limit. Ours, not a key of a config file upstream: DLC2Action writes MS-TCN's `tau` of 4 into the arithmetic as `clamp(..., max=16)`. Both it and `alpha` were tuned in the literature at 15–30 fps, so at a high sampling rate they are worth re-tuning together — that is what `scripts/experiment2_smoothing.py` sweeps. |
 | `focal` | `true` | Focus the loss on frames the model still gets wrong, instead of ones it already has right. |
 | `gamma` | `2` | How sharply `focal` does that. Higher = more focus on hard frames. No effect when `focal: false`. |

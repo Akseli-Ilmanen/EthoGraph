@@ -242,12 +242,11 @@ class TestAddChangepointFeatures:
         out = add_changepoint_features(ds, sigmas=[0.5, 3])
         expected = [
             "speed_troughs_cp_binary",
-            "speed_troughs_cp_sigma0.5",
-            "speed_troughs_cp_sigma3",
-            "speed_troughs_cp_binary_weighted",
-            "speed_troughs_cp_sigma0.5_weighted",
-            "speed_troughs_cp_sigma3_weighted",
-            "speed_troughs_cp_segment_id",
+            "speed_troughs_cp_prox0",
+            "speed_troughs_cp_prox1",
+            "speed_troughs_cp_since",
+            "speed_troughs_cp_until",
+            "speed_troughs_cp_length",
         ]
         for name in expected:
             assert name in out.data_vars, name
@@ -263,20 +262,67 @@ class TestAddChangepointFeatures:
         out = add_changepoint_features(ds, sigmas=[2])
         binary = out["speed_troughs_cp_binary"].sel(keypoint="head", individual="b")
         np.testing.assert_array_equal(binary, ds["speed_troughs"].sel(keypoint="head", individual="b"))
-        smooth = out["speed_troughs_cp_sigma2"].sel(keypoint="head", individual="b").values
-        assert smooth.max() == pytest.approx(1.0)
+        smooth = out["speed_troughs_cp_prox0"].sel(keypoint="head", individual="b").values
+        # an isolated changepoint reads 1 at its frame — kernels add, nothing is normalised per trial
+        assert smooth[5] == pytest.approx(1.0, abs=1e-2)
         assert smooth[5] > smooth[7] > smooth[9] > 0
-        seg = out["speed_troughs_cp_segment_id"].sel(keypoint="head", individual="b").values
-        assert seg[0] == 0 and seg[-1] == 1.0
-        assert len(np.unique(seg)) == 4
+        # offsets: default horizon 4 * max(sigmas) = 8 samples, clipped and scaled to [0, 1]
+        since = out["speed_troughs_cp_since"].sel(keypoint="head", individual="b").values
+        until = out["speed_troughs_cp_until"].sel(keypoint="head", individual="b").values
+        assert since[5] == 0 and until[5] == 0
+        assert since[6] == pytest.approx(1 / 8) and until[4] == pytest.approx(1 / 8)
+        assert since[13] == 1.0 and since[0] == 1.0  # saturated: horizon reached / no candidate yet
+        assert until[-1] == 1.0  # nothing ahead of the last changepoint
+        # length: log scale, saturating at 16 horizons = 128 samples; segments here are 5, 15, 13, 7
+        length = out["speed_troughs_cp_length"].sel(keypoint="head", individual="b").values
+        assert length[2] == pytest.approx(np.log1p(5) / np.log1p(128))
+        assert length[10] == pytest.approx(np.log1p(15) / np.log1p(128))
+        assert length[10] > length[2] and length.max() < 1.0
 
-    def test_fewer_dims_than_target_raises(self, ds):
+    def test_max_length_is_where_the_length_saturates(self, ds):
+        out = add_changepoint_features(ds, sigmas=[2], max_length=10)
+        length = out["speed_troughs_cp_length"].sel(keypoint="head", individual="b").values
+        assert length[2] == pytest.approx(np.log1p(5) / np.log1p(10))
+        assert length[10] == 1.0
+
+    def test_horizon_is_where_the_offsets_saturate(self, ds):
+        out = add_changepoint_features(ds, sigmas=[2], horizon=3)
+        since = out["speed_troughs_cp_since"].sel(keypoint="head", individual="b").values
+        assert since[6] == pytest.approx(1 / 3) and since[8] == 1.0
+        with pytest.raises(ValueError, match="positive"):
+            add_changepoint_features(ds, sigmas=[2], horizon=0)
+
+    def test_scale_by_with_fewer_dims_raises(self, ds):
         ds["global_cp"] = ds["speed_troughs"].isel(keypoint=0, individual=0, drop=True)
         ds["global_cp"].attrs = schema.changepoint_attrs(target_feature="speed")
-        with pytest.raises(ValueError):
-            add_changepoint_features(ds, sigmas=[1])
+        with pytest.raises(ValueError, match="pin them first"):
+            add_changepoint_features(ds, sigmas=[1], scale_by="speed")
 
-    def test_target_override(self, ds):
-        ds["other"] = ds["speed"] * 2
-        out = add_changepoint_features(ds, sigmas=[1], target_feature="other")
-        assert "speed_troughs_cp_binary_weighted" in out
+    def test_scale_by_emphasises_changepoints_where_the_signal_is_low(self, ds):
+        other = xr.zeros_like(ds["speed"])
+        other[5, :, :] = 100.0  # the first changepoint sits on a high value, the other two on zero
+        ds["other"] = other
+        plain = add_changepoint_features(ds, sigmas=[1])["speed_troughs_cp_prox0"]
+        scaled = add_changepoint_features(ds, sigmas=[1], scale_by="other")["speed_troughs_cp_prox0"]
+        plain = plain.sel(keypoint="head", individual="b").values
+        scaled = scaled.sel(keypoint="head", individual="b").values
+        assert plain[5] == pytest.approx(plain[20], abs=1e-3)
+        assert scaled[5] < 1e-6 < 0.99 < scaled[20]
+        out = add_changepoint_features(ds, sigmas=[1], scale_by="other")
+        assert "sigma 1 samples, scaled by other" in out["speed_troughs_cp_prox0"].attrs["description"]
+
+    def test_scales_from_durations(self):
+        from ethograph.features.changepoints import scales_from_durations
+
+        rng = np.random.default_rng(0)
+        durations = rng.uniform(0.2, 2.0, size=200)  # seconds
+        scales = scales_from_durations(durations, fs=100.0)
+        p5, p95 = np.percentile(durations, [5, 95])
+        assert scales.horizon == pytest.approx(0.5 * p5 * 100.0, abs=1e-4)
+        assert scales.max_length == pytest.approx(p95 * 100.0, abs=1e-4)
+        assert scales.sigmas == pytest.approx((scales.horizon / 16, scales.horizon / 8, scales.horizon / 4), abs=1e-4)
+        # a horizon never drops below one sample, and max_length never below two horizons
+        tiny = scales_from_durations([0.001, 0.002], fs=10.0)
+        assert tiny.horizon == 1.0 and tiny.max_length == 2.0
+        with pytest.raises(ValueError, match="at least two"):
+            scales_from_durations([0.5], fs=100.0)

@@ -68,3 +68,22 @@ session must have the same number of individuals. When the cast varies,
 `merge_video_features` writes the `s3d` variable into an xarray session. For
 pynapple and NWB sessions the sidecar `.nc` exists but the merge is by hand
 (a `TsdFrame` on the trial's time axis, or an NWB `TimeSeries`).
+
+## Self-supervision (C2F-TCN's ICC, DLC2Action's SSL layer)
+
+Not vendored: DLC2Action's `ssl/` tasks (contrastive, contrastive
+regression, temporal cycle consistency, segment order, masked features)
+hang off the `ssl_*` hooks of the vendored `Model` base class, which are dead
+code here; C2F-TCN's Iterative-Contrastive-Classify loop was never taken by
+DLC2Action either — only its contrastive ingredient.
+
+**SSL is primarily a low-labelled-data device.** C2F-TCN reports its gains
+in the 5–10 % labelled regime, and the semi-supervised loop exists to
+bootstrap pseudo-labels from unlabelled videos. A project with thousands of
+curated labels in a few sessions is not in that regime; what it lacks is
+*sessions*, and the question is generalisation to a held-out one
+(`cross_validate`). An SSL term could still help through unlabelled
+sessions/individuals, but it is unproven here and the largest engineering
+item on the list. Order of business stays: the coarse-to-fine ensemble in the
+adapter, the changepoint-gated transition loss, the feature ablations — and
+SSL only if the leave-one-session-out gap is still large after those.

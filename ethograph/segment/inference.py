@@ -5,18 +5,12 @@ LightGBM onset-model runs use, see :mod:`ethograph.labels.onset_curves`), one
 folder per call to :func:`infer`, named ``predictions_{run_name}_{timestamp}``
 so a re-run never overwrites an earlier one::
 
-<<<<<<< HEAD
     labels/
         predictions_{run_name}_{timestamp}/
             {stem}_predictions.tsv   # the GUI's native labels format, labeling_method=automated
-            {stem}_probs.npz    # per sample: "{key}" → (T, C) float16, "{key}_time" → (T,),
-                                # and "{key}_boundary" → (T,) where the run has that head
+            {stem}_probs.npz    # per sample: "{key}" → (T, C) float16, "{key}_time" → (T,)
             config.yaml         # the run's own config, as trained
             inference.yaml      # the run's name and the infer: settings applied here
-=======
-    {stem}_labels.tsv   # the GUI's native labels format, labeling_method=automated
-    {stem}_probs.npz    # per sample: "{key}" → (T, C) float16, "{key}_time" → (T,)
->>>>>>> 2c2b2f41aef4c9bc61d62a973b430becbbabb386
 
 The TSV is what the GUI loads and compares; the ``.npz`` exists only for the
 confidence overlay.
@@ -39,7 +33,7 @@ from ethograph.labels.intervals import LABELING_AUTOMATED, NO_RECIPIENT
 from ethograph.labels.ml import dense_to_intervals
 from ethograph.labels.onset_curves import labels_dir, write_provenance
 from ethograph.labels.tsv_store import save_labels_tsv
-from ethograph.segment.config import SegmentConfig, load_config
+from ethograph.segment.config import SegmentConfig, config_to_dict, load_config
 from ethograph.segment.materialise import COLUMNS_FILE
 from ethograph.segment.models import as_output, build_model
 from ethograph.segment.postprocess import postprocess_intervals
@@ -265,7 +259,9 @@ def inference(
     with log_to_file(loaded.run_dir / "infer.log"):
         written = []
         for spec in specs:
-            session = open_session(spec, config)
+            # The run's config carries the scales it was trained at; the
+            # project's may still be waiting to derive them.
+            session = open_session(spec, loaded.config)
             out_dir = prediction_run_dir(session.source, loaded.name, timestamp)
             tsv, _ = infer_session(config, loaded, session, out_dir=out_dir)
             written.append(tsv)

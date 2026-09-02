@@ -19,9 +19,9 @@ from __future__ import annotations
 import copy
 import dataclasses
 import logging
-from dataclasses import MISSING, dataclass, field, fields, is_dataclass
+from dataclasses import MISSING, dataclass, field, fields, is_dataclass, replace
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, ClassVar, Iterable
 
 import yaml
 
@@ -279,9 +279,22 @@ class ChangepointFeaturesConfig:
     decide beyond which columns to keep — see
     ``examples/segment_changepoint_features.ipynb`` for what each one looks
     like on real data before turning it on here.
+
+    **The temporal scales are read off the labels unless spelled.** Leave
+    ``sigmas``, ``horizon`` and ``max_length`` out and ``materialise``
+    derives them from the durations of the curated state labels
+    (:func:`~ethograph.features.changepoints.scales_from_durations`),
+    records them in the dataset's ``columns.yaml`` with a ``note`` saying
+    what happened, and every later stage reads them back from there, so a
+    session predicted later — labelled or not — is expanded at exactly the
+    training scale. A config with any of the three unset is *unresolved*
+    (:attr:`unresolved`) until then; spell a value, in samples, to pin it.
     """
 
-    sigmas: list[float] = field(default_factory=list)
+    #: Kernel widths of the proximity columns, in samples; ``None`` derives
+    #: the ladder ``horizon / (16, 8, 4)``. The columns are named by rank
+    #: (``_cp_prox0``…), so the names never depend on the values.
+    sigmas: list[float] | None = None
     distribution: str = "laplacian"
     #: OR every mask named in ``inputs`` into one ``changepoints`` mask
     #: (across every non-time dim) and expand *that* — one block of columns
@@ -298,6 +311,23 @@ class ChangepointFeaturesConfig:
     #: (just marked ``normalise=0``), so drop it if you already select the
     #: mask itself.
     transforms: list[str] | None = None
+    #: Reach of the ``offset`` columns, in samples: the distance to the
+    #: previous / next candidate saturates here. ``None`` derives it from the
+    #: shortest labelled behaviour (half its 5th-percentile duration).
+    horizon: float | None = None
+    #: Feature whose values scale the proximity columns by ``exp(-x / mean x)``,
+    #: emphasising candidates where it is low — ``speed`` picks the troughs at
+    #: rest over a dip inside a movement, an amplitude envelope the silences
+    #: between calls. Pinned like the mask (it may carry no dim the mask
+    #: lacks). ``None`` leaves the proximity unscaled.
+    scale_by: str | None = None
+    #: Where the ``length`` column saturates, in samples. ``None`` derives it
+    #: from the longest labelled behaviours (the 95th-percentile duration).
+    max_length: float | None = None
+    #: Written by ``materialise`` when it derived any of the three: what was
+    #: read off which labels. Carried into the run's ``config.yaml`` so a
+    #: run says where its numbers came from. Never set it by hand.
+    note: str | None = None
 
     def __post_init__(self) -> None:
         from ethograph.features.changepoints import CP_TRANSFORMS
@@ -307,9 +337,14 @@ class ChangepointFeaturesConfig:
                 f"features.changepoint_features.distribution must be 'laplacian' or 'gaussian', "
                 f"got {self.distribution!r}"
             )
-        self.sigmas = [float(s) for s in self.sigmas]
-        if not self.sigmas:
-            raise ValueError("features.changepoint_features.sigmas must name at least one sigma")
+        if self.sigmas is not None:
+            self.sigmas = [float(s) for s in self.sigmas]
+            if not self.sigmas:
+                raise ValueError(
+                    "features.changepoint_features.sigmas must name at least one sigma, or be left out to be derived"
+                )
+            if any(not s > 0 for s in self.sigmas):
+                raise ValueError(f"features.changepoint_features.sigmas must be positive (samples), got {self.sigmas}")
         if not self.inputs:
             raise ValueError("features.changepoint_features.inputs must name at least one changepoint variable")
         if self.transforms is None:
@@ -319,20 +354,106 @@ class ChangepointFeaturesConfig:
             raise ValueError(
                 f"features.changepoint_features.transforms must be a subset of {CP_TRANSFORMS}, got {sorted(unknown)}"
             )
+        if self.horizon is not None:
+            self.horizon = float(self.horizon)
+            if not self.horizon > 0:
+                raise ValueError(
+                    f"features.changepoint_features.horizon must be positive (samples), got {self.horizon}"
+                )
+        if self.max_length is not None:
+            self.max_length = float(self.max_length)
+            if not self.max_length > 0:
+                raise ValueError(
+                    f"features.changepoint_features.max_length must be positive (samples), got {self.max_length}"
+                )
+
+    @property
+    def unresolved(self) -> bool:
+        """``True`` while any of the three scales still has to be read off the labels."""
+        return self.sigmas is None or self.horizon is None or self.max_length is None
+
+    @property
+    def n_sigmas(self) -> int:
+        """How many proximity columns each mask expands to — fixed before the values are."""
+        from ethograph.features.changepoints import SIGMA_DIVISORS
+
+        return len(self.sigmas) if self.sigmas is not None else len(SIGMA_DIVISORS)
+
+    SCALE_KEYS: ClassVar[tuple[str, ...]] = ("sigmas", "horizon", "max_length", "note")
+
+    def scales(self) -> dict[str, Any]:
+        """The resolved scales as the plain block ``columns.yaml`` records."""
+        if self.unresolved:
+            raise ValueError("features.changepoint_features is unresolved — materialise first")
+        return {
+            "sigmas": [float(s) for s in self.sigmas or []],
+            "horizon": float(self.horizon),  # type: ignore[arg-type]
+            "max_length": float(self.max_length),  # type: ignore[arg-type]
+            "note": self.note,
+        }
+
+    def with_scales(self, scales: dict[str, Any]) -> ChangepointFeaturesConfig:
+        """A copy resolved from a recorded block — a materialised dataset's, or a run's."""
+        return replace(
+            self,
+            sigmas=[float(s) for s in scales["sigmas"]],
+            horizon=float(scales["horizon"]),
+            max_length=float(scales["max_length"]),
+            note=scales.get("note"),
+        )
+
+    def resolve(self, durations_s: Any, fs: float, context: str) -> ChangepointFeaturesConfig:
+        """A copy with every unset scale read off *durations_s* (seconds) at *fs* Hz.
+
+        *context* says which labels those were, for the note. A config that
+        is already resolved comes back unchanged.
+        """
+        from ethograph.features.changepoints import (
+            HORIZON_FRACTION,
+            LONG_PERCENTILE,
+            SHORT_PERCENTILE,
+            SIGMA_DIVISORS,
+            scales_from_durations,
+        )
+
+        if not self.unresolved:
+            return self
+        derived = scales_from_durations(durations_s, fs)
+        horizon = derived.horizon if self.horizon is None else float(self.horizon)
+        max_length = derived.max_length if self.max_length is None else float(self.max_length)
+        sigmas = [horizon / k for k in SIGMA_DIVISORS] if self.sigmas is None else list(self.sigmas)
+        parts = []
+        if self.horizon is None:
+            parts.append(
+                f"horizon = {HORIZON_FRACTION:g} x p{SHORT_PERCENTILE:g}(duration) = {horizon:g} samples "
+                f"({horizon / fs:.3f} s)"
+            )
+        if self.max_length is None:
+            parts.append(
+                f"max_length = p{LONG_PERCENTILE:g}(duration) = {max_length:g} samples ({max_length / fs:.3f} s)"
+            )
+        if self.sigmas is None:
+            divisors = ", ".join(f"{k:g}" for k in SIGMA_DIVISORS)
+            parts.append(f"sigmas = horizon / ({divisors}) = [{', '.join(f'{s:g}' for s in sigmas)}] samples")
+        note = (
+            f"Derived at materialise from {context} at {fs:g} Hz: " + "; ".join(parts) + ". "
+            "Spell sigmas, horizon or max_length (samples) under features.changepoint_features to pin one."
+        )
+        return replace(self, sigmas=sigmas, horizon=horizon, max_length=max_length, note=note)
 
     def expanded_columns(self) -> dict[str, dict[str, Any]]:
-        """The ``features.columns`` entries this config generates."""
+        """The ``features.columns`` entries this config generates — known before the scales are."""
         from ethograph.features.changepoints import cp_feature_names
 
         out: dict[str, dict[str, Any]] = {}
         if self.merge:
             # The merge ORs across every non-time dim, so the one surviving
             # mask has no dim left to pin.
-            for name in cp_feature_names(MERGED_CHANGEPOINTS, self.sigmas, self.transforms):
+            for name in cp_feature_names(MERGED_CHANGEPOINTS, self.n_sigmas, self.transforms):
                 out[name] = {}
             return out
         for var, dims in self.inputs.items():
-            for name in cp_feature_names(var, self.sigmas, self.transforms):
+            for name in cp_feature_names(var, self.n_sigmas, self.transforms):
                 out[name] = dict(dims or {})
         return out
 

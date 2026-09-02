@@ -118,7 +118,8 @@ class TestTau:
 
     def test_the_default_is_upstreams_loss_to_the_last_bit(self) -> None:
         criterion, settings = build_loss({}, N_CLASSES)
-        upstream = MS_TCN_Loss(num_classes=N_CLASSES, **{k: v for k, v in settings.items() if k != "tau"})
+        ours = {"tau", "candidate_gate"}
+        upstream = MS_TCN_Loss(num_classes=N_CLASSES, **{k: v for k, v in settings.items() if k not in ours})
         logits, target = self._logits()
         assert settings["tau"] == DEFAULT_TAU
         assert torch.equal(criterion(logits, target), upstream(logits, target))
@@ -239,3 +240,66 @@ class TestCircleLoss:
         logits, target, mask = self._batch()
         _total, parts = objective(ModelOutput(logits=logits), target, mask)
         assert "circle" in parts and "frame" not in parts
+
+
+class TestCandidateGate:
+    """The consistency term skips the two transitions touching a changepoint candidate — and nothing else."""
+
+    @staticmethod
+    def _one_jump(c: int) -> tuple[torch.Tensor, torch.Tensor]:
+        """Logits certain of class 0 before frame *c* and of class 1 from it on; the target agrees."""
+        logits = torch.zeros(1, B, N_CLASSES, T)
+        logits[..., 0, :c] = 8.0
+        logits[..., 1, c:] = 8.0
+        target = torch.zeros(B, T, dtype=torch.long)
+        target[:, c:] = 1
+        return logits, target
+
+    @staticmethod
+    def _loss(candidate_gate: bool):
+        from ethograph.segment.losses import TruncatedMSTCNLoss
+
+        return TruncatedMSTCNLoss(num_classes=N_CLASSES, focal=False, alpha=1.0, candidate_gate=candidate_gate)
+
+    def test_no_candidates_is_upstreams_loss(self) -> None:
+        logits, target = self._one_jump(30)
+        none = torch.zeros(B, T, dtype=torch.bool)
+        gated = self._loss(True)(logits, target, none)
+        plain = MS_TCN_Loss(num_classes=N_CLASSES, focal=False, alpha=1.0)(logits, target)
+        assert torch.isclose(gated, plain)
+
+    def test_a_candidate_exempts_the_jump_into_and_out_of_it(self) -> None:
+        """A jump at frame ``c`` is free with a candidate at ``c`` or ``c - 1``, and costs with one further away."""
+        c = 30
+        logits, target = self._one_jump(c)
+        ce_only = self._loss(True)._ce_loss(logits[0], target)
+
+        def cost(frame: int) -> float:
+            candidates = torch.zeros(B, T, dtype=torch.bool)
+            candidates[:, frame] = True
+            return float(self._loss(True)(logits, target, candidates) - ce_only)
+
+        assert cost(c) == pytest.approx(0.0, abs=1e-6)
+        assert cost(c - 1) == pytest.approx(0.0, abs=1e-6)
+        assert cost(c + 1) > 1e-3
+        assert cost(c - 2) > 1e-3
+        # ...and that cost is exactly upstream's consistency term, averaged over one fewer pair of transitions
+        ungated = float(self._loss(False)(logits, target) - ce_only)
+        assert cost(c + 1) == pytest.approx(ungated * (T - 1) / (T - 3), rel=1e-4)
+
+    def test_the_gate_is_off_by_default_and_ignores_candidates_then(self) -> None:
+        c = 30
+        logits, target = self._one_jump(c)
+        candidates = torch.zeros(B, T, dtype=torch.bool)
+        candidates[:, c] = True
+        assert torch.isclose(self._loss(False)(logits, target, candidates), self._loss(False)(logits, target))
+
+    def test_build_loss_resolves_the_gate_from_the_layout(self) -> None:
+        from ethograph.segment.losses import CANDIDATE_GATE_KEY
+
+        assert build_loss({}, N_CLASSES, has_candidates=True)[1][CANDIDATE_GATE_KEY] is True
+        assert build_loss({}, N_CLASSES, has_candidates=False)[1][CANDIDATE_GATE_KEY] is False
+        assert build_loss({}, N_CLASSES)[1][CANDIDATE_GATE_KEY] is False
+        assert build_loss({CANDIDATE_GATE_KEY: False}, N_CLASSES, has_candidates=True)[1][CANDIDATE_GATE_KEY] is False
+        with pytest.raises(ValueError, match="no changepoint candidate column"):
+            build_loss({CANDIDATE_GATE_KEY: True}, N_CLASSES, has_candidates=False)

@@ -44,7 +44,7 @@ from torch.utils.data import DataLoader
 from ethograph.segment.config import PostprocessConfig, SegmentConfig, TrainConfig, save_config
 from ethograph.segment.dataset import MaterialisedStore, SampleDataset, collate
 from ethograph.segment.losses import build_objective
-from ethograph.segment.materialise import COLUMNS_FILE, materialise
+from ethograph.segment.materialise import COLUMNS_FILE, materialise, resolved_config
 from ethograph.segment.metrics import (
     EVAL_ARRAYS_FILE,
     METRICS_FILE,
@@ -203,7 +203,7 @@ def _predict_dense(model: torch.nn.Module, loader: DataLoader, device: torch.dev
     model.eval()
     out = DensePredictions({}, {}, {})
     with torch.no_grad():
-        for x, y, mask, keys in loader:
+        for x, y, mask, _candidates, keys in loader:
             result = as_output(model(x.to(device), mask.to(device)))
             probs = torch.softmax(result.logits[-1], dim=1)
             p_max, p_arg = probs.max(dim=1)
@@ -244,6 +244,7 @@ def train(config: SegmentConfig, on_eval: Callable[[int, float], None] | None = 
     if not (data_dir / COLUMNS_FILE).is_file():
         logger.info("No materialised dataset at %s — materialising first", data_dir)
         materialise(config)
+    config = resolved_config(config)
     tcfg = config.train
     store = MaterialisedStore.open(data_dir, tcfg.subsample)
     if tcfg.subsample > 1:
@@ -324,7 +325,7 @@ def _train_run(
 
     n_classes = store.classes.n_classes
     model = build_model(config.model.architecture, config.model.params, layout.n_features, n_classes).to(device)
-    objective, loss_settings = build_objective(config, n_classes)
+    objective, loss_settings = build_objective(config, n_classes, layout=store.layout)
     objective = objective.to(device)
     logger.info("Objective: %s", yaml.safe_dump(loss_settings, sort_keys=False, default_flow_style=True).strip())
     # Constant learning rate, as upstream trains these models. A schedule would
@@ -365,11 +366,11 @@ def _train_run(
         epoch_loss = 0.0
         epoch_parts: dict[str, float] = {}
         correct = total = 0
-        for x, y, mask, _ in train_loader:
-            x, y, mask = x.to(device), y.to(device), mask.to(device)
+        for x, y, mask, candidates, _ in train_loader:
+            x, y, mask, candidates = x.to(device), y.to(device), mask.to(device), candidates.to(device)
             optimizer.zero_grad()
             output = as_output(model(x, mask))
-            loss, parts = objective(output, y, mask)
+            loss, parts = objective(output, y, mask, candidates)
             loss.backward()
             if tcfg.grad_clip > 0:
                 torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=tcfg.grad_clip)
