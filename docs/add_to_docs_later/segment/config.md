@@ -149,6 +149,65 @@ exception is the raw mask itself (`speed_troughs`): if you select it directly
 in `features.columns`, rather than taking its `_cp_binary` twin from here, add
 it to `zscore_exclude`.
 
+### `features.neural`
+
+Optional. Bins a pynapple session's **spike trains** into one dense feature
+at session-open time — single-trial neural decoding with the same models,
+split, metrics and prediction sets as behaviour. A session's units arrive as
+a `TsGroup` (spike *times*, which no loader can read as a feature), and how
+they are binned — bin size, smoothing, a rate versus a count — is a
+modelling choice worth sweeping. So it is spelled here as pynapple
+expressions, run at every open, and never written out as a feature file;
+another binning is another config (`base:` this one, change `features.name`
+and `transform`) and another materialised dataset.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `units` | `units` | The `TsGroup`'s key in the session (`units.npz` → `units`). |
+| `name` | `rate` | The feature the transform produces, declared `kind: neural_feature`. |
+| `transform` | required | pynapple expressions applied in order. `x` is the previous result (the `TsGroup` for the first); `nap`, `np` and `sliding_window` are in scope. The last must leave a `TsdFrame`, one column per unit. |
+
+```yaml
+sessions:
+  - source: .../behav/pynapple/units.npz          # trials from .ethograph/alignment.nwb beside it or one folder up
+    labels_path: .../behav/Trial_data_labels.tsv
+individual: A
+features:
+  name: rate_5ms_boxcar25ms
+  neural:
+    units: units
+    name: rate
+    transform:
+      - x.count(0.005) / 0.005                    # spikes / s in 5 ms bins → 200 Hz
+      - sliding_window(x, window_size=0.025)      # 25 ms boxcar; reduction="sum" for counts per window
+  columns: {}                                     # the neural feature alone; kinematics at the same rate may join it
+  preprocess: {clip_percentiles: null}            # a rate's tail is signal, not an outlier
+```
+
+`sliding_window(x, window_size, step_size=None, reduction="mean")`
+({func}`ethograph.features.neural.sliding_window`) reads the bin size off
+the frame, so the window is in seconds whatever `count` was given; spike
+times themselves cannot be windowed — bin first.
+
+**The unit columns are read off the session, not written in the YAML.** The
+feature's columns are the session's own unit ids, so `features.columns`
+does not spell them (it may be empty when this section is set): `materialise`
+resolves them from the opened session, records them in the dataset's
+`columns.yaml` under `neural_columns`, `train` reads them back into the run's
+`config.yaml`, and `inference` takes them from the run — a project with no
+`data/` left still predicts. Spell `features.columns.{name}: {{name}_columns:
+[ids]}` yourself to pin a subset (`{name}_columns` is the dim a lone
+`TsdFrame` is selected on; a session where another frame shares the same
+column labels calls it `columns`). Which is also why a neural project is
+**one session**: units are only consistent within a recording, and two
+sessions with different unit lists are refused by name. An xarray session
+with this section set is refused too — it has no spike trains to bin.
+
+The feature is z-scored per run like any kinematic column (`normalise: 1`),
+and `train.drop_kinds: [neural_feature]` is its ablation. The predictions
+land in the session's own `labels/predictions_{run}_{timestamp}/` like any
+other run's, so they open in the GUI against the curated labels.
+
 ### `features.preprocess`
 
 All five keys live under `features.preprocess` in the YAML, but they run at
@@ -358,6 +417,7 @@ Three ratios. Your trials — every trial of every session, after
 | `test_fraction` | `0.2` | Fraction read once, at the end. |
 | `seed` | `0` | Change it to re-draw the split. |
 | `holdout_sessions` | `[]` | Sessions held out *whole* as `test` — a cross-validation fold. Written per fold by `project.cross_validate()`; see below. |
+| `holdout_trials` | `[]` | Trial ids held out whole as `test`, in every session — a trial-level fold. Written per fold by `project.cross_validate(n_folds=k)`; exclusive with `holdout_sessions`. |
 
 The three fractions must sum to **1**, and an override that breaks that is an
 error rather than a silent renormalisation. Splitting is by **whole trial**,
@@ -384,6 +444,17 @@ the fractions say; the sessions that remain are split train/val by
 leave-one-session-out fold, and `project.cross_validate()` writes it once per
 session rather than asking you to. You rarely set this key by hand — it is
 documented because you will see it in a fold's `runs/{run}/config.yaml`.
+
+#### `holdout_trials` — one trial fold
+
+The same thing one level down, for a project whose sessions cannot be held
+out — one session of neural decoding (`features.neural`), whose units exist
+in that recording only. Every sample of a trial id named here is `test`, in
+every session; the rest is split train/val as above. A trial id no session
+has is an error, since a fold that holds out nothing would score the
+training set. `project.cross_validate(n_folds=k)` deals every trial into
+exactly one of `k` folds and writes this per fold; you will see it in a
+fold's `runs/{run}/config.yaml`.
 
 #### What validation actually buys you
 

@@ -19,7 +19,7 @@ confidence overlay.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
 from typing import Iterable
@@ -32,7 +32,7 @@ import yaml
 from ethograph.labels.intervals import LABELING_AUTOMATED, NO_RECIPIENT
 from ethograph.labels.ml import dense_to_intervals
 from ethograph.labels.onset_curves import labels_dir, write_provenance
-from ethograph.labels.tsv_store import save_labels_tsv
+from ethograph.labels.tsv_store import load_labels_tsv, save_labels_tsv
 from ethograph.segment.config import SegmentConfig, config_to_dict, load_config
 from ethograph.segment.materialise import COLUMNS_FILE
 from ethograph.segment.models import as_output, build_model
@@ -140,9 +140,29 @@ def _segment_confidence(conf: np.ndarray, time: np.ndarray, onset: float, offset
     return float(conf[m].mean()) if m.any() else float(conf.max())
 
 
-def infer_session(config: SegmentConfig, run: Run, session: Session, out_dir: Path | None = None) -> tuple[Path, Path]:
-    """Predict every (trial, individual) of *session*; returns the two written paths."""
-    trials = filter_trials(session, config.trials)
+def infer_session(
+    config: SegmentConfig,
+    run: Run,
+    session: Session,
+    out_dir: Path | None = None,
+    trials: Iterable[int | str] | None = None,
+) -> tuple[Path, Path]:
+    """Predict every (trial, individual) of *session*; returns the two written paths.
+
+    *trials* narrows the trials passing the config's filter to the ids it
+    names — how a trial-level cross-validation fold predicts only what it
+    held out.
+    """
+    chosen = filter_trials(session, config.trials)
+    if trials is not None:
+        wanted = {str(t) for t in trials}
+        chosen = [t for t in chosen if str(t) in wanted]
+    return _infer_trials(config, run, session, chosen, out_dir)
+
+
+def _infer_trials(
+    config: SegmentConfig, run: Run, session: Session, trials: list[int | str], out_dir: Path | None
+) -> tuple[Path, Path]:
     individuals = session.individuals(config)
     rows: list[dict] = []
     arrays: dict[str, np.ndarray] = {}
@@ -242,18 +262,44 @@ def infer_session(config: SegmentConfig, run: Run, session: Session, out_dir: Pa
     return tsv_path, npz_path
 
 
+def inherit_neural_columns(config: SegmentConfig, run_config: SegmentConfig) -> SegmentConfig:
+    """The project config with its unit columns taken from the run that recorded them.
+
+    ``features.neural`` leaves the unit columns to be read off the session
+    at materialise; the run's saved config carries the result, so inference
+    needs neither the materialised dataset nor a second reading of the
+    spikes. A project that spells the entry itself is left alone — and held
+    to the run's layout like any other column, by the layout check.
+    """
+    cfg = config.features.neural
+    if cfg is None or cfg.name in config.features.columns:
+        return config
+    recorded = run_config.features.columns.get(cfg.name)
+    if recorded is None:
+        raise ValueError(
+            f"features.neural names {cfg.name!r}, but the run was trained without it (its columns: "
+            f"{sorted(run_config.features.columns)}) — pick a run trained on this config, or spell "
+            f"features.columns.{cfg.name} to say which units to feed it."
+        )
+    columns = {**config.features.columns, cfg.name: dict(recorded)}
+    return replace(config, features=replace(config.features, columns=columns))
+
+
 def inference(
     config: SegmentConfig,
     run: str | Path | None = None,
     sessions: Iterable[str | Path] | None = None,
+    trials: Iterable[int | str] | None = None,
 ) -> list[Path]:
     """Predict every session of the config; *sessions* narrows that to a few.
 
     A session is named by its full ``source`` path or just the file's stem,
     which is how a cross-validation fold asks for the one session it held
-    out.
+    out; *trials* narrows every session to the trial ids it names, which is
+    how a trial-level fold asks for the trials it held out.
     """
     loaded = load_run(resolve_run_dir(config, run))
+    config = inherit_neural_columns(config, loaded.config)
     specs = config.select_sessions(sessions)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     with log_to_file(loaded.run_dir / "infer.log"):
@@ -263,6 +309,36 @@ def inference(
             # project's may still be waiting to derive them.
             session = open_session(spec, loaded.config)
             out_dir = prediction_run_dir(session.source, loaded.name, timestamp)
-            tsv, _ = infer_session(config, loaded, session, out_dir=out_dir)
+            tsv, _ = infer_session(config, loaded, session, out_dir=out_dir, trials=trials)
             written.append(tsv)
         return written
+
+
+def merge_prediction_sets(
+    paths: list[Path], out_dir: Path, stem: str, *, model_config: Path, inference_note: dict
+) -> Path:
+    """Concatenate prediction sets written for *disjoint* trials of one session into one.
+
+    What a trial-level cross-validation ends with: each fold predicted the
+    trials it held out, and this stitches them into the one set you open in
+    the GUI against the curated labels — every trial predicted exactly once,
+    by a model that never saw it. Rows keep the ``prediction_source`` of the
+    fold that wrote them, and the ``_probs.npz`` arrays are merged by sample
+    key. Returns the merged TSV's path.
+    """
+    if not paths:
+        raise ValueError("Nothing to merge — no prediction sets were written.")
+    frames = [load_labels_tsv(p) for p in paths]
+    df = pd.concat(frames, ignore_index=True)
+    if not df.empty:
+        df = df.sort_values(["trial", "onset_s"], kind="stable").reset_index(drop=True)
+    arrays: dict[str, np.ndarray] = {}
+    for p in paths:
+        with np.load(p.with_name(f"{stem}_probs.npz")) as npz:
+            arrays.update({k: npz[k] for k in npz.files})
+    out_dir.mkdir(parents=True, exist_ok=True)
+    tsv_path = out_dir / f"{stem}_predictions.tsv"
+    save_labels_tsv(tsv_path, df)
+    np.savez_compressed(out_dir / f"{stem}_probs.npz", **arrays)
+    write_provenance(out_dir, model_config=model_config, inference=inference_note)
+    return tsv_path

@@ -18,13 +18,20 @@ import numpy as np
 import pandas as pd
 
 from ethograph.features.columns import FS_RTOL, sampling_rate
+from ethograph.features.neural import transform_units
 from ethograph.io import schema
-from ethograph.io.catalog import INDIVIDUAL_DIMS, PynappleLoader, XarrayLoader
+from ethograph.io.catalog import INDIVIDUAL_DIMS, PynappleLoader, XarrayLoader, catalog_from_pynapple
 from ethograph.io.data_loader import LoadResult, load_features_dataset
 from ethograph.labels.intervals import LABELING_AUTOMATED
 from ethograph.labels.onset_model import session_id
 from ethograph.labels.tsv_store import get_trial_from_tsv
-from ethograph.segment.config import MERGED_CHANGEPOINTS, SegmentConfig, SessionSpec, TrialsConfig
+from ethograph.segment.config import (
+    MERGED_CHANGEPOINTS,
+    NeuralFeaturesConfig,
+    SegmentConfig,
+    SessionSpec,
+    TrialsConfig,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +55,8 @@ class Session:
     result: LoadResult
     _sidecar: dict[str, dict[str, Any]] | None = field(default=None, repr=False)
     _video_devices: dict[str, str] = field(default_factory=dict, repr=False)
+    #: The feature :func:`expand_neural_features` added, once it has.
+    _neural_feature: str | None = field(default=None, repr=False)
 
     @property
     def source(self) -> Path:
@@ -207,9 +216,79 @@ def open_session(
     sid = session_id(source)
     logger.info("Opened session %s (%s backend, %d trials)", sid, result.data_loader.backend, len(result.trial_ids))
     session = Session(spec=spec, id=sid, result=result)
+    expand_neural_features(session, config)
     if expand_changepoints:
         expand_changepoint_features(session, config)
     return session
+
+
+def expand_neural_features(session: Session, config: SegmentConfig | None) -> None:
+    """Apply ``config.features.neural`` to the session's spike trains, once.
+
+    Runs the transform over the whole session (every trial reads its window
+    off the one result), puts the ``TsdFrame`` into the session's pynapple
+    objects under ``neural.name``, rebuilds the catalog and loader so it is
+    selected like any other feature, and declares it ``neural_feature`` in
+    the in-memory sidecar so the layout records its kind and normalises it.
+    Nothing is written to disk. A session with an ``xr.Dataset`` backend has
+    no spike trains to bin, and is refused.
+    """
+    cfg = None if config is None else config.features.neural
+    if cfg is None or session._neural_feature == cfg.name:
+        return
+    data = session.result.pynapple_data
+    if data is None:
+        raise ValueError(
+            f"{session.source}: features.neural is set but this session has no pynapple backend — "
+            "spike trains are a TsGroup, which only a pynapple session (.npz / folder / NWB) carries."
+        )
+    import pynapple as nap
+
+    if cfg.units not in data:
+        groups = sorted(k for k, v in data.items() if isinstance(v, nap.TsGroup))
+        raise ValueError(
+            f"{session.source}: features.neural.units names {cfg.units!r}, which the session does not "
+            f"have (its TsGroups: {groups or 'none'})"
+        )
+    units = data[cfg.units]
+    if not isinstance(units, nap.TsGroup):
+        raise ValueError(f"{session.source}: {cfg.units!r} is a {type(units).__name__}, not a TsGroup of spike trains")
+    if cfg.name in data:
+        raise ValueError(
+            f"{session.source}: the session already has a variable called {cfg.name!r} — "
+            "give features.neural.name a name the session does not use"
+        )
+    frame = transform_units(units, cfg.transform)
+    logger.info(
+        "%s: features.neural → %r, %d units at %.6g Hz (%s)",
+        session.id,
+        cfg.name,
+        frame.shape[1],
+        sampling_rate(np.asarray(frame.t, dtype=np.float64)),
+        " | ".join(cfg.transform),
+    )
+    data[cfg.name] = frame
+    catalog = catalog_from_pynapple(data, source_path=session.source)
+    session.result.catalog = catalog
+    session.result.data_loader = PynappleLoader(data, catalog)
+    session._sidecar = {**session.sidecar, cfg.name: {schema.KIND: schema.NEURAL_FEATURE, schema.NORMALISE: 1}}
+    session._neural_feature = cfg.name
+
+
+def neural_columns(session: Session, cfg: NeuralFeaturesConfig) -> dict[str, list[str]]:
+    """The ``features.columns`` entry the session's units resolve to: ``{dim: [unit ids]}``.
+
+    Read off the loader, so the dim is spelled exactly as ``select()`` reads
+    it (``{name}_columns`` for a lone frame). A session that has not been
+    expanded, or whose transform left a single column with no dim to pin,
+    is an error.
+    """
+    if session._neural_feature != cfg.name:
+        raise ValueError(f"{session.source}: features.neural has not been applied to this session")
+    dims = session.result.data_loader.feature_dims(cfg.name)
+    if not dims:
+        raise ValueError(f"{session.source}: the neural feature {cfg.name!r} has no column dim to pin")
+    return {dim: [str(v) for v in values] for dim, values in dims.items()}
 
 
 def expand_changepoint_features(session: Session, config: SegmentConfig | None) -> None:

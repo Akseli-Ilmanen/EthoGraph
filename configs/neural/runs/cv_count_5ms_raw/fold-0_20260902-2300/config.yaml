@@ -1,0 +1,160 @@
+sessions:
+- source: C:\Users\aksel\Documents\AI_data\derivatives\sub-02_id-Poppy\ses-000_date-20260308_01\behav\pynapple\units.npz
+  labels_path: C:\Users\aksel\Documents\AI_data\derivatives\sub-02_id-Poppy\ses-000_date-20260308_01\behav\Trial_data_labels.tsv
+  video_dir: null
+  name: null
+root: C:\Users\aksel\Documents\Code\ethograph\configs\neural
+individual: Poppy
+trials:
+  where: {}
+  limit: null
+features:
+  name: count_5ms_raw
+  columns:
+    rate:
+      rate_columns:
+      - '93'
+      - '97'
+      - '102'
+      - '103'
+      - '136'
+      - '140'
+      - '144'
+      - '146'
+      - '148'
+      - '182'
+      - '188'
+      - '190'
+      - '196'
+      - '214'
+      - '297'
+      - '303'
+      - '311'
+      - '315'
+  individuals:
+  - Poppy
+  preprocess:
+    likelihood_threshold: null
+    likelihood_feature: confidence
+    interpolate: true
+    clip_percentiles: null
+    zscore: true
+    zscore_exclude: []
+  labels:
+    mapping: C:\Users\aksel\.ethograph\mapping.txt
+    branch: 0
+    classes: null
+  changepoint_features: null
+  neural:
+    units: units
+    name: rate
+    transform:
+    - x.count(0.005)
+  sin_cos: []
+model:
+  architecture: c2f_tcn
+  params: {}
+train:
+  run_name: cv_count_5ms_raw/fold-0
+  epochs: 100
+  learning_rate: 0.001
+  weight_decay: 0.0
+  batch_size: 1
+  grad_clip: 1.0
+  eval_every: 5
+  select_on: f1@50
+  f1_thresholds:
+  - 0.5
+  - 0.75
+  - 0.9
+  seed: 0
+  device: null
+  drop_kinds: []
+  subsample: 1
+  loss: {}
+  frame_weight: 1.0
+  circle:
+    weight: 0.0
+    m: 0.25
+    gamma: 128.0
+    max_frames: 2048
+  augment:
+    noise_std: 0.0
+    stretch: null
+    mirror: false
+    rotate_deg: 0.0
+  split:
+    train_fraction: 1.0
+    val_fraction: 0.0
+    test_fraction: 0.0
+    seed: 0
+    holdout_sessions: []
+    holdout_trials:
+    - '3'
+    - '7'
+    - '8'
+    - '11'
+    - '15'
+    - '22'
+    - '24'
+    - '41'
+    - '58'
+    - '59'
+    - '62'
+    - '63'
+    - '66'
+    - '69'
+    - '75'
+    - '78'
+    - '80'
+    - '82'
+    - '87'
+    - '94'
+    - '107'
+    - '129'
+    - '130'
+    - '133'
+    - '134'
+    - '144'
+    - '153'
+    - '154'
+    - '157'
+    - '159'
+    - '162'
+    - '164'
+    - '168'
+    - '174'
+    - '176'
+    - '177'
+    - '183'
+    - '188'
+    - '191'
+search:
+  n_trials: 20
+  timeout: null
+  params: {}
+  name: null
+  seed: 0
+  prune: true
+  keep_weights: false
+infer:
+  run: null
+  postprocess:
+    gui_settings: false
+    min_duration_s: 0.05
+    label_thresholds:
+      3: 0.03
+      8: 0.03
+      9: 0.03
+      10: 0.03
+      17: 0.03
+      24: 0.03
+    stitch_gap_s: 0.015
+    changepoint_correction: false
+    changepoints: {}
+    max_expansion_s: 0.05
+    max_shrink_s: 0.05
+video_features:
+  stack_s: 0.5
+  analysis_fps: null
+  camera: null

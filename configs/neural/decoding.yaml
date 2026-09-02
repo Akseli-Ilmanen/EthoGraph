@@ -1,0 +1,81 @@
+# Single-trial neural decoding: predict this session's curated state labels
+# from its spike trains, with the segmentation models.
+#
+#   import ethograph as eto
+#   project = eto.segment.Project("configs/neural/decoding.yaml")
+#   project.materialise()          # spikes → features.neural.transform → data/{features.name}/
+#   project.train()                # 80/20 by whole trial, no validation set
+#   project.inference()            # → labels/predictions_{run}_{timestamp}/ beside the session, open in the GUI
+#
+#   project.cross_validate(n_folds=5)   # every trial in exactly one fold, predicted by a model that never
+#                                       # saw it; the folds merge into ONE prediction set per session
+#                                       # (cross_validation/cv_{run_name}/predictions.tsv names it)
+#
+# One session only: units are consistent within a recording and nowhere else.
+# To compare binnings, loop over overrides of `features.name` and
+# `features.neural.transform` (see docs: segment/index.md "One session: fold by
+# trial") — the folds are seeded by train.split.seed, so the numbers are paired.
+# The raw spikes are never written out; the transform runs at every session open.
+
+root: .                                                       # data/ and runs/ land next to this file
+
+sessions:
+  # source is the TsGroup's .npz; the trials come from .ethograph/alignment.nwb
+  # beside it or one folder up (here behav/.ethograph/), the labels from the
+  # session's own TSV.
+  - source: C:\Users\aksel\Documents\AI_data\derivatives\sub-02_id-Poppy\ses-000_date-20260308_01\behav\pynapple\units.npz
+    labels_path: C:\Users\aksel\Documents\AI_data\derivatives\sub-02_id-Poppy\ses-000_date-20260308_01\behav\Trial_data_labels.tsv
+
+individual: Poppy                                             # the actor the labels name
+
+features:
+  name: rate_5ms_boxcar25ms                                   # materialised dataset -> data/rate_5ms_boxcar25ms/
+
+  # Spike trains -> one dense feature. Each line is a pynapple expression on
+  # `x` (the TsGroup at first, then the previous line's result); `nap`, `np`
+  # and `sliding_window` are in scope. The last line must leave a TsdFrame,
+  # one column per unit. Its columns (the unit ids) are read off the session
+  # at materialise and recorded in data/{name}/columns.yaml, so they are not
+  # spelled under `columns` below.
+  neural:
+    units: units                                              # the TsGroup's key (units.npz)
+    name: rate                                                # the feature it becomes (kind: neural_feature)
+    transform:
+      - x.count(0.005) / 0.005                                # spikes / s in 5 ms bins → 200 Hz
+      - sliding_window(x, window_size=0.025)                  # 25 ms boxcar (mean keeps it a rate)
+      # - np.sqrt(x)                                            # variance-stabilised alternative
+
+  columns: {}                                                 # only the neural feature; add pynapple kinematics here if they run at the same rate
+
+  preprocess:
+    clip_percentiles: null                                    # a rate's tail is the signal, not an outlier
+    zscore: true                                              # per unit, statistics from the training trials only
+
+  labels:
+    branch: 0                                                 # every state class of the branch
+
+model:
+  architecture: c2f_tcn
+  params:                                                     # DLC2Action defaults (segment/dlc2action/config/model/c2f_tcn.yaml)
+
+train:
+  run_name: c2f_tcn_rate
+  epochs: 100
+  eval_every: 5
+  select_on: f1@50 # doesn't matter since no validation set
+  batch_size: 1
+  split: {train_fraction: 0.8, val_fraction: 0.0, test_fraction: 0.2}
+
+infer:
+  postprocess:
+    gui_settings: false
+    changepoint_correction: false    # no changepoints in a neural-only session
+    stitch_gap_s: 0.015
+    min_duration_s: 0.05
+    label_thresholds:
+      '3': 0.03
+      '8': 0.03
+      '9': 0.03
+      '10': 0.03
+      '17': 0.03
+      '24': 0.03

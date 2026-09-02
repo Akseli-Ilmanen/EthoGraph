@@ -35,7 +35,13 @@ from ethograph.segment.samples import (
     dense_targets,
     sample_key,
 )
-from ethograph.segment.sessions import Session, expand_changepoint_features, filter_trials, open_session
+from ethograph.segment.sessions import (
+    Session,
+    expand_changepoint_features,
+    filter_trials,
+    neural_columns,
+    open_session,
+)
 from ethograph.utils.logging import log_to_file
 from ethograph.utils.xr_utils import get_time_coord
 
@@ -64,6 +70,7 @@ def _materialise_run(config: SegmentConfig, data_dir: Path, sessions: list[Sessi
     if sessions is None:
         sessions = [open_session(s, config, expand_changepoints=False) for s in config.sessions]
     config = derive_changepoint_scales(config, sessions)
+    config = resolve_neural_columns(config, sessions)
     for session in sessions:
         expand_changepoint_features(session, config)
     for session in sessions:
@@ -109,6 +116,9 @@ def _materialise_run(config: SegmentConfig, data_dir: Path, sessions: list[Sessi
     cpf = config.features.changepoint_features
     if cpf is not None:
         layout.changepoint_features = cpf.scales()
+    neural = config.features.neural
+    if neural is not None:
+        layout.neural_columns = {neural.name: dict(config.features.columns[neural.name])}
     pd.DataFrame(rows).to_csv(data_dir / INDEX_FILE, sep="\t", index=False)
     (data_dir / COLUMNS_FILE).write_text(yaml.safe_dump(layout.to_dict(), sort_keys=False), encoding="utf-8")
     (data_dir / CLASSES_FILE).write_text(yaml.safe_dump(classes.to_dict(), sort_keys=False), encoding="utf-8")
@@ -152,6 +162,35 @@ def derive_changepoint_scales(config: SegmentConfig, sessions: list[Session]) ->
     return replace(config, features=replace(config.features, changepoint_features=resolved))
 
 
+def resolve_neural_columns(config: SegmentConfig, sessions: list[Session]) -> SegmentConfig:
+    """The config with ``features.columns.{neural.name}`` spelled as the session's unit ids.
+
+    The units are the session's own, so they are read off the opened
+    session rather than written in the YAML; a config that already spells
+    the entry (a subset, or a run config re-read) comes back unchanged.
+    Every session must carry the same units — which in practice means one
+    session, since units are not consistent across recordings.
+    """
+    cfg = config.features.neural
+    if cfg is None or cfg.name in config.features.columns:
+        return config
+    if not sessions:
+        raise ValueError("features.neural needs a session to read the unit ids off")
+    dims = neural_columns(sessions[0], cfg)
+    for session in sessions[1:]:
+        other = neural_columns(session, cfg)
+        if other != dims:
+            raise ValueError(
+                f"{session.source}: its units {other} differ from {sessions[0].source}'s {dims} — units are only "
+                "consistent within one session, so a neural project lists one session (or spells "
+                f"features.columns.{cfg.name} to pin a shared subset)."
+            )
+    n_units = sum(len(v) for v in dims.values())
+    logger.info("features.neural: %r resolved to %d unit column(s): %s", cfg.name, n_units, dims)
+    columns = {**config.features.columns, cfg.name: dims}
+    return replace(config, features=replace(config.features, columns=columns))
+
+
 def _mask_rate(session: Session, var: str) -> float:
     """Sampling rate of changepoint mask *var*, off its own time coordinate in the first trial."""
     ds = session.trial_dataset(session.trial_ids[0])
@@ -166,7 +205,7 @@ def _mask_rate(session: Session, var: str) -> float:
 
 
 def resolved_config(config: SegmentConfig) -> SegmentConfig:
-    """The config with the changepoint scales the materialised dataset recorded.
+    """The config with what the materialised dataset recorded: changepoint scales and unit columns.
 
     What every stage after ``materialise`` calls before it opens a session or
     saves a run config, so the numbers a run trains and predicts with are
@@ -174,6 +213,31 @@ def resolved_config(config: SegmentConfig) -> SegmentConfig:
     already resolved comes back unchanged; one that is unresolved with no
     materialised dataset to read from is an error naming the fix.
     """
+    return _resolved_changepoints(_resolved_neural(config))
+
+
+def _resolved_neural(config: SegmentConfig) -> SegmentConfig:
+    cfg = config.features.neural
+    if cfg is None or cfg.name in config.features.columns:
+        return config
+    path = config.data_dir / COLUMNS_FILE
+    if not path.is_file():
+        raise ValueError(
+            f"features.neural leaves the unit columns of {cfg.name!r} to be read off the session, which happens "
+            f"at materialise — and {config.data_dir} holds no materialised dataset yet. Run Project.materialise() "
+            f"first, or spell features.columns.{cfg.name} in the config."
+        )
+    recorded = read_layout(config.data_dir).neural_columns or {}
+    if cfg.name not in recorded:
+        raise ValueError(
+            f"{path} records no unit columns for {cfg.name!r} — it was materialised by a config without "
+            "features.neural (or with another name). Re-materialise, or spell the columns in the config."
+        )
+    columns = {**config.features.columns, cfg.name: dict(recorded[cfg.name])}
+    return replace(config, features=replace(config.features, columns=columns))
+
+
+def _resolved_changepoints(config: SegmentConfig) -> SegmentConfig:
     cpf = config.features.changepoint_features
     if cpf is None or not cpf.unresolved:
         return config

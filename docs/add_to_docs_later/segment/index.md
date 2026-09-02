@@ -170,6 +170,13 @@ individual)`), works in 2-D and 3-D, and keeps the `individual` dim. Outputs
 that must never be z-scored (unit vectors, angles, binary flags, segment ids)
 carry `attrs["normalise"] = 0`; the pipeline honours it.
 
+Spike trains are the exception in principle: a pynapple session's units are
+a `TsGroup` of event times, which no loader can read as a feature, and how
+they are binned is a modelling choice worth sweeping. `features.neural` spells
+that binning as pynapple expressions and applies it at every session open —
+single-trial neural decoding with the same models and prediction sets. See
+{doc}`config` (`features.neural`).
+
 S3D video features are the one exception in mechanics, not in principle —
 they are expensive enough to compute once and cache. See
 {doc}`video_features`; the short version is
@@ -521,6 +528,48 @@ best.cross_validate(folds=["ses-01", "ses-02"])     # two folds, not all four
 which is how you compare two parameter sets at a fraction of the cost. When
 you actually want to *inspect* a session in the GUI, run its own fold — a
 model that trained on the session it is predicting tells you nothing.
+
+### One session: fold by trial
+
+A session cannot be held out when it is the only one — which is every
+neural decoding project (`features.neural`), since units exist in one
+recording only. Fold by **trial** instead:
+
+```python
+folds = project.cross_validate(n_folds=5)
+```
+
+Every trial is dealt into exactly one of the five folds (seeded by
+`train.split.seed`, so the folds are the same for every transform you
+compare); fold *k* trains on the other four and predicts its own, through
+`train.split.holdout_trials`; and the five prediction sets are merged into
+**one** per session, under
+`labels/predictions_cv_{run_name}_{timestamp}/`, so the whole session opens
+in the GUI with every trial predicted once by a model that never saw it —
+`cross_validation/{name}/predictions.tsv` lists it. `folds.tsv` still has one
+row per fold, with the trials it held out and its metrics on them; each
+row's `prediction_source` says which fold wrote it.
+
+Comparing binnings is then a loop over configs that share this one
+(`base:`), one materialised dataset each:
+
+```python
+from ethograph.segment import as_overrides
+
+for name, steps in {
+    "rate_5ms_boxcar25ms": ["x.count(0.005) / 0.005", "sliding_window(x, window_size=0.025)"],
+    "sqrt_count_10ms": ["x.count(0.01)", "np.sqrt(x)"],
+}.items():
+    eto.segment.Project(
+        "decoding.yaml",
+        f"features.name={name}",
+        f"train.run_name={name}",
+        *as_overrides({"features.neural.transform": steps}),
+    ).cross_validate(n_folds=5)
+```
+
+giving `cross_validation/cv_{name}/folds.tsv` per transform — the same
+folds, so the numbers are paired.
 
 ### Ablating the loss, one model per individual
 

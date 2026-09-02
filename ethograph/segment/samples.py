@@ -132,6 +132,11 @@ class ColumnLayout:
     #: horizons are different inputs. ``materialise`` writes it; train and
     #: infer read their scales back from it.
     changepoint_features: dict[str, Any] | None = None
+    #: The unit columns ``features.neural`` resolved to (``{feature: {dim:
+    #: [unit ids]}}``), when the config has one. ``materialise`` reads them
+    #: off the session and writes them here; train and infer read them
+    #: back, so a run's input layout never depends on re-opening the spikes.
+    neural_columns: dict[str, dict[str, list[str]]] | None = None
 
     def __post_init__(self) -> None:
         if not self.kinds:
@@ -172,6 +177,7 @@ class ColumnLayout:
             fs=self.fs,
             kinds=[self.kinds[i] for i in keep],
             changepoint_features=self.changepoint_features,
+            neural_columns=self.neural_columns,
         )
 
     def to_dict(self) -> dict:
@@ -185,6 +191,11 @@ class ColumnLayout:
         }
         if self.changepoint_features is not None:
             out["changepoint_features"] = dict(self.changepoint_features)
+        if self.neural_columns is not None:
+            out["neural_columns"] = {
+                feature: {dim: [str(v) for v in values] for dim, values in dims.items()}
+                for feature, dims in self.neural_columns.items()
+            }
         return out
 
     @classmethod
@@ -197,6 +208,7 @@ class ColumnLayout:
             fs=float(data["fs"]),
             kinds=list(data.get("kinds") or []),
             changepoint_features=data.get("changepoint_features"),
+            neural_columns=data.get("neural_columns"),
         )
 
     def check(self, other: ColumnLayout, what: str) -> None:

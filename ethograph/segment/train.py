@@ -114,16 +114,30 @@ def assign_roles(config: SegmentConfig, index: pd.DataFrame) -> dict[str, str]:
       renormalised against ``train_fraction``. This is stage 2: one
       cross-validation fold, written by
       :meth:`~ethograph.segment.project.Project.cross_validate`.
+    * **Held-out trials** — the same, one level down: every sample of a trial
+      id named in ``split.holdout_trials`` is ``test``, in every session.
+      A trial-level fold, for the one-session project whose sessions cannot
+      be held out; naming a trial no session has is an error, since a fold
+      that holds out nothing would score the training set.
     """
     split = config.train.split
     holdout = {str(p) for p in split.holdout_sessions}
+    holdout_trials = set(split.holdout_trials)
     trial_of = _trial_split(index, list(index["key"]))
     roles: dict[str, str] = {}
 
-    if holdout:
+    if holdout_trials:
+        known = {trial for _, trial in trial_of.values()}
+        missing = sorted(holdout_trials - known, key=str)
+        if missing:
+            raise ValueError(
+                f"train.split.holdout_trials names {missing}, which no session's materialised trials include "
+                f"(they are {sorted(known, key=str)})"
+            )
+    if holdout or holdout_trials:
         rest = []
-        for key, (source, _) in trial_of.items():
-            if source in holdout:
+        for key, (source, trial) in trial_of.items():
+            if source in holdout or trial in holdout_trials:
                 roles[key] = "test"
             else:
                 rest.append(key)

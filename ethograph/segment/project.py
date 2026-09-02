@@ -161,6 +161,7 @@ class Project:
         folds: Iterable[str | Path] | None = None,
         val_fraction: float = 0.0,
         predict: bool = True,
+        n_folds: int | None = None,
     ) -> pd.DataFrame:
         """Leave-one-session-out, predicting each held-out session for the GUI.
 
@@ -174,20 +175,33 @@ class Project:
         without paying for the full sweep. *val_fraction* carves a validation
         slice out of each fold's training sessions (default ``0`` — the
         hyperparameters are already fixed).
+
+        *n_folds* folds by **trial** instead: every trial is dealt into
+        exactly one of *n_folds* folds, each fold trains on the others and
+        predicts its own, and the fold predictions are merged into one
+        prediction set per session. The cross-validation for a project whose
+        sessions cannot be held out — one session of neural decoding, whose
+        units exist in that recording only.
         """
         from ethograph.segment.crossval import cross_validate
 
-        return cross_validate(self._config, folds=folds, val_fraction=val_fraction, predict=predict)
+        return cross_validate(self._config, folds=folds, val_fraction=val_fraction, predict=predict, n_folds=n_folds)
 
-    def inference(self, run: str | Path | None = None, sessions: Iterable[str | Path] | None = None) -> list[Path]:
+    def inference(
+        self,
+        run: str | Path | None = None,
+        sessions: Iterable[str | Path] | None = None,
+        trials: Iterable[int | str] | None = None,
+    ) -> list[Path]:
         """Write a prediction set beside every session of the config.
 
         *sessions* narrows that to the ones it names (full path or source
-        stem); *run* names a run other than the config's own.
+        stem), *trials* to the trial ids it names; *run* names a run other
+        than the config's own.
         """
         from ethograph.segment.inference import inference
 
-        return inference(self._config, run=run, sessions=sessions)
+        return inference(self._config, run=run, sessions=sessions, trials=trials)
 
     # ------------------------------------------------------------------
     # Looking at results

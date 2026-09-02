@@ -163,6 +163,22 @@ def _trial_ids_from_ep(trials_ep) -> list[int | str]:
     return list(range(1, len(trials_ep) + 1))
 
 
+def _pynapple_sidecar_alignment(folder: Path) -> Path | None:
+    """``.ethograph/alignment.nwb`` beside a pynapple source, or one folder up.
+
+    A session's pynapple objects often sit in their own subfolder
+    (``behav/pynapple/units.npz``) while the session's ``.ethograph/`` — the
+    one the ``.nc`` and the GUI settings share — is in ``behav/``. Nearest
+    wins; nothing further up is searched, since two folders up is another
+    session's territory.
+    """
+    for candidate in (folder, folder.parent):
+        sidecar = candidate / ".ethograph" / "alignment.nwb"
+        if sidecar.exists():
+            return sidecar
+    return None
+
+
 def _load_pynapple_dataset(
     file_path: str,
     metadata_path: str | None = None,
@@ -183,10 +199,10 @@ def _load_pynapple_dataset(
     data, _detected_ep = load_nap_data(file_path)
 
     parent = Path(file_path).parent if not Path(file_path).is_dir() else Path(file_path)
-    sidecar = parent / ".ethograph" / "alignment.nwb"
+    sidecar = _pynapple_sidecar_alignment(parent)
     if alignment_path and Path(alignment_path).exists():
         nwb_path = alignment_path
-    elif sidecar.exists():
+    elif sidecar is not None:
         nwb_path = str(sidecar)
     elif Path(file_path).suffix.lower() == ".nwb":
         # .nwb sources are read directly — no sidecar needed.

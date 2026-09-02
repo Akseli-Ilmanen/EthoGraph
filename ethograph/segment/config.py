@@ -459,6 +459,49 @@ class ChangepointFeaturesConfig:
 
 
 @dataclass
+class NeuralFeaturesConfig:
+    """Turn the session's spike trains into one dense feature, at session open.
+
+    A pynapple session's units are a ``TsGroup`` — event times, which no
+    loader can read as a feature — so this is the second exception to
+    "features are built with the session, never by the pipeline": the
+    binning is a modelling choice worth sweeping (bin size, smoothing, rate
+    versus count), and it is cheap enough to redo on every open rather than
+    save. ``transform`` is a list of pynapple expressions evaluated in
+    order, ``x`` being the previous result (the ``TsGroup`` at first), with
+    ``nap``, ``np`` and :func:`~ethograph.features.neural.sliding_window`
+    in scope; the last one must leave a ``TsdFrame`` with one column per
+    unit. See :mod:`ethograph.features.neural`.
+
+    The result is the feature ``name``, declared ``kind: neural_feature``
+    and z-scored per run like any kinematic column. Its columns are the
+    session's own unit ids, so they are not spelled in ``features.columns``:
+    ``materialise`` reads them off the session, records them in
+    ``columns.yaml``, and every later stage takes them from there — which
+    is also why a neural project is one session: two sessions do not share
+    units. Spell ``features.columns.{name}`` yourself to pin a subset.
+    """
+
+    #: Key of the ``TsGroup`` in the session (``units.npz`` → ``units``).
+    units: str = "units"
+    #: The feature the transform produces.
+    name: str = "rate"
+    #: pynapple expressions applied in order to ``x``; the last leaves a ``TsdFrame``.
+    transform: list[str] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        if not self.units:
+            raise ValueError("features.neural.units must name the session's TsGroup")
+        if not self.name:
+            raise ValueError("features.neural.name must name the feature the transform produces")
+        if self.name == self.units:
+            raise ValueError(f"features.neural.name {self.name!r} is the TsGroup's own key — pick another name")
+        self.transform = [str(s) for s in self.transform]
+        if not self.transform:
+            raise ValueError("features.neural.transform must list at least one step, e.g. 'x.count(0.005)'")
+
+
+@dataclass
 class FeaturesConfig:
     """What a sample is made of."""
 
@@ -477,6 +520,9 @@ class FeaturesConfig:
     #: at session-open time; ``None`` = sessions keep only what their own
     #: ``.nc``/sidecar already declares.
     changepoint_features: ChangepointFeaturesConfig | None = None
+    #: Set to bin the session's spike trains into a dense feature at
+    #: session-open time (pynapple sessions only); ``None`` = no spikes.
+    neural: NeuralFeaturesConfig | None = None
     #: Features in ``columns`` that are **angles**: each is replaced by the
     #: two components of its ``(sin, cos)`` encoding, in radians or degrees
     #: as the variable's ``units`` attr says (or as its values imply). A
@@ -526,6 +572,13 @@ class SplitConfig:
     :meth:`ethograph.segment.project.Project.cross_validate` writes per fold,
     and it is the only place a whole session gets a role.
 
+    ``holdout_trials`` is the same thing one level down, for a project whose
+    sessions cannot be held out — a single-session neural decoding project,
+    whose units exist in one recording only. The named trial ids (in every
+    session) become ``test``; ``cross_validate(n_folds=k)`` deals every
+    trial into exactly one fold and writes this per fold. The two holdouts
+    are exclusive: a fold is by session or by trial, never both.
+
     **These three defaults are ours, deliberately not upstream's.**
     DLC2Action's ``config/training.yaml`` sets ``val_frac: 0.2`` and
     ``test_frac: 0`` over fixed-length 128-frame windows; a sample here is a
@@ -546,6 +599,10 @@ class SplitConfig:
     #: Sessions held out whole as ``test`` (a cross-validation fold). Each
     #: entry is a session ``source`` path, matched against ``sessions``.
     holdout_sessions: list[Path] = field(default_factory=list)
+    #: Trials held out whole as ``test`` (a trial-level cross-validation
+    #: fold), by trial id, in every session. Written per fold by
+    #: ``cross_validate(n_folds=...)``.
+    holdout_trials: list[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         for name in ("train_fraction", "val_fraction", "test_fraction"):
@@ -563,6 +620,12 @@ class SplitConfig:
         if not self.train_fraction:
             raise ValueError("train.split.train_fraction is 0 — there would be nothing to learn from")
         self.holdout_sessions = [Path(p) for p in self.holdout_sessions]
+        self.holdout_trials = [str(t) for t in self.holdout_trials]
+        if self.holdout_sessions and self.holdout_trials:
+            raise ValueError(
+                "train.split names both holdout_sessions and holdout_trials — a fold holds out whole "
+                "sessions or whole trials, never both."
+            )
 
 
 @dataclass
@@ -936,6 +999,7 @@ _NESTED: dict[str, type] = {
     "preprocess": PreprocessConfig,
     "labels": LabelsConfig,
     "changepoint_features": ChangepointFeaturesConfig,
+    "neural": NeuralFeaturesConfig,
     "features": FeaturesConfig,
     "model": ModelConfig,
     "augment": AugmentConfig,
@@ -1168,7 +1232,7 @@ def config_from_dict(data: dict, base_dir: Path, config_path: Path | None = None
                 "entries, or drop them from changepoint_features.inputs/transforms"
             )
         cfg.features.columns.update(generated)
-    if not cfg.features.columns:
+    if not cfg.features.columns and cfg.features.neural is None:
         raise ValueError("config.features.columns is empty — name at least one feature")
     known_sources = {str(s.source) for s in cfg.sessions}
     unknown_holdout = [str(p) for p in cfg.train.split.holdout_sessions if str(p) not in known_sources]

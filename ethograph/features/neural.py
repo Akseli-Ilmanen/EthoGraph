@@ -1,7 +1,32 @@
 """Compute firing rates, PCA, and PSTH from spike times using pynapple.
 
 Assumes spike_times are in seconds and sorted ascending (standard for Kilosort/Phy).
+
+The segmentation pipeline's spike input lives here too (:func:`transform_units`,
+:func:`sliding_window`): a session's units arrive as a :class:`pynapple.TsGroup`
+— spike *times*, not a time series — so nothing can read them as a feature
+until they are binned, and how (bin size, smoothing, a rate versus a count)
+is a modelling choice worth sweeping. A project config spells it as a list
+of pynapple expressions rather than baking it into a file::
+
+    features:
+      neural:
+        units: units                 # the TsGroup's key in the session
+        name: rate                   # the feature the transform produces
+        transform:
+          - x.count(0.005) / 0.005   # spikes per second in 5 ms bins
+          - sliding_window(x, window_size=0.025)
+
+Each step is evaluated with ``x`` bound to the previous step's result (the
+``TsGroup`` for the first), and ``nap``, ``np`` and :func:`sliding_window`
+in scope. The last step must leave a :class:`pynapple.TsdFrame` — one column
+per unit — which then is a feature like any other in the session. The raw
+spikes are never written out as a feature file; the transform runs at
+session open, every time.
 """
+
+from collections.abc import Sequence
+from typing import Any, Literal
 
 import numpy as np
 import pynapple as nap
@@ -228,3 +253,85 @@ def firing_rate_to_xarray(
         },
         attrs={"bin_size": bin_size, "units": "Hz"},
     )
+
+
+# ---------------------------------------------------------------------------
+# The segmentation pipeline's spike input: ``features.neural.transform``
+# ---------------------------------------------------------------------------
+
+_STEP_VARIABLE = "x"
+
+
+def sliding_window(
+    binned: nap.Tsd | nap.TsdFrame,
+    window_size: float,
+    step_size: float | None = None,
+    reduction: Literal["sum", "mean"] = "mean",
+) -> Any:
+    """Smooth a binned ``TsdFrame`` with a boxcar of *window_size* seconds.
+
+    The window is expressed in seconds and turned into bins off the frame's
+    own spacing, so the same config line means the same thing at any bin
+    size. ``reduction="mean"`` keeps the units (a rate stays a rate);
+    ``"sum"`` turns counts per bin into counts per window. *step_size*
+    (seconds) additionally decimates the result to that spacing — leave it
+    unset to keep the bin grid, which is what a frame-wise model wants.
+    Spike times themselves cannot be windowed; bin them first (``x.count``).
+    """
+    if not isinstance(binned, (nap.Tsd, nap.TsdFrame)):
+        raise TypeError(
+            f"sliding_window expects a binned Tsd/TsdFrame (x.count(bin_size) first), got {type(binned).__name__}"
+        )
+    if reduction not in ("sum", "mean"):
+        raise ValueError(f"sliding_window reduction must be 'sum' or 'mean', got {reduction!r}")
+    t = np.asarray(binned.t, dtype=np.float64)
+    if t.size < 2:
+        raise ValueError("sliding_window needs at least two bins to read a bin size off")
+    bin_size = float(np.median(np.diff(t)))
+    window_bins = max(1, int(round(window_size / bin_size)))
+    kernel = np.ones(window_bins, dtype=np.float64)
+    if reduction == "mean":
+        kernel /= window_bins
+    smoothed = binned.convolve(kernel)
+    if step_size is None:
+        return smoothed
+    step = max(1, int(round(step_size / bin_size)))
+    return smoothed[::step]
+
+
+def transform_namespace() -> dict[str, Any]:
+    """What a transform step can name besides ``x``."""
+    return {"nap": nap, "np": np, "sliding_window": sliding_window}
+
+
+def transform_units(units: nap.TsGroup, steps: Sequence[str], *, what: str = "features.neural.transform") -> Any:
+    """Run *steps* over *units* and return the ``TsdFrame`` they end in.
+
+    *what* names the config key in every error, since the step that failed
+    is a line the user wrote. A step that raises, or a chain that does not
+    end in a ``TsdFrame``, is a ``ValueError`` naming the step.
+    """
+    if not isinstance(units, nap.TsGroup):
+        raise ValueError(f"{what}: expected a pynapple TsGroup to start from, got {type(units).__name__}")
+    if not steps:
+        raise ValueError(f"{what} is empty — at least bin the spikes, e.g. 'x.count(0.005)'")
+    namespace = transform_namespace()
+    x: Any = units
+    for i, step in enumerate(steps):
+        label = f"{what}[{i}] {step!r}"
+        try:
+            code = compile(step, f"<{what}[{i}]>", "eval")
+        except SyntaxError as exc:
+            raise ValueError(f"{label} is not a Python expression: {exc}") from exc
+        try:
+            x = eval(code, {**namespace, _STEP_VARIABLE: x})  # noqa: S307 — the user's own config line
+        except Exception as exc:
+            raise ValueError(f"{label} failed: {exc}") from exc
+    if not isinstance(x, nap.TsdFrame):
+        raise ValueError(
+            f"{what} must end in a pynapple TsdFrame (one column per unit), got {type(x).__name__} — "
+            "a TsGroup still needs binning (x.count(bin_size)); a Tsd is one unit, not a frame."
+        )
+    if x.shape[0] < 2:
+        raise ValueError(f"{what} produced {x.shape[0]} time bin(s) — nothing to read a sampling rate off")
+    return x

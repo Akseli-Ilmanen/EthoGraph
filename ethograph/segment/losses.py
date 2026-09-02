@@ -169,11 +169,14 @@ class TruncatedMSTCNLoss(MS_TCN_Loss):
         if self.need_init:
             self._init_weights(predictions.device)
         keep = self.transition_keep(candidates.to(predictions.device))
-        stages = predictions if predictions.dim() == 4 else predictions.unsqueeze(0)
+        # Upstream's 3-dim branch divides by len(predictions), the batch size; the
+        # architecture contract is (S, B, C, T), so refuse rather than diverge from it.
+        if predictions.dim() != 4:
+            raise ValueError(f"gated loss expects (S, B, C, T) logits, got {tuple(predictions.shape)}")
         loss = predictions.new_zeros(())
-        for p in stages:
+        for p in predictions:
             loss = loss + self._ce_loss(p, target) + self.alpha * self.consistency_loss(p, keep)
-        return loss / len(stages)
+        return loss / len(predictions)
 
 
 def upstream_defaults() -> dict[str, Any]:

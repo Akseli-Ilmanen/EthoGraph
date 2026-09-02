@@ -135,7 +135,7 @@ def test_materialise_train_infer(project):
     project.train()
     written = project.inference()
     df = load_labels_tsv(written[0])
-    assert written[0].name == "sess_labels.tsv"
+    assert written[0].name == "sess_predictions.tsv"
     assert set(df["labeling_method"]) <= {"automated"}
 
 
