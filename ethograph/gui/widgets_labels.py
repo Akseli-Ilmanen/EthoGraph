@@ -83,6 +83,8 @@ from .app_constants import (  # noqa: E402
     LABEL_OVERLAY_MODE_FULL,
     LABEL_OVERLAY_MODE_NONE,
     LABEL_OVERLAY_PLOT_TYPES,
+    LABELLING_MODE_FRAME,
+    LABELLING_MODES,
     LABELS_TABLE_COLOR_COLUMN_WIDTH,
     LABELS_TABLE_ID_COLUMN_WIDTH,
     LABELS_TABLE_ROW_HEIGHT,
@@ -413,6 +415,36 @@ class LabelsWidget(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         self.setLayout(layout)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
+        # Where a new label's boundaries come from: a click on the plots, or
+        # the label key pressed at the frame on screen (see activate_label).
+        mode_row = QHBoxLayout()
+        mode_row.addWidget(QLabel("Labelling:"))
+        self.labelling_mode_combo = QComboBox()
+        for key, text in LABELLING_MODES.items():
+            self.labelling_mode_combo.addItem(text, key)
+        self.labelling_mode_combo.setToolTip(
+            "On the time series: press a label key, then click the plots (twice for a state event).\n"
+            "At the current frame: the label key itself places the boundary at the frame on screen — "
+            "a point event on one press, a state event on two (start, then end after navigating)."
+        )
+        idx = self.labelling_mode_combo.findData(self.app_state.get_with_default("labelling_mode"))
+        self.labelling_mode_combo.setCurrentIndex(max(0, idx))
+        self.labelling_mode_combo.currentIndexChanged.connect(self._on_labelling_mode_changed)
+        mode_row.addWidget(self.labelling_mode_combo, stretch=1)
+        layout.addLayout(mode_row)
+
+        self.ribbon_auto_cb = QCheckBox("Open a label timeline when no panel is shown")
+        self.ribbon_auto_cb.setToolTip(
+            "A session with only a video has no panel to draw labels on. With this ticked, an empty "
+            "time axis (the Label timeline, also in the ➕ Add panel popup) opens on load in that case."
+        )
+        self.ribbon_auto_cb.setChecked(bool(self.app_state.get_with_default("label_ribbon_auto")))
+        self.ribbon_auto_cb.toggled.connect(self._on_ribbon_auto_toggled)
+        layout.addWidget(self.ribbon_auto_cb)
+        # The timeline is the frame mode's companion (labelling from the video
+        # alone); in plots mode there is always a panel to label on.
+        self.ribbon_auto_cb.setVisible(self.frame_labelling)
 
         # Legend explaining the per-label glyphs (above Branch 0).
         legend = QLabel(
@@ -1124,8 +1156,34 @@ class LabelsWidget(QWidget):
             if _id is not None:
                 self.activate_label(_id)
 
+    def _on_labelling_mode_changed(self, _index: int) -> None:
+        mode = self.labelling_mode_combo.currentData()
+        if mode == self.app_state.get_with_default("labelling_mode"):
+            return
+        self.app_state.labelling_mode = mode
+        self.ribbon_auto_cb.setVisible(self.frame_labelling)
+        if self.frame_labelling and self.meta_widget is not None and self.app_state.ready:
+            self.meta_widget.ensure_label_ribbon()
+        # A half-placed label belongs to the mode it was started in.
+        self._reset_label_clicks()
+        self.ready_for_label_click = False
+
+    def _on_ribbon_auto_toggled(self, checked: bool) -> None:
+        self.app_state.label_ribbon_auto = bool(checked)
+        if checked and self.meta_widget is not None and self.app_state.ready:
+            self.meta_widget.ensure_label_ribbon()
+
+    @property
+    def frame_labelling(self) -> bool:
+        """Whether the label key places the boundary at the frame on screen."""
+        return self.app_state.get_with_default("labelling_mode") == LABELLING_MODE_FRAME
+
     def activate_label(self, _key):
-        """Activate a label by shortcut: select cell, set up for labeling, and scroll to it."""
+        """Activate a label by shortcut: select cell, set up for labeling, and scroll to it.
+
+        In the "at the current frame" mode the key does not arm a plot click —
+        it *is* the placement (:meth:`_place_at_current_frame`).
+        """
         _id = self.KEY_TO_labels.get(str(_key).lower(), _key)
         if _id not in self._mappings:
             return
@@ -1135,11 +1193,76 @@ class LabelsWidget(QWidget):
         if label_branch != self.app_state._active_branch:
             return
 
+        if self.frame_labelling:
+            self._place_at_current_frame(_id)
+            return
+
         self.selected_labels = _id
         self.ready_for_label_click = True
         self._reset_label_clicks()
+        self._select_label_row(_id)
 
-        # Find and select in the correct branch table
+    def current_display_time(self) -> float | None:
+        """Where the playhead is, in the display clock.
+
+        With a video it is the frame on screen — the same reading
+        frame-by-frame review commits — so a label placed from the video lands
+        on a frame, never between two. Without one it is the time marker.
+        """
+        video = getattr(self.app_state, "video", None)
+        if video is not None:
+            return float(video.frame_to_time(int(self.app_state.current_frame)))
+        if self.plot_container is None:
+            return None
+        for plot in self.plot_container._visible_plots():
+            return float(plot.time_marker.value())
+        return None
+
+    def _place_at_current_frame(self, _id: int) -> None:
+        """The label key pressed in "at the current frame" mode.
+
+        A point class lands on the frame on screen at once. A state class
+        starts there on the first press (the pending preview shows it) and
+        ends on the second, wherever the user has navigated to meanwhile —
+        playback, the timeline or frame stepping. A different key while a
+        state label is half placed abandons it and starts that class.
+        """
+        if self.first_click is not None and _id != self.selected_labels:
+            pending = self._mappings.get(self.selected_labels, {}).get("name", self.selected_labels)
+            notify(f"Abandoned the half-placed '{pending}' label", severity="warning")
+            self._reset_label_clicks()
+        self.selected_labels = _id
+        self._select_label_row(_id)
+
+        t_display = self.current_display_time()
+        if t_display is None:
+            notify("No playhead to place the label at — open a panel or a video first", severity="warning")
+            return
+        placed = self.app_state.from_display(t_display, strict=True)
+        if placed is None:
+            notify("The playhead falls between trials — no label placed", severity="warning")
+            self._reset_label_clicks()
+            return
+        p_trial, p_rel = placed
+        if p_trial != self.app_state.trials_sel:
+            notify("The playhead is in another trial — no label placed", severity="warning")
+            self._reset_label_clicks()
+            return
+
+        if self._active_label_is_point():
+            self._apply_point(p_rel)
+        elif self.first_click is None:
+            self.first_click = p_rel
+            self._show_pending_label(p_rel)
+        elif p_rel == self.first_click:
+            key = self.labels_TO_KEY.get(_id, "the label key")
+            notify(f"Start and end are the same frame — move to the end frame and press {key} again")
+        else:
+            self.second_click = p_rel
+            self._apply_label()
+
+    def _select_label_row(self, _id: int) -> None:
+        """Highlight the label's row in its branch table and scroll to it."""
         for section in self._branch_sections.values():
             table = section["table"]
             table.blockSignals(True)
@@ -1597,7 +1720,11 @@ class LabelsWidget(QWidget):
         self.curation_panel.note_labels_edited()
         if self.data_widget:
             self.data_widget.update_main_plot(preserve_x_range=True)
-        self._seek_to_frame(self._to_display(onset_s))
+        # Placed from the frame on screen, the playhead is already where the
+        # user wants to continue from; jumping back to the onset would undo
+        # the navigation that found the end.
+        if not self.frame_labelling:
+            self._seek_to_frame(self._to_display(onset_s))
         self.refresh_labels_shapes_layer()
 
     def _apply_point(self, t_clicked: float):
@@ -1645,7 +1772,8 @@ class LabelsWidget(QWidget):
         self.curation_panel.note_labels_edited()
         if self.data_widget:
             self.data_widget.update_main_plot(preserve_x_range=True)
-        self._seek_to_frame(self._to_display(t_clicked))
+        if not self.frame_labelling:
+            self._seek_to_frame(self._to_display(t_clicked))
         self.refresh_labels_shapes_layer()
 
     def _to_display(self, t_rel: float) -> float:
@@ -1776,8 +1904,13 @@ class LabelsWidget(QWidget):
         self.old_labels = self.current_labels
         self.selected_labels = self.current_labels
 
-        self.ready_for_label_click = True
+        # At the current frame, the label's own key re-places it (start,
+        # then end) — a plot click must not.
+        self.ready_for_label_click = not self.frame_labelling
         self._reset_label_clicks()
+        if self.frame_labelling:
+            key = self.labels_TO_KEY.get(self.selected_labels, "its key")
+            notify(f"Navigate to the new start and press {key}, then to the new end and press {key} again")
 
     def _play_segment(self):
         if self.current_labels_pos is None:

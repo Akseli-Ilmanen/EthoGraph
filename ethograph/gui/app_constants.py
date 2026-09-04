@@ -37,6 +37,16 @@ LABEL_OVERLAY_MODE_FULL = "full"
 LABEL_OVERLAY_MODE_BOTTOM = "bottom"
 LABEL_OVERLAY_MODE_NONE = "none"
 
+# Where a new label's boundaries come from (widgets_labels.py,
+# app_state.labelling_mode): a click on a panel, or the label key pressed at
+# the frame on screen.
+LABELLING_MODE_PLOTS = "plots"
+LABELLING_MODE_FRAME = "frame"
+LABELLING_MODES = {
+    LABELLING_MODE_PLOTS: "On the time series (click the plots)",
+    LABELLING_MODE_FRAME: "At the current frame (the label key places it)",
+}
+
 # type key -> display name shown in the "Show labels per plot type" dialog
 LABEL_OVERLAY_PLOT_TYPES = {
     "lineplot": "Line plot",

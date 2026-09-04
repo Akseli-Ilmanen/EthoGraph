@@ -22,6 +22,7 @@ from ethograph.utils.qt import (
 from .app_constants import (
     DEFAULT_LAYOUT_MARGIN,
     DEFAULT_LAYOUT_SPACING,
+    LABELLING_MODE_FRAME,
     PLOT_CONTAINER_MIN_HEIGHT,
     SIDEBAR_DEFAULT_WIDTH_RATIO,
     SIDEBAR_MIN_WIDTH_PX,
@@ -570,6 +571,29 @@ class MetaWidget(GridSectionContainer):
             self._add_image_view(name)
         elif kind == "console":
             self._add_console_panel()
+        elif kind == "labels":
+            plot = pc.add_panel("labels")
+            if plot is not None:
+                self._activate_panel(plot, "labels")
+
+    def ensure_label_ribbon(self):
+        """Open a label timeline when nothing else is on screen.
+
+        The timeline belongs to labelling at the current frame (the checkbox
+        is shown only there), so plots mode never gets one unasked.
+        A session with only a video opens with no panel, so a label placed
+        from the video would be invisible. The Labels tab's checkbox
+        (``label_ribbon_auto``) asks for the empty axis in that case; a
+        session that already shows a panel gets nothing extra.
+        """
+        pc = self.plot_container
+        if self.app_state.get_with_default("labelling_mode") != LABELLING_MODE_FRAME:
+            return
+        if not self.app_state.get_with_default("label_ribbon_auto"):
+            return
+        if pc.has_open_plots():
+            return
+        pc.add_panel("labels")
 
     def _add_console_panel(self):
         """Open (or re-show) the Python console panel and bind whatever feature
@@ -1047,6 +1071,7 @@ class MetaWidget(GridSectionContainer):
         # artefact). It is created only when the user drags a Feature → Space.
 
         self.apply_saved_panel_layout()
+        self.ensure_label_ribbon()
 
     def _snapshot_layouts(self):
         """Refresh the layout snapshots before every auto-save (registered as
@@ -1104,4 +1129,5 @@ class MetaWidget(GridSectionContainer):
             dw._create_default_audio_panels(mic_names)
         if dw.catalog and dw.catalog.features and not pc.line_plots:
             pc.add_lineplot()
+        self.ensure_label_ribbon()
         pc.schedule_labels_redraw()

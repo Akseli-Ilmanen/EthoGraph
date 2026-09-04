@@ -3,11 +3,38 @@
 
 ## Creating labels
 
-To create a new behavioural label:
+The **Labelling** dropdown at the top of the Labels tab chooses where a new
+label's boundaries come from. Both modes use the same label keys (see image
+below), and everything after the time is read — undo, overlap resolution,
+the label table, the grids, export — is identical.
 
-1. Press one of the number/letters keys (see image below) to activate a specific behavioural label.
-2. Click twice on the line plot to define the start and end boundaries of the label. For point events, click only once.
-3. The label will be created and displayed with a color-coded overlay.
+### On the time series (click the plots)
+
+1. Press one of the number/letter keys to activate a behavioural label.
+2. Click twice on a plot to define the start and end boundaries of the label. For point events, click only once.
+3. The label is created and displayed with a colour-coded overlay.
+
+### At the current frame (the label key places it)
+
+The classic ethogram-software workflow, for labelling from the video alone:
+
+1. Navigate to the frame — play with `Space`, scrub the timeline, or step with `Left` / `Right`.
+2. Press the label's key. A **point event** is placed on that frame and you are done.
+3. For a **state event** the first press marks the start (a dashed anchor appears on the plots). Navigate to the end frame and press the same key again to close it. The playhead stays where you are, ready for the next label. Pressing a different label's key abandons the half-placed one and starts that class instead.
+
+To move an existing label in this mode, select it, press `Ctrl+E`, then press its key at the new start and again at the new end.
+
+With a video the boundary is the frame on screen, exactly as frame-by-frame
+curation commits it; without one it is the red time marker.
+
+### A panel to see the labels on
+
+Labels are drawn on the plot panels, so a session with only a video would have
+nowhere to show them. The **Label timeline** — an empty time axis carrying only
+the label overlay — fills that gap: it is the first entry in the ➕ **Add
+panel** popup, and with **Open a label timeline when no panel is shown** ticked
+(Labels tab, on by default) it opens by itself when a dataset loads with no
+other panel.
 
 
 ![keyboard](../../_static/media/keyboard.png)

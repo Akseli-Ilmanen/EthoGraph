@@ -108,6 +108,8 @@ class LabelDrawingMixin:
         return candidates
 
     def _plot_type_key(self, plot) -> str:
+        if getattr(plot, "panel_type", None) == "labels":
+            return "labels"
         if plot in (getattr(self, "spectrogram_plots", ()) or ()):
             return "spectrogram"
         if plot in (getattr(self, "audio_trace_plots", ()) or ()):
@@ -124,6 +126,10 @@ class LabelDrawingMixin:
     def _label_overlay_mode(self, plot) -> str:
         """Rendering mode ("full" | "bottom" | "none") for this plot's type."""
         type_key = self._plot_type_key(plot)
+        if type_key == "labels":
+            # A label timeline exists only to show labels; no per-type
+            # setting may hide them there.
+            return LABEL_OVERLAY_MODE_FULL
         modes = getattr(self.app_state, "label_overlay_modes", None) or {}
         return modes.get(type_key, DEFAULT_LABEL_OVERLAY_MODES[type_key])
 

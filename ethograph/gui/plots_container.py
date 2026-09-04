@@ -50,6 +50,7 @@ from .plots_base import ThrottleDebounce, right_gutter_width
 from .plots_console import ConsolePanel
 from .plots_ephystrace import EphysTracePlot
 from .plots_heatmap import HeatmapPlot
+from .plots_labelribbon import LabelRibbonPlot
 from .plots_lineplot import LinePlot
 from .plots_overlay import OverlayManager
 from .plots_raster import RasterPlot
@@ -111,7 +112,13 @@ _DYNAMIC_PANEL_SPECS = {
     # each showing a chosen channel subset. Configured by DataWidget via the
     # ``configure_neo_plot`` callback (needs ephys_source_map + load_ephys).
     "neo": {"cls": EphysTracePlot, "group": "neo", "overlay_rescale": True},
+    # Label timeline: an empty axis carrying only the label overlay, for a
+    # session (video-only) that would otherwise have no panel to show labels on.
+    "labels": {"cls": LabelRibbonPlot, "group": "labels", "overlay_rescale": False},
 }
+
+#: Share of the dock host a label timeline takes by default — a ribbon, not a plot.
+_LABEL_RIBBON_RATIO = 0.08
 
 
 class CurrentLabelIndicator(QLabel):
@@ -438,6 +445,13 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
     def _neo_plots(self) -> list:
         return self._panels_of_group("neo")
 
+    def _label_ribbons(self) -> list:
+        return self._panels_of_group("labels")
+
+    def has_open_plots(self) -> bool:
+        """Whether any time-axis panel is on screen (the console is not one)."""
+        return any(True for _ in self._visible_plots())
+
     @property
     def _fallback_plot(self):
         """Hidden stand-in feature plot: keeps get_current_plot() non-None
@@ -455,6 +469,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         docks += [self._dyn_docks[p] for p in self._neo_plots() if not self._dyn_docks[p].isHidden()]
         docks += [self._panel_docks[n] for n, _ in _PANEL_ORDER if not self._panel_docks[n].isHidden()]
         docks += [self._dyn_docks[p] for p in self._panels_of_group("feature") if not self._dyn_docks[p].isHidden()]
+        docks += [self._dyn_docks[p] for p in self._label_ribbons() if not self._dyn_docks[p].isHidden()]
         return docks
 
     def _show_move_menu(self, dock: QDockWidget):
@@ -564,6 +579,8 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
             plot.neo_stream_name = stream_name
             plot.neo_channels = list(channels) if channels is not None else None
             title = f"Neo — {stream_name}" if stream_name else "Neo"
+        elif group == "labels":
+            title = "Labels"
         else:
             plot.mic_name = mic_name
             title = f"{panel_type} — {mic_name}" if mic_name else panel_type
@@ -585,7 +602,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
             plot.vb.sigYRangeChanged.connect(lambda *_, p=plot: self.overlay_manager.rescale_for_plot(p))
         if panel_type == "spectrogram":
             plot.bufferUpdated.connect(self.spectrogram_buffer_updated)
-        clicked_key = {"feature": "feature", "neo": "neo"}.get(group, "audio")
+        clicked_key = {"feature": "feature", "neo": "neo", "labels": "feature"}.get(group, "audio")
         plot.plot_clicked.connect(lambda _: setattr(self, "_last_clicked_panel", clicked_key))
         if group == "feature":
             plot.plot_clicked.connect(lambda _, p=plot: self.panel_content_changed.emit(p))
@@ -645,7 +662,10 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
                 plot.plotItem.vb.sigXRangeChanged.disconnect(self._sync_panel_xrange)
             except (TypeError, RuntimeError):
                 pass
-        plot._td.stop()
+        # A panel that renders nothing (the label timeline) has no debounce.
+        debounce = getattr(plot, "_td", None)
+        if debounce is not None:
+            debounce.stop()
         if plot.panel_group in ("audio", "neo"):
             plot.set_source(None)
         self._dyn_panels.remove(plot)
@@ -727,6 +747,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
     def _last_open_dock(self) -> QDockWidget | None:
         """The bottom anchor for a new feature dock (default vertical stack)."""
         for docks in (
+            [self._dyn_docks[p] for p in self._label_ribbons()],
             [self._dyn_docks[p] for p in self._panels_of_group("feature")],
             [self._panel_docks[n] for n, _ in _PANEL_ORDER],
             [self._dyn_docks[p] for p in self._neo_plots()],
@@ -826,6 +847,8 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
                 panels.append({"type": name})
         for plot in self._panels_of_group("feature"):
             panels.append({"type": plot.panel_type, **plot.panel_settings()})
+        for plot in self._label_ribbons():
+            panels.append({"type": plot.panel_type})
         return {
             "panels": panels,
             "dock_state_b64": base64.b64encode(bytes(self._dock_host.saveState())).decode("ascii"),
@@ -846,6 +869,8 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
                 self.add_panel(e["type"], mic_name=e.get("mic"))
             elif e.get("type") == "neo":
                 self.add_panel("neo", stream_name=e.get("stream_name"), channels=e.get("channels"))
+            elif e.get("type") == "labels":
+                self.add_panel("labels")
         if "raster" in types:
             self.set_neural_panel_mode("raster")
         elif "ephys" in types:
@@ -874,12 +899,16 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
             QTimer.singleShot(0, lambda: self._dock_host.restoreState(data))
 
     def update_feature_plots(self, **kwargs) -> None:
-        """Re-render every feature panel: all line plots and heatmaps."""
-        for plot in self._panels_of_group("feature"):
+        """Re-render every feature panel: all line plots and heatmaps.
+
+        A label timeline has no content, but its x-extent follows the trial
+        the same way.
+        """
+        for plot in self._panels_of_group("feature") + self._label_ribbons():
             plot.update_plot(**kwargs)
 
     def _get_all_plots(self) -> list:
-        return super()._get_all_plots() + list(self.line_plots)
+        return super()._get_all_plots() + list(self.line_plots) + self._label_ribbons()
 
     def sizeHint(self):
         return QSize(self.width(), PLOT_CONTAINER_SIZE_HINT_HEIGHT)
@@ -924,6 +953,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
             + self._neo_plots()
             + [self._get_panel_widget(n) for n in self._visible_panel_names()]
             + self._panels_of_group("feature")
+            + self._label_ribbons()
         )
 
     def _update_panel_visibility(self):
@@ -1098,12 +1128,13 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         # Every audio / neo instance gets its group's ratio share.
         audio_raw = [(self._dyn_docks[plot], ratios.get(plot.panel_type, 0.2) * total) for plot in self._audio_plots()]
         neo_raw = [(self._dyn_docks[plot], ratios.get("neo", 0.15) * total) for plot in self._neo_plots()]
+        ribbon_raw = [(self._dyn_docks[plot], _LABEL_RIBBON_RATIO * total) for plot in self._label_ribbons()]
 
         raw = {}
         for name in visible_names:
             raw[name] = ratios.get(name, 0.2) * total
 
-        instance_raw = audio_raw + neo_raw
+        instance_raw = audio_raw + neo_raw + ribbon_raw
         total_alloc = sum(raw.values()) + feature_share + sum(size for _, size in instance_raw)
         if total_alloc <= 0:
             return
@@ -1294,7 +1325,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         for name, _ in _PANEL_ORDER:
             if not self._panel_docks[name].isHidden():
                 yield self._get_panel_widget(name)
-        for plot in self._panels_of_group("feature"):
+        for plot in self._panels_of_group("feature") + self._label_ribbons():
             if not self._dyn_docks[plot].isHidden():
                 yield plot
 

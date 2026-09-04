@@ -14,7 +14,7 @@ import yaml
 from qtpy.QtCore import QObject, QTimer, Signal
 
 import ethograph as eto
-from ethograph.gui.app_constants import DEFAULT_LABEL_OVERLAY_MODES
+from ethograph.gui.app_constants import DEFAULT_LABEL_OVERLAY_MODES, LABELLING_MODE_PLOTS
 from ethograph.gui.notify import notify
 from ethograph.io.catalog import INDIVIDUAL_DIMS
 from ethograph.io.metadata_table import load_metadata_df
@@ -163,6 +163,15 @@ class AppStateSpec:
         "individual_receiver": (str, "", True, SCOPE_LOCAL),
         # Per-plot-type label rendering: "full" | "bottom" | "none"
         "label_overlay_modes": (dict[str, str], dict(DEFAULT_LABEL_OVERLAY_MODES), True),
+        # labelling_mode: where a new label's boundaries come from — "plots"
+        # (a click on a panel) or "frame" (the label key itself places the
+        # boundary at the frame on screen; a state class takes two presses).
+        # A labelling habit, so it follows the user across datasets.
+        "labelling_mode": (str, LABELLING_MODE_PLOTS, True),
+        # label_ribbon_auto: open a label timeline panel on load when the
+        # session has no panel at all (a video and nothing else), so placed
+        # labels have somewhere to be seen and clicked.
+        "label_ribbon_auto": (bool, True, True),
         "feature_view_mode": (str, "LinePlot", True, SCOPE_LOCAL),
         # Panel layout (UnifiedPanelContainer.layout_state()): per-dataset,
         # auto-saved to .ethograph/local_settings.yaml like other local vars.

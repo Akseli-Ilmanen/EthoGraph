@@ -99,6 +99,8 @@ def allowed_plot_types(kind: str, name: str, app_state) -> list[str]:
         return ["Neo Trace"]
     if kind == "console":
         return ["Python console"]
+    if kind == "labels":
+        return ["Label timeline"]
     if kind == "phy":
         return ["Phy TraceView"]
     if kind == "feature":
@@ -310,6 +312,12 @@ class SourcePopup(QWidget):
         sio = getattr(self.app_state, "nwb_alignment", None)
         cameras = list(getattr(sio, "cameras", []) or []) if sio else []
         mics = list(getattr(sio, "mics", []) or []) if sio else []
+
+        # An empty time axis carrying only the label overlay — always offered,
+        # first, because it needs no data: it is how a video-only session
+        # gets to see the labels it places.
+        self._add_header("Labels")
+        self._add_source("Label timeline", "labels", "labels")
 
         self._add_header("Media")
         for cam in cameras:
