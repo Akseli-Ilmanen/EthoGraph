@@ -1,6 +1,10 @@
 data/
 configs/paper/data
 configs/paper/runs
+configs/paper/cross_validation
+configs/neural/data
+configs/neural/runs
+configs/neural/cross_validation
 !data/model/project.yaml
 logging/
 spot_frames/

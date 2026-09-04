@@ -262,6 +262,30 @@ def _infer_trials(
     return tsv_path, npz_path
 
 
+def check_neural_units(session: Session, run_config: SegmentConfig) -> None:
+    """Refuse a session whose units are not the ones the run's neural feature was trained on.
+
+    A neural decoder only runs on the recording it was trained on; the
+    same file under another alignment (a sleep epoch) is fine, another
+    recording's units are not, and the generic "did not pin down" error a
+    missing column would otherwise raise says nothing about why.
+    """
+    from ethograph.segment.sessions import neural_columns
+
+    cfg = run_config.features.neural
+    if cfg is None:
+        return
+    trained = run_config.features.columns.get(cfg.name, {})
+    present = neural_columns(session, cfg)
+    missing = {dim: sorted(set(values) - set(present.get(dim, []))) for dim, values in trained.items()}
+    missing = {dim: values for dim, values in missing.items() if values}
+    if missing:
+        raise ValueError(
+            f"{session.spec.label}: the run was trained on units this session does not have — missing {missing}; "
+            f"the session's are {present}. A neural decoder only runs on the recording it was trained on."
+        )
+
+
 def inherit_neural_columns(config: SegmentConfig, run_config: SegmentConfig) -> SegmentConfig:
     """The project config with its unit columns taken from the run that recorded them.
 
@@ -308,6 +332,7 @@ def inference(
             # The run's config carries the scales it was trained at; the
             # project's may still be waiting to derive them.
             session = open_session(spec, loaded.config)
+            check_neural_units(session, loaded.config)
             out_dir = prediction_run_dir(session.source, loaded.name, timestamp)
             tsv, _ = infer_session(config, loaded, session, out_dir=out_dir, trials=trials)
             written.append(tsv)

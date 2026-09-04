@@ -26,7 +26,7 @@ section it failed in.
 | Key | Default | Meaning |
 |---|---|---|
 | `root` | the config's folder | Project directory: `data/` and `runs/` live here. |
-| `sessions` | required | List of sessions: `{source, labels_path, video_dir}`. |
+| `sessions` | required | List of sessions: `{source, labels_path, video_dir, alignment, name}`. `alignment` reads the trials from that NWB instead of the source's own sidecar — the same file listed twice, once with its behaviour trials and once with windows tiled over a sleep epoch ({func}`ethograph.segment.windows.write_windows_alignment`), is two sessions of one recording; give the second a `name`. |
 | `trials.where` | `{}` | Metadata column → allowed values. The one trial filter; applied in every stage. |
 
 ```{important}

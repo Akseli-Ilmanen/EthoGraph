@@ -169,11 +169,20 @@ class SessionSpec:
     ``train.split``, and holding a whole session out is a cross-validation
     fold (``train.split.holdout_sessions``), not something you write per
     session in the config.
+
+    ``alignment`` replaces the trials the source's own ``.ethograph/alignment.nwb``
+    would give: the same file listed twice, once with its behaviour trials
+    and once with windows tiled over a sleep epoch
+    (:func:`~ethograph.segment.windows.write_windows_alignment`), is two
+    sessions of one recording. Give the second a ``name``.
     """
 
     source: Path
     labels_path: Path | None = None
     video_dir: Path | None = None
+    #: An alignment NWB to read the trials from instead of the sidecar the
+    #: source would find on its own.
+    alignment: Path | None = None
     #: How the session is referred to in outputs — fold names, prediction
     #: keys, log lines. Defaults to the source's stem, which is fine until
     #: every session's file is called ``Trial_data.nc``.
@@ -959,7 +968,7 @@ class SegmentConfig:
 # Building from dicts
 # ---------------------------------------------------------------------------
 
-_PATH_FIELDS = {"source", "labels_path", "video_dir", "mapping", "root", "frames"}
+_PATH_FIELDS = {"source", "labels_path", "video_dir", "alignment", "mapping", "root", "frames"}
 _PATH_LIST_FIELDS = {"holdout_sessions"}
 _TUPLE_FIELDS = {"clip_percentiles", "stretch"}
 
@@ -1161,7 +1170,11 @@ def apply_overrides(data: dict, overrides: list[str]) -> dict:
         node = out
         parts = key.split(".")
         for part in parts[:-1]:
-            node = node.setdefault(part, {})
+            if node.get(part) is None:
+                # `params:` with nothing after it is YAML null — "the default",
+                # exactly as _build reads it — so an override may descend into it.
+                node[part] = {}
+            node = node[part]
             if not isinstance(node, dict):
                 raise ValueError(f"Override {item!r}: {part!r} is not a mapping")
         node[parts[-1]] = value

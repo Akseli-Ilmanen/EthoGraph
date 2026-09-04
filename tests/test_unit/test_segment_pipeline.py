@@ -287,6 +287,14 @@ def test_apply_overrides_parses_yaml_values():
     assert out == {"a": {"b": [1, 2], "c": None}, "d": True}
 
 
+def test_apply_overrides_descends_into_an_empty_section():
+    """``params:`` with nothing after it is YAML null, which reads as the default — an override may fill it."""
+    out = apply_overrides({"model": {"architecture": "mlp", "params": None}}, ["model.params.f_maps_list=[8]"])
+    assert out == {"model": {"architecture": "mlp", "params": {"f_maps_list": [8]}}}
+    with pytest.raises(ValueError, match="not a mapping"):
+        apply_overrides({"model": {"architecture": "mlp"}}, ["model.architecture.x=1"])
+
+
 def test_class_table_is_one_branch_state_classes_only(project: Path):
     cfg = load_config(project / "config.yaml")
     classes = class_table(cfg)

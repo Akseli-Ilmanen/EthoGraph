@@ -211,8 +211,11 @@ def open_session(
     source = spec.source
     if not source.exists():
         raise FileNotFoundError(f"Session source does not exist: {source}")
+    if spec.alignment is not None and not spec.alignment.is_file():
+        raise FileNotFoundError(f"{spec.label}: alignment {spec.alignment} does not exist")
     labels_path = str(spec.labels_path) if spec.labels_path is not None else None
-    result = load_features_dataset(str(source), labels_path=labels_path)
+    alignment = str(spec.alignment) if spec.alignment is not None else None
+    result = load_features_dataset(str(source), labels_path=labels_path, alignment_path=alignment)
     sid = session_id(source)
     logger.info("Opened session %s (%s backend, %d trials)", sid, result.data_loader.backend, len(result.trial_ids))
     session = Session(spec=spec, id=sid, result=result)

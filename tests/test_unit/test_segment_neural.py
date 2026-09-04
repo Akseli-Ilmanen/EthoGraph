@@ -390,6 +390,99 @@ class TestStages:
 
 
 # ---------------------------------------------------------------------------
+# Windows over an epoch with no trials (sleep)
+# ---------------------------------------------------------------------------
+
+
+class TestWindows:
+    def test_tiling_covers_the_epoch_without_a_gap(self):
+        from ethograph.segment.windows import STATE_COLUMN, tile_windows
+
+        ep = tile_windows(10.0, 25.0, 6.0)
+        np.testing.assert_allclose(ep.start, [10.0, 16.0, 22.0])
+        np.testing.assert_allclose(ep.end, [16.0, 22.0, 25.0], atol=1e-3)  # the remainder stays: no gap
+        assert list(ep.metadata["trial"]) == [1, 2, 3]
+        assert set(ep.metadata[STATE_COLUMN]) == {"sleep"}
+
+    def test_a_sub_second_remainder_is_dropped(self):
+        from ethograph.segment.windows import tile_windows
+
+        ep = tile_windows(0.0, 12.5, 6.0)
+        np.testing.assert_allclose(ep.end, [6.0, 12.0], atol=1e-3)
+
+    @pytest.mark.parametrize("args, match", [((0.0, 10.0, 0.0), "positive"), ((10.0, 10.0, 6.0), "after")])
+    def test_bad_bounds_are_refused(self, args, match):
+        from ethograph.segment.windows import tile_windows
+
+        with pytest.raises(ValueError, match=match):
+            tile_windows(*args)
+
+    def test_an_alignment_of_windows_is_another_session_of_the_same_file(self, project, source: Path, tmp_path: Path):
+        """Train on the wake trials, then predict windows tiled over the same recording."""
+        import ethograph as eto
+        from ethograph.segment.sessions import open_session
+        from ethograph.segment.windows import write_windows_alignment
+
+        project.materialise()
+        result = project.train()
+
+        alignment = source.parent.parent / ".ethograph" / "sleep_alignment.nwb"
+        write_windows_alignment(alignment, 2.0, N_TRIALS * DURATION, 6.0)
+        sleep_yaml = tmp_path / "project" / "sleep.yaml"
+        sleep_yaml.write_text(
+            yaml.safe_dump(
+                {
+                    "base": "config.yaml",
+                    "sessions": [
+                        {
+                            "source": str(source),
+                            "alignment": str(alignment),
+                            "labels_path": str(tmp_path / "nowhere_labels.tsv"),
+                            "name": "sleep",
+                        }
+                    ],
+                    "trials": {"where": {"state": ["sleep"]}},
+                },
+                sort_keys=False,
+            ),
+            encoding="utf-8",
+        )
+        sleep = eto.segment.Project(sleep_yaml)
+        session = open_session(sleep.config.sessions[0], sleep.config)
+        assert session.trial_ids == [1, 2, 3]  # 18 s / 6 s
+        assert session.result.all_labels_df.empty
+
+        written = sleep.inference(run=result.run_dir)
+        predicted, window = _predicted_trials(written[0].with_name("units_probs.npz"))
+        assert predicted == {"1", "2", "3"}
+        assert window[0] == pytest.approx(0.0, abs=BIN_S) and window[-1] == pytest.approx(6.0, abs=2 * BIN_S)
+
+    def test_another_recordings_units_are_refused_by_name(self, project, tmp_path: Path):
+        """A decoder only runs on the recording it was trained on; the error says which units are missing."""
+        import ethograph as eto
+        from ethograph.segment.inference import inference
+
+        project.materialise()
+        result = project.train()
+        other = _write_session(tmp_path / "other")
+        # the other recording: same folder layout, different unit ids
+        group = nap.load_file(str(other))
+        renamed = nap.TsGroup({uid + 1000: group[uid] for uid in group.index}, time_support=group.time_support)
+        renamed.save(str(other))
+        elsewhere = eto.segment.Project(_write_config(tmp_path / "other_project", other))
+        with pytest.raises(ValueError, match=r"missing \{'rate_columns': \['105', '42', '7'\]\}"):
+            inference(elsewhere.config, run=result.run_dir)
+
+    def test_a_missing_alignment_is_refused(self, project, source: Path, tmp_path: Path):
+        from ethograph.segment.config import SessionSpec
+        from ethograph.segment.sessions import open_session
+
+        spec = SessionSpec(source=source, alignment=tmp_path / "missing.nwb", name="sleep")
+        with pytest.raises(FileNotFoundError, match="missing.nwb"):
+            open_session(spec, project.config)
+
+
+# ---------------------------------------------------------------------------
 # Cross-validation by trial
 # ---------------------------------------------------------------------------
 
@@ -471,8 +564,7 @@ class TestTrialFolds:
             train_keys = (run_dir / "splits" / "train.bundle").read_text(encoding="utf-8").split()
             assert not {k.rsplit("_trial", 1)[1].split("_")[0] for k in train_keys} & set(fold_trials)
             # the fold's own prediction set covers only its held-out trials
-            probs = np.load(Path(row["predictions"]).with_name("units_probs.npz"))
-            predicted = {k.rsplit("_trial", 1)[1].split("_")[0] for k in probs.files if not k.endswith("_time")}
+            predicted, _ = _predicted_trials(Path(row["predictions"]).with_name("units_probs.npz"))
             assert predicted == set(fold_trials)
             held_out += fold_trials
         assert sorted(held_out, key=int) == [str(t) for t in range(1, N_TRIALS + 1)]
@@ -482,8 +574,15 @@ class TestTrialFolds:
         merged_tsv = Path(merged.loc[0, "predictions"])
         assert merged_tsv.name == "units_predictions.tsv"
         assert "predictions_cv_rate_" in merged_tsv.parent.name
-        probs = np.load(merged_tsv.with_name("units_probs.npz"))
-        predicted = {k.rsplit("_trial", 1)[1].split("_")[0] for k in probs.files if not k.endswith("_time")}
+        predicted, _ = _predicted_trials(merged_tsv.with_name("units_probs.npz"))
         assert predicted == {str(t) for t in range(1, N_TRIALS + 1)}
         df = load_labels_tsv(merged_tsv)
         assert set(df["prediction_source"]) <= {Path(r).name for r in table["run_dir"]}
+
+
+def _predicted_trials(npz_path: Path) -> tuple[set[str], np.ndarray]:
+    """The trial ids a ``_probs.npz`` holds predictions for, and the first sample's time axis."""
+    with np.load(npz_path) as probs:
+        keys = [k for k in probs.files if not k.endswith("_time")]
+        time = probs[f"{keys[0]}_time"]
+        return {k.rsplit("_trial", 1)[1].split("_")[0] for k in keys}, time

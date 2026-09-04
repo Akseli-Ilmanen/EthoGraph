@@ -129,6 +129,7 @@ ethograph/segment/            # Segmentation pipeline (docs: docs/add_to_docs_la
     inference.py              # Stage 3: prediction sets ({stem}_predictions.tsv + _probs.npz)
     search.py                 # Workflow stage 1: Optuna on the val split → searches/{name}/best.yaml
     crossval.py               # Workflow stage 2: leave-one-session-out folds, or n_folds trial folds for a one-session project
+    windows.py                # Windows tiled over a trial-less epoch (sleep) → a second alignment listed as sessions[].alignment
     project.py                # Project — the one entry point: a config + a method per stage
     video_features.py         # S3D: a folder of videos or a config's sessions, + merge into a session
     models/__init__.py        # Architecture registry + contract
