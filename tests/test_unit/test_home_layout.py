@@ -146,3 +146,24 @@ class TestSeed:
         cfg = load_config(defaults_dir("config") / "spot.yaml")
         assert cfg.labels.classes == [11]
         assert cfg.root == defaults_dir()
+
+
+class TestMappingResolution:
+    """Most specific wins: the session's own copy, then the project's, then the bundled backup."""
+
+    def test_session_beats_project_beats_defaults(self, home: Path, tmp_path: Path):
+        project = tmp_path / "study"
+        session = tmp_path / "data" / "session_01"
+        (session / ".ethograph").mkdir(parents=True)
+        defaults_dir().mkdir()
+        defaults_dir("mapping.txt").write_text("0 Background\n")
+
+        assert find_config("mapping.txt", session, project_dir=project) == defaults_dir("mapping.txt")
+
+        project.mkdir()
+        (project / "mapping.txt").write_text("0 Background\n1 Study\n")
+        assert find_config("mapping.txt", session, project_dir=project) == project / "mapping.txt"
+        assert find_config("mapping.txt", session) == defaults_dir("mapping.txt")
+
+        (session / ".ethograph" / "mapping.txt").write_text("0 Background\n1 Mine\n")
+        assert find_config("mapping.txt", session, project_dir=project) == session / ".ethograph" / "mapping.txt"

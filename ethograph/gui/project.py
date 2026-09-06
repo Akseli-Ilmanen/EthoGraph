@@ -46,6 +46,15 @@ DROP_STATE_FIELDS: tuple[str, ...] = (
 )
 
 
+def project_dir_of(app_state) -> Path | None:
+    """The chosen project folder, or ``None`` when none is set or it no longer exists."""
+    value = getattr(app_state, "project_path", None)
+    if not value:
+        return None
+    path = Path(value)
+    return path if path.is_dir() else None
+
+
 def sessions_dir(project: Path | str) -> Path:
     return Path(project) / SESSIONS_DIRNAME
 

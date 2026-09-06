@@ -361,14 +361,15 @@ def sanitize_path_state(state: dict[str, Any], path_kinds: Mapping[str, str]) ->
     return cleaned
 
 
-def find_config(name: str, data_dir: Path | str | None = None) -> Path | None:
-    """Find a config file by walking up from *data_dir*, then falling back to global.
+def find_config(name: str, data_dir: Path | str | None = None, project_dir: Path | str | None = None) -> Path | None:
+    """Find a config file: beside the data, else the project's, else the bundled default.
 
-    Search order:
-    1. Walk up from *data_dir* looking for ``.ethograph/{name}`` in each ancestor.
-       This lets a shared ``.ethograph/`` in a parent directory serve multiple
-       sessions, while per-session overrides are found first.
-    2. ``~/.ethograph/defaults/{name}``  (global user default)
+    Most specific wins:
+    1. Walk up from *data_dir* looking for ``.ethograph/{name}`` in each
+       ancestor — a session's own copy overrides the study's.
+    2. ``{project_dir}/{name}`` — the study's copy, when a project folder is
+       chosen on the cover page.
+    3. ``~/.ethograph/defaults/{name}`` — the backup every install ships with.
 
     Parameters
     ----------
@@ -377,6 +378,8 @@ def find_config(name: str, data_dir: Path | str | None = None) -> Path | None:
     data_dir
         Directory of the loaded data file.  Pass ``None`` to skip the
         walk-up search (e.g. at application startup before any file is loaded).
+    project_dir
+        The project folder (``app_state.project_path``), or ``None``.
 
     Returns
     -------
@@ -384,8 +387,8 @@ def find_config(name: str, data_dir: Path | str | None = None) -> Path | None:
 
     Examples
     --------
-    >>> find_config("mapping.txt", "/data/project/session_01")
-    PosixPath('/data/project/.ethograph/mapping.txt')
+    >>> find_config("mapping.txt", "/data/session_01", project_dir="/data/my_study")
+    PosixPath('/data/my_study/mapping.txt')
     """
     if data_dir is not None:
         d = Path(data_dir).resolve()
@@ -393,6 +396,11 @@ def find_config(name: str, data_dir: Path | str | None = None) -> Path | None:
             candidate = parent / SETTINGS_DIR / name
             if candidate.exists():
                 return candidate
+
+    if project_dir is not None:
+        candidate = Path(project_dir) / name
+        if candidate.is_file():
+            return candidate
 
     global_candidate = defaults_dir(name)
     if global_candidate.exists():
@@ -412,9 +420,9 @@ def default_config_dir(data_dir: Path | str | None = None) -> Path:
     return defaults_dir()
 
 
-def find_mapping_file(data_dir: Path | str | None = None) -> Path | None:
+def find_mapping_file(data_dir: Path | str | None = None, project_dir: Path | str | None = None) -> Path | None:
     """Find mapping.txt. Convenience wrapper around :func:`find_config`."""
-    return find_config("mapping.txt", data_dir)
+    return find_config("mapping.txt", data_dir, project_dir)
 
 
 def find_nwb_file(data_dir: Path | str | None = None) -> Path | None:

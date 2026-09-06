@@ -72,6 +72,7 @@ _EVENT_TYPE_GLYPH = {
 _BRANCH_POSITION = {0: "main", 1: "top1", 2: "top2"}
 _BRANCH_POSITION_LABEL = {0: "Full", 1: "Top1", 2: "Top2"}
 MAX_LABEL_BRANCHES = 3
+from ethograph.gui.project import project_dir_of  # noqa: E402
 from ethograph.utils.paths import defaults_dir, find_mapping_file  # noqa: E402
 
 logger = logging.getLogger(__name__)
@@ -216,7 +217,7 @@ class LabelsWidget(QWidget):
 
         self._setup_ui()
 
-        mapping_path = find_mapping_file()
+        mapping_path = find_mapping_file(project_dir=project_dir_of(self.app_state))
         self._mapping_file_path = str(mapping_path) if mapping_path else None
         self._mappings = load_label_mapping(mapping_path) if mapping_path else {}
         self.app_state._label_mappings = self._mappings
@@ -227,12 +228,22 @@ class LabelsWidget(QWidget):
     def refresh_mapping_for_data_dir(self, data_dir: Path | str):
         """Re-resolve mapping.txt now that a data directory is known.
 
-        Called by DataWidget after loading a .nc file so that a local
-        ``data_dir/.ethograph/mapping.txt`` is picked up when present.
+        Called by DataWidget after loading a .nc file. A session's own
+        ``.ethograph/mapping.txt`` overrides the project's; when the two
+        disagree the override is said out loud, so two meanings for one id
+        never pass unnoticed.
         """
-        mapping_path = find_mapping_file(data_dir)
+        project = project_dir_of(self.app_state)
+        mapping_path = find_mapping_file(data_dir, project_dir=project)
         if mapping_path is None:
             return
+        project_mapping = project / "mapping.txt" if project is not None else None
+        if project_mapping is not None and project_mapping.is_file() and mapping_path != project_mapping:
+            if mapping_path.read_text(encoding="utf-8").split() != project_mapping.read_text(encoding="utf-8").split():
+                notify(
+                    f"Using this session's own {mapping_path}, which differs from the project's {project_mapping}.",
+                    severity="warning",
+                )
         current_path = Path(self.io_widget.mapping_file_path_edit.text()) if self.io_widget else None
         if current_path == mapping_path:
             return
@@ -758,7 +769,7 @@ class LabelsWidget(QWidget):
 
     def _browse_mapping_file(self):
         """Browse for a mapping.txt file and reload mappings."""
-        current = find_mapping_file()
+        current = find_mapping_file(project_dir=project_dir_of(self.app_state))
         start_dir = str(current.parent) if current else str(defaults_dir())
         file_path, _ = QFileDialog.getOpenFileName(
             self,

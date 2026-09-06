@@ -27,6 +27,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
+from ethograph.gui.project import project_dir_of
 from ethograph.io.catalog import INDIVIDUAL_DIMS
 from ethograph.io.metadata_table import metadata_tsv_path
 from ethograph.io.validation import EPHYS_FILE_FILTER
@@ -477,7 +478,7 @@ class IOWidget(QWidget):
         mapping_row.setLayout(mapping_layout)
 
         self.mapping_file_path_edit = QLineEdit()
-        default_mapping = find_mapping_file()
+        default_mapping = find_mapping_file(project_dir=project_dir_of(self.app_state))
         self.mapping_file_path_edit.setText(str(default_mapping) if default_mapping else "")
         self.mapping_file_path_edit.setToolTip("Path to mapping.txt file")
         mapping_layout.addWidget(self.mapping_file_path_edit)

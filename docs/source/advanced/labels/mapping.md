@@ -64,22 +64,24 @@ See {func}`~ethograph.labels.intervals.load_mapping` and
 
 ## Resolution order
 
-When the GUI needs a mapping, it searches with
-{func}`~ethograph.utils.paths.find_mapping_file`:
+A study keeps its vocabulary in **`mapping.txt` at the root of its project
+folder** (the folder chosen on the start page). When the GUI needs a mapping,
+{func}`~ethograph.utils.paths.find_mapping_file` takes the most specific one:
 
-1. Walk up from the loaded data directory looking for
-   `.ethograph/mapping.txt` in each ancestor. This lets a shared
-   `.ethograph/` in a parent folder serve many sessions, while a
-   per-session override wins.
-2. Fall back to `~/.ethograph/defaults/mapping.txt` (global user default).
-
-Typical layouts:
+1. `.ethograph/mapping.txt` beside the loaded session, walking up through its
+   parent folders — a session's own copy overrides the study's.
+2. `{project}/mapping.txt` — the project's copy.
+3. `~/.ethograph/defaults/mapping.txt` — the backup every install ships with.
+   With no project folder chosen this is the one in use.
 
 ```
-~/.ethograph/defaults/mapping.txt                 # global default
-project/.ethograph/mapping.txt                    # project-wide (shared across sessions)
-project/session_01/.ethograph/mapping.txt         # per-session override
+session_01/.ethograph/mapping.txt                 # a session's own copy: overrides the project
+my_study/mapping.txt                              # the study's vocabulary
+~/.ethograph/defaults/mapping.txt                 # backup: the bundled default
 ```
+
+When a session's own copy disagrees with the project's, the GUI says so on
+load — the override applies, but never unnoticed.
 
 ---
 

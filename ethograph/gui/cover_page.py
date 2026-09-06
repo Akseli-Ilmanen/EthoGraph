@@ -51,7 +51,7 @@ from qtpy.QtWidgets import (
 from ethograph.datasets import DATASETS
 from ethograph.gui.dialog_select_template import TEMPLATE_ASSETS_DIR
 from ethograph.gui.file_dialogs import browse_open_dir
-from ethograph.gui.project import DropRecord, list_drops, new_drop_dir, record_drop, restore_drop
+from ethograph.gui.project import DropRecord, list_drops, new_drop_dir, project_dir_of, record_drop, restore_drop
 from ethograph.io.audio_extract import ensure_extracted_audio, has_embedded_audio
 from ethograph.io.validation import (
     AUDIO_EXTENSIONS,
@@ -549,11 +549,7 @@ class CoverPage(QDialog):
         self._refresh_project_ui()
 
     def _project_dir(self) -> Path | None:
-        value = getattr(self.app_state, "project_path", None)
-        if not value:
-            return None
-        path = Path(value)
-        return path if path.is_dir() else None
+        return project_dir_of(self.app_state)
 
     def _refresh_project_ui(self) -> None:
         """Mirror ``app_state.project_path`` into the bar and the reopen list."""
