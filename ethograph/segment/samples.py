@@ -61,6 +61,11 @@ class ClassTable:
     def n_classes(self) -> int:
         return len(self.label_ids)
 
+    @property
+    def n_outputs(self) -> int:
+        """Model outputs: one logit per class, background included."""
+        return len(self.label_ids)
+
     def to_dict(self) -> dict:
         return {"label_ids": list(self.label_ids), "names": list(self.names)}
 
@@ -79,32 +84,207 @@ class ClassTable:
         return np.asarray(self.label_ids, dtype=np.int64)[np.asarray(indices, dtype=np.int64)]
 
 
-def class_table(config: SegmentConfig) -> ClassTable:
-    """The branch's state classes from ``mapping.txt`` (plus background)."""
+def _target_classes(config: SegmentConfig) -> list[tuple[int, str, int]]:
+    """``(label id, name, branch)`` of every state class the config names, in id order."""
     labels_cfg = config.features.labels
     assert labels_cfg is not None
     mapping = load_label_mapping(labels_cfg.mapping)
+    branches = labels_cfg.branch_list
     chosen = []
     for lid, info in sorted(mapping.items()):
         if lid == 0:
             continue
-        if int(info.get("branch", 0)) != labels_cfg.branch:
+        branch = int(info.get("branch", 0))
+        if branch not in branches:
             continue
         if info.get("event_type", "state") != "state":
             continue
         if labels_cfg.classes is not None and lid not in labels_cfg.classes:
             continue
-        chosen.append((int(lid), str(info["name"])))
+        chosen.append((int(lid), str(info["name"]), branch))
     if labels_cfg.classes is not None:
-        missing = set(labels_cfg.classes) - {lid for lid, _ in chosen}
+        missing = set(labels_cfg.classes) - {lid for lid, _, _ in chosen}
         if missing:
             raise ValueError(
-                f"features.labels.classes names ids {sorted(missing)} that are not state classes of branch "
-                f"{labels_cfg.branch} in {labels_cfg.mapping}"
+                f"features.labels.classes names ids {sorted(missing)} that are not state classes of "
+                f"branch(es) {branches} in {labels_cfg.mapping}"
             )
     if not chosen:
-        raise ValueError(f"Branch {labels_cfg.branch} of {labels_cfg.mapping} has no state classes to predict.")
-    return ClassTable([0, *(lid for lid, _ in chosen)], [BACKGROUND_NAME, *(name for _, name in chosen)])
+        raise ValueError(f"Branch(es) {branches} of {labels_cfg.mapping} have no state classes to predict.")
+    return chosen
+
+
+def target_label_ids(config: SegmentConfig) -> set[int]:
+    """The label ids the config's target predicts, whichever table it builds."""
+    return {lid for lid, _, _ in _target_classes(config)}
+
+
+def class_table(config: SegmentConfig) -> ClassTable:
+    """The branch's state classes from ``mapping.txt`` (plus background) — the exclusive target."""
+    chosen = _target_classes(config)
+    return ClassTable([0, *(lid for lid, _, _ in chosen)], [BACKGROUND_NAME, *(name for _, name, _ in chosen)])
+
+
+# ---------------------------------------------------------------------------
+# Multi-label channels
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Channel:
+    """One binary output of a multi-label model: *subject* does *label_id*."""
+
+    subject: str  # ``self`` / ``other1`` / …
+    label_id: int
+    branch: int
+    name: str  # ``"self:flap"``
+
+
+@dataclass(frozen=True)
+class Track:
+    """The channels that are exclusive with each other: one (subject, branch).
+
+    A track is what the GUI draws as one lane of one animal — never two
+    labels at once — so it is the unit every decoding step is exclusive
+    within. ``classes`` maps the track's channels onto a :class:`ClassTable`
+    (index 0 background, then the channels in order), which is what lets
+    the exclusive post-processing run on it unchanged.
+    """
+
+    subject: str
+    branch: int
+    channels: tuple[int, ...]  # indices into ``ChannelTable.channels``
+    classes: ClassTable
+
+
+@dataclass
+class ChannelTable:
+    """The channels of a multi-label target, in output order.
+
+    Reads like a :class:`ClassTable` where the code only needs names: index
+    ``0`` is background and channel ``c`` sits at ``c + 1`` — the index
+    space :func:`~ethograph.segment.metrics.flatten_channels` evaluates in.
+    """
+
+    channels: list[Channel]
+
+    def __post_init__(self) -> None:
+        if not self.channels:
+            raise ValueError("ChannelTable needs at least one channel")
+        if len({(c.subject, c.label_id) for c in self.channels}) != len(self.channels):
+            raise ValueError("ChannelTable: a (subject, label id) appears twice")
+
+    @property
+    def n_outputs(self) -> int:
+        return len(self.channels)
+
+    @property
+    def n_classes(self) -> int:
+        """Background plus one class per channel — the flattened index space."""
+        return len(self.channels) + 1
+
+    @property
+    def names(self) -> list[str]:
+        return [BACKGROUND_NAME, *(c.name for c in self.channels)]
+
+    @property
+    def label_ids(self) -> list[int]:
+        """Every label id a channel predicts (no background), ascending."""
+        return sorted({c.label_id for c in self.channels})
+
+    @property
+    def subjects(self) -> list[str]:
+        return list(dict.fromkeys(c.subject for c in self.channels))
+
+    def subject_channels(self, subject: str) -> list[int]:
+        return [i for i, c in enumerate(self.channels) if c.subject == subject]
+
+    def tracks(self, subject: str | None = None) -> list[Track]:
+        """The exclusive groups, in first-channel order; *subject* narrows to one animal."""
+        groups: dict[tuple[str, int], list[int]] = {}
+        for i, c in enumerate(self.channels):
+            if subject is not None and c.subject != subject:
+                continue
+            groups.setdefault((c.subject, c.branch), []).append(i)
+        out = []
+        for (subj, branch), idx in groups.items():
+            table = ClassTable(
+                [0, *(self.channels[i].label_id for i in idx)],
+                [BACKGROUND_NAME, *(self.channels[i].name for i in idx)],
+            )
+            out.append(Track(subj, branch, tuple(idx), table))
+        return out
+
+    def to_dict(self) -> dict:
+        return {
+            "target": "multilabel",
+            "channels": [
+                {"subject": c.subject, "label_id": int(c.label_id), "branch": int(c.branch), "name": c.name}
+                for c in self.channels
+            ],
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> ChannelTable:
+        return cls(
+            [Channel(str(c["subject"]), int(c["label_id"]), int(c["branch"]), str(c["name"])) for c in data["channels"]]
+        )
+
+
+TargetTable = ClassTable | ChannelTable
+"""What ``classes.yaml`` holds: the exclusive table, or the multi-label channels."""
+
+
+def target_table_from_dict(data: dict) -> TargetTable:
+    """``classes.yaml`` → whichever table it records."""
+    if data.get("target") == "multilabel":
+        return ChannelTable.from_dict(data)
+    return ClassTable.from_dict(data)
+
+
+def channel_table(config: SegmentConfig, n_individuals: int) -> ChannelTable:
+    """The multi-label channels: every named class, for ``self`` and — with
+    ``subjects: all`` — each of the *n_individuals - 1* others."""
+    labels_cfg = config.features.labels
+    assert labels_cfg is not None
+    subjects = [SELF_TOKEN]
+    if labels_cfg.subjects == "all":
+        subjects += [f"{OTHER_DIM}{i + 1}" for i in range(max(n_individuals - 1, 0))]
+    classes = _target_classes(config)
+    return ChannelTable(
+        [Channel(subj, lid, branch, f"{subj}:{name}") for subj in subjects for lid, name, branch in classes]
+    )
+
+
+def target_table(config: SegmentConfig, n_individuals: int) -> TargetTable:
+    """The config's target: exclusive classes, or multi-label channels."""
+    labels_cfg = config.features.labels
+    assert labels_cfg is not None
+    if labels_cfg.multilabel:
+        return channel_table(config, n_individuals)
+    return class_table(config)
+
+
+def is_multilabel(table: TargetTable) -> bool:
+    return isinstance(table, ChannelTable)
+
+
+def channels_to_track(on: np.ndarray, probs: np.ndarray | None, track: Track) -> np.ndarray:
+    """``(T,)`` indices into ``track.classes`` from the track's channels of *on* ``(C, T)``.
+
+    Where several of the track's channels are on at one frame — a
+    multi-label model owes them no exclusivity — the one with the highest
+    probability wins (*probs* ``(C, T)``); without probabilities, the first.
+    """
+    rows = np.asarray(on, dtype=bool)[list(track.channels)]  # (K, T)
+    if rows.size == 0:
+        return np.zeros(np.asarray(on).shape[-1], dtype=np.int64)
+    if probs is None:
+        score = rows.astype(np.float64)
+    else:
+        score = np.where(rows, np.asarray(probs, dtype=np.float64)[list(track.channels)], -1.0)
+    winner = score.argmax(axis=0)
+    return np.where(rows.any(axis=0), winner + 1, 0).astype(np.int64)
 
 
 # ---------------------------------------------------------------------------
@@ -457,6 +637,40 @@ def dense_targets(
         y[i0:i1] = classes.id_to_index[int(row["labels"])]
         n += 1
     return y, n
+
+
+def dense_channel_targets(
+    labels: pd.DataFrame, time: np.ndarray, subjects: dict[str, str], table: ChannelTable
+) -> tuple[np.ndarray, int]:
+    """Per-frame ``(C, T)`` 0/1 targets, one row per channel.
+
+    *subjects* maps a subject token (``self``, ``other1``, …) to the
+    individual it stands for in this sample. A channel whose subject the
+    sample does not have (fewer others than the table lists) stays all
+    zero. Returns the target and how many rows contributed.
+    """
+    y = np.zeros((table.n_outputs, len(time)), dtype=np.int64)
+    if labels.empty:
+        return y, 0
+    df = states_only(labels)
+    n = 0
+    for c, ch in enumerate(table.channels):
+        individual = subjects.get(ch.subject)
+        if individual is None:
+            continue
+        rows = df[(df["individual"].astype(str) == str(individual)) & (df["labels"].astype(int) == ch.label_id)]
+        for _, row in rows.iterrows():
+            i0, i1 = frame_span(time, float(row["onset_s"]), float(row["offset_s"]))
+            if i1 <= i0:
+                continue
+            y[c, i0:i1] = 1
+            n += 1
+    return y, n
+
+
+def subject_tokens(individual: str, others: list[str]) -> dict[str, str]:
+    """Token → individual: ``self`` is *individual*, ``other{i}`` the *i*-th of *others*."""
+    return {SELF_TOKEN: individual, **{f"{OTHER_DIM}{i + 1}": o for i, o in enumerate(others)}}
 
 
 def frame_span(time: np.ndarray, onset: float, offset: float) -> tuple[int, int]:

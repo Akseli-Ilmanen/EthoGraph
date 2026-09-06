@@ -175,9 +175,9 @@ class TopBarBuilder:
 
         menu.addSeparator()
         # Drag a box on the video and read off the source pixels it covers,
-        # in the spelling `labels.crop:` of a spot config takes -- the model
+        # in the spelling a spot config's `labels.crop:` or a segment config's `video_features.crop:` takes -- the model
         # then trains on that part of the frame. See dialog_spot_crop.py.
-        menu.addAction("Video: Pick a crop for spot config…", self._open_spot_crop)
+        menu.addAction("Video: Pick a crop for a config…", self._open_spot_crop)
 
         menu.addSeparator()
         menu.addAction("Pose tracking (from scratch)…", self._open_keypoint_labelling)

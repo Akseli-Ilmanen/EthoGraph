@@ -52,8 +52,18 @@ the one folder searched for it (no project-level list to fall through).
 | `sin_cos` | `[]` | Features in `columns` that are **angles** — see below. |
 | `individuals` | dataset's individual coord | Which individuals become samples. Required when the dataset has no individual dim but the labels name individuals. |
 | `labels.mapping` | required | `mapping.txt` (`id name [branch] [event_type]`). |
-| `labels.branch` | `0` | The one branch this model predicts. |
-| `labels.classes` | all state classes of the branch | Subset of label ids to predict. |
+| `labels.branch` | `0` | The one branch this model predicts — the exclusive target: one class per frame, a softmax. |
+| `labels.branches` | unset | Several branches at once — a **multi-label** target: one binary channel per class, a sigmoid each, so a label of branch 0 and one of branch 1 coexist on a frame. Within one branch the classes stay exclusive (a *track*, see below). Spell `branch` or `branches`, never both. |
+| `labels.subjects` | `self` | Whose labels are targets. `self`: the sample's own individual. `all`: also `other1`, `other2`, … as further channels (multi-label) — the model learns what the *other* animals are doing while it watches this one. At inference every animal's labels still come from its own sample; the other-channels are training signal only. |
+| `labels.classes` | all state classes of the branch(es) | Subset of label ids to predict. |
+
+A multi-label target is decoded one **track** at a time — a track is one
+(subject, branch), the unit inside which the GUI never lets two labels
+overlap. A channel is on where its sigmoid exceeds `infer.threshold`; where
+two channels of one track are on at once the more probable wins; each
+track's on/off sequence then goes through the same post-processing as an
+exclusive run. So a prediction set can hold A's `flap` (branch 0) under A's
+`peck` (branch 1), and never two branch-0 labels of A at once.
 
 ### `features.sin_cos`
 
@@ -303,7 +313,7 @@ For what each architecture is good at, see {doc}`index`.
 | `select_on` | `f1@50` | Which validation metric decides the kept checkpoint: `acc`, `edit`, `frame_f1`, `f1@50`, `f1@75`, `f1@90`. Pick the one that matches what you need from the model — `f1@50` for "did it find the behaviour", `f1@90` for "are the boundaries right", `edit` for "is the sequence of behaviours right". |
 | `f1_thresholds` | `[0.5, 0.75, 0.9]` | IoU thresholds of the segmental F1 scores. |
 | `seed`, `device` | `0`, auto | `device` = `cuda`, `mps`, `cpu`; auto picks the best available. |
-| `drop_kinds` | `[]` | Feature categories to leave out of this run — the ablation axis (see {doc}`../variable_schema`). `[video_feature]` trains the same model without S3D. Applied to the materialised dataset's columns, so an ablation costs a run rather than a re-materialisation; columns whose `kind` is undeclared are always kept. |
+| `drop_kinds` | `[]` | Feature categories to leave out of this run — the ablation axis (see {doc}`../variable_schema`). `[video_feature]` trains the same model without the video features. Applied to the materialised dataset's columns, so an ablation costs a run rather than a re-materialisation; columns whose `kind` is undeclared are always kept. |
 | `frame_weight` | `1.0` | Weight of `train.loss` in the total. `0` leaves `train.circle` as the only thing training. |
 | `subsample` | `1` | Train and predict at `fs / subsample` — the temporal-resolution axis, run-level like `drop_kinds`, so one materialised dataset serves every rate. Every frame count the run reports (its metrics, its `_probs.npz`) is then in *its* frames, so runs at different rates are only comparable once their predictions are scored back on one grid (`scripts/experiment2_smoothing.py` does that). Striding, with no anti-alias filter. |
 
@@ -338,8 +348,8 @@ stops the output flickering between classes mid-behaviour.
 | `focal` | `true` | Focus the loss on frames the model still gets wrong, instead of ones it already has right. |
 | `gamma` | `2` | How sharply `focal` does that. Higher = more focus on hard frames. No effect when `focal: false`. |
 | `weights` | `null` | Per-class multipliers on the cross-entropy, as a list one entry per class (background first). `null` treats every class alike.
-| `hard_negative_weight` | `1` | Multi-label only; no effect at the default `exclusive: true`. |
-| `exclusive` | `true` | One class per frame. `false` (multi-label sigmoid) is not wired up — the targets and metrics assume one class. |
+| `hard_negative_weight` | `1` | Multi-label only (upstream's weight on frames marked as hard negatives — nothing here marks any, so it has no effect). |
+| `exclusive` | follows the target | `true` (softmax cross-entropy) for a `labels.branch` target, `false` (a sigmoid per channel, `BCEWithLogits`) for `labels.branches` / `subjects: all`. Not a knob: spelling it against the target is refused. |
 
 ```yaml
 train:
@@ -574,25 +584,31 @@ dataset is built once, before the study starts, and every trial reads it — so
 
 ## `video_features`
 
-The two settings that change the *features*, plus the camera. In seconds —
-frame counts come from each video's own rate. See {doc}`video_features`.
+Which extractor, the settings that change its *features*, and the camera. In
+seconds — frame counts come from each video's own rate. See {doc}`video_features`.
 
 | Key | Default | Meaning |
 |---|---|---|
-| `stack_s` | `0.5` | Temporal extent of one S3D window — how much motion context each frame's feature sees. |
-| `analysis_fps` | `null` | Rate S3D sees; frames are skipped to reach it, never interpolated up, so halving this roughly halves the cost. `null` = every frame. |
+| `extractor` | `s3d` | The network, by registry name: `s3d` (clip-wise; Kinetics-400 S3D) or `timm` (frame-wise; any timm image backbone; `pip install 'ethograph[timm]'`). Names the sidecar suffix and the merged variable. |
+| `model_name` | `null` | `timm` only: the backbone. `null` = `vit_base_patch14_reg4_dinov2.lvd142m` (DINOv2 ViT-B/14). |
+| `stack_s` | `null` | `s3d` only: temporal extent of one window — how much motion context each frame's feature sees. `null` = 0.5 s. |
+| `analysis_fps` | `null` | Rate the network sees; frames are skipped to reach it, never interpolated up, so halving this roughly halves the cost. `null` = every frame. |
 | `camera` | `null` | Which camera's video to take, when the alignment holds several. |
+| `crop` | `null` | `{x0, y0, x1, y1}`: one pixel box cut from every frame before the network sees it, in the GUI crop tool's numbers. |
 
-`stack_s` must be at least 13 frames at the effective rate. The 0.5 s default
-works down to 26 fps; if it does not, the error names the shortest window
-that does.
+A key that belongs to the other extractor (`stack_s` with `timm`, `model_name`
+with `s3d`) is an error naming the mismatch, never ignored. `stack_s` must be
+at least 13 frames at the effective rate: the 0.5 s default works down to
+26 fps; if it does not, the error names the shortest window that does.
 
 ```{note}
 Everything else about the extraction — batch size, decode chunk, `fp16`,
-device, the `dense` ablation mode — is a performance detail with one sensible
-answer, so it is not a project setting and naming it here is an error. Build
-a {class}`~ethograph.video_features.S3DConfig` yourself in the rare case you
-need one.
+device, S3D's `dense` ablation mode — is a performance detail with one
+sensible answer, so it is not a project setting and naming it here is an
+error. Build the extractor's own config
+({class}`~ethograph.video_features.S3DConfig`,
+{class}`~ethograph.video_features.timm_extract.TimmConfig`) yourself in the
+rare case you need one.
 ```
 
 Sidecars go to `{root}/video_features/`.

@@ -222,7 +222,7 @@ class TestRun:
         _, ranking = fake_rank
         dialog._run()
         expected = [int(i) for i in ranking.top(dialog.topk_spin.value())]
-        assert dialog.yaml_text() == f"s3d_dims: [{', '.join(str(i) for i in expected)}]"
+        assert dialog.yaml_text() == f"s3d: {{s3d_dim: [{', '.join(str(i) for i in expected)}]}}"
         assert dialog.yaml_edit.text() == dialog.yaml_text()
 
     def test_automated_labels_are_not_ranked_against(self, dialog, fake_rank):
@@ -249,7 +249,7 @@ class TestTopK:
         assert dialog._ranking is ranking  # same object: no second computation
         assert len(calls) == 1
         assert dialog.image_item.image.shape == (5, 2)
-        assert dialog.yaml_text() == "s3d_dims: [" + ", ".join(str(int(i)) for i in ranking.top(5)) + "]"
+        assert dialog.yaml_text() == "s3d: {s3d_dim: [" + ", ".join(str(int(i)) for i in ranking.top(5)) + "]}"
 
 
 class TestNothingToRank:

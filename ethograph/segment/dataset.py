@@ -14,7 +14,7 @@ from ethograph.segment.augment import augment
 from ethograph.segment.config import AugmentConfig
 from ethograph.segment.materialise import load_sample, read_classes, read_index, read_layout
 from ethograph.segment.preprocess import NormStats
-from ethograph.segment.samples import ClassTable, ColumnLayout
+from ethograph.segment.samples import ColumnLayout, TargetTable
 
 PAD_TARGET = -100
 
@@ -36,7 +36,7 @@ class MaterialisedStore:
 
     data_dir: Path
     layout: ColumnLayout
-    classes: ClassTable
+    classes: TargetTable
     index: pd.DataFrame
     #: Frame stride; ``1`` is the dataset's own rate (``train.subsample``).
     subsample: int = 1
@@ -58,7 +58,7 @@ class MaterialisedStore:
     def load(self, key: str) -> tuple[np.ndarray, np.ndarray]:
         x, y = load_sample(self.data_dir, key, self.classes)
         if self.subsample > 1:
-            x, y = np.ascontiguousarray(x[:, :: self.subsample]), np.ascontiguousarray(y[:: self.subsample])
+            x, y = np.ascontiguousarray(x[:, :: self.subsample]), np.ascontiguousarray(y[..., :: self.subsample])
         return x, y
 
 
@@ -127,19 +127,22 @@ def collate(
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, list[str]]:
     """Pad to the longest sample: ``x (B, F, T)``, ``y (B, T)`` (pad −100), ``mask (B, 1, T)``, ``candidates (B, T)``.
 
-    *candidates* is bool, ``False`` on padding.
+    A multi-label target pads to ``y (B, C, T)`` — time is the last axis of
+    either shape. *candidates* is bool, ``False`` on padding.
     """
     n_features = batch[0][0].shape[0]
     t_max = max(x.shape[1] for x, _, _, _ in batch)
     x_out = torch.zeros(len(batch), n_features, t_max, dtype=torch.float32)
-    y_out = torch.full((len(batch), t_max), PAD_TARGET, dtype=torch.long)
+    y0 = batch[0][1]
+    y_shape = (len(batch), *y0.shape[:-1], t_max)
+    y_out = torch.full(y_shape, PAD_TARGET, dtype=torch.long)
     mask = torch.zeros(len(batch), 1, t_max, dtype=torch.float32)
     candidates = torch.zeros(len(batch), t_max, dtype=torch.bool)
     keys = []
     for i, (x, y, cand, key) in enumerate(batch):
         t = x.shape[1]
         x_out[i, :, :t] = x
-        y_out[i, :t] = y
+        y_out[i, ..., :t] = y
         mask[i, :, :t] = 1.0
         candidates[i, :t] = cand
         keys.append(key)

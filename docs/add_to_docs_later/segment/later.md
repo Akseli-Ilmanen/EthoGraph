@@ -54,8 +54,9 @@ Samples are (trial, individual) with the label as *actor*; the recipient
 column (`individual_rec`) is carried but not predicted. Predicting
 actor–recipient pairs is a second head (or a class per pair) on top of the
 same samples — a `target: actor_recipient` switch, not a new pipeline.
-Likewise `target: multilabel` (one binary head per class, branches
-coexisting) is a loss + label-encoding change behind one key.
+(Multi-label targets — branches coexisting, and the other animals' labels as
+extra channels — exist: `features.labels.branches` / `subjects: all`, ADR
+0010. The recipient is the part still missing.)
 
 ## Pair features with a varying cast
 
@@ -65,7 +66,7 @@ session must have the same number of individuals. When the cast varies,
 
 ## Video features for pynapple / NWB sessions
 
-`merge_video_features` writes the `s3d` variable into an xarray session. For
+`merge_video_features` writes the video feature into an xarray session. For
 pynapple and NWB sessions the sidecar `.nc` exists but the merge is by hand
 (a `TsdFrame` on the trial's time axis, or an NWB `TimeSeries`).
 

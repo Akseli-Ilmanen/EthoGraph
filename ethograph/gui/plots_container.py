@@ -21,7 +21,7 @@ from typing import Any, Dict
 import numpy as np
 import pyqtgraph as pg
 from qtpy.QtCore import QByteArray, QSize, Qt, QTimer, Signal
-from qtpy.QtGui import QCursor
+from qtpy.QtGui import QActionGroup, QCursor
 from qtpy.QtWidgets import (
     QDockWidget,
     QHBoxLayout,
@@ -165,6 +165,28 @@ class CurrentLabelIndicator(QLabel):
             return
         x = p.width() - self.width() - self._MARGIN
         self.move(max(0, x), self._MARGIN)
+
+
+def add_pin_choices(menu: QMenu, names: list[str], pinned: str | None, sidebar: str | None, choose) -> None:
+    """One radio choice for a panel's individual: follow the sidebar, or one name.
+
+    Exactly one entry is checked, so the menu itself says the two are
+    alternatives. *choose* is called with ``None`` (follow) or a name.
+    """
+    group = QActionGroup(menu)
+    group.setExclusive(True)
+    follow = menu.addAction(f"Follow sidebar ({sidebar})" if sidebar else "Follow sidebar")
+    follow.setCheckable(True)
+    follow.setChecked(pinned is None)
+    follow.triggered.connect(lambda _=False: choose(None))
+    group.addAction(follow)
+    menu.addSeparator()
+    for name in names:
+        action = menu.addAction(name)
+        action.setCheckable(True)
+        action.setChecked(pinned == name)
+        action.triggered.connect(lambda _=False, n=name: choose(n))
+        group.addAction(action)
 
 
 class _PanelDockTitleBar(QWidget):
@@ -493,7 +515,43 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
             sub.addAction("Below", lambda _=False, t=target: _place(t, Qt.Vertical))
             sub.addAction("Right of", lambda _=False, t=target: _place(t, Qt.Horizontal))
             sub.addAction("Tab with", lambda _=False, t=target: _place(t, tab=True))
+        self._add_pin_actions(menu, dock)
         menu.exec_(QCursor.pos())
+
+    def _add_pin_actions(self, menu: QMenu, dock: QDockWidget) -> None:
+        """Pin / unpin entries for a feature panel's dock, when the dataset has several individuals."""
+        plot = next((p for p, d in self._dyn_docks.items() if d is dock), None)
+        if plot is None or not hasattr(plot, "set_pinned_individual"):
+            return
+        names = self.app_state.label_individuals()
+        if len(names) < 2:
+            return
+        menu.addSeparator()
+        sub = menu.addMenu("Individual")
+        add_pin_choices(
+            sub, names, plot.pinned_individual, self.app_state.sidebar_individual(), lambda n: self.pin_panel(plot, n)
+        )
+
+    def pin_panel(self, plot, individual: str | None) -> None:
+        """Pin *plot* to *individual* (``None`` unpins): it re-renders, re-titles and redraws its labels."""
+        plot.set_pinned_individual(individual)
+        self.set_panel_title(plot, self.panel_title(plot))
+        if self.app_state.ready:
+            plot.update_plot()
+        self.panel_content_changed.emit(plot)
+        self.app_state.refresh_labelling_subject()
+        self.schedule_labels_redraw()
+
+    def panel_title(self, plot) -> str:
+        """A feature panel's title: its feature, then which individual it shows and why."""
+        feature = plot._effective_feature() if hasattr(plot, "_effective_feature") else None
+        title = str(feature) if feature else str(getattr(plot, "panel_type", "panel"))
+        return title + self.app_state.panel_mode_suffix(plot)
+
+    def refresh_panel_titles(self) -> None:
+        """Re-title every feature panel — after the sidebar's individual changed."""
+        for plot in self._panels_of_group("feature"):
+            self.set_panel_title(plot, self.panel_title(plot))
 
     def _dock_of(self, plot) -> QDockWidget | None:
         for name, dock in self._panel_docks.items():
@@ -883,6 +941,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
                 plot = self.add_panel(e["type"], feature=e.get("feature"))
                 if plot is not None:
                     plot.apply_panel_settings(e)
+                    self.set_panel_title(plot, self.panel_title(plot))
                     if self.app_state.ready:
                         plot.update_plot()
         self._canonicalize_dock_names()

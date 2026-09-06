@@ -401,34 +401,40 @@ class TestCorrectChangepoints:
 
 
 class TestRecipient:
+    """The receiver is an attribute of a label; exclusivity is per actor."""
+
     def test_default_is_no_recipient(self):
         df = add_interval(empty_intervals(), 1.0, 2.0, 1, "bird1")
         assert df.iloc[0]["individual_rec"] == NO_RECIPIENT
 
-    def test_pairs_do_not_overwrite_each_other(self):
-        """The same actor labelled towards two recipients keeps both."""
+    def test_an_actor_does_one_thing_at_a_time_whoever_it_is_directed_at(self):
         df = add_interval(empty_intervals(), 1.0, 3.0, 1, "bird1", individual_rec="bird2")
         df = add_interval(df, 1.0, 3.0, 2, "bird1", individual_rec="bird3")
-        assert len(df) == 2
-        assert sorted(df["individual_rec"]) == ["bird2", "bird3"]
+        assert len(df) == 1 and df.iloc[0]["labels"] == 2
+        assert df.iloc[0]["individual_rec"] == "bird3"
 
-    def test_same_pair_still_resolves_overlap(self):
-        df = add_interval(empty_intervals(), 1.0, 3.0, 1, "bird1", individual_rec="bird2")
-        df = add_interval(df, 0.5, 3.5, 2, "bird1", individual_rec="bird2")
-        assert len(df) == 1
-        assert df.iloc[0]["labels"] == 2
-
-    def test_solo_and_dyadic_are_separate(self):
+    def test_solo_and_directed_exclude_each_other(self):
         df = add_interval(empty_intervals(), 1.0, 3.0, 1, "bird1")
-        df = add_interval(df, 1.0, 3.0, 2, "bird1", individual_rec="bird2")
+        df = add_interval(df, 2.0, 4.0, 2, "bird1", individual_rec="bird2")
+        assert list(df["labels"]) == [1, 2]
+        assert float(df.iloc[0]["offset_s"]) < 2.0, "the solo label was trimmed by the directed one"
+
+    def test_a_trimmed_remnant_keeps_its_own_receiver(self):
+        df = add_interval(empty_intervals(), 0.0, 4.0, 1, "bird1", individual_rec="bird2")
+        df = add_interval(df, 1.0, 2.0, 2, "bird1")
+        remnants = df[df["labels"] == 1]
+        assert len(remnants) == 2 and set(remnants["individual_rec"]) == {"bird2"}
+
+    def test_another_actor_is_another_track(self):
+        df = add_interval(empty_intervals(), 1.0, 3.0, 1, "bird1", individual_rec="bird2")
+        df = add_interval(df, 1.0, 3.0, 2, "bird2", individual_rec="bird1")
         assert len(df) == 2
 
-    def test_find_matches_the_pair_only(self):
+    def test_find_matches_any_receiver_unless_asked(self):
         df = add_interval(empty_intervals(), 1.0, 3.0, 1, "bird1", individual_rec="bird2")
+        assert find_interval_at(df, 2.0, "bird1") is not None
         assert find_interval_at(df, 2.0, "bird1", individual_rec="bird2") is not None
         assert find_interval_at(df, 2.0, "bird1", individual_rec=NO_RECIPIENT) is None
-        # None on either side is the "any" fallback used for click selection.
-        assert find_interval_at(df, 2.0, "bird1") is not None
 
     def test_select_subject(self):
         df = add_interval(empty_intervals(), 1.0, 2.0, 1, "bird1")
@@ -437,7 +443,7 @@ class TestRecipient:
         assert len(select_subject(df, "bird1", "bird2")) == 1
         assert len(select_subject(df, "bird1")) == 2
 
-    def test_stitch_never_merges_across_pairs(self):
+    def test_stitch_never_merges_across_receivers(self):
         df = add_interval(empty_intervals(), 0.0, 1.0, 1, "bird1", individual_rec="bird2")
         df = add_interval(df, 1.05, 2.0, 1, "bird1", individual_rec="bird3")
         assert len(stitch_intervals(df, max_gap_s=0.5)) == 2

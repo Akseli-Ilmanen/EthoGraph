@@ -168,6 +168,24 @@ def evaluate(
     return out
 
 
+def flatten_channels(dense: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
+    """Multi-label ``(C, T)`` 0/1 arrays → one exclusive ``(T,)`` array per channel.
+
+    Channel ``c`` becomes its own sample ``"{key}#{c}"`` with class index
+    ``c + 1`` where it is on — so :func:`evaluate` scores a multi-label run
+    exactly as it scores an exclusive one, and ``classwise[c + 1]`` is that
+    channel's own F1. Every channel counts once, whether or not it fired.
+    """
+    out: dict[str, np.ndarray] = {}
+    for key, y in dense.items():
+        y = np.asarray(y)
+        if y.ndim != 2:
+            raise ValueError(f"{key}: multi-label targets are (C, T), got {y.shape}")
+        for c in range(y.shape[0]):
+            out[f"{key}#{c}"] = np.where(y[c] > 0, c + 1, 0).astype(np.int64)
+    return out
+
+
 def scalar_metrics(m: dict[str, Any]) -> dict[str, float]:
     """The YAML/TSV-able part of an :func:`evaluate` result."""
     return {k: float(v) for k, v in m.items() if isinstance(v, (int, float, np.floating, np.integer))}

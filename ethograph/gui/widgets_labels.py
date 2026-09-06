@@ -1449,8 +1449,7 @@ class LabelsWidget(QWidget):
             # from another session), and a label the user can see and click must
             # be selectable — otherwise playback (V) silently fails on it.
             tolerance_s = self._point_click_tolerance_s()
-            receiver = self._current_receiver()
-            idx = find_point_at(df, t_clicked, individual, tolerance_s, label_ids=active_ids, individual_rec=receiver)
+            idx = find_point_at(df, t_clicked, individual, tolerance_s, label_ids=active_ids)
             if idx is None:
                 idx = find_point_at(df, t_clicked, None, tolerance_s, label_ids=active_ids)
             if idx is not None:
@@ -1465,7 +1464,7 @@ class LabelsWidget(QWidget):
                 return True
 
             # No point near the click — fall through to state intervals.
-            idx = find_interval_at(df, t_clicked, individual, label_ids=active_ids, individual_rec=receiver)
+            idx = find_interval_at(df, t_clicked, individual, label_ids=active_ids)
             if idx is None:
                 idx = find_interval_at(df, t_clicked, None, label_ids=active_ids)
             if idx is not None:
@@ -1499,8 +1498,7 @@ class LabelsWidget(QWidget):
                 return False
 
         tolerance_s = self._point_click_tolerance_s()
-        receiver = self._current_receiver()
-        idx = find_point_at(df, t_clicked, individual, tolerance_s, individual_rec=receiver)
+        idx = find_point_at(df, t_clicked, individual, tolerance_s)
         if idx is None:
             idx = find_point_at(df, t_clicked, None, tolerance_s)
         if idx is not None:
@@ -1512,7 +1510,7 @@ class LabelsWidget(QWidget):
             self.highlight_spaceplot.emit(self._to_display(t), self._to_display(t))
             return True
 
-        idx = find_interval_at(df, t_clicked, individual, individual_rec=receiver)
+        idx = find_interval_at(df, t_clicked, individual)
         if idx is None:
             idx = find_interval_at(df, t_clicked, None)
         if idx is not None:
@@ -1641,7 +1639,7 @@ class LabelsWidget(QWidget):
 
         eps = 1e-3
         durations = df["offset_s"] - df["onset_s"]
-        same_ind = subject_mask(df, individual, receiver)
+        same_ind = subject_mask(df, individual)
         touches_left = np.isclose(df["offset_s"], placed_onset - eps, atol=eps / 10)
         touches_right = np.isclose(df["onset_s"], placed_offset + eps, atol=eps / 10)
         sliver = same_ind & (touches_left | touches_right) & (durations < min_duration_s)
@@ -2040,7 +2038,7 @@ class LabelsWidget(QWidget):
             css_color = "white"
             active_ids = self.app_state.active_label_ids
             if df is not None and not df.empty:
-                idx = find_interval_at(df, time_s, ind, label_ids=active_ids, individual_rec=self._current_receiver())
+                idx = find_interval_at(df, time_s, ind, label_ids=active_ids)
                 if idx is not None:
                     _, _, labels = get_interval_bounds(df, idx)
                     if labels in mappings and labels != 0:

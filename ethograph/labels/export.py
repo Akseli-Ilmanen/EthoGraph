@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from ethograph.labels.intervals import SUBJECT_COLUMNS
+from ethograph.labels.intervals import TRACK_COLUMNS
 
 
 def correct_offsets_trial(df: pd.DataFrame) -> tuple[pd.DataFrame, int, int]:
@@ -23,7 +23,7 @@ def correct_offsets_trial(df: pd.DataFrame) -> tuple[pd.DataFrame, int, int]:
     if df.empty:
         return df, 0, 0
     eps = 1e-4
-    subject = [c for c in SUBJECT_COLUMNS if c in df.columns]
+    subject = [c for c in TRACK_COLUMNS if c in df.columns]
     df = df.copy().sort_values([*subject, "onset_s"]).reset_index(drop=True)
 
     corrected = 0

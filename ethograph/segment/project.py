@@ -7,7 +7,7 @@ re-runnable, and there is exactly one way to express it.
     import ethograph as eto
 
     project = eto.segment.Project("project.yaml")
-    project.video_features(merge=True)     # S3D once per video, merged into the sessions
+    project.video_features(merge=True)     # video features once per video, merged into the sessions
     project.materialise()                  # feature engineering → the materialised dataset
 
     # Stage 1 — settle the hyperparameters on the 60/20/20 split
@@ -113,12 +113,13 @@ class Project:
     # ------------------------------------------------------------------
 
     def video_features(self, merge: bool = False, overwrite: bool = False, in_place: bool = False) -> list[Path]:
-        """Run S3D over every video the sessions use → ``{root}/video_features``.
+        """Run the configured extractor over every video the sessions use → ``{root}/video_features``.
 
-        With *merge*, each session is also written out carrying ``s3d`` on its
-        trials' own time axis — a sibling ``{stem}_s3d.nc``, never the source
-        file unless *in_place*. Returns the sidecars written (the merged
-        sessions are logged).
+        With *merge*, each session is also written out carrying the feature
+        (named after ``video_features.extractor``) on its trials' own time
+        axis — a sibling ``{stem}_{extractor}.nc``, never the source file
+        unless *in_place*. Returns the sidecars written (the merged sessions
+        are logged).
         """
         from ethograph.segment.video_features import extract_video_features, merge_video_features
 
@@ -311,24 +312,22 @@ def extract_videos(
     include: Iterable[str] | None = None,
     **kwargs: Any,
 ) -> list[Path]:
-    """S3D over a bare folder of videos, with no project — videos in, sidecars out.
+    """An extractor over a bare folder of videos, with no project — videos in, sidecars out.
 
     The scripted counterpart of :meth:`Project.video_features` for footage
     that is not yet part of a session. Defaults are
-    :class:`~ethograph.segment.config.VideoFeaturesConfig`'s, so the window
-    is the same 0.5 s a project would use; any other field of it may be
-    passed as a keyword.
+    :class:`~ethograph.segment.config.VideoFeaturesConfig`'s — the ``s3d``
+    extractor with its 0.5 s window — and any field of it may be passed as a
+    keyword (``stack_s=0.3``; ``extractor="timm", model_name=...``).
 
     *include* is a list of regular expressions; only videos whose path
     matches one are extracted, which is how you take one camera out of a
     folder holding several::
 
-        eto.segment.extract_videos(["/data/videos"], "/data/s3d", include=["cam-1"])
+        eto.segment.extract_videos(["/data/videos"], "/data/features", include=["cam-1"])
     """
     from ethograph.segment.config import VideoFeaturesConfig
     from ethograph.segment.video_features import extract_videos as _extract
 
-    fields: dict[str, Any] = {"analysis_fps": analysis_fps, **kwargs}
-    if stack_s is not None:
-        fields["stack_s"] = stack_s
+    fields: dict[str, Any] = {"analysis_fps": analysis_fps, "stack_s": stack_s, **kwargs}
     return _extract(videos, out_dir, VideoFeaturesConfig(**fields), overwrite=overwrite, include=include)

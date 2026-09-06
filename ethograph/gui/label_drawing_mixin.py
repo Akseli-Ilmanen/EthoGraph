@@ -153,15 +153,21 @@ class LabelDrawingMixin:
         # their height so the main rectangle stops right below them.
         top_positions_present = {slot["position"] for slot in (slots or []) if slot["position"] in ("top1", "top2")}
 
+        # Every plot draws the labels of the individual *it* shows: a pinned
+        # panel its own, an unpinned one the sidebar's. `subject_filter` is
+        # installed by DataWidget (`_subject_intervals`); without it every
+        # row is drawn everywhere.
+        subject_filter = getattr(self, "subject_filter", None)
         for plot in self._get_all_plots():
             self._clear_labels_on_plot(plot)
             mode = self._label_overlay_mode(plot)
             if mode == LABEL_OVERLAY_MODE_NONE:
                 continue
             for slot in slots or []:
+                df = slot["df"] if subject_filter is None else subject_filter(slot["df"], plot)
                 self._draw_intervals_on_plot(
                     plot,
-                    slot["df"],
+                    df,
                     label_ids=slot.get("label_ids"),
                     position=slot["position"],
                     mode=mode,
@@ -214,6 +220,21 @@ class LabelDrawingMixin:
             if items:
                 key = draw_key(labels, row["onset_s"], row.get("individual"), row.get("individual_rec"))
                 index.setdefault(key, []).extend(items)
+                receiver = subject_str(row.get("individual_rec"))
+                if receiver and not is_point:
+                    self._draw_receiver_tag(plot, row["onset_s"], receiver, items[0][1])
+
+    def _draw_receiver_tag(self, plot, onset_s: float, receiver: str, color_rgb) -> None:
+        """A small ``→ name`` at a directed label's onset: the receiver is a tag, not a lane."""
+        tag = pg.TextItem(f"\u2192 {receiver}", color=(*color_rgb, 230), anchor=(0, 0))
+        tag.setZValue(_POINT_EVENT_Z_INDEX)
+        y_hi = plot.plot_item.getViewBox().viewRange()[1][1]
+        tag.setPos(float(onset_s), float(y_hi))
+        try:
+            plot.plot_item.addItem(tag, ignoreBounds=True)
+        except (RuntimeError, AttributeError):
+            return
+        plot.label_items.append(tag)
 
     def _draw_single_point(self, plot, time_s, labels, automated=False) -> list:
         """Draw a point event as a thick vertical line in the label's color.
@@ -375,6 +396,14 @@ class LabelDrawingMixin:
 
     # --- State label in progress (between its two clicks) ---
 
+    def _plots_of_subject(self) -> list:
+        """The plots showing the labelling subject's individual — where a new label will land."""
+        state = getattr(self, "app_state", None)
+        if state is None or not hasattr(state, "panel_individual"):
+            return list(self._get_all_plots())
+        subject = state.selected_individual()
+        return [p for p in self._get_all_plots() if state.panel_individual(p) == subject]
+
     def show_pending_label(self, t_display: float, color_rgb) -> None:
         """Mark where a state label started, until its second click lands.
 
@@ -382,13 +411,15 @@ class LabelDrawingMixin:
         picks the end time blind, with nothing on screen saying where the
         interval began or even that one is being drawn. The anchor is dashed
         (so it never reads as a committed label) and a faint region follows the
-        cursor to preview the interval on every panel at once.
+        cursor to preview the interval on every panel that shows the subject
+        being labelled — a panel pinned to another individual will never
+        receive this label, so it gets no preview of it either.
         """
         self.clear_pending_label()
         color_rgb = tuple(int(c) for c in color_rgb)
         self._pending_label_anchor = float(t_display)
 
-        for plot in self._get_all_plots():
+        for plot in self._plots_of_subject():
             line = pg.InfiniteLine(
                 pos=t_display,
                 angle=90,

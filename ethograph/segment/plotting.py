@@ -17,7 +17,7 @@ import pandas as pd
 import yaml
 
 from ethograph.segment.metrics import EVAL_ARRAYS_FILE, METRICS_FILE, TEST_METRICS_FILE, load_eval_arrays, metric_key
-from ethograph.segment.samples import ClassTable
+from ethograph.segment.samples import TargetTable
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
@@ -34,7 +34,7 @@ def write_eval_pdf(
     path: Path,
     raw: dict[str, Any],
     processed: dict[str, Any],
-    classes: ClassTable,
+    classes: TargetTable,
     thresholds: list[float],
 ) -> Path:
     fig, axes = plt.subplots(2, 2, figsize=(12, 8))
@@ -60,7 +60,7 @@ def _overall(ax, raw, processed, thresholds) -> None:
     ax.legend()
 
 
-def _classwise(ax, raw, processed, classes: ClassTable, threshold: float) -> None:
+def _classwise(ax, raw, processed, classes: TargetTable, threshold: float) -> None:
     key = metric_key(threshold)
     ids = sorted(set(raw["classwise"]) | set(processed["classwise"]))
     names = [classes.names[i] if i < classes.n_classes else str(i) for i in ids]
@@ -136,7 +136,7 @@ def load_run_eval(run_dir: Path, name: str | None = None) -> RunEval:
     )
 
 
-def write_comparison_pdf(path: Path, evals: list[RunEval], classes: ClassTable, title: str = "") -> Path:
+def write_comparison_pdf(path: Path, evals: list[RunEval], classes: TargetTable, title: str = "") -> Path:
     """The cross-run comparison figure — folds, search trials, or benchmarked runs.
 
     Every bar is a mean over *evals*; every bar also carries one small black
@@ -158,7 +158,7 @@ def _eval_figure():
     return plt.figure(figsize=(18, 17), layout="constrained")
 
 
-def _eval_panels(fig, evals: list[RunEval], classes: ClassTable) -> None:
+def _eval_panels(fig, evals: list[RunEval], classes: TargetTable) -> None:
     """The six evaluation panels — over one run, or over a whole set of them."""
     thresholds = evals[0].thresholds
     mosaic = [
@@ -231,7 +231,7 @@ def _overall_comparison(ax, evals: list[RunEval], thresholds: list[float]) -> No
 
 
 def _classwise_comparison(
-    ax, evals: list[RunEval], classes: ClassTable, thresholds: list[float], stage: str, title: str
+    ax, evals: list[RunEval], classes: TargetTable, thresholds: list[float], stage: str, title: str
 ) -> None:
     """Mean ± per-run dots for each class's F1@k, one group of bars per threshold."""
     ids = sorted({i for e in evals for i in getattr(e, stage)["classwise"]})
@@ -329,7 +329,7 @@ def _deltas_comparison(ax, evals: list[RunEval]) -> None:
 def write_model_report_pdf(
     path: Path,
     evals: list[RunEval],
-    classes: ClassTable,
+    classes: TargetTable,
     title: str = "",
     stamp: str | None = None,
 ) -> Path:
@@ -548,7 +548,7 @@ ALL_GROUPS = "all groups"
 def write_factorial_pdf(
     path: Path,
     cells: list[FactorCell],
-    classes: ClassTable,
+    classes: TargetTable,
     title: str = "",
     classwise_key: str | None = None,
     stamp: str | None = None,
@@ -672,7 +672,7 @@ def _summary_page(
 def _cell_page(
     pdf: PdfPages,
     cells: list[FactorCell],
-    classes: ClassTable,
+    classes: TargetTable,
     thresholds: list[float],
     classwise_key: str,
     stamp: str,
@@ -695,7 +695,7 @@ def _cell_page(
     _save_page(pdf, fig, f"{cells[0].group} — {cells[0].architecture}", stamp)
 
 
-def _classwise_by_variant(ax, cells: list[FactorCell], classes: ClassTable, key: str, stage: str, title: str) -> None:
+def _classwise_by_variant(ax, cells: list[FactorCell], classes: TargetTable, key: str, stage: str, title: str) -> None:
     """Each class's F1 at *key*, one bar per variant, a dot per fold that saw the class."""
     ids = sorted({i for c in cells for e in c.folds for i in getattr(e, stage)["classwise"]})
     if not ids:

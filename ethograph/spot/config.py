@@ -60,7 +60,7 @@ class CropConfig:
 
     ``(x0, y0)`` is the top-left corner and ``(x1, y1)`` the exclusive
     bottom-right, y down — the box the GUI's crop tool reports (Tools ▸
-    *Video: Pick a crop for spot config…*), so the numbers copy straight
+    *Video: Pick a crop for a config…*), so the numbers copy straight
     across. The crop is cut from the decoded frame *before* it is resized to
     :attr:`LabelsConfig.frame_height`, so a tight crop spends the model's
     pixels on less scene rather than shrinking the frame.

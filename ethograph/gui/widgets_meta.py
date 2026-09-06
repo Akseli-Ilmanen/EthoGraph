@@ -399,6 +399,14 @@ class MetaWidget(GridSectionContainer):
 
     _CONTEXT_KINDS = frozenset({"audiotrace", "spectrogram", "lineplot", "heatmap", "space", "radial", "ephys", "neo"})
 
+    def _track_subject_panel(self, widget) -> None:
+        """The clicked panel's individual becomes the labelling subject (see ``selected_individual``)."""
+        state = self.app_state
+        before = state.selected_individual()
+        state.set_subject_panel(widget)
+        if state.ready and state.selected_individual() != before:
+            self.data_widget.on_labelling_subject_changed()
+
     def _on_active_panel(self, reg):
         """A panel was clicked → track it, and show its controls in the sidebar.
 
@@ -411,6 +419,7 @@ class MetaWidget(GridSectionContainer):
         if kind in PanelKind.FEATURE and reg.plot is not None:
             plot_changed = self.plot_container.active_feature_plot is not reg.plot
             self.plot_container.active_feature_plot = reg.plot
+            self._track_subject_panel(reg.plot)
             # The dotted prediction-confidence curve is hosted on the current
             # plot — re-render so it follows (or hides on) the new active plot.
             # A re-click of the same panel re-announces (sidebar sync) but the
@@ -429,6 +438,7 @@ class MetaWidget(GridSectionContainer):
             self.plot_settings_widget.set_active_neo_plot(reg.widget)
         self._update_video_selection(reg if kind == PanelKind.VIDEO else None)
         if kind == PanelKind.VIDEO:
+            self._track_subject_panel(reg.widget)
             self.focus_video_context()
         elif kind in self._CONTEXT_KINDS:
             self._on_plot_focus(kind)

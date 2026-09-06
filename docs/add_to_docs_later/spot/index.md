@@ -260,7 +260,7 @@ takes labels to score against.
 crop spends the model's pixels on less scene rather than shrinking the frame.
 It must fit inside every trial's video for the named camera — checked at
 materialise time, naming the trial it fails on. The GUI produces it (Tools ▸
-Video: *Pick a crop for spot config…* — drag a rectangle, get back the box in
+Video: *Pick a crop for a config…* — drag a rectangle, get back the box in
 this spelling).
 
 `model.architecture` is a backbone plus a temporal module, in upstream's own

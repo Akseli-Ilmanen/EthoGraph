@@ -61,7 +61,7 @@ session has no role; `train.split` gives every trial one.
 |---|---|---|
 | `classes` | required | The point-event label ids to spot. Their order is the order the events happen in (first contact before last contact): `infer.flag_out_of_order` reads it. |
 | `camera` | the alignment's default | Which camera's video, one per project. |
-| `crop` | `null` | `{x0, y0, x1, y1}` in source pixels, cut from the decoded frame **before** the resize, so a tight crop spends the model's pixels on less scene. Must fit inside every trial's video for the camera — checked at materialise time. The GUI writes it: Tools ▸ Video ▸ *Pick a crop for spot config…*. |
+| `crop` | `null` | `{x0, y0, x1, y1}` in source pixels, cut from the decoded frame **before** the resize, so a tight crop spends the model's pixels on less scene. Must fit inside every trial's video for the camera — checked at materialise time. The GUI writes it: Tools ▸ Video ▸ *Pick a crop for a config…*. |
 | `frame_height` | `224` | Height the (cropped) frame is resized to; width follows the aspect ratio. E2E-Spot's own. |
 
 ## `clip`

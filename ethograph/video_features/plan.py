@@ -59,28 +59,50 @@ class S3DConfig:
 
 
 @dataclass(frozen=True)
-class S3DPlan:
-    """The configuration resolved against one video's rate, in frames."""
+class FramePlan:
+    """The frame-wise part of any plan: which frames of a video are read.
+
+    Every extractor subsamples the same way — keep every ``step``-th frame,
+    never interpolate up — so this is resolved once (:func:`plan_frames`) and
+    a clip-wise extractor adds its window on top.
+    """
 
     video_fps: float
     #: Keep every ``step``-th frame.
     step: int
-    #: Frames per window — odd, so a window is centred on its frame.
-    stack_frames: int
 
     @property
     def effective_fps(self) -> float:
         return self.video_fps / self.step
+
+    def describe(self) -> str:
+        return f"{self.effective_fps:g} fps (video {self.video_fps:g} fps, step {self.step})"
+
+
+def plan_frames(video_fps: float, analysis_fps: float | None) -> FramePlan:
+    """The step that brings *video_fps* closest to *analysis_fps* without upsampling."""
+    if video_fps <= 0:
+        raise ValueError("video_fps must be positive — read it from the video, never default it.")
+    if analysis_fps is None:
+        return FramePlan(video_fps=float(video_fps), step=1)
+    if analysis_fps <= 0:
+        raise ValueError("analysis_fps must be positive (or None for every frame).")
+    return FramePlan(video_fps=float(video_fps), step=max(1, int(round(video_fps / analysis_fps))))
+
+
+@dataclass(frozen=True)
+class S3DPlan(FramePlan):
+    """The configuration resolved against one video's rate, in frames."""
+
+    #: Frames per window — odd, so a window is centred on its frame.
+    stack_frames: int
 
     @property
     def stack_s(self) -> float:
         return self.stack_frames / self.effective_fps
 
     def describe(self) -> str:
-        return (
-            f"stack = {self.stack_frames} frames = {self.stack_s:.3f} s at "
-            f"{self.effective_fps:g} fps (video {self.video_fps:g} fps, step {self.step})"
-        )
+        return f"stack = {self.stack_frames} frames = {self.stack_s:.3f} s at {super().describe()}"
 
 
 def plan_s3d(video_fps: float, cfg: S3DConfig) -> S3DPlan:
@@ -90,15 +112,9 @@ def plan_s3d(video_fps: float, cfg: S3DConfig) -> S3DPlan:
     at that rate, naming the shortest ``stack_s`` that works — a silent clamp
     would quietly change what the features mean.
     """
-    if video_fps <= 0:
-        raise ValueError("video_fps must be positive — read it from the video, never default it.")
-    if cfg.analysis_fps is None:
-        step = 1
-    else:
-        if cfg.analysis_fps <= 0:
-            raise ValueError("analysis_fps must be positive (or None for every frame).")
-        step = max(1, int(round(video_fps / cfg.analysis_fps)))
-    effective_fps = video_fps / step
+    frames = plan_frames(video_fps, cfg.analysis_fps)
+    step = frames.step
+    effective_fps = frames.effective_fps
     stack = int(round(cfg.stack_s * effective_fps))
     if stack % 2 == 0:
         stack += 1

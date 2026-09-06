@@ -5,10 +5,11 @@ directly), under ``{root}/data/{features.name}/``::
 
     features / {key}.npy  # (F, T) float32, session-level preprocessed
     groundTruth / {key}.txt  # one class name per frame
-    mapping.txt  # "{index} {name}" — contiguous, 0 = background
+    groundTruth / {key}.npy  # multi-label targets instead: (C, T) uint8, one row per channel
+    mapping.txt  # "{index} {name}" — contiguous, 0 = background (channel names for multi-label)
     index.tsv  # key, session_id, source, trial, individual, n_frames, fs, n_labelled
     columns.yaml  # the column layout (names, normalise flags, vector groups)
-    classes.yaml  # class index ↔ label id
+    classes.yaml  # class index ↔ label id, or the multi-label channels (``target: multilabel``)
 
 ``key`` is ``{session_id}_trial{trial}_{individual}``. Role assignment and
 normalisation statistics belong to a run, not to the dataset.
@@ -28,12 +29,19 @@ from ethograph.io import schema
 from ethograph.labels.intervals import states_only
 from ethograph.segment.config import SegmentConfig
 from ethograph.segment.samples import (
-    ClassTable,
+    ChannelTable,
     ColumnLayout,
+    TargetTable,
     build_sample_features,
-    class_table,
+    dense_channel_targets,
     dense_targets,
+    is_multilabel,
+    others_of,
     sample_key,
+    subject_tokens,
+    target_label_ids,
+    target_table,
+    target_table_from_dict,
 )
 from ethograph.segment.sessions import (
     Session,
@@ -63,12 +71,14 @@ def materialise(config: SegmentConfig, sessions: list[Session] | None = None) ->
 def _materialise_run(config: SegmentConfig, data_dir: Path, sessions: list[Session] | None) -> Path:
     for sub in ("features", "groundTruth"):
         (data_dir / sub).mkdir(parents=True, exist_ok=True)
-    classes = class_table(config)
 
     rows: list[dict] = []
     layout: ColumnLayout | None = None
     if sessions is None:
         sessions = [open_session(s, config, expand_changepoints=False) for s in config.sessions]
+    if not sessions:
+        raise ValueError("No sessions to materialise — config.sessions is empty.")
+    classes = target_table(config, len(sessions[0].individuals(config)))
     config = derive_changepoint_scales(config, sessions)
     config = resolve_neural_columns(config, sessions)
     for session in sessions:
@@ -95,9 +105,13 @@ def _materialise_run(config: SegmentConfig, data_dir: Path, sessions: list[Sessi
                 else:
                     layout.check(sample_layout, f"{session.id} trial {window.trial} individual {individual}")
                     _check_fs(layout.fs, sample_layout.fs, key)
-                y, n_labelled = dense_targets(labels, time, individual, classes)
+                if isinstance(classes, ChannelTable):
+                    subjects = subject_tokens(individual, others_of(individual, individuals))
+                    y, n_labelled = dense_channel_targets(labels, time, subjects, classes)
+                else:
+                    y, n_labelled = dense_targets(labels, time, individual, classes)
                 np.save(data_dir / "features" / f"{key}.npy", x)
-                _write_ground_truth(data_dir / "groundTruth" / f"{key}.txt", y, classes)
+                _write_ground_truth(data_dir / "groundTruth", key, y, classes)
                 rows.append(
                     {
                         "key": key,
@@ -142,7 +156,7 @@ def derive_changepoint_scales(config: SegmentConfig, sessions: list[Session]) ->
     cpf = config.features.changepoint_features
     if cpf is None or not cpf.unresolved:
         return config
-    classes = class_table(config)
+    ids = target_label_ids(config)
     durations: list[np.ndarray] = []
     n_sessions = 0
     for session in sessions:
@@ -152,7 +166,7 @@ def derive_changepoint_scales(config: SegmentConfig, sessions: list[Session]) ->
             if labels.empty:
                 continue
             df = states_only(labels)
-            df = df[df["labels"].astype(int).isin(classes.id_to_index)]
+            df = df[df["labels"].astype(int).isin(ids)]
             durations.append((df["offset_s"] - df["onset_s"]).to_numpy(dtype=float))
     d = np.concatenate(durations) if durations else np.array([], dtype=float)
     fs = _mask_rate(sessions[0], next(iter(cpf.inputs)))
@@ -262,9 +276,12 @@ def _check_fs(fs_ref: float, fs: float, key: str) -> None:
         raise ValueError(f"{key}: sampling rate {fs:.6g} Hz differs from the dataset's {fs_ref:.6g} Hz")
 
 
-def _write_ground_truth(path: Path, y: np.ndarray, classes: ClassTable) -> None:
+def _write_ground_truth(folder: Path, key: str, y: np.ndarray, classes: TargetTable) -> None:
+    if is_multilabel(classes):
+        np.save(folder / f"{key}.npy", np.asarray(y, dtype=np.uint8))
+        return
     names = classes.names
-    path.write_text("".join(f"{names[int(i)]}\n" for i in y), encoding="utf-8")
+    (folder / f"{key}.txt").write_text("".join(f"{names[int(i)]}\n" for i in y), encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------
@@ -283,13 +300,26 @@ def read_layout(data_dir: Path) -> ColumnLayout:
     return ColumnLayout.from_dict(yaml.safe_load((data_dir / COLUMNS_FILE).read_text(encoding="utf-8")))
 
 
-def read_classes(data_dir: Path) -> ClassTable:
-    return ClassTable.from_dict(yaml.safe_load((data_dir / CLASSES_FILE).read_text(encoding="utf-8")))
+def read_classes(data_dir: Path) -> TargetTable:
+    return read_target_table(data_dir / CLASSES_FILE)
 
 
-def load_sample(data_dir: Path, key: str, classes: ClassTable) -> tuple[np.ndarray, np.ndarray]:
-    """``(x (F, T) float32, y (T,) int64)`` of one materialised sample."""
+def read_target_table(path: Path) -> TargetTable:
+    """A ``classes.yaml`` (of a dataset or a run) → its table."""
+    return target_table_from_dict(yaml.safe_load(path.read_text(encoding="utf-8")))
+
+
+def load_sample(data_dir: Path, key: str, classes: TargetTable) -> tuple[np.ndarray, np.ndarray]:
+    """``(x (F, T) float32, y)`` of one materialised sample.
+
+    ``y`` is ``(T,)`` class indices for an exclusive target and ``(C, T)``
+    0/1 for a multi-label one — the time axis is the last one either way.
+    """
     x = np.load(data_dir / "features" / f"{key}.npy")
+    if is_multilabel(classes):
+        y = np.load(data_dir / "groundTruth" / f"{key}.npy").astype(np.int64)
+        n = min(x.shape[1], y.shape[1])
+        return x[:, :n], y[:, :n]
     names = (data_dir / "groundTruth" / f"{key}.txt").read_text(encoding="utf-8").splitlines()
     index_of = {name: i for i, name in enumerate(classes.names)}
     y = np.fromiter((index_of[n] for n in names), dtype=np.int64, count=len(names))

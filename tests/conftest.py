@@ -230,8 +230,22 @@ def gui(request, qtbot, tmp_path, monkeypatch):
     meta = MetaWidget(shell)
     shell.attach_meta_widget(meta)
     meta._check_unsaved_changes = lambda event: True
-    # Hermetic layout state: never write panel layouts into the shared example
-    # dataset dirs, and never apply one a previous run left behind.
+    # Hermetic per-dataset state: local_settings.yaml is read from and written
+    # to this test's tmp dir, never the shared example dataset dirs — so a
+    # flag left behind by a GUI session (or another test) cannot reach a test.
+    from ethograph.gui.app_state import ObservableAppState
+
+    local_dir = tmp_path / "local_settings"
+    local_dir.mkdir(exist_ok=True)
+
+    def _hermetic_local_settings_path(self):
+        nc_file_path = getattr(self, "nc_file_path", None)
+        if not nc_file_path:
+            return None
+        return local_dir / Path(str(nc_file_path)).stem / ObservableAppState.LOCAL_SETTINGS_FILENAME
+
+    monkeypatch.setattr(ObservableAppState, "_local_settings_path", _hermetic_local_settings_path)
+    # Hermetic layout state: never apply a panel layout a previous run left behind.
     meta.app_state._layout_snapshot_provider = None
     _real_apply = meta.apply_saved_panel_layout
     meta.apply_saved_panel_layout = lambda: setattr(meta.app_state, "panel_layout", None) or _real_apply()

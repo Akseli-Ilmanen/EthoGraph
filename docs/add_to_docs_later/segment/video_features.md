@@ -1,18 +1,36 @@
-# S3D video features
+# Video features
 
-A pretrained video network (S3D, Kinetics-400) turns each frame's
-surroundings into a 1024-d vector: what the animal *looks like it is doing*,
-which pose keypoints alone do not capture. Unlike a per-frame image encoder,
-S3D reads a short **stack** of frames, so its features carry motion.
+A pretrained network turns each frame of a video into a vector: what the
+animal *looks like it is doing*, which pose keypoints alone do not capture.
+The network is an **extractor**, chosen by name; every extractor writes the
+same kind of file, and downstream nothing cares which one made it.
+
+| `extractor` | Kind | What one frame's feature is | Docs | Default |
+|---|---|---|---|---|
+| `s3d` | clip-wise | the `stack_s` window of frames centred on it, embedded by S3D (Kinetics-400) — motion is in the feature | [video_features › S3D](https://v-iashin.github.io/video_features/models/s3d/) | yes |
+| `timm` | frame-wise | the frame on its own, embedded by an image backbone — DINOv2 ViT-B/14 (`vit_base_patch14_reg4_dinov2.lvd142m`) unless `model_name` says otherwise; needs `pip install 'ethograph[timm]'` | [video_features › timm](https://v-iashin.github.io/video_features/models/timm/) | |
+
+Both follow the recipes of
+[v-iashin/video_features](https://v-iashin.github.io/video_features/), which
+documents each network and links on to its weights; our config exposes only
+what changes the *features*, so read there for the rest.
+
+A frame-wise feature carries no motion; the temporal model downstream reads
+it off the sequence. A clip-wise feature carries the window's motion but
+needs the window to be long enough for the network. Which is better for a
+given behaviour is an empirical question — the point of one registry is that
+the comparison is a config line and a `compare_runs`.
 
 They are expensive — a forward pass per frame — so they are computed once
 into a sidecar file per video and merged into your sessions afterwards.
 
 ```{important}
-The window is set in **seconds** (`stack_s`) and resolved against each
-video's own rate. S3D needs at least **13 frames** per window, so the 0.5 s
-default works down to 26 fps but *fails* below it. The error names the
-shortest window that works — at 20 fps that is 0.65 s.
+Every temporal setting is in **seconds** and resolved against each video's own
+rate. `analysis_fps` says how many frames per second the network sees (frames
+are skipped, never interpolated up); it is the one cost lever, and at 200 fps
+you will want it. S3D's `stack_s` needs at least **13 frames** at that rate,
+so its 0.5 s default works down to 26 fps but *fails* below it — the error
+names the shortest window that works.
 ```
 
 ## Starting from a folder of videos
@@ -22,34 +40,75 @@ No config, no session, no alignment — just videos in, sidecars out:
 ```python
 import ethograph as eto
 
-eto.segment.extract_videos(["/data/videos"], "/data/s3d", stack_s=0.5)
+eto.segment.extract_videos(["/data/videos"], "/data/features", stack_s=0.5)                       # S3D (default)
+eto.segment.extract_videos(["/data/videos"], "/data/features", extractor="timm", analysis_fps=25)  # timm / DINOv2
 ```
 
 The first argument takes any mix of files, folders (searched recursively) and
-globs. Each video becomes `/data/s3d/{video stem}_s3d.nc`, holding a
-`(time_s3d, s3d_dims)` array **on the video's own clock** (frame 0 at t=0),
-with the plan recorded in its attrs. The written paths are returned. Videos
-that already have a sidecar are skipped unless you pass `overwrite=True`, so
-re-running after adding footage is cheap.
+globs. Each video becomes `/data/features/{video stem}_{extractor}.nc`,
+holding a `(time_video, {extractor}_dims)` array **on the video's own clock**
+(frame 0 at t=0), with the resolved plan and the model in its attrs. The
+written paths are returned. Videos that already have a sidecar are skipped
+unless you pass `overwrite=True`, so re-running after adding footage is cheap.
 
 | Parameter | Meaning |
 |---|---|
-| `stack_s` | Window length in seconds. Must be ≥ 13 frames at the effective rate; pass it explicitly. |
-| `analysis_fps` | Rate S3D sees; `None` = every frame. Frames are *skipped* to reach it, never interpolated up, so halving it roughly halves the cost. |
+| `extractor` | `s3d` (default) or `timm`. |
+| `model_name` | `timm` only: any timm model with pretrained weights — valid names are the [timm model list](https://huggingface.co/docs/timm/models) (or `timm.list_models(pretrained=True)`). `None` = DINOv2 ViT-B/14. |
+| `stack_s` | `s3d` only: window length in seconds. Must be ≥ 13 frames at the effective rate. |
+| `analysis_fps` | Rate the network sees; `None` = every frame. |
+| `crop` | A pixel box cut from every frame before the network sees it (`{x0, y0, x1, y1}`, the crop tool's numbers). |
 | `include` | Regular expressions; keep only videos whose path matches one. |
 | `overwrite` | Re-extract videos that already have a sidecar (default `False`). |
 
-Those are the only settings that change the features. Batch size, decode
-chunk, `fp16` and the device may be changed in {class}`~ethograph.video_features.S3DConfig`.
+A setting that belongs to the other extractor is refused by name — `stack_s`
+means nothing to a frame-wise model, `model_name` nothing to S3D — rather than
+silently ignored. Those are the only settings that change the features. Batch
+size, decode chunk, `fp16` and the device live on the extractor's own config
+({class}`~ethograph.video_features.S3DConfig`,
+{class}`~ethograph.video_features.timm_extract.TimmConfig`).
+
+### Cropping to the animal
+
+Resolution on the animal matters more than resolution on the arena. `crop`
+cuts one rectangle from every decoded frame before the resize, in the same
+numbers the GUI's crop tool reports (*Tools ▸ Video: Pick a crop…*), so they
+copy straight across:
+
+```yaml
+video_features:
+  crop: {x0: 240, y0: 80, x1: 880, y1: 720}
+```
+
+**The network takes a square, and you choose which one.** Every extractor
+has a fixed square input — 224×224 for S3D, the model's own side for a timm
+backbone (518 for DINOv2) — and gets there by scaling the box's shorter side
+to it and taking the centre square, the Kinetics / ImageNet evaluation
+transform. So:
+
+- **No `crop`**: the centre square of the full frame, scaled. The default,
+  and fine when the animal sits mid-frame.
+- **A square `crop`**: exactly what you drew, only scaled. The crop tool's
+  *Square* option (ticked by default) grows the dragged rectangle to a square
+  about its centre, so the numbers it prints are the numbers the network
+  sees. Draw it 224×224 for S3D and there is no resampling at all.
+- **A non-square `crop`**: the long side is cut off — a 203×164 box loses
+  19 % of its width. The extraction logs a warning saying how much; it does
+  not refuse.
+
+One box per video, applied to every trial's video alike. A box that follows an
+individual — the per-individual feature a multi-animal recording needs — is
+the planned extension; the sidecar already records the crop in its attrs so
+that step needs no new format.
 
 ### Taking one camera out of a folder
 
-Two cameras pointed at the same arena give nearly identical S3D features, so
+Two cameras pointed at the same arena give nearly identical features, so
 extracting both is an hour of GPU time for nothing. `include` narrows what is
 found:
 
 ```python
-eto.segment.extract_videos(["/data/videos"], "/data/s3d", include=["cam-1"])
+eto.segment.extract_videos(["/data/videos"], "/data/features", include=["cam-1"])
 ```
 
 Each pattern is a regular expression matched against the **whole path** with
@@ -78,8 +137,8 @@ sessions:
     video_dir: /data/videos
 
 video_features:
-  stack_s: 0.5
-  analysis_fps: 50
+  extractor: s3d                  # or timm
+  analysis_fps: 25
   camera: cam-1                   # regex pattern so video features only for camera 1
 ```
 
@@ -93,15 +152,16 @@ project.video_features(merge=True)    # extract, then merge into the sessions
 Sidecars go to `{root}/video_features/`; the paths written are returned, and
 `overwrite=True` re-extracts. Any setting can also be overridden without
 editing the file:
-`eto.segment.Project("project.yaml", "video_features.stack_s=0.3")`.
+`eto.segment.Project("project.yaml", "video_features.extractor=timm", "video_features.analysis_fps=25")`.
 
 ## Merging into a session
 
-Extraction alone does not make S3D a *feature* — the sidecar is on the
-video's clock, and the pipeline reads features from the session. Merging
+Extraction alone does not make the embedding a *feature* — the sidecar is on
+the video's clock, and the pipeline reads features from the session. Merging
 samples the sidecar onto each trial's own time axis (nearest neighbour,
-applying that trial's video offset) and writes a session copy carrying
-`s3d (time, s3d_dims)`:
+applying that trial's video offset) and writes a session copy carrying a
+variable named after the extractor, `s3d (time, s3d_dims)` or
+`timm (time, timm_dims)`:
 
 ```python
 project.video_features(merge=True)
@@ -109,10 +169,12 @@ project.video_features(merge=True)
 ```
 
 The merge **never overwrites your session file**: it writes a sibling
-`{stem}_s3d.nc` and logs the path — point your config's `sessions:` at it (or
-call {func}`~ethograph.segment.video_features.merge_video_features` yourself
-with `in_place=True` if you would rather overwrite). Merging is xarray-only;
-for pynapple and NWB sessions the sidecar exists but you carry it in yourself.
+`{stem}_{extractor}.nc` and logs the path — point your config's `sessions:` at
+it (or call {func}`~ethograph.segment.video_features.merge_video_features`
+yourself with `in_place=True` if you would rather overwrite). Merging is
+xarray-only; for pynapple and NWB sessions the sidecar exists but you carry it
+in yourself. Sidecars written before the registry existed (`time_s3d`) still
+merge: the time dim is found by name.
 
 Then name it like any other feature:
 
@@ -123,12 +185,13 @@ features:
     speed: {keypoint: [beakTip]}
 ```
 
-## Choosing which S3D features to keep
+## Choosing which dimensions to keep
 
-1024 columns is a lot next to a handful of kinematic ones, and they dominate
-the input — in practice a small, well-chosen subset does *better* than all of
-them. Two tools, both leaning on `kind="video_feature"` (see
-{doc}`../variable_schema`), which the extractor stamps for you.
+1024 (S3D) or 768 (DINOv2 ViT-B) columns is a lot next to a handful of
+kinematic ones, and they dominate the input — in practice a small, well-chosen
+subset does *better* than all of them. Two tools, both leaning on
+`kind="video_feature"` (see {doc}`../variable_schema`), which every extractor
+stamps for you.
 
 **Is the whole group pulling its weight?** That is a question about the
 trained model, so it takes two runs — the same materialised dataset, one
@@ -152,6 +215,9 @@ table comes back empty — and an ablation judged on a random trial split is
 flattered anyway, so the honest version of this benchmark is
 `cross_validate()` with and without the video columns.
 ```
+
+**Which extractor?** The same two-run shape: merge both sidecars into the
+session, list one or the other under `features.columns`, compare.
 
 **Which individual features are stereotypic?** Rank them by Cohen's d: for
 each feature and each behaviour class, how far apart the feature's
@@ -189,7 +255,8 @@ over trials.
 In the GUI the same ranking is a heatmap — **Model ▸ Video features: rank by
 Cohen's d…** — of classes against the top-k features, so you can see which
 behaviours each feature actually separates, and copy the top-k straight into
-your config:
+your config as a `features.columns` line, keyed by the feature and its own
+dim:
 
 ```yaml
 features:
@@ -208,8 +275,18 @@ leaks the test set.
 ## One video, no ethograph at all
 
 ```python
-from ethograph.video_features import S3DConfig, extract_s3d
+from ethograph.video_features import S3DConfig, build_extractor, extract_s3d
 
-da = extract_s3d("clip.mp4", S3DConfig(stack_s=0.5))   # (time_s3d, s3d_dims)
+da = extract_s3d("clip.mp4", S3DConfig(stack_s=0.5))         # (time_video, s3d_dims)
 da.to_netcdf("clip_s3d.nc")
+
+da = build_extractor("timm").extract("clip.mp4")             # (time_video, timm_dims)
 ```
+
+## Adding an extractor
+
+An extractor is an entry in `ethograph.video_features.EXTRACTORS` — a name
+mapped to a class with `name`, `plan(video_fps)` and `extract(video)` — whose
+`extract` returns `to_dataarray(...)`. Its package is pip-installed, never
+copied into the tree (ADR 0009); if the package cannot share the GUI
+environment, the extractor runs it by subprocess and reads the file back.

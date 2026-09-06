@@ -1,7 +1,8 @@
-"""S3D video features: extract them, then merge them into a session.
+"""Video features: run an extractor over videos, then merge the result into a session.
 
-Two ways in, one output format — a sidecar ``{video stem}_s3d.nc`` holding a
-``(time_s3d, s3d_dims)`` DataArray on the *video's* clock:
+Two ways in, one output format — a sidecar ``{video stem}_{extractor}.nc``
+holding a ``(time_video, {extractor}_dims)`` DataArray on the *video's* clock
+(the extractor is ``video_features.extractor``: ``timm`` or ``s3d``):
 
 * **A folder of videos**, before any session exists — :func:`extract_videos`
   (``eto.segment.extract_videos([folder], out_dir)``).
@@ -13,9 +14,9 @@ Two ways in, one output format — a sidecar ``{video stem}_s3d.nc`` holding a
   never overwrite each other.
 
 :func:`merge_video_features` then samples a sidecar onto each trial's own time
-axis and writes a session copy carrying ``s3d (time, s3d_dims)`` — an ordinary
-feature, plottable in the GUI and selectable by name in ``features.columns``.
-Merging is xarray-only; pynapple/NWB sessions merge by hand.
+axis and writes a session copy carrying ``{extractor} (time, {extractor}_dims)``
+— an ordinary feature, plottable in the GUI and selectable by name in
+``features.columns``. Merging is xarray-only; pynapple/NWB sessions merge by hand.
 """
 
 from __future__ import annotations
@@ -35,17 +36,22 @@ from ethograph.segment.config import SegmentConfig, VideoFeaturesConfig
 from ethograph.segment.sessions import Session, filter_trials, open_session
 from ethograph.utils.logging import log_to_file
 from ethograph.utils.xr_utils import get_time_coord
+from ethograph.video_features.base import sidecar_path, time_dim_of
 
 logger = logging.getLogger(__name__)
 
 VIDEO_FEATURES_DIR = "video_features"
-S3D_VAR = "s3d"
-S3D_TIME_DIM = "time_s3d"
 
-
-def sidecar_path(video: Path, out_dir: Path) -> Path:
-    """Where *video*'s features live: ``{out_dir}/{stem}_s3d.nc``."""
-    return Path(out_dir) / f"{Path(video).stem}_s3d.nc"
+__all__ = [
+    "VIDEO_FEATURES_DIR",
+    "extract_video_features",
+    "extract_videos",
+    "iter_video_files",
+    "merge_video_features",
+    "session_video_features_dir",
+    "session_videos",
+    "sidecar_path",
+]
 
 
 def _compile_patterns(include: Iterable[str] | None) -> list[re.Pattern[str]] | None:
@@ -114,31 +120,30 @@ def extract_videos(
     overwrite: bool = False,
     include: Iterable[str] | None = None,
 ) -> list[Path]:
-    """Run S3D over each video, writing one sidecar per video into *out_dir*.
+    """Run the configured extractor over each video, one sidecar per video into *out_dir*.
 
     Videos whose sidecar already exists are skipped unless *overwrite*.
     *include* narrows the videos found (see :func:`iter_video_files`) — the
     usual reason being that two cameras see nearly the same thing, so only
-    one of them is worth an hour of S3D.
+    one of them is worth an hour of GPU.
     """
-    from ethograph.video_features import extract_s3d, plan_s3d
     from ethograph.video_features.frames import probe_video
 
     cfg = cfg if cfg is not None else VideoFeaturesConfig()
-    s3d_cfg = cfg.s3d_config()
+    extractor = cfg.build()
     out_dir = Path(out_dir)
-    logger.info("Extracting S3D video features into %s (overwrite=%s)", out_dir, overwrite)
+    logger.info("Extracting %s video features into %s (overwrite=%s)", extractor.name, out_dir, overwrite)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     written: list[Path] = []
     for video in iter_video_files(videos, include):
-        target = sidecar_path(video, out_dir)
+        target = sidecar_path(video, out_dir, extractor.name)
         if target.exists() and not overwrite:
             logger.info("%s exists — skipping (use overwrite)", target.name)
             continue
-        plan = plan_s3d(probe_video(str(video)).fps, s3d_cfg)
-        logger.info("%s: %s, mode=%s", video.name, plan.describe(), s3d_cfg.mode)
-        da = extract_s3d(video, s3d_cfg)
+        plan = extractor.plan(probe_video(str(video)).fps)
+        logger.info("%s: %s", video.name, plan.describe())
+        da = extractor.extract(video)
         da.to_netcdf(target)
         written.append(target)
         logger.info("  → %s %s", target, tuple(da.shape))
@@ -151,7 +156,7 @@ def extract_videos(
 
 
 def session_video_features_dir(session: Session, config: SegmentConfig) -> Path:
-    """Where *session*'s S3D sidecars live: ``video_features_dir/{hash}``.
+    """Where *session*'s video-feature sidecars live: ``video_features_dir/{hash}``.
 
     Namespaced by a hash of the session's resolved source path (the same
     hashing scheme as :func:`ethograph.labels.onset_model.session_id`, minus
@@ -181,7 +186,7 @@ def session_videos(session: Session, config: SegmentConfig) -> dict[int | str, P
 
 
 def extract_video_features(config: SegmentConfig, overwrite: bool = False) -> list[Path]:
-    """Run S3D over every video the config's sessions use.
+    """Run the configured extractor over every video the config's sessions use.
 
     Each session's videos are extracted into their own subfolder
     (:func:`session_video_features_dir`) — sessions never share an output
@@ -206,13 +211,14 @@ def merge_video_features(
     out_path: Path | None = None,
     in_place: bool = False,
 ) -> Path:
-    """Write a copy of *session* carrying ``s3d`` on every trial's time axis.
+    """Write a copy of *session* carrying the video feature on every trial's time axis.
 
+    The variable is named after the extractor (``video_features.extractor``).
     Each trial's video offset (``stream_offset_for_trial``) maps the trial
     clock onto the video's; the sidecar is sampled onto the trial's own time
     axis by nearest neighbour. Returns the path written — a sibling
-    ``{stem}_s3d.nc`` unless *out_path* or *in_place* says otherwise, because
-    the pipeline never overwrites a session file unasked.
+    ``{stem}_{extractor}.nc`` unless *out_path* or *in_place* says otherwise,
+    because the pipeline never overwrites a session file unasked.
     """
     dt = session.result.dt
     if dt is None:
@@ -220,30 +226,37 @@ def merge_video_features(
             f"{session.source}: merging needs an xarray (.nc) session; "
             "pynapple/NWB sessions carry the sidecar in by hand."
         )
+    name = config.video_features.name
     features_dir = Path(features_dir) if features_dir is not None else session_video_features_dir(session, config)
     alignment = session.result.nwb_alignment
     videos = session_videos(session, config)
 
     for trial, video in videos.items():
-        sidecar = sidecar_path(video, features_dir)
+        sidecar = sidecar_path(video, features_dir, name)
         if not sidecar.is_file():
             raise FileNotFoundError(f"{sidecar} missing — extract the video features first")
         # update_trial mutates the tree in place and returns None.
-        dt.update_trial(trial, lambda ds, s=sidecar, t=trial: _with_s3d(ds, s, alignment, t))
+        dt.update_trial(trial, lambda ds, s=sidecar, t=trial: with_video_feature(ds, s, alignment, t, name))
 
     if in_place:
         target = session.source
     elif out_path is not None:
         target = Path(out_path)
     else:
-        target = session.source.with_name(f"{session.source.stem}_s3d.nc")
+        target = session.source.with_name(f"{session.source.stem}_{name}.nc")
     dt.save(str(target))
-    logger.info("%s: merged s3d into %d trials → %s", session.id, len(videos), target)
+    logger.info("%s: merged %s into %d trials → %s", session.id, name, len(videos), target)
     return target
 
 
-def _with_s3d(ds: xr.Dataset, sidecar: Path, alignment, trial) -> xr.Dataset:
+def with_video_feature(ds: xr.Dataset, sidecar: Path, alignment, trial, name: str) -> xr.Dataset:
+    """*ds* plus the sidecar sampled onto its time axis, as the variable *name*.
+
+    The sidecar's time dim is found by name (``time_video``, or ``time_s3d``
+    from a file written before the registry), so older sidecars still merge.
+    """
     da = xr.load_dataarray(sidecar)
+    video_time = time_dim_of(da)
     offset = float(alignment.stream_offset_for_trial(trial, "video"))
     reference = next(iter(ds.data_vars.values()))
     time_coord = get_time_coord(reference)
@@ -253,7 +266,7 @@ def _with_s3d(ds: xr.Dataset, sidecar: Path, alignment, trial) -> xr.Dataset:
     # The sidecar's clock is the video's own (frame 0 at 0). The stream offset
     # places that frame 0 at trial time `offset` (VideoSync: trial = video +
     # offset), so a trial time samples the video at `t - offset`.
-    sampled = da.interp(**{S3D_TIME_DIM: time - offset}, method="nearest", kwargs={"fill_value": "extrapolate"})
-    sampled = sampled.rename({S3D_TIME_DIM: time_coord.name}).assign_coords({time_coord.name: time})
-    sampled.attrs = {**da.attrs, "description": "S3D video features sampled onto the trial clock"}
-    return ds.assign({S3D_VAR: sampled})
+    sampled = da.interp(**{video_time: time - offset}, method="nearest", kwargs={"fill_value": "extrapolate"})
+    sampled = sampled.rename({video_time: time_coord.name}).assign_coords({time_coord.name: time})
+    sampled.attrs = {**da.attrs, "description": f"{name} video features sampled onto the trial clock"}
+    return ds.assign({name: sampled})

@@ -34,11 +34,20 @@ from ethograph.labels.ml import dense_to_intervals
 from ethograph.labels.onset_curves import labels_dir, write_provenance
 from ethograph.labels.tsv_store import load_labels_tsv, save_labels_tsv
 from ethograph.segment.config import SegmentConfig, config_to_dict, load_config
-from ethograph.segment.materialise import COLUMNS_FILE
+from ethograph.segment.materialise import COLUMNS_FILE, read_target_table
 from ethograph.segment.models import as_output, build_model
 from ethograph.segment.postprocess import postprocess_intervals
 from ethograph.segment.preprocess import NormStats
-from ethograph.segment.samples import ClassTable, ColumnLayout, build_sample_features, sample_key
+from ethograph.segment.samples import (
+    SELF_TOKEN,
+    ChannelTable,
+    ColumnLayout,
+    TargetTable,
+    build_sample_features,
+    channels_to_track,
+    is_multilabel,
+    sample_key,
+)
 from ethograph.segment.sessions import Session, changepoint_times, filter_trials, open_session
 from ethograph.segment.train import BEST_FILE, STATS_FILE
 from ethograph.utils.device import resolve_device
@@ -63,7 +72,7 @@ class Run:
     run_dir: Path
     config: SegmentConfig
     layout: ColumnLayout
-    classes: ClassTable
+    classes: TargetTable
     stats: NormStats
     model: torch.nn.Module
     device: torch.device
@@ -110,7 +119,7 @@ def load_run(run_dir: Path, device: str | None = None) -> Run:
     run_dir = Path(run_dir)
     config = load_config(run_dir / "config.yaml")
     layout = ColumnLayout.from_dict(yaml.safe_load((run_dir / COLUMNS_FILE).read_text(encoding="utf-8")))
-    classes = ClassTable.from_dict(yaml.safe_load((run_dir / "classes.yaml").read_text(encoding="utf-8")))
+    classes = read_target_table(run_dir / "classes.yaml")
     stats = NormStats.load(run_dir / STATS_FILE)
     dev = torch.device(resolve_device(device or config.train.device))
     # columns.yaml is the *full* layout, so a freshly built sample can be
@@ -118,21 +127,58 @@ def load_run(run_dir: Path, device: str | None = None) -> Run:
     # ablation it was trained with.
     keep = layout.keep_mask(config.train.drop_kinds)
     n_features = int(keep.sum())
-    model = build_model(config.model.architecture, config.model.params, n_features, classes.n_classes)
+    model = build_model(config.model.architecture, config.model.params, n_features, classes.n_outputs)
     model.load_state_dict(torch.load(run_dir / BEST_FILE, map_location=dev, weights_only=True))
     model.to(dev).eval()
     return Run(run_dir, config, layout, classes, stats, model, dev, keep=None if keep.all() else keep)
 
 
 def predict_probabilities(run: Run, x: np.ndarray) -> np.ndarray:
-    """``(F, T)`` preprocessed features → ``(T, C)`` probabilities."""
+    """``(F, T)`` preprocessed features → ``(T, C)`` probabilities.
+
+    A softmax over the classes of an exclusive run; a sigmoid per channel of
+    a multi-label one (the columns then do not sum to 1).
+    """
     if run.keep is not None:
         x = x[run.keep]
     xn = torch.from_numpy(np.ascontiguousarray(run.stats.apply(x))).unsqueeze(0).to(run.device)
     mask = torch.ones(1, 1, xn.shape[-1], device=run.device)
     with torch.no_grad():
         output = as_output(run.model(xn, mask))
-        return torch.softmax(output.logits[-1], dim=1)[0].T.cpu().numpy()
+        logits = output.logits[-1]
+        probs = torch.sigmoid(logits) if is_multilabel(run.classes) else torch.softmax(logits, dim=1)
+        return probs[0].T.cpu().numpy()
+
+
+def decode_sample(
+    run: Run, probs: np.ndarray, time: np.ndarray, individual: str, threshold: float
+) -> list[tuple[pd.DataFrame, dict[int, np.ndarray]]]:
+    """``(T, C)`` probabilities → the sample's raw interval sets, one per exclusive track.
+
+    An exclusive run is one track: argmax over the classes. A multi-label
+    run decodes each of the sample's own (``self``) tracks on its own —
+    channels above *threshold*, the most probable winning a frame where
+    several are on (:func:`~ethograph.segment.samples.channels_to_track`) —
+    so labels of different branches overlap and labels of one branch never
+    do, exactly the GUI's rule. The other individuals' channels (``subjects:
+    all``) are training targets only: each animal's labels come from its own
+    sample. Beside each interval set comes the probability curve per label
+    id, for the segment confidence.
+    """
+    classes = run.classes
+    if not isinstance(classes, ChannelTable):
+        indices = probs.argmax(axis=1)
+        ids = classes.ids(indices)
+        curves = {int(lid): probs[:, i] for i, lid in enumerate(classes.label_ids) if lid != 0}
+        return [(dense_to_intervals(ids, [individual], time_coord=time), curves)]
+    on = probs.T > threshold  # (C, T)
+    out = []
+    for track in classes.tracks(subject=SELF_TOKEN):
+        idx = channels_to_track(on, probs.T, track)
+        ids = track.classes.ids(idx)
+        curves = {classes.channels[c].label_id: probs[:, c] for c in track.channels}
+        out.append((dense_to_intervals(ids, [individual], time_coord=time), curves))
+    return out
 
 
 def _segment_confidence(conf: np.ndarray, time: np.ndarray, onset: float, offset: float) -> float:
@@ -181,33 +227,31 @@ def _infer_trials(
             )
             if cp is not None and len(cp) == 0:
                 trials_without_cp.append(window.trial)
-            indices = probs.argmax(axis=1)
-            conf = probs.max(axis=1)
-            ids = run.classes.ids(indices)
-            intervals = dense_to_intervals(ids, [individual], time_coord=time)
-            intervals = postprocess_intervals(intervals, pcfg, cp)
             key = sample_key(session.id, window.trial, individual)
             arrays[key] = probs.astype(np.float16)
             arrays[f"{key}_time"] = time.astype(np.float64)
-            for _, seg in intervals.iterrows():
-                rows.append(
-                    {
-                        "trial": window.trial,
-                        "individual": individual,
-                        "individual_rec": NO_RECIPIENT,
-                        "labels": int(seg["labels"]),
-                        "onset_s": float(seg["onset_s"]),
-                        "offset_s": float(seg["offset_s"]),
-                        "event_type": "state",
-                        "confidence": _segment_confidence(conf, time, float(seg["onset_s"]), float(seg["offset_s"])),
-                        "labeling_method": LABELING_AUTOMATED,
-                        "changepoint_corrected": int(
-                            bool(pcfg.changepoint_correction and cp is not None and len(cp) > 0)
-                        ),
-                        "prediction_source": run.name,
-                        "n_samples": int(len(time)),
-                    }
-                )
+            for raw, curves in decode_sample(run, probs, time, individual, float(config.infer.threshold)):
+                intervals = postprocess_intervals(raw, pcfg, cp)
+                for _, seg in intervals.iterrows():
+                    onset, offset, lid = float(seg["onset_s"]), float(seg["offset_s"]), int(seg["labels"])
+                    rows.append(
+                        {
+                            "trial": window.trial,
+                            "individual": individual,
+                            "individual_rec": NO_RECIPIENT,
+                            "labels": lid,
+                            "onset_s": onset,
+                            "offset_s": offset,
+                            "event_type": "state",
+                            "confidence": _segment_confidence(curves[lid], time, onset, offset),
+                            "labeling_method": LABELING_AUTOMATED,
+                            "changepoint_corrected": int(
+                                bool(pcfg.changepoint_correction and cp is not None and len(cp) > 0)
+                            ),
+                            "prediction_source": run.name,
+                            "n_samples": int(len(time)),
+                        }
+                    )
     if trials_without_cp:
         logger.warning(
             "%s: changepoint_correction is on but %d/%d trials have no changepoints — those boundaries "

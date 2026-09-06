@@ -125,6 +125,13 @@ model = [
     "optuna",
 ]
 
+# Frame-wise video features (ethograph/video_features/timm_extract.py,
+# `video_features.extractor: timm`): any timm image backbone, DINOv2 by
+# default. Depends on torch, so install the CUDA build first (above).
+timm = [
+    "timm>=1.0",
+]
+
 # PosePAL fill backend for pose keypoints (CoTracker3 + query-feature
 # refinement, see ethograph/gui/pose_refine.py).
 #

@@ -27,6 +27,7 @@ import yaml
 
 from ethograph.labels.tsv_store import labels_tsv_path
 from ethograph.utils.paths import ethograph_home
+from ethograph.video_features.base import CropBox, Extractor, check_extractor_name, extractor_module
 
 logger = logging.getLogger(__name__)
 
@@ -257,15 +258,56 @@ class PreprocessConfig:
     zscore_exclude: list[str] = field(default_factory=list)
 
 
+TARGET_SUBJECTS = ("self", "all")
+"""``features.labels.subjects``: whose labels are targets — the sample's own
+individual, or every individual of the cast (``self``, ``other1``, …)."""
+
+
 @dataclass
 class LabelsConfig:
-    """Which labels are the targets: one branch of a ``mapping.txt``."""
+    """Which labels are the targets: one branch of a ``mapping.txt``, or several.
+
+    One ``branch`` is the exclusive case — one class per frame, softmax.
+    Listing ``branches`` (or asking for every subject's labels with
+    ``subjects: all``) makes the target **multi-label**: one binary channel
+    per (subject, class), a sigmoid each, so labels of different branches —
+    or of different animals — coexist on a frame. Within one (subject,
+    branch) *track* classes stay exclusive, exactly as the GUI draws them.
+    """
 
     #: ``mapping.txt`` path; ``None`` defaults to ``~/.ethograph/mapping.txt``.
     mapping: Path | None = None
     branch: int = 0
-    #: Label ids to predict; ``None`` = every state class of the branch.
+    #: Several branches at once → a multi-label target. Spell either this or
+    #: ``branch``, never both.
+    branches: list[int] | None = None
+    #: Label ids to predict; ``None`` = every state class of the branch(es).
     classes: list[int] | None = None
+    #: ``self``: the sample's individual only. ``all``: also ``other1``,
+    #: ``other2``, … in layout order — a multi-label target.
+    subjects: str = "self"
+
+    def __post_init__(self) -> None:
+        if self.subjects not in TARGET_SUBJECTS:
+            raise ValueError(f"features.labels.subjects={self.subjects!r} — one of {list(TARGET_SUBJECTS)}")
+        if self.branches is not None:
+            if not self.branches:
+                raise ValueError("features.labels.branches is empty — list at least one branch, or spell branch:")
+            if self.branch != 0:
+                raise ValueError(
+                    f"features.labels spells both branch={self.branch} and branches={self.branches} — use one"
+                )
+            self.branches = [int(b) for b in self.branches]
+
+    @property
+    def branch_list(self) -> list[int]:
+        """The branches whose state classes are targets."""
+        return list(self.branches) if self.branches is not None else [int(self.branch)]
+
+    @property
+    def multilabel(self) -> bool:
+        """Whether the target is one binary channel per (subject, class)."""
+        return self.branches is not None or self.subjects == "all"
 
 
 @dataclass
@@ -864,37 +906,84 @@ class InferConfig:
     #: ``infer.resolve_run_dir``'s ``{base_name}_{timestamp}`` naming).
     run: str | None = None
     postprocess: PostprocessConfig = field(default_factory=PostprocessConfig)
+    #: Multi-label targets only: a channel's sigmoid must exceed this to
+    #: count as on. Ours — upstream decodes multi-label through its own
+    #: metric layer, which is not vendored. Exclusive targets argmax and
+    #: never read it.
+    threshold: float = 0.5
+
+
+#: The project default for the S3D window when ``stack_s`` is not spelled:
+#: 15 frames at 30 fps, so it works down to 26 fps.
+S3D_DEFAULT_STACK_S = 0.5
 
 
 @dataclass
 class VideoFeaturesConfig:
-    """S3D settings — the two choices that change the features, and the camera.
+    """Which extractor, the choices that change its features, and the camera.
+
+    ``extractor`` names an entry of :data:`ethograph.video_features.EXTRACTORS`:
+    ``s3d`` (clip-wise, a ``stack_s`` window of motion per frame — the
+    default) or ``timm`` (frame-wise, any timm image backbone, DINOv2 unless
+    ``model_name`` says otherwise). A setting
+    that belongs to the other extractor is refused by name rather than
+    ignored — ``stack_s`` means nothing to a frame-wise model, ``model_name``
+    nothing to S3D.
 
     Everything else about the extraction (batch size, decode chunk, fp16,
-    device, the ``dense`` ablation mode) is a performance detail with one
-    sensible answer, so it is not a project setting; build a
-    :class:`~ethograph.video_features.S3DConfig` yourself in the rare case
-    you need one.
-
-    ``stack_s`` must be at least 13 frames at the effective rate. The 0.5 s
-    default works down to 26 fps; if it does not, the error names the
-    shortest window that does.
+    device, S3D's ``dense`` ablation mode) is a performance detail with one
+    sensible answer, so it is not a project setting; build the extractor's
+    own config yourself in the rare case you need one.
     """
 
-    #: Temporal extent of one S3D window, in seconds — how much motion
-    #: context each frame's feature sees.
-    stack_s: float = 0.5
-    #: Rate S3D sees; ``None`` = every frame. Frames are skipped, never
-    #: interpolated up, so halving this roughly halves the cost.
+    #: Registry name of the network.
+    extractor: str = "s3d"
+    #: ``timm`` only: the backbone. ``None`` = the registry default.
+    model_name: str | None = None
+    #: ``s3d`` only: temporal extent of one window, in seconds — how much
+    #: motion context each frame's feature sees. Must be at least 13 frames at
+    #: the effective rate; ``None`` = :data:`S3D_DEFAULT_STACK_S`.
+    stack_s: float | None = None
+    #: Rate the network sees; ``None`` = every frame. Frames are skipped,
+    #: never interpolated up, so halving this roughly halves the cost.
     analysis_fps: float | None = None
     #: Which camera's video to take, when the alignment holds several.
     camera: str | None = None
+    #: One pixel box cut from every frame before the network sees it — the
+    #: individual's part of the frame, in the GUI crop tool's numbers.
+    crop: CropBox | None = None
 
-    def s3d_config(self):
-        """The :class:`~ethograph.video_features.S3DConfig` these settings describe."""
-        from ethograph.video_features import S3DConfig
+    def __post_init__(self) -> None:
+        check_extractor_name(self.extractor)
+        if isinstance(self.crop, dict):
+            # The YAML loader builds nested dataclasses; the Python helper
+            # (`extract_videos(crop={...})`) hands the mapping straight here.
+            self.crop = CropBox(**self.crop)
+        if self.stack_s is not None and self.extractor != "s3d":
+            raise ValueError(
+                f"video_features.stack_s is the s3d window; the {self.extractor!r} extractor is "
+                "frame-wise and has none — remove it or set extractor: s3d"
+            )
+        if self.model_name is not None and self.extractor != "timm":
+            raise ValueError(
+                f"video_features.model_name chooses a timm backbone; it means nothing to {self.extractor!r}"
+            )
 
-        return S3DConfig(analysis_fps=self.analysis_fps, stack_s=self.stack_s)
+    @property
+    def name(self) -> str:
+        """The extractor's name: the sidecar suffix and the merged variable."""
+        return self.extractor
+
+    def build(self) -> Extractor:
+        """The configured :class:`~ethograph.video_features.Extractor` (imports its package)."""
+        module = extractor_module(self.extractor)
+        if self.extractor == "s3d":
+            stack_s = S3D_DEFAULT_STACK_S if self.stack_s is None else self.stack_s
+            return module.S3DExtractor(module.S3DConfig(analysis_fps=self.analysis_fps, stack_s=stack_s), self.crop)
+        params = {"analysis_fps": self.analysis_fps}
+        if self.model_name is not None:
+            params["model_name"] = self.model_name
+        return module.TimmExtractor(module.TimmConfig(**params), self.crop)
 
 
 @dataclass
@@ -1020,6 +1109,7 @@ _NESTED: dict[str, type] = {
     "infer": InferConfig,
     "trials": TrialsConfig,
     "video_features": VideoFeaturesConfig,
+    "crop": CropBox,
 }
 
 

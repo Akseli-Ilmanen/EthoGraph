@@ -421,6 +421,15 @@ def apply_keypoint_filter(pr: PoseRenderData, hidden: set[str]) -> PoseRenderDat
     return PoseRenderData(pr.data, pr.properties, mask, pr.file_name, pr.bbox_data, pr.frame_path, pr.skeleton_config)
 
 
+def apply_individual_filter(pr: PoseRenderData, keep: str) -> PoseRenderData:
+    """Mask out every individual but *keep* — what a camera view pinned to one animal shows."""
+    if "individual" not in pr.properties.columns:
+        return pr
+    mask = pr.data_not_nan.copy()
+    mask[pr.properties["individual"].astype(str).values != str(keep)] = False
+    return PoseRenderData(pr.data, pr.properties, mask, pr.file_name, pr.bbox_data, pr.frame_path, pr.skeleton_config)
+
+
 class PoseDisplayManager:
     """Manages pose loading, filtering, and pygfx overlay display.
 
@@ -768,7 +777,7 @@ class PoseDisplayManager:
     def _display_pose_on_primary(self, camera_idx: int, hidden_keypoints: set[str]) -> None:
         """Render pose on the primary camera view (driven by keypoints table selection)."""
         view = self.video_area.primary
-        pr = self._prepare_pose(camera_idx, hidden_keypoints)
+        pr = self._pinned_only(view, self._prepare_pose(camera_idx, hidden_keypoints))
         if pr is None:
             view.clear_overlay()
             self._primary_pr = None
@@ -812,13 +821,23 @@ class PoseDisplayManager:
         if not camera_name:
             view.clear_overlay()
             return
-        pr = self._prepare_pose(self._camera_index(camera_name), hidden_keypoints)
+        pr = self._pinned_only(view, self._prepare_pose(self._camera_index(camera_name), hidden_keypoints))
         if pr is None:
             view.clear_overlay()
             return
         self._register_keypoints(camera_name, pr.keypoints)
         self._extra_pr[camera_name] = pr
         self._display_pose_on_view(view, pr, camera_name)
+
+    def _pinned_only(self, view: Any, pr: PoseRenderData | None) -> PoseRenderData | None:
+        """*pr* reduced to the individual *view* is pinned to (``None`` when nothing of it remains)."""
+        if pr is None:
+            return None
+        individual = self.app_state.pinned_individual_of(view)
+        if individual is None:
+            return pr
+        pr = apply_individual_filter(pr, individual)
+        return pr if np.any(pr.data_not_nan) else None
 
     def update_extra_camera_pose(self, camera_name: str, hidden_keypoints: set[str]) -> None:
         for key, view in self.video_mgr.extra_widgets.items():

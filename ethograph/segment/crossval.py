@@ -43,7 +43,6 @@ from pathlib import Path
 from typing import Any, Iterable
 
 import pandas as pd
-import yaml
 
 from ethograph.labels.onset_model import session_id
 from ethograph.segment.config import (
@@ -55,9 +54,8 @@ from ethograph.segment.config import (
     config_to_dict,
 )
 from ethograph.segment.inference import inference, merge_prediction_sets, prediction_run_dir
-from ethograph.segment.materialise import COLUMNS_FILE, materialise, read_index
+from ethograph.segment.materialise import COLUMNS_FILE, materialise, read_index, read_target_table
 from ethograph.segment.metrics import EVAL_ARRAYS_FILE
-from ethograph.segment.samples import ClassTable
 from ethograph.segment.train import RunResult, run_name_for, train
 from ethograph.utils.logging import log_to_file
 
@@ -321,7 +319,7 @@ def _write_fold_comparison(out_dir: Path, folds: list[Fold]) -> None:
             EVAL_ARRAYS_FILE,
         )
         return
-    classes = ClassTable.from_dict(yaml.safe_load((folds[0].run_dir / "classes.yaml").read_text(encoding="utf-8")))
+    classes = read_target_table(folds[0].run_dir / "classes.yaml")
     path = write_comparison_pdf(
         out_dir / "eval_comparison.pdf", evals, classes, title=f"Cross-validation — {len(evals)} folds"
     )

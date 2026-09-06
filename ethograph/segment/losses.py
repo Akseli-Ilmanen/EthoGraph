@@ -17,8 +17,12 @@ module only reads upstream's ``config/losses.yaml`` and fills in the two
 things a config file cannot know:
 
 * ``exclusive`` — upstream takes it from the task's single- vs multi-label
-  problem type, which lives in the toolbox layer we do not vendor. Ours are
-  single-label.
+  problem type, which lives in the toolbox layer we do not vendor. Here it
+  follows the target: ``True`` for a :class:`~ethograph.segment.samples.ClassTable`
+  (softmax, one class per frame), ``False`` for a
+  :class:`~ethograph.segment.samples.ChannelTable` (a sigmoid per channel,
+  ``BCEWithLogits``, upstream's own non-exclusive branch). Spelling it in
+  ``train.loss`` against the target is refused — the target decides.
 * ``weights`` — upstream's YAML says ``dataset_inverse_weights``, a sentinel
   its dataset layer resolves. That layer is not vendored, so the sentinel
   cannot be honoured and the default here is ``None`` (unweighted
@@ -148,6 +152,12 @@ class TruncatedMSTCNLoss(MS_TCN_Loss):
         exempt = candidates[:, 1:] | candidates[:, :-1]
         return (~exempt).unsqueeze(1)
 
+    def _ce_loss(self, p: torch.Tensor, t: torch.Tensor):  # type: ignore[override]
+        """Upstream's; the multi-label branch wants a float target, ours are collated as long."""
+        if not self.exclusive:
+            t = t.float()
+        return super()._ce_loss(p, t)
+
     def consistency_loss(self, p: torch.Tensor, keep: torch.Tensor | None = None) -> torch.Tensor:
         """Upstream's, with ``max=16`` replaced by ``tau ** 2``; given *keep*, averaged over kept transitions only."""
         mse = self.mse(self.log_nl(p[:, :, 1:]), self.log_nl(p.detach()[:, :, :-1]))
@@ -190,7 +200,7 @@ def upstream_defaults() -> dict[str, Any]:
 
 
 def build_loss(
-    overrides: dict[str, Any], n_classes: int, *, has_candidates: bool | None = None
+    overrides: dict[str, Any], n_classes: int, *, has_candidates: bool | None = None, exclusive: bool = True
 ) -> tuple[nn.Module, dict[str, Any]]:
     """Upstream's loss for this run; returns it with the resolved settings.
 
@@ -199,6 +209,10 @@ def build_loss(
     merged over an architecture's YAML. The settings come back so the run can
     log what it actually trained with.
 
+    *exclusive* is the target's: softmax cross-entropy over *n_classes*
+    classes, or a sigmoid per one of *n_classes* channels. A ``train.loss``
+    spelling the other one is refused.
+
     *has_candidates* says whether the layout carries a ``{var}_cp_binary``
     column: it resolves ``candidate_gate: null`` (on iff it does) and refuses
     ``candidate_gate: true`` when it does not. ``None`` = unknown — the gate
@@ -206,7 +220,7 @@ def build_loss(
     """
     settings = {
         **upstream_defaults(),
-        "exclusive": True,
+        "exclusive": bool(exclusive),
         "weights": None,
         TAU_KEY: DEFAULT_TAU,
         CANDIDATE_GATE_KEY: None,
@@ -215,6 +229,16 @@ def build_loss(
     unknown = set(settings) - LOSS_KEYWORDS
     if unknown:
         raise ValueError(f"train.loss: unknown key(s) {sorted(unknown)}; MS_TCN_Loss takes {sorted(LOSS_KEYWORDS)}")
+    if bool(settings["exclusive"]) != bool(exclusive):
+        target = (
+            "names one branch for the sample's own individual (exclusive)"
+            if exclusive
+            else "asks for a multi-label target (branches / subjects: all)"
+        )
+        raise ValueError(
+            f"train.loss.exclusive={settings['exclusive']} contradicts the target: features.labels {target} "
+            "— the target decides, so drop the key."
+        )
     if isinstance(settings.get("weights"), str):
         raise ValueError(
             f"train.loss.weights={settings['weights']!r} is a DLC2Action sentinel its dataset layer "
@@ -363,17 +387,24 @@ class Objective(nn.Module):
 
 
 def build_objective(
-    config: SegmentConfig, n_classes: int, layout: Any | None = None
+    config: SegmentConfig, n_classes: int, layout: Any | None = None, *, exclusive: bool = True
 ) -> tuple[Objective, dict[str, Any]]:
     """The objective this run trains against, with the settings it resolved to.
 
     *layout* is the materialised dataset's full :class:`~ethograph.segment.samples.ColumnLayout`;
     it decides the candidate gate's default (see :func:`build_loss`).
+    *exclusive* is the target's (see :func:`build_loss`); the circle loss
+    compares frames by their one label, so a multi-label run cannot have it.
     """
     tcfg = config.train
     has_candidates = None if layout is None else bool(layout.candidate_columns().size)
-    frame_loss, frame_settings = build_loss(tcfg.loss, n_classes, has_candidates=has_candidates)
+    frame_loss, frame_settings = build_loss(tcfg.loss, n_classes, has_candidates=has_candidates, exclusive=exclusive)
     ccfg = tcfg.circle
+    if ccfg.weight and not exclusive:
+        raise ValueError(
+            "train.circle.weight > 0 with a multi-label target — the circle loss pairs frames by their one "
+            "class, which a frame with several channels on does not have. Set train.circle.weight: 0."
+        )
     circle_loss = CircleLoss(m=ccfg.m, gamma=ccfg.gamma) if ccfg.weight else None
     objective = Objective(
         frame_loss=frame_loss,

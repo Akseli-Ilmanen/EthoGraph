@@ -23,6 +23,7 @@ it onto the trial grid, and the alignment applies the stream offset.
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -32,8 +33,8 @@ import xarray as xr
 from scipy.interpolate import interp1d
 from scipy.ndimage import uniform_filter1d
 
-from ethograph.io.schema import VIDEO_FEATURE, describe
 from ethograph.utils.device import resolve_device
+from ethograph.video_features.base import TIME_DIM, CropBox, feature_dim, to_dataarray
 from ethograph.video_features.frames import iter_frame_chunks, probe_video
 from ethograph.video_features.plan import S3DConfig, S3DPlan, plan_s3d
 from ethograph.video_features.s3d import FULL_STAGE, S3D, S3D_STAGES, S3DStage, truncated_base
@@ -42,8 +43,10 @@ from ethograph.video_features.s3d import FULL_STAGE, S3D, S3D_STAGES, S3DStage, 
 CHECKPOINT = Path(__file__).resolve().parent / "checkpoint" / "S3D_kinetics400_torchified.pt"
 #: Input side the network was trained at.
 SIDE = 224
-TIME_DIM = "time_s3d"
-FEATURE_DIM = "s3d_dims"
+NAME = "s3d"
+FEATURE_DIM = feature_dim(NAME)
+
+__all__ = ["CHECKPOINT", "FEATURE_DIM", "NAME", "S3DExtractor", "TIME_DIM", "extract_s3d"]
 
 Embed = Callable[[torch.Tensor], torch.Tensor]
 
@@ -207,14 +210,16 @@ def extract_s3d(
     video_path: str | Path,
     cfg: S3DConfig = S3DConfig(),
     *,
+    crop: CropBox | None = None,
     device: str | None = None,
     progress: Callable[[int], None] | None = None,
 ) -> xr.DataArray:
-    """S3D features of *video_path* under *cfg* → ``(time_s3d, s3d_dims)``.
+    """S3D features of *video_path* under *cfg* → ``(time_video, s3d_dims)``.
 
     The rate comes from the video; the plan (frames per window, step) is
-    derived from it and recorded in ``attrs``. *progress* is called with the
-    number of frames consumed so far.
+    derived from it and recorded in ``attrs``. *crop* is cut from every
+    decoded frame before the resize. *progress* is called with the number of
+    frames consumed so far.
     """
     if cfg.mode not in ("windows", "dense"):
         raise ValueError(f"mode must be 'windows' or 'dense', got {cfg.mode!r}")
@@ -227,6 +232,8 @@ def extract_s3d(
 
     info = probe_video(str(video_path))
     plan = plan_s3d(info.fps, cfg)
+    if crop is not None:
+        crop.validate(info.width, info.height, Path(video_path).name)
     dev = torch.device(resolve_device(device))
     model = load_s3d(dev)
 
@@ -236,7 +243,7 @@ def extract_s3d(
         nonlocal consumed
         for raw in iter_frame_chunks(video_path, step=plan.step, chunk=cfg.chunk):
             consumed += raw.shape[0]
-            yield preprocess(raw, dev)
+            yield preprocess(raw if crop is None else crop.apply(raw), dev)
             if progress is not None:
                 progress(consumed)
 
@@ -249,28 +256,45 @@ def extract_s3d(
     if feats.shape[0] != consumed:
         raise RuntimeError(f"Decoded {consumed} frames but produced {feats.shape[0]} features")
 
-    return _to_dataarray(feats, plan, info.path, cfg, stage_name)
+    return _to_dataarray(feats, plan, info.path, cfg, stage_name, crop)
 
 
-def _to_dataarray(feats: np.ndarray, plan: S3DPlan, path: str, cfg: S3DConfig, stage_name: str) -> xr.DataArray:
-    time = np.arange(feats.shape[0]) * plan.step / plan.video_fps
-    da = xr.DataArray(
-        feats.astype(np.float32),
-        dims=(TIME_DIM, FEATURE_DIM),
-        coords={TIME_DIM: time, FEATURE_DIM: np.arange(feats.shape[1])},
-        name="s3d",
-        attrs={
-            "video_path": path,
-            "video_fps": plan.video_fps,
-            "step": plan.step,
-            "effective_fps": plan.effective_fps,
-            "stack_frames": plan.stack_frames,
-            "stack_s": plan.stack_s,
-            "mode": cfg.mode,
-            "stage": stage_name,
-            "precision": cfg.precision,
-            "checkpoint": CHECKPOINT.name,
-            "time_basis": "video",
-        },
-    )
-    return describe(da, VIDEO_FEATURE, is_egocentric=False)
+def _to_dataarray(
+    feats: np.ndarray, plan: S3DPlan, path: str, cfg: S3DConfig, stage_name: str, crop: CropBox | None
+) -> xr.DataArray:
+    attrs: dict[str, object] = {
+        "video_path": path,
+        "stack_frames": plan.stack_frames,
+        "stack_s": plan.stack_s,
+        "mode": cfg.mode,
+        "stage": stage_name,
+        "precision": cfg.precision,
+        "checkpoint": CHECKPOINT.name,
+    }
+    if crop is not None:
+        attrs["crop"] = [crop.x0, crop.y0, crop.x1, crop.y1]
+    return to_dataarray(feats, name=NAME, video_fps=plan.video_fps, step=plan.step, attrs=attrs)
+
+
+@dataclass(frozen=True)
+class S3DExtractor:
+    """The ``s3d`` entry of the registry: :class:`S3DConfig` plus an optional crop."""
+
+    config: S3DConfig = S3DConfig()
+    crop: CropBox | None = None
+
+    @property
+    def name(self) -> str:
+        return NAME
+
+    def plan(self, video_fps: float) -> S3DPlan:
+        return plan_s3d(video_fps, self.config)
+
+    def extract(
+        self,
+        video: str | Path,
+        *,
+        device: str | None = None,
+        progress: Callable[[int], None] | None = None,
+    ) -> xr.DataArray:
+        return extract_s3d(video, self.config, crop=self.crop, device=device, progress=progress)

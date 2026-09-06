@@ -57,8 +57,6 @@ from ethograph.video_features.select import FeatureRanking, rank_features
 #: to offer candidates in a session whose variables declare no ``kind``.
 WIDE_DIM = 32
 
-#: Key the segment config reads the chosen dimensions under.
-YAML_KEY = "s3d_dims"
 
 #: Most x tick labels to draw; more than this and the indices collide.
 MAX_X_TICKS = 20
@@ -113,6 +111,13 @@ def all_values_selection(loader: Any, feature: str) -> dict[str, dict[str, list[
     return {feature: {dim: list(values) for dim, values in (loader.feature_dims(feature) or {}).items()}}
 
 
+def wide_dim(dims: dict[str, list[str]]) -> str:
+    """The dim the ranking indexes: the one with the most values (the feature bank)."""
+    if not dims:
+        raise ValueError("The feature has no dims to rank along")
+    return max(dims, key=lambda d: len(dims[d]))
+
+
 def curated_rows(df: pd.DataFrame | None, trial: Any) -> pd.DataFrame:
     """This trial's labels a ranking may learn from: never ``automated``."""
     if df is None or df.empty:
@@ -145,6 +150,8 @@ class VideoFeatureRankDialog(QDialog):
         self.meta = meta
         self.app_state = meta.app_state
         self._ranking: FeatureRanking | None = None
+        #: ``(feature, wide dim)`` of the last run — what the YAML line names.
+        self._ranked: tuple[str, str] | None = None
 
         layout = QVBoxLayout(self)
         form = QFormLayout()
@@ -203,7 +210,7 @@ class VideoFeatureRankDialog(QDialog):
         paste_row = QHBoxLayout()
         self.yaml_edit = QLineEdit()
         self.yaml_edit.setReadOnly(True)
-        self.yaml_edit.setPlaceholderText(f"{YAML_KEY}: […] — appears after a run")
+        self.yaml_edit.setPlaceholderText("feature: {dims: […]} — appears after a run")
         paste_row.addWidget(self.yaml_edit, stretch=1)
         self.copy_btn = QPushButton("Copy")
         self.copy_btn.setAutoDefault(False)
@@ -270,7 +277,9 @@ class VideoFeatureRankDialog(QDialog):
                 continue
             self.status_label.setText(f"Extracting trial {tid}…")
             QApplication.processEvents()
-            time, values = extract_features(loader, all_values_selection(loader, feature), t0, t1)
+            selection = all_values_selection(loader, feature)
+            self._ranked = (feature, wide_dim(selection[feature]))
+            time, values = extract_features(loader, selection, t0, t1)
             trial_time = time - shift  # labels are stored on the trial clock
             dense = intervals_to_dense(rows, sampling_rate(trial_time), [individual], len(trial_time))
             labels = dense[:, 0].astype(np.int64)
@@ -342,7 +351,16 @@ class VideoFeatureRankDialog(QDialog):
         return [int(i) for i in self._ranking.top(self.topk_spin.value())]
 
     def yaml_text(self) -> str:
-        return f"{YAML_KEY}: [{', '.join(str(i) for i in self.top_indices())}]"
+        """The ``features.columns`` entry naming the top-k: ``feature: {dim: [...]}``.
+
+        The dim is the ranked feature's own wide dim, read off the loader —
+        ``timm_dims``, ``s3d_dims``, whatever the session calls it — so the
+        line pastes into a config for any extractor.
+        """
+        if self._ranked is None:
+            return ""
+        feature, dim = self._ranked
+        return f"{feature}: {{{dim}: [{', '.join(str(i) for i in self.top_indices())}]}}"
 
     def _render(self):
         """Draw the class × top-k heatmap. Never recomputes the ranking."""

@@ -53,9 +53,8 @@ from ethograph.segment.config import (
     config_to_dict,
     deep_merge,
 )
-from ethograph.segment.materialise import COLUMNS_FILE, materialise
+from ethograph.segment.materialise import COLUMNS_FILE, materialise, read_target_table
 from ethograph.segment.metrics import EVAL_ARRAYS_FILE
-from ethograph.segment.samples import ClassTable
 from ethograph.segment.train import BEST_FILE, LAST_FILE, run_name_for, train
 from ethograph.utils.logging import log_to_file
 
@@ -167,7 +166,7 @@ def _write_trial_comparison(search_dir: Path, run_dirs: list[Path], name: str) -
             EVAL_ARRAYS_FILE,
         )
         return
-    classes = ClassTable.from_dict(yaml.safe_load((run_dirs[0] / "classes.yaml").read_text(encoding="utf-8")))
+    classes = read_target_table(run_dirs[0] / "classes.yaml")
     path = write_comparison_pdf(
         search_dir / "eval_comparison.pdf", evals, classes, title=f"Search {name} — {len(evals)} trials"
     )

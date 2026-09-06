@@ -63,6 +63,27 @@ How finely a model can place an event — the grid its answer lands on. A
 duration.
 _Avoid_: stride, downsampling
 
+### Segmentation targets
+
+**Track**:
+One (subject, branch): the set of classes that are exclusive with each
+other — one animal's one lane in the GUI, never two labels at once. The
+unit a multi-label prediction is decoded and post-processed within.
+_Avoid_: head, output group, lane (that is only how the GUI draws it)
+
+**Channel**:
+One binary output of a multi-label model — *subject* does *class*. Several
+channels are on at one frame when they belong to different tracks.
+_Avoid_: class (that is the exclusive target's word), label (that is the row
+it becomes)
+
+**Subject**:
+Whose labels a channel is about, relative to the sample: `self`, or
+`other1`, `other2`, … in layout order. Never an animal's name — a model
+must run on a session naming different animals.
+_Avoid_: individual (that is the dataset's coordinate), actor (that is the
+label row's column)
+
 ### The pose side
 
 **Feature (pose)**:
@@ -75,6 +96,21 @@ _Avoid_: node, edge, keypoint feature (the graph vocabulary is gone)
 The listed features z-scored on the training split, on the strided clock —
 the pixel model's second input, beside the CNN features, before the GRU.
 _Avoid_: fusion, side input
+
+### The video side
+
+**Video feature**:
+A per-frame embedding stream read off a video by a pretrained network — a
+time series on the video's own clock, stored beside the video and merged onto
+the trial like any other feature. What the GUI plots and a config lists; the
+network that made it is not part of the name.
+_Avoid_: embedding trace, descriptor, S3D features (that is one extractor)
+
+**Extractor**:
+The network that turns a video into a video feature — frozen, or fine-tuned
+by a segmenter and then read as one. Named by what it is (`s3d`, a timm model,
+a FERAL checkpoint); one registry holds them all.
+_Avoid_: backbone (its inner trunk, not the whole), feature model
 
 ### Models
 

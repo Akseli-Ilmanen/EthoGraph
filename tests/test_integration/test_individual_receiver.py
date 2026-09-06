@@ -4,8 +4,9 @@ Picking an individual used to be a feature-plot privilege — the combo lived in
 the "Xarray coords" group, so an audio, space or ephys panel had no way to say
 whose labels it was showing, and a pynapple session filtered labels by nobody
 at all.  The selector now sits above every context but the video's, and carries
-a second combo: with a receiver chosen, only the labels of that exact
-(actor, receiver) pair are shown.
+a second combo, the receiver of the next label: recorded on the label, shown
+as a tag on it, never a filter — one actor's labels exclude each other
+whoever they are directed at.
 """
 
 from __future__ import annotations
@@ -39,7 +40,7 @@ def test_every_context_but_the_video_gets_the_selector(moll2025_gui):
     assert not panel._individual.isVisibleTo(panel)
 
 
-def test_a_receiver_makes_the_pair_its_own_label_track(moll2025_gui):
+def test_the_receiver_is_a_tag_on_the_label_never_a_filter(moll2025_gui):
     _, meta = moll2025_gui
     state = meta.app_state
     dw = meta.data_widget
@@ -51,15 +52,13 @@ def test_a_receiver_makes_the_pair_its_own_label_track(moll2025_gui):
     state.set_trial_intervals(trial, df)
     state.label_intervals = state.get_trial_intervals(trial)
 
-    state.individual_receiver = ""
-    solo = dw._subject_intervals(state.get_display_intervals())
-    assert list(solo["onset_s"]) == [0.5]
+    for receiver in ("", "partner"):
+        state.individual_receiver = receiver
+        shown = dw._subject_intervals(state.get_display_intervals())
+        assert list(shown["onset_s"]) == [0.5, 2.0], "switching the receiver changes nothing on screen"
+    assert list(shown["individual_rec"]) == ["", "partner"], "but the label remembers whom it was directed at"
 
-    state.individual_receiver = "partner"
-    dyadic = dw._subject_intervals(state.get_display_intervals())
-    assert list(dyadic["onset_s"]) == [2.0]
-
-    # Drawing either view must not raise.
+    # Drawing must not raise, and the directed label carries its tag.
     dw.update_label_plot()
 
 

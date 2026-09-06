@@ -49,5 +49,6 @@ def _stretch(x: np.ndarray, y: np.ndarray, factor: float) -> tuple[np.ndarray, n
     src = np.linspace(0, n - 1, m)
     base = np.arange(n)
     xs = np.stack([np.interp(src, base, row) for row in x]).astype(np.float32)
-    ys = y[np.clip(np.rint(src).astype(int), 0, n - 1)]
+    # Time is the last axis of either target shape, (T,) or (C, T).
+    ys = y[..., np.clip(np.rint(src).astype(int), 0, n - 1)]
     return xs, ys

@@ -22,8 +22,10 @@ from qtpy.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QMenu,
     QPushButton,
     QSizePolicy,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -304,10 +306,10 @@ class DataPanel(QWidget):
         self.individual_rec_combo = QComboBox()
         self.individual_rec_combo.setObjectName("individual_rec_combo")
         self.individual_rec_combo.setToolTip(
-            "Individual receiver: who the behaviour is directed at, for dyadic "
-            "interactions (e.g. one bird mounting another).\nWith a receiver "
-            "chosen, only the labels of this individual→receiver pair are shown "
-            "and labelled; None means a solo behaviour."
+            "Receiver of the next label you place: who the behaviour is directed "
+            "at, for dyadic interactions (e.g. one bird mounting another).\n"
+            "Recorded on the label (individual_rec) and shown as a tag on it; "
+            "None means a solo behaviour. It never filters what is shown."
         )
         self.individual_rec_combo.addItem("None", "")
         self.individual_layout.addRow("Receiver:", self.individual_rec_combo)
@@ -1491,7 +1493,9 @@ class DataWidget(QWidget):
         trial = self.app_state.trials_sel
         store = getattr(self.app_state, "pred_store", None)
         if store is not None:
-            trial_confidence = store.get_confidence(trial, self.app_state.dt, individual=self.app_state.selected_individual())
+            trial_confidence = store.get_confidence(
+                trial, self.app_state.dt, individual=self.app_state.selected_individual()
+            )
             if trial_confidence is not None:
                 time_coord = self.app_state.time_coord.values
                 n = min(len(trial_confidence), len(time_coord))
@@ -2229,9 +2233,32 @@ class DataWidget(QWidget):
         target_layout = self.individual_layout if is_individual else self.coords_groupbox_layout
 
         if is_individual:
-            target_layout.insertRow(0, "Individual:", combo)
+            # The combo is the sidebar's individual — what every panel that
+            # follows it shows. The pin button beside it switches the panel
+            # last clicked between following and a pinned individual.
+            row_widget = QWidget()
+            row_layout = QHBoxLayout(row_widget)
+            row_layout.setContentsMargins(0, 0, 0, 0)
+            row_layout.setSpacing(5)
+            combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            row_layout.addWidget(combo)
+
+            pin_btn = QToolButton()
+            pin_btn.setObjectName("individual_pin_button")
+            pin_btn.setText("\U0001f4cc")
+            pin_btn.setToolTip(
+                "The panel you last clicked (a plot or a camera view): follow this combo, or pin it to one individual"
+            )
+            pin_btn.setPopupMode(QToolButton.InstantPopup)
+            pin_menu = QMenu(pin_btn)
+            pin_menu.aboutToShow.connect(lambda m=pin_menu: self._fill_pin_menu(m))
+            pin_btn.setMenu(pin_menu)
+            row_layout.addWidget(pin_btn)
+
+            self.individual_pin_button = pin_btn
+            target_layout.insertRow(0, "Individual:", row_widget)
             self.combos[key] = combo
-            self._combo_row_fields[key] = combo
+            self._combo_row_fields[key] = row_widget
             self._combo_row_layouts[key] = target_layout
             self.controls.append(combo)
             return combo
@@ -2304,6 +2331,10 @@ class DataWidget(QWidget):
             # a dim combo must never be refilled with.
             self._refill_combo(combo, self.app_state.label_individuals())
         self._set_combo_row_visible(key, True)
+        # One animal: nothing to pin, so the control is not there to puzzle over.
+        pin_btn = getattr(self, "individual_pin_button", None)
+        if pin_btn is not None:
+            pin_btn.setVisible(len(self.app_state.label_individuals()) > 1)
         self.app_state.set_key_sel(key, get_combo_value(combo))
         # Exactly one spelling carries a value: a stale `individuals_sel` from
         # a previous dataset would answer `selected_individual()` first.
@@ -2332,6 +2363,121 @@ class DataWidget(QWidget):
         # A receiver this actor cannot have is dropped, not kept as a filter
         # that silently matches nothing.
         self.app_state.individual_receiver = get_combo_value(combo) or ""
+
+    # ------------------------------------------------------------------
+    # Per-panel individual: follow the sidebar, or a pin — and the subject
+    # ------------------------------------------------------------------
+
+    def _pinnable_widget(self):
+        """The last clicked panel, if it is one that can be pinned: a feature plot or a camera view."""
+        from .active_panel import PanelKind
+
+        manager = getattr(self.plot_container, "active_panels", None)
+        reg = manager.active if manager is not None else None
+        if reg is None:
+            return None
+        if reg.kind in PanelKind.FEATURE:
+            return reg.plot
+        if reg.kind == PanelKind.VIDEO:
+            return reg.widget
+        return None
+
+    def _fill_pin_menu(self, menu: QMenu) -> None:
+        from .plots_container import add_pin_choices
+
+        menu.clear()
+        target = self._pinnable_widget()
+        names = self.app_state.label_individuals()
+        if len(names) < 2:
+            menu.addAction("One individual \u2014 nothing to pin").setEnabled(False)
+            return
+        if target is None:
+            menu.addAction("Click a plot or camera panel first").setEnabled(False)
+        else:
+            title = self.plot_container.panel_title(target) if hasattr(target, "set_pinned_individual") else "camera"
+            menu.addAction(f"Panel: {title}").setEnabled(False)
+            add_pin_choices(
+                menu,
+                names,
+                self.app_state.pinned_individual_of(target),
+                self.app_state.sidebar_individual(),
+                lambda n, t=target: self.pin_panel(t, n),
+            )
+        menu.addSeparator()
+        unpin_all = menu.addAction("Unpin all panels (follow sidebar)", self.unpin_all_panels)
+        unpin_all.setEnabled(self._any_pinned())
+
+    def _pinned_widgets(self) -> list:
+        pc = self.plot_container
+        plots = list(pc._panels_of_group("feature")) if pc is not None else []
+        views = [self.video_mgr.primary_view, *self.video_mgr.extra_widgets.values()] if self.video_mgr else []
+        return [w for w in [*plots, *views] if self.app_state.pinned_individual_of(w) is not None]
+
+    def _any_pinned(self) -> bool:
+        return bool(self._pinned_widgets())
+
+    def unpin_all_panels(self) -> None:
+        """Every panel back to following the sidebar — the way to show one individual everywhere."""
+        for widget in self._pinned_widgets():
+            self.pin_panel(widget, None)
+
+    def pin_panel(self, widget, individual: str | None) -> None:
+        """Pin *widget* — a feature plot or a camera view — to *individual* (``None`` unpins)."""
+        if hasattr(widget, "set_pinned_individual"):
+            self.plot_container.pin_panel(widget, individual)
+        else:
+            self.pin_camera_view(widget, individual)
+        self.app_state.refresh_labelling_subject()
+        self.on_labelling_subject_changed()
+
+    @staticmethod
+    def _camera_pin_key(view) -> str:
+        dock = getattr(view, "dock_widget", None)
+        key = getattr(dock, "_camera_key", None)
+        return str(key) if key else "primary"
+
+    def pin_camera_view(self, view, individual: str | None) -> None:
+        """Pin a camera view: its pose overlay shows that individual only; remembered in ``camera_individuals``."""
+        view.pinned_individual = individual or None
+        pins = dict(self.app_state.camera_individuals or {})
+        key = self._camera_pin_key(view)
+        if individual:
+            pins[key] = str(individual)
+        else:
+            pins.pop(key, None)
+        self.app_state.camera_individuals = pins
+        self.video_mgr.refresh_view_title(view)
+        if self.app_state.ready:
+            self.update_pose()
+
+    def _restore_camera_pins(self) -> None:
+        """Put the saved pins back on the camera views the layout just rebuilt."""
+        pins = self.app_state.camera_individuals or {}
+        views = [self.video_mgr.primary_view, *self.video_mgr.extra_widgets.values()]
+        for view in views:
+            view.pinned_individual = pins.get(self._camera_pin_key(view))
+            self.video_mgr.refresh_view_title(view)
+        if pins and self.app_state.ready:
+            self.update_pose()
+
+    def refresh_following_panels(self) -> None:
+        """Re-render every panel that follows the sidebar's individual (pinned ones stay put)."""
+        pc = self.plot_container
+        if pc is None or not self.app_state.ready:
+            return
+        for plot in pc._panels_of_group("feature"):
+            if self.app_state.pinned_individual_of(plot) is None:
+                plot.update_plot()
+                pc.panel_content_changed.emit(plot)
+        pc.refresh_panel_titles()
+        self.video_mgr.refresh_view_titles()
+        self.update_pose()
+
+    def on_labelling_subject_changed(self) -> None:
+        """The subject a new label lands on moved: the receiver choices and any half-placed label follow."""
+        self._populate_receiver_combo()
+        if self.labels_widget is not None:
+            self.labels_widget._reset_label_clicks()
 
     def _on_receiver_changed(self, _index: int) -> None:
         if not self.app_state.ready:
@@ -2375,7 +2521,9 @@ class DataWidget(QWidget):
 
         _set("features", feature)
         for ckey in list(self.combos.keys()):
-            if ckey in ("features", "colors"):
+            # The individual combo is the sidebar's, never a mirror of the
+            # active panel: a pinned panel shows its pin, everything else this.
+            if ckey in ("features", "colors") or ckey in INDIVIDUAL_DIMS:
                 continue
             if ckey in selections:
                 _set(ckey, selections[ckey])
@@ -2404,12 +2552,24 @@ class DataWidget(QWidget):
         every plot has already forked its own state. The space plot renders
         purely from its own catalog-driven combos and does not follow this.
         """
+        if key in INDIVIDUAL_DIMS:
+            # The sidebar's individual is global: every unpinned panel follows
+            # it, a pinned one does not, and no panel records it as its own.
+            self.app_state.set_key_sel(key, value)
+            self.app_state.refresh_labelling_subject()
+            self.on_labelling_subject_changed()
+            self.refresh_following_panels()
+            if self.labels_widget is not None:
+                self.labels_widget.refresh_labels_shapes_layer()
+            self.update_label_plot()
+            return
+
         active = getattr(self.plot_container, "active_feature_plot", None)
         if active is not None and hasattr(active, "set_panel_control"):
             active.set_panel_control(key, value)
             active.update_plot()
             if key == "features" and value:
-                self.plot_container.set_panel_title(active, str(value))
+                self.plot_container.set_panel_title(active, self.plot_container.panel_title(active))
             # What this panel shows just changed; anything tracking its contents
             # (the console) must follow, and no click will tell it.
             self.plot_container.panel_content_changed.emit(active)
@@ -2427,13 +2587,6 @@ class DataWidget(QWidget):
                 self.ephys_widget.select_cluster_in_table(int(value))
             except (ValueError, TypeError):
                 pass
-        if key in INDIVIDUAL_DIMS:
-            # The actor changed: it can no longer be its own receiver, and a
-            # receiver carried over from the previous actor may not exist.
-            self._populate_receiver_combo()
-            # A half-placed label was anchored for the previous subject.
-            self.labels_widget._reset_label_clicks()
-            self.labels_widget.refresh_labels_shapes_layer()
         self.update_label_plot()
 
     def _on_combo_changed(self):
@@ -2893,19 +3046,23 @@ class DataWidget(QWidget):
 
         self.update_label_plot()
 
-    def _subject_intervals(self, df):
-        """*df* reduced to the labels of the selected actor and receiver.
+    def _subject_intervals(self, df, panel=None):
+        """*df* reduced to the labels of one actor and the selected receiver.
 
-        Read from ``app_state``, never from the xarray kwargs: a pynapple
-        session has no ``ds_kwargs`` at all, and whose label a row is was never
-        an xarray question.
+        The actor is *panel*'s individual — its pin, else the sidebar's — so
+        every panel draws the labels of the animal it shows; with no panel,
+        the labelling subject (the last clicked panel's). Read from
+        ``app_state``, never from the xarray kwargs: a pynapple session has
+        no ``ds_kwargs`` at all, and whose label a row is was never an xarray
+        question.
         """
         if df is None or df.empty:
             return df
-        actor = self.app_state.selected_individual()
+        actor = self.app_state.panel_individual(panel) if panel is not None else self.app_state.selected_individual()
         if not self.app_state.labels_name_our_individuals(df):
             actor = None
-        return select_subject(df, actor, self.app_state.selected_receiver())
+        # Every receiver: the receiver is a tag on a label, never a filter.
+        return select_subject(df, actor)
 
     def update_label_plot(self):
         # Labels are hidden when no branch is shown and predictions aren't toggled on.
@@ -2949,7 +3106,9 @@ class DataWidget(QWidget):
                 )
                 intervals_df = intervals_df.iloc[0:0]
 
-        intervals_df = self._subject_intervals(intervals_df)
+        # Filtered per panel while drawing (`LabelDrawingMixin.draw_all_labels`),
+        # so a pinned panel shows its own individual's labels.
+        self.plot_container.subject_filter = self._subject_intervals
 
         predictions_df = None
         if self.app_state.pred_labels_df is not None:
@@ -3273,6 +3432,7 @@ class DataWidget(QWidget):
 
         # Video panels opened/closed → reconcile background proxy jobs.
         self.video_mgr.sync_proxies()
+        self._restore_camera_pins()
 
     def _on_camera_view_removed(self, view):
         """A camera view was removed (its dock's ✕, or programmatically).

@@ -44,19 +44,20 @@ from torch.utils.data import DataLoader
 from ethograph.segment.config import PostprocessConfig, SegmentConfig, TrainConfig, save_config
 from ethograph.segment.dataset import MaterialisedStore, SampleDataset, collate
 from ethograph.segment.losses import build_objective
-from ethograph.segment.materialise import COLUMNS_FILE, materialise, resolved_config
+from ethograph.segment.materialise import COLUMNS_FILE, materialise, read_target_table, resolved_config
 from ethograph.segment.metrics import (
     EVAL_ARRAYS_FILE,
     METRICS_FILE,
     TEST_METRICS_FILE,
     evaluate,
+    flatten_channels,
     save_eval_arrays,
     scalar_metrics,
 )
 from ethograph.segment.models import as_output, build_model
-from ethograph.segment.postprocess import postprocess_dense
+from ethograph.segment.postprocess import postprocess_channels, postprocess_dense
 from ethograph.segment.preprocess import NormStats
-from ethograph.segment.samples import ClassTable
+from ethograph.segment.samples import ChannelTable, TargetTable, is_multilabel
 from ethograph.utils.device import resolve_device
 from ethograph.utils.logging import log_to_file
 
@@ -212,29 +213,71 @@ class DensePredictions:
     conf: dict[str, np.ndarray]
 
 
-def _predict_dense(model: torch.nn.Module, loader: DataLoader, device: torch.device) -> DensePredictions:
-    """Argmax predictions, ground truth and max-probability confidence."""
+def _predict_dense(
+    model: torch.nn.Module, loader: DataLoader, device: torch.device, threshold: float | None = None
+) -> DensePredictions:
+    """Predictions, ground truth and confidence per sample.
+
+    Exclusive (*threshold* ``None``): argmax class indices ``(T,)`` and the
+    winning probability. Multi-label: ``(C, T)`` 0/1 — each channel's sigmoid
+    against *threshold* — and ``conf`` holds the ``(C, T)`` probabilities
+    themselves, which the per-track post-processing reads to break ties.
+    """
     model.eval()
     out = DensePredictions({}, {}, {})
     with torch.no_grad():
         for x, y, mask, _candidates, keys in loader:
             result = as_output(model(x.to(device), mask.to(device)))
-            probs = torch.softmax(result.logits[-1], dim=1)
-            p_max, p_arg = probs.max(dim=1)
-            for i, key in enumerate(keys):
-                n = int(mask[i, 0].sum().item())
-                out.pred[key] = p_arg[i, :n].cpu().numpy()
-                out.conf[key] = p_max[i, :n].cpu().numpy()
-                out.gt[key] = y[i, :n].numpy()
+            if threshold is None:
+                probs = torch.softmax(result.logits[-1], dim=1)
+                p_max, p_arg = probs.max(dim=1)
+                for i, key in enumerate(keys):
+                    n = int(mask[i, 0].sum().item())
+                    out.pred[key] = p_arg[i, :n].cpu().numpy()
+                    out.conf[key] = p_max[i, :n].cpu().numpy()
+                    out.gt[key] = y[i, :n].numpy()
+            else:
+                probs = torch.sigmoid(result.logits[-1])
+                for i, key in enumerate(keys):
+                    n = int(mask[i, 0].sum().item())
+                    p = probs[i, :, :n].cpu().numpy()
+                    out.pred[key] = (p > threshold).astype(np.int64)
+                    out.conf[key] = p
+                    out.gt[key] = y[i, :, :n].numpy()
     model.train()
     return out
 
 
 def _postprocess_all(
-    dense: DensePredictions, fs: float, classes: ClassTable, cfg: PostprocessConfig
+    dense: DensePredictions, fs: float, classes: TargetTable, cfg: PostprocessConfig
 ) -> dict[str, np.ndarray]:
     """Post-process every sample of *dense*."""
+    if isinstance(classes, ChannelTable):
+        return {
+            key: postprocess_channels(value, fs, classes, cfg, probs=dense.conf.get(key))
+            for key, value in dense.pred.items()
+        }
     return {key: postprocess_dense(value, fs, classes, cfg) for key, value in dense.pred.items()}
+
+
+def evaluate_dense(
+    classes: TargetTable, gt: dict[str, np.ndarray], pred: dict[str, np.ndarray], thresholds: list[float], fs: float
+) -> dict[str, Any]:
+    """:func:`evaluate`, with a multi-label run's channels flattened into exclusive samples first."""
+    if is_multilabel(classes):
+        return evaluate(flatten_channels(gt), flatten_channels(pred), thresholds, fs)
+    return evaluate(gt, pred, thresholds, fs)
+
+
+def _frame_accuracy(logits: torch.Tensor, y: torch.Tensor, mask: torch.Tensor) -> tuple[int, int]:
+    """``(correct, total)`` frames of one batch — per class channel for a multi-label target."""
+    frame_mask = mask[:, 0, :] > 0
+    if y.dim() == 3:
+        predicted = logits > 0
+        hit = (predicted == (y == 1)) & frame_mask.unsqueeze(1)
+        return int(hit.sum()), int(frame_mask.sum()) * int(y.shape[1])
+    predicted = logits.argmax(dim=1)
+    return int(((predicted == y) & frame_mask).sum()), int(frame_mask.sum())
 
 
 def _seed(seed: int) -> None:
@@ -337,9 +380,11 @@ def _train_run(
         stats = NormStats.identity(layout.n_features)
     stats.save(run_dir / STATS_FILE)
 
-    n_classes = store.classes.n_classes
-    model = build_model(config.model.architecture, config.model.params, layout.n_features, n_classes).to(device)
-    objective, loss_settings = build_objective(config, n_classes, layout=store.layout)
+    n_outputs = store.classes.n_outputs
+    exclusive = not is_multilabel(store.classes)
+    threshold = None if exclusive else float(config.infer.threshold)
+    model = build_model(config.model.architecture, config.model.params, layout.n_features, n_outputs).to(device)
+    objective, loss_settings = build_objective(config, n_outputs, layout=store.layout, exclusive=exclusive)
     objective = objective.to(device)
     logger.info("Objective: %s", yaml.safe_dump(loss_settings, sort_keys=False, default_flow_style=True).strip())
     # Constant learning rate, as upstream trains these models. A schedule would
@@ -392,12 +437,9 @@ def _train_run(
             epoch_loss += float(loss.detach())
             for name, value in parts.items():
                 epoch_parts[name] = epoch_parts.get(name, 0.0) + value
-            predicted = output.logits[-1].argmax(dim=1)
-            frame_mask = mask[:, 0, :] > 0
-
-            # Accuracy only on non-background frames (> 0)
-            correct += int(((predicted == y) & frame_mask).sum())
-            total += int(frame_mask.sum())
+            hit, seen = _frame_accuracy(output.logits[-1], y, mask)
+            correct += hit
+            total += seen
         n_batches = max(len(train_loader), 1)
         epoch_loss /= n_batches
         epoch_parts = {k: v / n_batches for k, v in epoch_parts.items() if k != "total"}
@@ -411,8 +453,8 @@ def _train_run(
 
         is_last = epoch == tcfg.epochs
         if val_loader is not None and (epoch % tcfg.eval_every == 0 or is_last):
-            val = _predict_dense(model, val_loader, device)
-            m = evaluate(val.gt, val.pred, tcfg.f1_thresholds, store.layout.fs)
+            val = _predict_dense(model, val_loader, device, threshold)
+            m = evaluate_dense(store.classes, val.gt, val.pred, tcfg.f1_thresholds, store.layout.fs)
             if select_on not in m:
                 raise ValueError(
                     f"train.select_on={select_on!r} is not a metric; available: {sorted(scalar_metrics(m))}"
@@ -425,10 +467,12 @@ def _train_run(
                 logger.info("  new best.pt (val %s = %.2f)", select_on, score)
 
             if test_loader is not None:
-                held = _predict_dense(model, test_loader, device)
-                test_raw = evaluate(held.gt, held.pred, tcfg.f1_thresholds, store.layout.fs)
+                held = _predict_dense(model, test_loader, device, threshold)
+                test_raw = evaluate_dense(store.classes, held.gt, held.pred, tcfg.f1_thresholds, store.layout.fs)
                 test_processed_pred = _postprocess_all(held, store.layout.fs, store.classes, config.infer.postprocess)
-                test_processed = evaluate(held.gt, test_processed_pred, tcfg.f1_thresholds, store.layout.fs)
+                test_processed = evaluate_dense(
+                    store.classes, held.gt, test_processed_pred, tcfg.f1_thresholds, store.layout.fs
+                )
                 row.update({f"test_raw_{k}": v for k, v in scalar_metrics(test_raw).items()})
                 row.update({f"test_post_{k}": v for k, v in scalar_metrics(test_processed).items()})
                 logger.info(
@@ -456,10 +500,10 @@ def _train_run(
     test_metrics = None
     if test_loader is not None:
         model.load_state_dict(torch.load(run_dir / BEST_FILE, map_location=device, weights_only=True))
-        held = _predict_dense(model, test_loader, device)
-        raw = evaluate(held.gt, held.pred, tcfg.f1_thresholds, store.layout.fs)
+        held = _predict_dense(model, test_loader, device, threshold)
+        raw = evaluate_dense(store.classes, held.gt, held.pred, tcfg.f1_thresholds, store.layout.fs)
         processed_pred = _postprocess_all(held, store.layout.fs, store.classes, config.infer.postprocess)
-        processed = evaluate(held.gt, processed_pred, tcfg.f1_thresholds, store.layout.fs)
+        processed = evaluate_dense(store.classes, held.gt, processed_pred, tcfg.f1_thresholds, store.layout.fs)
         test_metrics = {
             "best_epoch": best_epoch,
             "train_seconds": train_seconds,
@@ -530,6 +574,6 @@ def _write_run_comparison(runs_dir: Path, run_dirs: list[Path]) -> None:
     from ethograph.segment.plotting import load_run_eval, write_comparison_pdf
 
     evals = [load_run_eval(d) for d in run_dirs]
-    classes = ClassTable.from_dict(yaml.safe_load((run_dirs[0] / "classes.yaml").read_text(encoding="utf-8")))
+    classes = read_target_table(run_dirs[0] / "classes.yaml")
     path = write_comparison_pdf(runs_dir / "compare.pdf", evals, classes, title=f"{len(evals)} runs compared")
     logger.info("Wrote %s", path)

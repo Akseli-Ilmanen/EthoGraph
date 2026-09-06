@@ -52,11 +52,13 @@ dropdowns:
 - **Receiver** — for dyadic interactions (one bird mounting another, one
   animal grooming another). It is `None` by default, meaning a solo behaviour.
 
-Together they are the *subject* of a label, and each (individual, receiver)
-pair is an independent track: with a receiver chosen, only that pair's labels
-are drawn and clickable, and a new label is stored against that pair. Switching
-the receiver therefore gives you a fresh canvas for the next interaction
-without touching what you already labelled.
+Together they are the *subject* of a label. The receiver is an attribute of
+the label you place next, not a second track: an animal does one thing at a
+time, so a label directed at a partner and a solo label of the same animal
+trim each other exactly as two solo labels do. Every label of the individual
+is drawn whatever its receiver, a directed one carrying a small `→ partner`
+tag at its onset, and switching the receiver changes nothing on screen — only
+what the next label records.
 
 The pair is stored per label in the TSV's `individual` and `individual_rec`
 columns — see {ref}`the column reference <target-exporting-labels>`.

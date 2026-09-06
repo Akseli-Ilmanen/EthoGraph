@@ -7,6 +7,8 @@ import pyqtgraph as pg
 from qtpy.QtCore import QObject, QRunnable, Qt, QThreadPool, QTimer, Signal
 from qtpy.QtWidgets import QGraphicsItem, QGraphicsWidget
 
+from ethograph.io.catalog import INDIVIDUAL_DIMS
+
 logger = logging.getLogger(__name__)
 
 
@@ -205,10 +207,41 @@ class PanelStateMixin:
             return self.feature_override
         return getattr(self.app_state, "features_sel", None)
 
+    @property
+    def pinned_individual(self) -> str | None:
+        """The individual this panel is pinned to; ``None`` = follow the sidebar."""
+        pin = self.panel_state.get("individual")
+        return str(pin) if pin else None
+
+    def set_pinned_individual(self, individual: str | None) -> None:
+        if individual:
+            self.panel_state["individual"] = str(individual)
+        else:
+            self.panel_state.pop("individual", None)
+
     def _effective_selections(self) -> dict:
         if "selections" in self.panel_state:
-            return dict(self.panel_state["selections"])
-        return self.app_state.get_selections()
+            sels = dict(self.panel_state["selections"])
+        else:
+            sels = self.app_state.get_selections()
+        # The individual is never one of the panel's own selections: it is
+        # the panel's pin, or — for every unpinned panel — the sidebar's
+        # individual, so switching the sidebar switches every panel that
+        # follows it while a pinned one stays put.
+        individual = self.app_state.panel_individual(self)
+        if individual is not None:
+            for dim in self._individual_dims():
+                sels[dim] = individual
+        return sels
+
+    def _individual_dims(self) -> list[str]:
+        """The spellings of the individual dim this panel's feature carries a value for."""
+        loader = getattr(self.app_state, "data_loader", None)
+        feature = self._effective_feature()
+        if loader is None or not feature:
+            return []
+        dims = loader.feature_dims(feature)
+        return [d for d in INDIVIDUAL_DIMS if d in dims]
 
     def _effective_color(self):
         if "color" in self.panel_state:
@@ -266,6 +299,8 @@ class PanelStateMixin:
         color = self.panel_state.get("color")
         if color and color != "None":
             settings["color"] = str(color)
+        if self.pinned_individual:
+            settings["individual"] = self.pinned_individual
         return settings
 
     def apply_panel_settings(self, settings: dict) -> None:
@@ -277,6 +312,7 @@ class PanelStateMixin:
             self.panel_state["selections"] = self._sanitize_selections(settings["selections"])
         if settings.get("color"):
             self.panel_state["color"] = settings["color"]
+        self.set_pinned_individual(settings.get("individual"))
 
     def _sanitize_selections(self, selections: dict) -> dict:
         """Make *selections* valid for this panel's feature.
@@ -408,7 +444,10 @@ class BasePlot(pg.PlotWidget):
             return self._gutter_host
         row, col = self._GUTTER_CELL
         layout = self.plot_item.layout
-        if layout.itemAt(row, col) is not None:
+        # itemAt() warns on stderr for a cell outside the grid, which the
+        # gutter cell is until something is placed there.
+        in_grid = row < layout.rowCount() and col < layout.columnCount()
+        if in_grid and layout.itemAt(row, col) is not None:
             return None
         host = QGraphicsWidget()
         host.setFlag(QGraphicsItem.ItemClipsChildrenToShape, True)

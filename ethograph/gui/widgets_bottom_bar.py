@@ -302,6 +302,17 @@ class BottomPlaybackBar(QWidget):
         self.trial_label.setAlignment(Qt.AlignCenter)
         bot.addWidget(self.trial_label)
 
+        # Whose labels a click places — the last clicked panel's individual.
+        # Only worth saying when there is more than one animal to choose.
+        self.subject_label = QLabel()
+        self.subject_label.setObjectName("labelling_subject_label")
+        self.subject_label.setStyleSheet("color: #e3b341; font-weight: bold;")
+        self.subject_label.setToolTip(
+            "The individual a new label is about: the pin of the panel you last clicked, else the sidebar's"
+        )
+        self.subject_label.hide()
+        bot.addWidget(self.subject_label)
+
         self.next_btn = QPushButton("▶")
         self.next_btn.setFixedSize(28, 22)
         self.next_btn.setStyleSheet(nav_style)
@@ -318,6 +329,7 @@ class BottomPlaybackBar(QWidget):
         app_state.playback_speed_pct_changed.connect(self._update_speed_display)
         app_state.trial_changed.connect(self._update_trial_label)
         app_state.curation_changed.connect(self._update_trial_label)
+        app_state.labelling_subject_changed.connect(self._update_subject_label)
         app_state.trial_changed.connect(self._update_audio_indicator)
         app_state.trial_changed.connect(self._update_playback_mode_combo)
         app_state.trial_changed.connect(self._update_speed_info)
@@ -595,6 +607,13 @@ class BottomPlaybackBar(QWidget):
             self.trial_label.setToolTip("")
             self.prev_btn.setEnabled(False)
             self.next_btn.setEnabled(False)
+
+    def _update_subject_label(self, *_):
+        subject = getattr(self.app_state, "labelling_subject", None)
+        names = self.app_state.label_individuals() if getattr(self.app_state, "ready", False) else []
+        show = bool(subject) and len(names) > 1
+        self.subject_label.setText(f"labelling: {subject}" if show else "")
+        self.subject_label.setVisible(show)
 
     def _on_prev_trial(self):
         """Navigate to previous trial."""

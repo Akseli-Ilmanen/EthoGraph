@@ -149,7 +149,7 @@ pinned in the repository's `CONTEXT.md`.
 The pipeline never invents features: it **selects** variables that already
 exist in the session file and pins their dims. Anything you want a model to
 see — egocentric coordinates, pairwise distances, headings, changepoint
-proximity, S3D video embeddings — is a data variable you add when you build
+proximity, video embeddings — is a data variable you add when you build
 the `.nc` (or pynapple / NWB file), which also makes it plottable in the GUI
 so you can review what the model will read.
 
@@ -177,13 +177,13 @@ that binning as pynapple expressions and applies it at every session open —
 single-trial neural decoding with the same models and prediction sets. See
 {doc}`config` (`features.neural`).
 
-S3D video features are the one exception in mechanics, not in principle —
-they are expensive enough to compute once and cache. See
-{doc}`video_features`; the short version is
+Video features are the one exception in mechanics, not in principle — a
+pretrained network (S3D by default, a timm backbone such as DINOv2 by name) is expensive enough to
+run once per video and cache. See {doc}`video_features`; the short version is
 
 ```python
 # a folder of videos, before any session exists
-eto.segment.extract_videos(["/data/videos"], "/data/s3d", stack_s=0.5)
+eto.segment.extract_videos(["/data/videos"], "/data/features", stack_s=0.5)
 
 # or: the videos this config's sessions already name, then merge them in
 project.video_features(merge=True)
@@ -300,7 +300,7 @@ plus whatever the stage you run needs from it.
   session has no labels, and it contributes nothing to a training set.
 - **`video_dir`** — the folder searched for a trial's video when the
   alignment does not already resolve it. Optional here: this pipeline reads
-  feature columns, and only the S3D video features
+  feature columns, and only the video features
   ({doc}`video_features`) ever open a video.
 - **`name`** — the session id in every output (fold names, prediction
   sources, log lines). Optional: unset, it is the file's stem, and sessions
@@ -335,7 +335,11 @@ carry the same number of individuals.
 
 Only **`manual` and `curated` labels** ever become training targets; an
 `automated` label — the output of any model — never does. Point events are
-skipped (the onset model owns them); one branch per model.
+skipped (the onset model owns them). One branch per model is the exclusive
+target; `features.labels.branches` lists several and the target becomes
+multi-label — one binary channel per (subject, class), decoded one *track*
+(subject, branch) at a time, so labels of different branches overlap and
+labels of one branch never do (see the config reference).
 
 ## The materialised dataset
 

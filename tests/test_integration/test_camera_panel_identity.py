@@ -26,7 +26,9 @@ def test_primary_view_carries_its_camera_and_title(birdpark_gui):
 
     camera = meta.app_state.primary_camera
     assert view.camera_name == camera, "the primary must name its camera like any extra view"
-    assert shell._video_dock.windowTitle() == camera_dock_title(camera, view.source_video_path)
+    expected = camera_dock_title(camera, view.source_video_path, meta.app_state.panel_mode_suffix(view))
+    assert shell._video_dock.windowTitle() == expected
+    assert expected.endswith("(sidebar)"), "birdpark has two individuals, so the view says whom it follows"
     assert "Video" != shell._video_dock.windowTitle()
 
 

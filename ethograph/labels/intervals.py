@@ -80,6 +80,13 @@ INTERVAL_DTYPES = {
 
 #: The columns identifying whose label a row is — the actor and the recipient.
 SUBJECT_COLUMNS = ["individual", "individual_rec"]
+"""What identifies a label row's subject: who acted, and towards whom."""
+
+TRACK_COLUMNS = ["individual"]
+"""The unit of exclusivity: one actor never does two things at once (within a
+branch). The receiver is an attribute of the label, not a second track — a
+label directed at another animal and a solo one of the same actor exclude
+each other exactly like two solo ones do."""
 
 
 # ── Empty DataFrame ──────────────────────────────────────────────────────
@@ -559,7 +566,9 @@ def add_interval(
         onset_s, offset_s = offset_s, onset_s
 
     states_df, points_df = split_by_kind(ensure_labeling_method(ensure_individual_rec(df.copy())))
-    mask_same_ind = subject_mask(states_df, individual, individual_rec)
+    # The actor's whole track, whatever each row's receiver: a new label
+    # trims every label of this actor it overlaps.
+    mask_same_ind = subject_mask(states_df, individual)
     other = states_df[~mask_same_ind]
     same = states_df[mask_same_ind].copy()
 
@@ -582,6 +591,7 @@ def add_interval(
         # confidence of the row it was cut from, not the new label's.
         row_conf = row.get("confidence", HUMAN_CONFIDENCE)
         row_method = row.get("labeling_method", LABELING_MANUAL)
+        row_rec = row.get("individual_rec", NO_RECIPIENT)
         if ro < onset_s:
             kept.append(
                 {
@@ -589,7 +599,7 @@ def add_interval(
                     "offset_s": onset_s - eps,
                     "labels": rid,
                     "individual": individual,
-                    "individual_rec": individual_rec,
+                    "individual_rec": row_rec,
                     "confidence": row_conf,
                     "labeling_method": row_method,
                 }
@@ -601,7 +611,7 @@ def add_interval(
                     "offset_s": rf,
                     "labels": rid,
                     "individual": individual,
-                    "individual_rec": individual_rec,
+                    "individual_rec": row_rec,
                     "confidence": row_conf,
                     "labeling_method": row_method,
                 }
@@ -861,7 +871,7 @@ def snap_boundaries(
         rows.append({**row.to_dict(), "onset_s": snap_onset, "offset_s": snap_offset})
 
     transformed = _rows_to_df(rows)
-    transformed.sort_values([*SUBJECT_COLUMNS, "onset_s"], inplace=True)
+    transformed.sort_values([*TRACK_COLUMNS, "onset_s"], inplace=True)
     transformed.reset_index(drop=True, inplace=True)
     transformed = _resolve_overlaps(transformed)
     return _recombine(transformed, points_df)
@@ -905,7 +915,7 @@ def _resolve_overlaps(df: pd.DataFrame) -> pd.DataFrame:
     df = ensure_individual_rec(df.copy())
 
     groups = []
-    for _subject, group in df.groupby(SUBJECT_COLUMNS, sort=False):
+    for _actor, group in df.groupby(TRACK_COLUMNS, sort=False):
         group = group.sort_values("onset_s").reset_index(drop=True)
         for i in range(len(group) - 1):
             if group.at[i, "offset_s"] > group.at[i + 1, "onset_s"]:

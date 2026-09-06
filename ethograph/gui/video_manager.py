@@ -35,18 +35,21 @@ def is_url(path: str) -> bool:
     return path.startswith("http://") or path.startswith("https://")
 
 
-def camera_dock_title(camera_name: str | None, media_path: str | None) -> str:
-    """Panel title for a camera view: ``"cam-1 (front.mp4)"``.
+def camera_dock_title(camera_name: str | None, media_path: str | None, mode_suffix: str = "") -> str:
+    """Panel title for a camera view: ``"cam-1 (front.mp4)"`` plus the individual mode suffix.
 
     The camera name alone is ambiguous once several views are open (and says
     nothing about which trial's file is on screen), so the file name is
-    appended whenever one is loaded.
+    appended whenever one is loaded, and *mode_suffix*
+    (:meth:`~ethograph.gui.app_state.ObservableAppState.panel_mode_suffix`)
+    after that.
     """
     name = str(camera_name or "").strip() or "Camera"
-    if not media_path:
-        return name
-    file_name = media_path.rstrip("/").rsplit("/", 1)[-1] if is_url(media_path) else Path(media_path).name
-    return f"{name} ({file_name})" if file_name else name
+    if media_path:
+        file_name = media_path.rstrip("/").rsplit("/", 1)[-1] if is_url(media_path) else Path(media_path).name
+        if file_name:
+            name = f"{name} ({file_name})"
+    return name + mode_suffix
 
 
 def proxy_cache_dir(video_path: str | None = None) -> Path:
@@ -228,6 +231,11 @@ class VideoManager:
     # Panel titles
     # ------------------------------------------------------------------
 
+    def refresh_view_titles(self) -> None:
+        """Re-title every camera view — after the sidebar's individual changed."""
+        for view in [self.primary_view, *self.extra_widgets.values()]:
+            self.refresh_view_title(view)
+
     def refresh_view_title(self, view: CameraView) -> None:
         """Re-title *view*'s panel from the camera it shows and its file.
 
@@ -238,6 +246,7 @@ class VideoManager:
         title = camera_dock_title(
             getattr(view, "camera_name", None),
             getattr(view, "source_video_path", None) or getattr(view, "static_image_path", None),
+            self.app_state.panel_mode_suffix(view),
         )
         dock = getattr(view, "dock_widget", None)
         if dock is not None:

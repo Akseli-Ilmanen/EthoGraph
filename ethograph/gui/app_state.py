@@ -461,6 +461,13 @@ class AppStateSpec:
         "spec_levels_mode": (str, "auto", True),
         # All checkbox states for dimension combos (e.g., {"keypoint": True, "space": False})
         "all_checkbox_states": (dict[str, bool], {}, True),
+        # Camera views pinned to an individual, keyed by the view's layout
+        # key ("primary", or an extra view's dock key). Feature panels keep
+        # their pin in their own panel_state instead.
+        "camera_individuals": (dict[str, str], {}, True, SCOPE_LOCAL),
+        # The subject a new label lands on, announced for the bottom bar.
+        # Computed by selected_individual(); never saved.
+        "labelling_subject": (str | None, None, False),
         # Audio processing
         "audio_cp_hop_length_ms": (float, 5.0, True),
         "audio_cp_min_level_db": (float, -70.0, True),
@@ -619,6 +626,9 @@ class ObservableAppState(QObject):
         self._active_branch: int = 0
         self._branch_shown: dict[int, bool] = {0: True}
         self._show_predictions_overlay: bool = False
+        # The panel the user last clicked, whose pinned individual (if any)
+        # is the one a new label is about. See selected_individual().
+        self._subject_panel = None
 
         from ethograph.io.nwb_alignment import EmpytAlignment
 
@@ -1082,8 +1092,8 @@ class ObservableAppState(QObject):
                 selections[dim_name] = str(val)
         return selections
 
-    def selected_individual(self) -> str | None:
-        """The selected individual, in whichever spelling this dataset's dim
+    def sidebar_individual(self) -> str | None:
+        """The sidebar's individual, in whichever spelling this dataset's dim
         uses (movement is singular, older wizard data plural).
 
         Combos are named after their dim, so the ``*_sel`` attribute differs
@@ -1097,6 +1107,56 @@ class ObservableAppState(QObject):
             if val is not None and val not in ("", "None"):
                 return str(val)
         return None
+
+    def pinned_individual_of(self, panel) -> str | None:
+        """The individual *panel* is pinned to, or ``None`` when it follows the sidebar.
+
+        A pin is the panel's own ``pinned_individual`` (a feature plot keeps
+        it in its ``panel_state``, a camera view as a plain attribute). A
+        panel is in exactly one of the two modes, and its title says which
+        (:func:`panel_mode_suffix`).
+        """
+        if panel is None:
+            return None
+        pin = getattr(panel, "pinned_individual", None)
+        return str(pin) if pin not in (None, "", "None") else None
+
+    def panel_individual(self, panel) -> str | None:
+        """Whose data and labels *panel* shows: its pin, else the sidebar's individual."""
+        return self.pinned_individual_of(panel) or self.sidebar_individual()
+
+    def selected_individual(self) -> str | None:
+        """The subject a new label is about: the last clicked panel's individual.
+
+        A pinned panel that was clicked makes its individual the labelling
+        subject; an unpinned one (or no click yet) leaves it at the sidebar's.
+        Every label path reads the actor through here.
+        """
+        return self.panel_individual(getattr(self, "_subject_panel", None))
+
+    def panel_mode_suffix(self, panel) -> str:
+        """``" — bird_2 (pinned)"`` / ``" — bird_1 (sidebar)"`` for a panel title; empty with one individual.
+
+        Every panel is either pinned or following the sidebar, and the
+        title is where that is visible: change the combo and the
+        ``(sidebar)`` panels move while the ``(pinned)`` ones stay.
+        """
+        if len(self.label_individuals()) < 2:
+            return ""
+        pinned = self.pinned_individual_of(panel)
+        individual = pinned or self.sidebar_individual()
+        if individual is None:
+            return ""
+        return f" \u2014 {individual} ({'pinned' if pinned else 'sidebar'})"
+
+    def set_subject_panel(self, panel) -> None:
+        """Record the clicked panel; the labelling subject follows its pin."""
+        self._subject_panel = panel
+        self.refresh_labelling_subject()
+
+    def refresh_labelling_subject(self) -> None:
+        """Re-announce the labelling subject (``labelling_subject_changed``) after a pin or sidebar change."""
+        self.labelling_subject = self.selected_individual()
 
     def selected_receiver(self) -> str:
         """The receiver of the behaviour being labelled, ``""`` for none.

@@ -6,13 +6,27 @@
 
 ## 1. Decisions
 
-1. **FERAL: promising, wait.** Best-in-class supervised video-to-ethogram tool, but default config needs ~24 GB VRAM (V-JEPA2 ViT-L) and its `lite` preset (ViT-B) has no published accuracy. Ship a **JSON importer** for its predictions now; revisit as a backend when `lite` numbers exist or the VRAM floor drops.
+*Revised 2026-09-06 after the grill in `Lit_videofeat.md`: FERAL is pip-installable and MIT, so the
+"importer only" verdict is void; ViT-MAE is dropped as a named extractor; BEAST is out entirely.*
+
+1. **FERAL: both an extractor and a model — but nothing lands in the repo before talking to Peter
+   and Jacopo** (agenda: `Discuss_feral-interop.md`). Frozen FERAL is the expensive video-feature
+   tier; fine-tuned FERAL is the video-side segmenter ("one default per slot": kinematics →
+   ASFormer, video → FERAL). Its exact dependency pins (`transformers==5.5.3`, `timm==1.0.26`,
+   `pandas==2.3.3`) are the blocker for an `ethograph[feral]` extra; until they loosen, FERAL runs
+   in its own env by subprocess, exchanging files — the E2E-Spot pattern.
 2. **One default per slot.** Every slot (extractor, head, codec) has exactly one default; alternatives are opt-in by name. Defaults:
    - State events: `kinematics → ASFormer → StateCodec`
    - Point events: `regnety-200mf-gsm → GRU (+ displacement head) → PointCodec (Soft-NMS)`
-3. **GUI as a feature-engineering tool.** Video-model features are first-class `(time, feature)` streams in the TrialTree, next to kinematics. Cohen's-d subset selection, before/after-fine-tuning comparison and label-coloured embedding views all operate on them. First frozen extractor: ImageNet ViT-MAE CLS (768-d, CPU-tolerant).
-4. **No SSL pretraining, no semi-supervised heads.** Frozen SSL backbones and supervised fine-tuning are in; running MAE/contrastive objectives on user data is out. `FeatureExtractor.fit` exists in the protocol but every shipped extractor implements it as a no-op.
-5. **Vendor nothing new.** E2E-Spot stays vendored; everything else is a pip extra plus an adapter, or an importer.
+   - Video feature: `s3d` (measured on our data, weights in the package, faster than DINOv2-B at
+     518 px on ten clips); `timm` second, by name, with `vit_base_patch14_reg4_dinov2.lvd142m` and
+     timm's own pooling (CLS, the classification token, for DINOv2); FERAL by name later.
+3. **GUI as a feature-engineering tool.** Video features are first-class `(time, feature)` streams in the TrialTree, next to kinematics. Cohen's-d subset selection, before/after-fine-tuning comparison and label-coloured embedding views all operate on them. ~~First frozen extractor: ImageNet ViT-MAE CLS~~ — with `timm` as the loader, ViT-MAE is a model string, not a slot; DINOv2 is timm's default backbone.
+4. **No SSL pretraining, no semi-supervised heads.** Frozen SSL backbones and supervised fine-tuning are in; running MAE/contrastive objectives on user data is out.
+5. **Vendor nothing new; extractors are pip-installed** (ADR 0009). E2E-Spot stays vendored; everything else is a pip extra plus an adapter, or an importer. The S3D checkpoint in the package is the grandfathered exception.
+6. **BEAST: out entirely** — no pretraining, no checkpoint import, no lightning-action head. Its
+   findings are cited below as literature only. The one it left behind — Δ-features help every
+   stream — is already the onset model's `derivatives` spelling and needs nothing new.
 
 ---
 
@@ -67,11 +81,10 @@ class ExtractorConfig:
 | E2E-Spot 200MF + displacement head + Soft-NMS | **in**, default point-event backend | 4, 5 |
 | MSAGSM as GSM replacement | in **as a flag on the same extractor** (`shift_module: gsm\|msagsm`), not a new name | 5, 6 |
 | T-DEED, AdaSpot, F3ED | out; borrow eval code (tolerance-F1, edit score) | 2, 5 |
-| Frozen ViT-MAE / V-JEPA2-B / DINO as `FeatureExtractor` | **in**; ViT-MAE CLS first, V-JEPA2 as `[gpu]` alternative | 1, 3 |
+| Frozen DINOv2 (any timm model) as extractor | **in**, default video feature; ViT-MAE dropped as a name | 1, 2 |
 | `trainable_layers` fine-tuning knob | in, opt-in, `[gpu]` | 1, 3 |
-| FERAL | importer only for now | 3, 4 |
-| BEAST pretraining | out; accept a user-supplied checkpoint path | 1, 3 |
-| lightning-action TCN head | optional second head, not default | 6 |
+| FERAL | in, as extractor and as model — after the interop discussion (`Discuss_feral-interop.md`) | 2, 4 |
+| BEAST (pretraining, checkpoints, lightning-action head) | **out entirely** | 1, 3 |
 | Semi-supervised anything | out | 1 |
 
 ---
@@ -108,47 +121,6 @@ class ExtractorConfig:
 
 ---
 
-## 5. Next steps
-
-### Week 1 — E2E-Spot upgrades (point events)
-- [ ] Add displacement head (linear → `(T, 1)` offset, MSE within r_E = 1–2) alongside the K+1 classifier; drop label dilation.
-- [ ] Replace hard NMS with Soft-NMS, 3-frame window.
-- [ ] Add `shift_module: gsm | msagsm` flag on the `regnety-200mf-gsm` extractor; only keep MSAGSM if it is a drop-in `nn.Module`.
-- [ ] Replace `spot_frames/` extraction with on-the-fly decoding (PyAV/decord/torchcodec) from the ffmpeg proxy; crop to a user-drawn box.
-- [ ] Add the adjacent-token cosine-similarity diagnostic to the training log.
-
-### Week 2 — protocols and codecs
-- [ ] Introduce `FeatureExtractor`, `TemporalHead`, `TargetCodec` protocols; move point/state logic into `PointCodec` / `StateCodec`.
-- [ ] Wrap current kinematics pipeline and ASFormer as the state default; wrap vendored E2E-Spot as a fused extractor+head for the point default.
-- [ ] `ExtractorConfig(name, trainable_layers=0)`; registry keyed by name; `check_requirements()` per component so the GUI greys out unavailable backends.
-- [ ] Export to standard TAS layout (`features/*.npy`, `groundTruth/*.txt`, `mapping.txt`) so any TAS repo is a thin adapter.
-
-### Week 3 — frozen video features + feature engineering GUI
-- [ ] `vit-mae-b` extractor: HuggingFace `facebook/vit-mae-base`, CLS per frame, weights cached in `~/.ethograph/models/`, CPU path.
-- [ ] Add Δ-features (frame-to-frame difference) as an option on any feature stream.
-- [ ] Run Cohen's-d selection on ViT dims per event class; surface the effect-size histogram in the GUI.
-- [ ] Label-coloured PCA/UMAP scatter linked to the video frame.
-- [ ] **The one benchmark worth running:** kinematics vs frozen ViT-MAE CLS(+Δ), both → ASFormer, on the crow data, edit score + F1@k.
-
-### Later / conditional
-- [ ] FERAL JSON importer (per-frame probabilities → state events). Revisit as a backend when `lite` accuracy is published.
-- [ ] `trainable_layers > 0` fused training for ViT extractors (`[gpu]`), reusing the E2E-Spot loop.
-- [ ] `vjepa2-vitb` as `[gpu]` extractor; try odd `chunk_shift` if used for point events.
-- [ ] Optional `lightning-action` TCN head for comparison against ASFormer.
-- [ ] Accept a user-supplied BEAST checkpoint as an extractor; never own pretraining.
-- [ ] README: 2-minute demo video, Colab, label validator (the FERAL packaging lessons).
-- [ ] **Temporal ROI for long recordings — as a state event, never a fourth stage.** Point-event
-  training on an unsegmented session spends almost all of it on frames where nothing is
-  plausible. The composition that needs no new concept: the state default (`kinematics →
-  ASFormer → StateCodec`) predicts the task bout, and the point model trains and predicts only
-  inside it — stage 1 is a `TemporalHead` we already ship, on features that are already there.
-  Not yet needed for pre-cut trials: on the crow data (216 trials, ~6 s each, events at a
-  stereotyped 0.37/0.56 of the trial) the trial *is* the ROI, and narrowing further buys ~3x on
-  class imbalance where `--stride 4` buys 4x plus 4x the temporal context for a config flag
-  (`scripts/spot_point_events.md`, *200 fps is not 25 fps*). Revisit when a user brings a
-  continuous session, and price it against stage-1 misses, which stage 2 cannot recover.
-
----
 
 ## 6. References
 

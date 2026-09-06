@@ -8,7 +8,7 @@ and that way is a file you can diff and re-run.
     import ethograph as eto
 
     project = eto.segment.Project("project.yaml")
-    project.video_features(merge=True)   # S3D once per video, merged into the sessions
+    project.video_features(merge=True)   # video features once per video, merged into the sessions
     project.materialise()                # feature engineering → the materialised dataset
 
     best = project.search()              # stage 1: Optuna on the 60/20/20 split

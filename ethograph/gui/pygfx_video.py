@@ -68,6 +68,19 @@ def snap_crop_rect(
     return (xa, ya, xb, yb)
 
 
+def square_corner(ax: float, ay: float, x: float, y: float) -> tuple[float, float]:
+    """The cursor corner constrained so the box from ``(ax, ay)`` is square.
+
+    The side is the larger of the two drag extents, so the box grows with
+    whichever axis the mouse moved further along; the drag's direction on
+    each axis is kept, so dragging up-left still draws up-left.
+    """
+    side = max(abs(x - ax), abs(y - ay))
+    sx = 1.0 if x >= ax else -1.0
+    sy = 1.0 if y >= ay else -1.0
+    return ax + sx * side, ay + sy * side
+
+
 def crop_clip_planes(rect: tuple[int, int, int, int], img_height: float) -> list[tuple[float, float, float, float]]:
     """pygfx world-space clipping planes hiding everything outside *rect*.
 
@@ -246,6 +259,8 @@ class CameraView(QWidget):
         #: Callback receiving the selected crop rect (rectangle tool armed).
         self._crop_select_cb = None
         self._crop_anchor: tuple[float, float] | None = None
+        #: Constrain the drag to a square (``start_crop_selection(square=True)``).
+        self._crop_square = False
         self._crop_preview: Optional[gfx.Line] = None
         #: Set for static-image views: source file + fps of the pose shown on top.
         self.static_image_path: Optional[str] = None
@@ -725,17 +740,26 @@ class CameraView(QWidget):
         except Exception:  # noqa: BLE001 - framing is best-effort
             pass
 
-    def start_crop_selection(self, on_done) -> bool:
+    def start_crop_selection(self, on_done, *, square: bool = False) -> bool:
         """Arm the rectangle tool: click a corner, drag, click (or release)
         again to select. *on_done* receives the snapped rect, or ``None`` for a
         degenerate selection. Panning moves to ``Shift`` + left-drag meanwhile.
+        With *square* the cursor is held to a square from the anchor
+        (:func:`square_corner`) — the preview and the result alike.
         Returns False when no video is loaded."""
         if self._plot is None:
             return False
         self.cancel_crop_selection()
         self._crop_select_cb = on_done
+        self._crop_square = bool(square)
         self._bind_pan_to_shift(True)
         return True
+
+    def _crop_corner(self, xy: tuple[float, float]) -> tuple[float, float]:
+        """The cursor as the box's far corner, squared when the tool says so."""
+        if not self._crop_square or self._crop_anchor is None:
+            return xy
+        return square_corner(self._crop_anchor[0], self._crop_anchor[1], xy[0], xy[1])
 
     def cancel_crop_selection(self) -> None:
         if self._crop_select_cb is None:
@@ -773,12 +797,14 @@ class CameraView(QWidget):
             return
         min_drag = 5.0 * self.image_units_per_pixel()
         ax, ay = self._crop_anchor
+        xy = self._crop_corner(xy)
         if abs(xy[0] - ax) >= min_drag and abs(xy[1] - ay) >= min_drag:
             self._finish_crop_selection(xy)
 
     def _finish_crop_selection(self, xy: tuple[float, float]) -> None:
         cb = self._crop_select_cb
         ax, ay = self._crop_anchor
+        xy = self._crop_corner(xy)
         w = float(self._plot.texture.size[0])
         h = float(self._plot.texture.size[1])
         rect = snap_crop_rect(ax, ay, xy[0], xy[1], w, h)
@@ -790,6 +816,7 @@ class CameraView(QWidget):
         if scene is None or self._crop_anchor is None:
             return
         ax, ay = self._crop_anchor
+        xy = self._crop_corner(xy)
         x0, x1 = sorted((ax, xy[0]))
         y0, y1 = sorted((ay, xy[1]))
         h = self.image_height()
