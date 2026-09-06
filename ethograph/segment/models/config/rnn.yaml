@@ -1,0 +1,7 @@
+# Hyperparameters of the `rnn` architecture (../rnn.py). Ours — there is no
+# upstream. Every key is a `model.params` override and a search axis.
+cell: gru            # gru | lstm
+hidden_size: 128     # units per direction
+num_layers: 2
+bidirectional: true  # offline segmentation reads the trial both ways, like every other architecture here
+dropout: 0.2         # between recurrent layers (torch applies it only when num_layers > 1) and before the read-out

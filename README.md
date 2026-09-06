@@ -73,3 +73,7 @@ EthoGraph is built on top of a number of open-source projects:
 [PyQtGraph](https://www.pyqtgraph.org/), and
 [pygfx](https://pygfx.org/) (via
 [pynaviz](https://github.com/pynapple-org/pynaviz)).
+
+EthoGraph is GPL-3.0-or-later. The code it vendors or adapts from other
+projects, and each one's licence, is listed in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

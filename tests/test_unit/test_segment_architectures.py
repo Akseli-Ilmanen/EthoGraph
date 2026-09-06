@@ -143,17 +143,19 @@ def test_every_dlc2action_architecture_maps_to_an_upstream_config() -> None:
 
     The registry also holds the skeleton-graph architectures (``specscalpel``,
     ``lady``), which are not DLC2Action and read their own vendored defaults —
-    covered by ``test_segment_skeleton_graph.py``. So the DLC2Action stems are a
-    subset of the registry, and everything else is exactly those two.
+    covered by ``test_segment_skeleton_graph.py`` — and our own ``rnn``, which
+    reads ``models/config/rnn.yaml`` (``test_segment_rnn.py``). So the
+    DLC2Action stems are a subset of the registry, and everything else is
+    exactly those.
     """
-    from ethograph.segment.models import available_architectures
+    from ethograph.segment.models import DEFAULTS_FILES, available_architectures
     from ethograph.segment.models.skeleton_graph import _DEFAULTS_FILE
     from ethograph.segment.models.vendored import _STEMS
 
     assert _STEMS == CONFIG_STEMS
     registered = set(available_architectures())
     assert set(_STEMS) <= registered
-    assert registered - set(_STEMS) == set(_DEFAULTS_FILE)
+    assert registered - set(_STEMS) == set(_DEFAULTS_FILE) | set(DEFAULTS_FILES)
 
 
 @pytest.mark.parametrize("name", sorted(CONFIG_STEMS))

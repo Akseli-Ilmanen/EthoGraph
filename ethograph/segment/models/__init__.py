@@ -32,6 +32,7 @@ import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from importlib.metadata import entry_points
+from pathlib import Path
 from typing import Any
 
 import torch
@@ -63,16 +64,27 @@ def as_output(result: torch.Tensor | ModelOutput) -> ModelOutput:
 
 ARCHITECTURES: dict[str, Builder] = {}
 
+#: Registry name → the YAML its defaults are read from, for the architectures
+#: that are ours (``rnn``). A vendored one reads upstream's own config instead.
+DEFAULTS_FILES: dict[str, Path] = {}
+
 ENTRY_POINT_GROUP = "ethograph.segment.architectures"
 
 
-def register_architecture(name: str) -> Callable[[Builder], Builder]:
-    """Decorator: register ``builder(params, n_features, n_classes) -> nn.Module`` under *name*."""
+def register_architecture(name: str, defaults: Path | None = None) -> Callable[[Builder], Builder]:
+    """Decorator: register ``builder(params, n_features, n_classes) -> nn.Module`` under *name*.
+
+    *defaults* names the YAML an architecture of ours reads its hyperparameters
+    from, so ``tunable_params`` can list them; a vendored architecture leaves
+    it unset and is read off upstream's config.
+    """
 
     def _register(builder: Builder) -> Builder:
         if name in ARCHITECTURES:
             raise ValueError(f"Architecture {name!r} is already registered.")
         ARCHITECTURES[name] = builder
+        if defaults is not None:
+            DEFAULTS_FILES[name] = defaults
         return builder
 
     return _register
@@ -80,7 +92,7 @@ def register_architecture(name: str) -> Callable[[Builder], Builder]:
 
 def _load_builtin() -> None:
     # Imported for their registration side effect only.
-    from ethograph.segment.models import skeleton_graph, vendored  # noqa: F401
+    from ethograph.segment.models import rnn, skeleton_graph, vendored  # noqa: F401
 
 
 def _load_entry_points() -> None:

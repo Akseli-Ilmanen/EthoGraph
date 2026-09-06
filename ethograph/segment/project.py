@@ -32,6 +32,8 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterable
 
+import yaml
+
 from ethograph.segment.config import SegmentConfig, load_config
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -289,9 +291,12 @@ def tunable_params(architecture: str) -> dict[str, Any]:
     A setting upstream leaves required — ``motionbert``'s ``num_joints`` — has
     no default and so is not listed; the builder names it if it is missing.
     """
-    from ethograph.segment.models import skeleton_graph
+    from ethograph.segment.models import DEFAULTS_FILES, available_architectures, skeleton_graph
     from ethograph.segment.models.vendored import tunable_params as _tunable
 
+    available_architectures()  # registers the built-ins
+    if architecture in DEFAULTS_FILES:
+        return yaml.safe_load(DEFAULTS_FILES[architecture].read_text(encoding="utf-8")) or {}
     if architecture in skeleton_graph._DEFAULTS_FILE:
         return skeleton_graph.tunable_params(architecture)
     return _tunable(architecture)

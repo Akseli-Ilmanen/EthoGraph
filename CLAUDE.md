@@ -134,7 +134,8 @@ ethograph/segment/            # Segmentation pipeline (docs: docs/add_to_docs_la
     video_features.py         # S3D: a folder of videos or a config's sessions, + merge into a session
     models/__init__.py        # Architecture registry + contract
     models/vendored.py        # DLC2Action adapters: the registry contract + upstream's YAML defaults
-    dlc2action/               # Vendored AGPL: model/, loss/, config/ — see its NOTICE.md; excluded from ruff/mypy
+    models/rnn.py             # Ours: bidirectional GRU/LSTM baseline, defaults in models/config/rnn.yaml
+    dlc2action/               # Vendored AGPL: model/, loss/, config/ — see its NOTICE.md; excluded from ruff/mypy; index of every vendored tree: THIRD_PARTY_NOTICES.md
 
 ethograph/spot/               # Pixel point-event spotting (E2E-Spot); docs: docs/add_to_docs_later/spot/
     config.py                 # SpotConfig: ClipConfig (durations → stride/clip_len/dilate_len), no features section

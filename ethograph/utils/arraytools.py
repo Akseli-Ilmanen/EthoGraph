@@ -1,4 +1,15 @@
-"""Taken from https://github.com/bendalab/thunderhopper"""
+"""Taken from https://github.com/bendalab/thunderhopper
+
+A partial copy of thunderhopper (Jona Hartling, Jan Benda; Benda Lab,
+University of Tübingen) at commit ``5cc0c35`` (2025-07-21): ``slice_index``,
+``array_slice``, ``edge_along_axis``, ``reduce_array`` and
+``is_valid_numpy_index`` from ``src/thunderhopper/arraytools.py``, and
+``ensure_sequence`` and ``equal_sequences`` from
+``src/thunderhopper/misctools.py``. Bodies unchanged apart from line wrapping.
+
+Licensed under the GNU Affero General Public License v3.0 — this file stays
+under the AGPL. See ``THIRD_PARTY_NOTICES.md`` at the repository root.
+"""
 
 import numpy as np
 
