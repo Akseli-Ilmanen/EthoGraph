@@ -6,7 +6,6 @@ the DataLoader so xarray, pynapple, and NWB sources all work.
 """
 
 import logging
-import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -31,7 +30,7 @@ from ethograph.features.preprocessing import interpolate_nans
 from ethograph.gui.app_constants import MEDIA_VIEW_MIN_HEIGHT, MEDIA_VIEW_MIN_WIDTH
 from ethograph.gui.plots_lineplot import MultiColoredLineItem
 from ethograph.io.catalog import DataLoader
-from ethograph.utils.paths import ethograph_home
+from ethograph.utils.paths import defaults_dir, seed_defaults
 
 logger = logging.getLogger(__name__)
 
@@ -103,21 +102,17 @@ def load_geometry_yaml(path: Path) -> Optional[dict]:
 #: ``references:`` list of vertices/edges) to make it selectable — by file
 #: stem — in the Space controls / persist-able as a default via
 #: ``space_library_geometry`` in gui_settings.yaml or local_settings.yaml.
-GEOMETRY_LIBRARY_DIR = ethograph_home() / "geometries"
-
-#: Default geometries shipped with the package — contribute new ones via PR.
-BUNDLED_GEOMETRIES_DIR = Path(__file__).resolve().parents[1] / "geometries"
+GEOMETRY_LIBRARY_DIR = defaults_dir("config") / "space"
 
 
 def ensure_geometry_library() -> Path:
-    """Create the geometry library on first run, seeded with the package's
-    default geometries (``ethograph/geometries/*.yaml``). An existing library
-    (even an emptied one) is untouched, so user deletions stick."""
-    if not GEOMETRY_LIBRARY_DIR.exists():
-        GEOMETRY_LIBRARY_DIR.mkdir(parents=True)
-        if BUNDLED_GEOMETRIES_DIR.is_dir():
-            for src in sorted(BUNDLED_GEOMETRIES_DIR.glob("*.y*ml")):
-                shutil.copyfile(src, GEOMETRY_LIBRARY_DIR / src.name)
+    """Seed the geometry library (with every other bundled default) and return it.
+
+    ``seed_defaults`` copies each shipped file only when it is missing, so a
+    user's edits to a bundled geometry stick; a deleted one comes back.
+    """
+    seed_defaults()
+    GEOMETRY_LIBRARY_DIR.mkdir(parents=True, exist_ok=True)
     return GEOMETRY_LIBRARY_DIR
 
 
@@ -1117,7 +1112,7 @@ class SpacePlot(QWidget):
 
         ``app_state.space_library_geometry`` (chosen in the Space controls, or
         set as a default in gui_settings.yaml / local_settings.yaml) is the
-        stem of a YAML file in ``~/.ethograph/geometries/``; all of that
+        stem of a YAML file in ``~/.ethograph/defaults/config/space/``; all of that
         file's references are drawn.
         """
         selected = getattr(self.app_state, "space_library_geometry", None)

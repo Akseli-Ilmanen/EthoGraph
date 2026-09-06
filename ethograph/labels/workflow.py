@@ -14,7 +14,7 @@ the contract between the two: it declares which parameters a kind takes,
 their types and defaults, so the editor builds its form and the runner reads
 its arguments from one place.
 
-Workflows live in ``~/.ethograph/workflows/{name}.yaml`` — the same global
+Workflows live in ``~/.ethograph/defaults/workflows/{name}.yaml`` — the same global
 store as the onset models they usually invoke, so a workflow written on one
 dataset is there for the next.
 """
@@ -29,7 +29,7 @@ from typing import Any
 
 import yaml
 
-from ethograph.utils.paths import ethograph_home
+from ethograph.utils.paths import defaults_dir
 
 logger = logging.getLogger(__name__)
 
@@ -233,7 +233,7 @@ STEP_KINDS: dict[str, StepKind] = {
             title="Predict onsets",
             summary="Run a trained LightGBM onset model over the visible trials, filling classes they lack.",
             params=(
-                ParamSpec("model", "Model", "choice", "", "A trained model from ~/.ethograph/models."),
+                ParamSpec("model", "Model", "choice", "", "A trained model from ~/.ethograph/defaults/runs/lightgbm."),
                 ParamSpec(
                     "individual",
                     "Individual",
@@ -578,15 +578,15 @@ def describe_filter(entry: dict[str, Any]) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Storage: ~/.ethograph/workflows/{name}.yaml
+# Storage: ~/.ethograph/defaults/workflows/{name}.yaml
 # ---------------------------------------------------------------------------
 
 _NAME_RE = re.compile(r"[^A-Za-z0-9 _.-]+")
 
 
 def workflows_root() -> Path:
-    """The global workflow store, ``~/.ethograph/workflows``."""
-    return ethograph_home() / "workflows"
+    """The workflow store used while no project is open, ``~/.ethograph/defaults/workflows``."""
+    return defaults_dir("workflows")
 
 
 def safe_name(name: str) -> str:

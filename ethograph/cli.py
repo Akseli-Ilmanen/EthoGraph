@@ -128,8 +128,10 @@ def launch():
     _ensure_qt_plugins()
     _linux_preflight()
 
-    from ethograph.utils.paths import ethograph_home
+    from ethograph.utils.paths import ethograph_home, migrate_home_layout
 
+    for old, new in migrate_home_layout():
+        logging.getLogger("ethograph").info("Home layout: moved %s -> %s", old, new)
     logging.getLogger("ethograph").info("Global settings directory: %s", ethograph_home())
     logging.getLogger("ethograph").info("Session log: %s", log_path)
 

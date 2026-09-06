@@ -968,3 +968,48 @@ def test_birdpark_load_then_toggle_changepoints_via_menu(birdpark_gui):
     action.trigger()
     QApplication.processEvents()
     assert meta.app_state.show_changepoints != before
+
+
+def test_cover_page_project_drops_are_kept_and_reopenable(gui, qtbot, tmp_path):
+    """With a project folder set, a drop's folder lands under the project's
+    sessions/ and the reopen list puts its recorded state back into the IO
+    fields; without one the drop stays throwaway and the list is hidden."""
+    from ethograph.gui.cover_page import CoverPage
+    from ethograph.gui.project import list_drops, record_drop
+    from ethograph.utils.paths import is_throwaway_path
+
+    shell, meta = gui
+    page = CoverPage(shell, meta.io_widget)
+    state = meta.app_state
+
+    state.project_path = None
+    page._refresh_project_ui()
+    assert page._reopen_row.isHidden()
+    assert is_throwaway_path(page._prepare_drop_dir())
+
+    project = tmp_path / "study"
+    project.mkdir()
+    state.project_path = str(project)
+    page._refresh_project_ui()
+    assert not page._reopen_row.isHidden()
+    assert not page._reopen_combo.isEnabled()  # nothing recorded yet
+
+    drop_dir = page._prepare_drop_dir()
+    assert drop_dir.parent == project / "sessions"
+    state.video_folder = str(tmp_path)
+    state.primary_camera = "cam-1"
+    record_drop(drop_dir, [str(tmp_path / "clip.mp4")], state)
+    page._refresh_project_ui()
+    assert page._reopen_combo.count() == 2  # placeholder + the drop
+    assert [f for f, _ in list_drops(project)] == [drop_dir]
+
+    state.video_folder = None
+    state.primary_camera = None
+    page._reopen_combo.setCurrentIndex(1)
+    page._on_reopen_drop(1)
+    assert state.video_folder == str(tmp_path)
+    assert state.primary_camera == "cam-1"
+    assert page._reopened_drop == drop_dir
+    assert page._drop.paths == []  # Load takes the restored fields, not a rebuild
+
+    page.close()

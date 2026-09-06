@@ -71,12 +71,12 @@ When the GUI needs a mapping, it searches with
    `.ethograph/mapping.txt` in each ancestor. This lets a shared
    `.ethograph/` in a parent folder serve many sessions, while a
    per-session override wins.
-2. Fall back to `~/.ethograph/mapping.txt` (global user default).
+2. Fall back to `~/.ethograph/defaults/mapping.txt` (global user default).
 
 Typical layouts:
 
 ```
-~/.ethograph/mapping.txt                          # global default
+~/.ethograph/defaults/mapping.txt                 # global default
 project/.ethograph/mapping.txt                    # project-wide (shared across sessions)
 project/session_01/.ethograph/mapping.txt         # per-session override
 ```

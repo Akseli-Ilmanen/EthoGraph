@@ -11,7 +11,7 @@ Two non-modal dialogs around :mod:`ethograph.labels.onset_model`:
   its on/off vector, a point class as a Laplacian bump; a class the model
   predicts is greyed out, since it cannot be its own input). The current session's
   existing point events become training trials stored under
-  ``~/.ethograph/models/{name}/train_data``; more sessions can be added by
+  ``~/.ethograph/defaults/runs/lightgbm/{name}/train_data``; more sessions can be added by
   reopening the dialog there, and Train fits one classifier per class from
   everything collected so far.
 * **Predict** — pick a trained model and apply it to the current session. All
@@ -1110,7 +1110,7 @@ class PredictOnsetDialog(QDialog):
             self.model_combo.addItem(name)
         self.model_combo.currentTextChanged.connect(self._refresh_info)
         self.model_combo.setToolTip(
-            "Trained models from ~/.ethograph/models. The line below says which\n"
+            "Trained models from ~/.ethograph/defaults/runs/lightgbm. The line below says which\n"
             "classes this one predicts and what it was trained on."
         )
         form.addRow("Model:", self.model_combo)
@@ -1197,7 +1197,7 @@ class PredictOnsetDialog(QDialog):
     def _refresh_info(self, name: str):
         """Describe the config that will actually run — the trained one."""
         if not name:
-            self.info_label.setText("No models found in ~/.ethograph/models.")
+            self.info_label.setText("No models found in ~/.ethograph/defaults/runs/lightgbm.")
             self.run_btn.setEnabled(False)
             return
         drifted = om.config_drifted(name)

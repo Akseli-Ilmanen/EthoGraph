@@ -426,10 +426,10 @@ COTRACKER_INSTALL_HINT = (
 
 
 def cotracker_checkpoint_dir() -> Path:
-    """Where CoTracker3 weights are expected: ``~/.ethograph/models/cotracker``."""
-    from ethograph.utils.paths import ethograph_home
+    """Where CoTracker3 weights are expected: ``~/.ethograph/cache/weights/cotracker``."""
+    from ethograph.utils.paths import cache_dir
 
-    return ethograph_home() / "models" / "cotracker"
+    return cache_dir("weights") / "cotracker"
 
 
 def download_cotracker_checkpoint(progress: Progress | None = None) -> Path:

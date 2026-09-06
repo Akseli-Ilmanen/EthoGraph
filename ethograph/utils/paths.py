@@ -82,6 +82,120 @@ def ethograph_home() -> Path:
     return Path.home() / SETTINGS_DIR
 
 
+# --- Home layout -------------------------------------------------------------
+#
+# ~/.ethograph/
+#   gui_settings.yaml   the user's viewing habits (layout, paths, playback)
+#   logs/               per-machine session logs
+#   cache/              derived media keyed by content, safe to wipe
+#   defaults/           a project directory's layout, used while no project
+#                       is open: mapping.txt, config/space/, runs/lightgbm/,
+#                       workflows/, wizard/
+#
+# Everything about a *study* is meant to live in a project directory; these
+# are the fallbacks for a session opened without one, in the same shape.
+
+CACHE_DIRNAME = "cache"
+DEFAULTS_DIRNAME = "defaults"
+LOGS_DIRNAME = "logs"
+
+#: Old home-level folders/files and where they live now, relative to the home
+#: directory.  Read by :func:`migrate_home_layout` once per start.
+HOME_LAYOUT_MOVES: dict[str, str] = {
+    "proxies": f"{CACHE_DIRNAME}/proxies",
+    "audio_tracks": f"{CACHE_DIRNAME}/audio_tracks",
+    "example_data": f"{CACHE_DIRNAME}/example_data",
+    "dandi": f"{CACHE_DIRNAME}/dandi",
+    "models/cotracker": f"{CACHE_DIRNAME}/weights/cotracker",
+    "models": f"{DEFAULTS_DIRNAME}/runs/lightgbm",
+    "workflows": f"{DEFAULTS_DIRNAME}/workflows",
+    "geometries": f"{DEFAULTS_DIRNAME}/config/space",
+    "mapping.txt": f"{DEFAULTS_DIRNAME}/mapping.txt",
+    "alignment_wizard": f"{DEFAULTS_DIRNAME}/wizard",
+}
+
+
+def cache_dir(name: str | None = None) -> Path:
+    """``~/.ethograph/cache[/name]`` — derived media, keyed by content, never by project."""
+    base = ethograph_home() / CACHE_DIRNAME
+    return base / name if name else base
+
+
+def defaults_dir(name: str | None = None) -> Path:
+    """``~/.ethograph/defaults[/name]`` — study assets used while no project is open."""
+    base = ethograph_home() / DEFAULTS_DIRNAME
+    return base / name if name else base
+
+
+def logs_dir() -> Path:
+    """``~/.ethograph/logs``."""
+    return ethograph_home() / LOGS_DIRNAME
+
+
+#: The project folder every install starts from, shipped as package data
+#: (``ethograph/defaults/``: mapping.txt, config/segment.yaml, config/spot.yaml,
+#: config/space/*.yaml).
+BUNDLED_DEFAULTS_DIR = Path(__file__).resolve().parents[1] / "defaults"
+
+
+def seed_defaults(dest: Path | None = None) -> list[Path]:
+    """Copy every bundled default into *dest* (``defaults_dir()``) that is not there yet.
+
+    File by file, so an example added in a later release reaches an existing
+    install; a file the user edited is never overwritten. ``README.md`` is
+    documentation for the repo, not a default, and is skipped.
+
+    Returns
+    -------
+    list of Path
+        The files written.
+    """
+    import shutil
+
+    dest = defaults_dir() if dest is None else dest
+    written: list[Path] = []
+    for src in sorted(BUNDLED_DEFAULTS_DIR.rglob("*")):
+        if not src.is_file() or src.name == "README.md":
+            continue
+        target = dest / src.relative_to(BUNDLED_DEFAULTS_DIR)
+        if target.exists():
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(src, target)
+        written.append(target)
+    return written
+
+
+def migrate_home_layout(home: Path | None = None) -> list[tuple[Path, Path]]:
+    """Move pre-layout folders under ``cache/`` and ``defaults/``.
+
+    Each entry of :data:`HOME_LAYOUT_MOVES` is moved only when the old path
+    exists and the new one does not; a destination that already exists is left
+    alone and the old path is kept, so nothing is ever overwritten.  Entries
+    are applied in order, which is why ``models/cotracker`` precedes
+    ``models``.
+
+    Returns
+    -------
+    list of (old, new)
+        The moves performed.
+    """
+    import shutil
+
+    home = ethograph_home() if home is None else home
+    moved: list[tuple[Path, Path]] = []
+    for old_rel, new_rel in HOME_LAYOUT_MOVES.items():
+        old = home / old_rel
+        new = home / new_rel
+        if not old.exists() or new.exists():
+            continue
+        new.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(old), str(new))
+        logger.info("Moved %s -> %s", old, new)
+        moved.append((old, new))
+    return moved
+
+
 def get_project_root(start: Path | None = None) -> Path:
     """Find the repository root by walking up from *start* until ``pyproject.toml`` is found.
 
@@ -254,7 +368,7 @@ def find_config(name: str, data_dir: Path | str | None = None) -> Path | None:
     1. Walk up from *data_dir* looking for ``.ethograph/{name}`` in each ancestor.
        This lets a shared ``.ethograph/`` in a parent directory serve multiple
        sessions, while per-session overrides are found first.
-    2. ``~/.ethograph/{name}``  (global user default)
+    2. ``~/.ethograph/defaults/{name}``  (global user default)
 
     Parameters
     ----------
@@ -280,7 +394,7 @@ def find_config(name: str, data_dir: Path | str | None = None) -> Path | None:
             if candidate.exists():
                 return candidate
 
-    global_candidate = ethograph_home() / name
+    global_candidate = defaults_dir(name)
     if global_candidate.exists():
         return global_candidate
 
@@ -291,11 +405,11 @@ def default_config_dir(data_dir: Path | str | None = None) -> Path:
     """Return the ``.ethograph/`` directory where new configs should be written.
 
     Uses ``data_dir/.ethograph/`` when a data directory is known, otherwise
-    falls back to ``~/.ethograph/``.
+    falls back to ``~/.ethograph/defaults/``.
     """
     if data_dir is not None:
         return Path(data_dir) / SETTINGS_DIR
-    return ethograph_home()
+    return defaults_dir()
 
 
 def find_mapping_file(data_dir: Path | str | None = None) -> Path | None:

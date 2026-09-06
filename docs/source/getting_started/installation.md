@@ -57,7 +57,19 @@ then **open a new terminal** (PATH is only read at shell start). See {ref}`comma
 ```{tip}
 To update later, run `uv tool upgrade ethograph`; to remove it,
 `uv tool uninstall ethograph`. Global settings live in `~/.ethograph`
-(override with the `ETHOGRAPH_HOME` environment variable).
+(override with the `ETHOGRAPH_HOME` environment variable):
+
+    ~/.ethograph/
+    ├── gui_settings.yaml   # your layout, playback and dialog folders
+    ├── logs/               # one log per session
+    ├── cache/              # derived media: video proxies, extracted audio,
+    │                       # example datasets, downloaded weights — safe to delete
+    └── defaults/           # a starter project, used while no project folder is chosen:
+                            # mapping.txt, config/segment.yaml + spot.yaml to copy from,
+                            # config/space/ geometries, runs/lightgbm/ onset models,
+                            # workflows/, wizard/ notebooks
+
+An older home folder is rearranged into this shape the first time the GUI starts.
 ```
 
 ## Install into a virtual environment

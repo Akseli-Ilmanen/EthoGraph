@@ -171,7 +171,7 @@ recent libsndfile (>= 1.1).
 never read in place** — libsndfile reads no video container, and an AAC track
 has no sample-exact random access. The first time a video is used as an audio
 source, its track is decoded once (through PyAV, bundled with the `gui` extra)
-into `~/.ethograph/audio_tracks/` and every reader opens that file instead.
+into `~/.ethograph/cache/audio_tracks/` and every reader opens that file instead.
 This happens both when dropping a video with the **"extract audio"** box ticked
 and when an alignment or `.nwb` audio stream points at the video itself. The
 cache is keyed by path, size and mtime, so a re-recorded video is never served

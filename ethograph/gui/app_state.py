@@ -305,6 +305,11 @@ class AppStateSpec:
         # file dialogs open where the previous one left off, before any
         # dataset (and so any local_settings.yaml) exists.
         "last_browse_dir": (str | None, None, True),
+        # The project directory chosen on the cover page (gui/project.py):
+        # drag & drops are kept under its sessions/ and can be reopened from
+        # there. SCOPE_GLOBAL so the next start opens on the same project; a
+        # folder that no longer exists is dropped on load like any PATH_VAR.
+        "project_path": (str | None, None, True),
         "_labels_file_path": (
             str | None,
             None,
@@ -538,6 +543,7 @@ class AppStateSpec:
         "neurons_path": "any",
         "image_paths": "file",
         "last_browse_dir": "dir",
+        "project_path": "dir",
         "remote_backup_path": "dir",
         "labelling_cotracker_checkpoint": "file",
         "calibration_coords_path": "file",

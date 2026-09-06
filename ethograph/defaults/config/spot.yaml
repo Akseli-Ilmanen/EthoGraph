@@ -1,0 +1,53 @@
+# Pixel event spotting (E2E-Spot) — a starting config. Copy it into your
+# project, list your sessions and the point-event classes, pick the camera and
+# crop (Tools > Video: Pick a crop for spot config), and run:
+#
+#   import ethograph as eto
+#   project = eto.spot.Project("config/spot.yaml")
+#   project.materialise()      # frames/ + dataset/
+#   project.train()            # runs/
+#   project.cross_validate()   # one fold per session
+#
+# Reference: docs/add_to_docs_later/spot/config.md. Every temporal setting is a
+# duration; frame counts are derived from each video's own rate.
+
+root: ..                                   # dataset/, features/, teacher/, runs/ land in the project folder
+
+sessions:
+  - source: /path/to/session_01/Trial_data.nc
+    labels_path: /path/to/session_01/Trial_data_labels.tsv
+    video_dir: /path/to/session_01/videos
+  # - source: /path/to/session_02/Trial_data.nc
+  #   labels_path: /path/to/session_02/Trial_data_labels.tsv
+  #   video_dir: /path/to/session_02/videos
+
+trials:
+  where: {}                                # the trials-table filter, by column name
+
+labels:
+  classes: [11]                            # point-event label ids from mapping.txt (11 = Peck)
+  camera: cam-1                            # one camera per project
+  frame_height: 224
+  # crop: {x0: 0, y0: 0, x1: 640, y1: 480}  # source pixels; leave out for the full frame
+
+clip:
+  context_s: 2.0                           # what the model sees around a frame
+  resolution_ms: 10                        # the grid predictions land on
+  positive_window_ms: 10
+
+model:
+  architecture: rny008_gsm                 # eto.spot.architectures() lists them
+  head: gru
+
+train:
+  epochs: 8
+  epoch_frames: 250000
+  start_val_epoch: 1
+  batch_size: 4
+  acc_grad: 4
+  split: {train_fraction: 0.6, val_fraction: 0.2, test_fraction: 0.2}
+
+infer:
+  focus_window_ms: 100                     # confidence = focus x ratio around the tallest peak
+  flag_confidence_below: 0.01
+  flag_out_of_order: true

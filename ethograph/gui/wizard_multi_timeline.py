@@ -43,7 +43,7 @@ from ethograph.gui.dialog_function_params import _do_open_source
 from ethograph.gui.wizard_media_files import extract_file_row
 from ethograph.gui.wizard_multi_codegen import generate_alignment_code
 from ethograph.gui.wizard_overview import ModalityConfig, WizardState
-from ethograph.utils.paths import ethograph_home
+from ethograph.utils.paths import defaults_dir
 
 logger = logging.getLogger(__name__)
 
@@ -882,7 +882,7 @@ class TimelinePage(QWidget):
         clipboard.setText(code)
 
     def _on_open_in_editor(self):
-        """Save code to .ethograph folder and open in user's code editor."""
+        """Save the code as a notebook under the defaults folder and open it in the user's editor."""
         from datetime import datetime
 
         code = self._code_editor.toPlainText()
@@ -891,7 +891,7 @@ class TimelinePage(QWidget):
 
         notebook = _code_to_notebook(code)
 
-        wizard_dir = ethograph_home() / "alignment_wizard"
+        wizard_dir = defaults_dir("wizard")
         wizard_dir.mkdir(exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         output_file = wizard_dir / f"ethograph_alignment_setup_{timestamp}.ipynb"

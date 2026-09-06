@@ -79,7 +79,7 @@ Three things worth knowing about it:
   session; the fractions then split ses-01 + ses-02's trials 80/20 into train
   and val. Without it, all three sessions' trials would be pooled and cut by
   the ratios.
-- **`mapping.txt` defaults to `~/.ethograph/mapping.txt`** — the one the GUI
+- **`mapping.txt` defaults to `~/.ethograph/defaults/mapping.txt`** — the one the GUI
   wrote. If yours lives beside the data instead, say so:
   `labels: {mapping: .ethograph/mapping.txt, branch: 0}`.
 - **Only `manual` and `curated` labels are training targets**, and point

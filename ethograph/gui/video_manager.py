@@ -22,7 +22,7 @@ from ethograph.io.time_model import trial_frame_window
 from ethograph.io.validation import IMAGE_EXTENSIONS
 from ethograph.io.video_probe import VideoProbe, probe_video  # noqa: F401  (re-exported for GUI callers)
 from ethograph.io.video_proxy import proxy_cache_path
-from ethograph.utils.paths import ethograph_home
+from ethograph.utils.paths import cache_dir
 
 from .app_constants import MEDIA_VIEW_MIN_HEIGHT, MEDIA_VIEW_MIN_WIDTH
 from .notify import notify
@@ -55,14 +55,14 @@ def camera_dock_title(camera_name: str | None, media_path: str | None, mode_suff
 def proxy_cache_dir(video_path: str | None = None) -> Path:
     """Central directory holding all cached video proxies.
 
-    One shared location (``~/.ethograph/proxies``) rather than a folder beside
-    each source, so the whole cache is easy to find and clear when disk space
-    is tight, and so proxies can be written even when the source lives on
+    One shared location (``~/.ethograph/cache/proxies``) rather than a folder
+    beside each source, so the whole cache is easy to find and clear when disk
+    space is tight, and so proxies can be written even when the source lives on
     read-only or network media. Filenames are keyed by source identity
     (path + size + mtime), so a single flat folder never collides. The
     *video_path* argument is accepted for call-site compatibility but ignored.
     """
-    return ethograph_home() / "proxies"
+    return cache_dir("proxies")
 
 
 class VideoArea(QWidget):

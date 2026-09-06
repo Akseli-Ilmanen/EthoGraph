@@ -467,7 +467,7 @@ class PlotSettingsWidget(QWidget):
         self.space_library_combo = QComboBox()
         self.space_library_combo.setToolTip(
             "Reference geometry drawn behind the trajectory — one entry per "
-            "YAML file in the geometry library (~/.ethograph/geometries/*.yaml)"
+            "YAML file in the geometry library (~/.ethograph/defaults/config/space/*.yaml)"
         )
         self.space_library_combo.currentTextChanged.connect(self._on_space_library_changed)
         # Re-sync when set externally (e.g. a template's library_geometry default)

@@ -15,6 +15,7 @@ from ethograph.datasets import (
     get_notebook_assets,
     is_dataset_downloaded,
 )
+from ethograph.utils.paths import BUNDLED_DEFAULTS_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -70,31 +71,9 @@ TEMPLATE_LOCAL_SETTINGS_FILENAME = "local_settings.yaml"
 #: the media.
 TEMPLATE_ALIGNMENT_FILENAME = "alignment.nwb"
 
-# Default mapping written to ~/.ethograph/mapping.txt if it doesn't exist.
-DEFAULT_MAPPING = (
-    "0 Background\n"
-    "1 Idle\n"
-    "2 Carry\n"
-    "3 Deposit\n"
-    "4 Dunk\n"
-    "5 Feed\n"
-    "6 Fly\n"
-    "7 Hook\n"
-    "8 Insert\n"
-    "9 Look\n"
-    "10 Manipulate\n"
-    "11 Peck\n"
-    "12 Probe\n"
-    "13 Pull\n"
-    "14 Push\n"
-    "15 Reach\n"
-    "16 Regrip\n"
-    "17 Retrieve\n"
-    "18 Shake\n"
-    "19 Step\n"
-    "20 Walk\n"
-    "21 Wipe\n"
-)
+# The default label vocabulary ships as ethograph/defaults/mapping.txt and is
+# seeded into ~/.ethograph/defaults/ with the other bundled defaults.
+DEFAULT_MAPPING_PATH = BUNDLED_DEFAULTS_DIR / "mapping.txt"
 
 
 _OPEN_TSV_VBS = (
@@ -188,16 +167,20 @@ def _register_tsv_mac() -> None:
 
 
 def ensure_default_configs() -> None:
-    """Write default configs to ``~/.ethograph/`` if they don't exist yet."""
+    """Seed ``~/.ethograph/defaults/`` and the platform helpers if they don't exist yet.
+
+    Moves a pre-layout home folder into the ``cache/`` + ``defaults/`` shape
+    first (:func:`~ethograph.utils.paths.migrate_home_layout`), so the
+    bundled defaults never shadow files a user already had.
+    """
     import sys
 
-    from ethograph.utils.paths import ethograph_home
+    from ethograph.utils.paths import ethograph_home, migrate_home_layout, seed_defaults
 
+    migrate_home_layout()
     global_dir = ethograph_home()
     global_dir.mkdir(parents=True, exist_ok=True)
-    mapping = global_dir / "mapping.txt"
-    if not mapping.exists():
-        mapping.write_text(DEFAULT_MAPPING, encoding="utf-8")
+    seed_defaults()
 
     if sys.platform == "win32":
         internal = global_dir / "_internal"
@@ -504,7 +487,7 @@ def setup_birdpark_continuous(
     Parameters
     ----------
     dest
-        Output directory. Defaults to ``~/.ethograph/example_data/BirdParkContinuous``.
+        Output directory. Defaults to ``~/.ethograph/cache/example_data/BirdParkContinuous``.
     n_trials
         Number of equal-length trials to split the recording into.
     chunk
@@ -631,7 +614,7 @@ def setup_moll2025_pynapple(
     ----------
     dest
         Output directory.  Defaults to
-        ``~/.ethograph/example_data/Moll2025_pynapple``.
+        ``~/.ethograph/cache/example_data/Moll2025_pynapple``.
     verbose
         Print progress to stdout.
 

@@ -26,7 +26,7 @@ from typing import Any, ClassVar, Iterable
 import yaml
 
 from ethograph.labels.tsv_store import labels_tsv_path
-from ethograph.utils.paths import ethograph_home
+from ethograph.utils.paths import defaults_dir, ethograph_home
 from ethograph.video_features.base import CropBox, Extractor, check_extractor_name, extractor_module
 
 logger = logging.getLogger(__name__)
@@ -275,7 +275,7 @@ class LabelsConfig:
     branch) *track* classes stay exclusive, exactly as the GUI draws them.
     """
 
-    #: ``mapping.txt`` path; ``None`` defaults to ``~/.ethograph/mapping.txt``.
+    #: ``mapping.txt`` path; ``None`` defaults to ``~/.ethograph/defaults/mapping.txt``.
     mapping: Path | None = None
     branch: int = 0
     #: Several branches at once → a multi-label target. Spell either this or
@@ -1324,7 +1324,7 @@ def config_from_dict(data: dict, base_dir: Path, config_path: Path | None = None
     if cfg.features.labels is None:
         raise ValueError("config.features.labels is required (at least a branch of the mapping.txt naming the classes)")
     if cfg.features.labels.mapping is None:
-        cfg.features.labels.mapping = ethograph_home() / "mapping.txt"
+        cfg.features.labels.mapping = defaults_dir("mapping.txt")
     if cfg.features.changepoint_features is not None:
         generated = cfg.features.changepoint_features.expanded_columns()
         collisions = set(generated) & set(cfg.features.columns)

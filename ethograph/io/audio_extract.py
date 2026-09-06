@@ -12,7 +12,7 @@ timeline for free.
 So a container's track is decoded **once** into a cached PCM WAV and every
 audio consumer opens that file instead.  Same lifecycle as the video proxies
 (:mod:`ethograph.io.video_proxy`): a deterministic key from source identity, a
-central cache under ``~/.ethograph/audio_tracks``, generated on demand.
+central cache under ``~/.ethograph/cache/audio_tracks``, generated on demand.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ import logging
 from pathlib import Path
 
 from ethograph.io.validation import VIDEO_EXTENSIONS
-from ethograph.utils.paths import ethograph_home, media_cache_key
+from ethograph.utils.paths import cache_dir, media_cache_key
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +36,7 @@ def audio_cache_dir() -> Path:
     read-only or network media, and a flat folder keyed by source identity
     never collides.
     """
-    return ethograph_home() / "audio_tracks"
+    return cache_dir("audio_tracks")
 
 
 def is_video_container(path: str | Path) -> bool:

@@ -11,12 +11,12 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ethograph.utils.paths import ethograph_home
+from ethograph.utils.paths import cache_dir
 
 if TYPE_CHECKING:
     import xarray as xr
 
-DOWNLOAD_BASE = ethograph_home() / "example_data"
+DOWNLOAD_BASE = cache_dir("example_data")
 
 DATASETS: dict[str, dict] = {
     "moll2025": {
@@ -29,7 +29,7 @@ DATASETS: dict[str, dict] = {
         "nc_filename": "Trial_data.nc",
         "has_audio": False,
         "import_labels": True,
-        # Reference geometry from the bundled library (ethograph/geometries/)
+        # Reference geometry from the bundled defaults (ethograph/defaults/config/space/)
         "library_geometry": "moll2025",
         # The trial number is the recording number in the filename, so these
         # rows are in date order while dt.trials is numerically sorted --

@@ -5,9 +5,12 @@ Presents three entry points (matching the design in the project brief):
 1. **Template datasets** — reuse :meth:`IOWidget._on_select_template_clicked`.
 2. **Drag & drop files** — drop single, already-aligned media/feature/label
    files; ethograph classifies them by extension, optionally asks which video
-   belongs to which camera, builds a throwaway alignment NWB in the system
-   temp dir (unique name per drop; stale ones are cleaned up best-effort) so
-   the normal loader can consume loose media, and loads.
+   belongs to which camera, builds a single-trial alignment NWB so the normal
+   loader can consume loose media, and loads. With a **project folder** chosen
+   (remembered in ``gui_settings.yaml``) the drop lands in the project's
+   ``sessions/{timestamp}/`` and is listed for reopening (``gui/project.py``);
+   without one it is throwaway in the system temp dir (unique name per drop;
+   stale ones are cleaned up best-effort).
 3. **Data wizard** — reuse :meth:`IOWidget._on_create_nc_clicked`.
 
 The page runs *before* the main window is shown: it accepts once a dataset
@@ -34,6 +37,7 @@ from qtpy.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QListWidget,
     QMenu,
     QPushButton,
@@ -46,6 +50,8 @@ from qtpy.QtWidgets import (
 
 from ethograph.datasets import DATASETS
 from ethograph.gui.dialog_select_template import TEMPLATE_ASSETS_DIR
+from ethograph.gui.file_dialogs import browse_open_dir
+from ethograph.gui.project import DropRecord, list_drops, new_drop_dir, record_drop, restore_drop
 from ethograph.io.audio_extract import ensure_extracted_audio, has_embedded_audio
 from ethograph.io.validation import (
     AUDIO_EXTENSIONS,
@@ -388,6 +394,9 @@ class CoverPage(QDialog):
         self.io_widget = io_widget
         self.app_state = io_widget.app_state
         self._drop_tmp_dir: Path | None = None
+        #: Set when a recorded drop was picked from the reopen list: the IO
+        #: fields already hold its state, so Load must not rebuild it.
+        self._reopened_drop: Path | None = None
         self.setWindowTitle("ethograph — get started")
         self.setModal(True)
         self.setWindowFlags(self.windowFlags() | Qt.WindowMinimizeButtonHint)
@@ -406,6 +415,7 @@ class CoverPage(QDialog):
         outer.setSpacing(self._px(16))
 
         outer.addLayout(self._build_prerecording_bar())
+        outer.addWidget(self._build_project_bar())
 
         body = QHBoxLayout()
         body.setSpacing(self._px(16))
@@ -438,6 +448,7 @@ class CoverPage(QDialog):
         # Small enough that the user can always shrink the window; the scroll
         # area takes over once the content no longer fits.
         self.setMinimumSize(min(700, avail.width()), min(420, avail.height()))
+        self._refresh_project_ui()
 
     def _px(self, value: float) -> int:
         """Scale a pixel size tuned for a 1080 px-tall screen to this screen."""
@@ -482,6 +493,101 @@ class CoverPage(QDialog):
         self._tag_sheet = TagSheetDialog(self.app_state, parent=self)
         self._tag_sheet.show()
         self._tag_sheet.raise_()
+
+    # ------------------------------------------------------------------
+    # Project folder
+    # ------------------------------------------------------------------
+
+    def _build_project_bar(self) -> QFrame:
+        """Where this study's drops are kept — chosen once, remembered globally.
+
+        Data never moves into the folder; only what a drop synthesises
+        (alignment NWB, derived ``.nc``, layout) lands under ``sessions/``,
+        which is what makes the drop reopenable from the list on card 2.
+        """
+        bar = QFrame()
+        bar.setObjectName("projectBar")
+        bar.setStyleSheet(
+            "QFrame#projectBar { border: 1px solid rgba(255,255,255,35);"
+            " border-radius: 10px; background-color: rgba(255,255,255,8); }"
+        )
+        row = QHBoxLayout(bar)
+        row.setContentsMargins(self._px(16), self._px(8), self._px(16), self._px(8))
+        row.setSpacing(self._px(10))
+
+        label = QLabel("<b>Project folder</b>")
+        label.setToolTip(
+            "A folder for this study. Drag &amp; drops made while it is set are kept in\n"
+            "its sessions/ folder (one timestamped folder per drop) and can be reopened\n"
+            "from the drop card. Remembered across restarts. Your data stays where it is."
+        )
+        row.addWidget(label)
+
+        self._project_edit = QLineEdit()
+        self._project_edit.setReadOnly(True)
+        self._project_edit.setPlaceholderText("None — drops are throwaway until a folder is chosen")
+        row.addWidget(self._project_edit, 1)
+
+        browse_btn = QPushButton("Browse…")
+        browse_btn.clicked.connect(self._on_browse_project)
+        row.addWidget(browse_btn)
+        self._project_clear_btn = QPushButton("Clear")
+        self._project_clear_btn.clicked.connect(self._on_clear_project)
+        row.addWidget(self._project_clear_btn)
+        return bar
+
+    def _on_browse_project(self) -> None:
+        current = getattr(self.app_state, "project_path", None)
+        path = browse_open_dir(self, self.app_state, "Choose a project folder", preferred_dir=current)
+        if not path:
+            return
+        self.app_state.project_path = str(Path(path))
+        self._refresh_project_ui()
+
+    def _on_clear_project(self) -> None:
+        self.app_state.project_path = None
+        self._refresh_project_ui()
+
+    def _project_dir(self) -> Path | None:
+        value = getattr(self.app_state, "project_path", None)
+        if not value:
+            return None
+        path = Path(value)
+        return path if path.is_dir() else None
+
+    def _refresh_project_ui(self) -> None:
+        """Mirror ``app_state.project_path`` into the bar and the reopen list."""
+        project = self._project_dir()
+        self._project_edit.setText(str(project) if project else "")
+        self._project_clear_btn.setEnabled(project is not None)
+
+        combo = self._reopen_combo
+        combo.blockSignals(True)
+        combo.clear()
+        combo.addItem("Reopen a previous drop…", None)
+        drops = list_drops(project) if project else []
+        for folder, record in drops:
+            combo.addItem(record.title, str(folder))
+        combo.blockSignals(False)
+        self._reopen_row.setVisible(project is not None)
+        combo.setEnabled(bool(drops))
+
+    def _on_reopen_drop(self, index: int) -> None:
+        """Put a recorded drop's state into the IO fields; Load then loads it as-is."""
+        folder = self._reopen_combo.itemData(index)
+        if not folder:
+            self._reopened_drop = None
+            return
+        record = DropRecord.load(folder)
+        try:
+            restore_drop(record, self.app_state)
+        except Exception as e:  # noqa: BLE001 - outermost GUI boundary
+            logger.exception("Failed to restore dropped session %s", folder)
+            notify_dialog(f"Could not reopen this drop:\n{e}", "error")
+            return
+        self._reopened_drop = Path(folder)
+        self._drop.clear_paths()
+        self._drop.addItem(f"↩ {record.title}")
 
     def _build_supported_types_strip(self) -> QFrame:
         """A one-line reference of what can be dragged & dropped (with examples)."""
@@ -624,6 +730,17 @@ class CoverPage(QDialog):
         )
         self._drop = _DropList(accent=_ACCENTS["drop"], min_height=self._px(160))
         layout.addWidget(self._drop, 1)
+
+        # Recorded drops of the current project, newest first. Hidden without
+        # a project (there is nothing to list); populated by _refresh_project_ui.
+        self._reopen_row = QWidget()
+        reopen_layout = QHBoxLayout(self._reopen_row)
+        reopen_layout.setContentsMargins(0, 0, 0, 0)
+        self._reopen_combo = QComboBox()
+        self._reopen_combo.setToolTip("Drops made with this project folder set, kept under its sessions/ folder.")
+        self._reopen_combo.activated.connect(self._on_reopen_drop)
+        reopen_layout.addWidget(self._reopen_combo, 1)
+        layout.addWidget(self._reopen_row)
 
         self._video_motion_cb = QCheckBox("Compute video motion — pixel change  (video only)")
         self._video_motion_cb.setToolTip(
@@ -815,12 +932,18 @@ class CoverPage(QDialog):
         Returns True when the IO fields are ready to load, False when the user
         cancelled a follow-up prompt or preparation failed.
         """
-        buckets = classify_files(list(self._drop.paths))
+        self._reopened_drop = None
+        self._drop_tmp_dir = None
+        dropped = list(self._drop.paths)
+        buckets = classify_files(dropped)
         try:
             details = self._collect_drop_details(buckets)
             if details is None:
                 return False  # user cancelled the follow-up prompt
             self._populate_io_from_buckets(buckets, details)
+            if self._drop_tmp_dir is not None and self._project_dir() is not None:
+                record_drop(self._drop_tmp_dir, dropped, self.app_state)
+                self._refresh_project_ui()
         except Exception as e:  # noqa: BLE001 - outermost GUI boundary
             logger.exception("Failed to prepare dropped files")
             notify_dialog(f"Could not prepare dropped files:\n{e}", "error")
@@ -1275,16 +1398,22 @@ class CoverPage(QDialog):
         align_media_from_streams(trials, streams, out_path)
         return out_path
 
-    @staticmethod
-    def _prepare_drop_dir() -> Path:
-        """Return a fresh, empty per-drop temp dir for throwaway alignment/.nc.
+    def _prepare_drop_dir(self) -> Path:
+        """Return a fresh, empty per-drop dir for the synthesised alignment/.nc.
 
         Each drop gets its OWN subdirectory so its ``.ethograph/local_settings.yaml``
         starts empty — a shared directory would leak a previous drop's panel layout
         (e.g. one saved with no video panel) into the next drop, so dropped media
-        would silently fail to appear. Older drop dirs are removed best-effort;
-        a dir whose files are still open (Windows locks HDF5) is simply left.
+        would silently fail to appear.
+
+        With a project folder set the dir is ``{project}/sessions/{timestamp}``
+        and is kept (that is what a reopen reads). Otherwise it is a throwaway
+        under the system temp dir: older drop dirs are removed best-effort; a
+        dir whose files are still open (Windows locks HDF5) is simply left.
         """
+        project = self._project_dir()
+        if project is not None:
+            return new_drop_dir(project)
         base = tmp_alignment_base()
         base.mkdir(parents=True, exist_ok=True)
         for stale in base.iterdir():

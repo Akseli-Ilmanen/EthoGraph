@@ -5,7 +5,7 @@ narrow the trials table to one condition, predict, drop the predicted classes
 into the curation scope, open a grid laid out the way that behaviour needs,
 walk the boundaries, save. This dialog is where that sequence is written down
 (:mod:`ethograph.labels.workflow` holds the Qt-free model and the YAML store
-under ``~/.ethograph/workflows``) and replayed.
+under ``~/.ethograph/defaults/workflows``) and replayed.
 
 Two halves:
 
@@ -251,7 +251,7 @@ def _run_filter_trials(runner: WorkflowRunner, step: wf.WorkflowStep) -> bool:
 def _run_predict(runner: WorkflowRunner, step: wf.WorkflowStep) -> bool:
     name = str(step.value("model")).strip()
     if name not in om.list_models():
-        raise WorkflowError(f"No model named {name!r} in ~/.ethograph/models.")
+        raise WorkflowError(f"No model named {name!r} in ~/.ethograph/defaults/runs/lightgbm.")
     if not om.is_trained(name):
         raise WorkflowError(f"Model {name!r} has not been trained yet.")
     individual = str(step.value("individual")).strip() or (runner.app_state.selected_individual() or "")

@@ -45,7 +45,7 @@ class. A model that jointly decoded the order (this module used to fit a
 linear-chain CRF) can move an event away from its own evidence to satisfy the
 sequence — which is invisible on the curve, and unarguable when it is wrong.
 
-Model layout (``~/.ethograph/models/{name}/``)::
+Model layout (``~/.ethograph/defaults/runs/lightgbm/{name}/``)::
 
     config.yaml                 # frozen at creation: targets, features, params
     model.joblib                # trained bundle: one clf per target, plus the
@@ -121,7 +121,7 @@ from ethograph.labels.curve_confidence import (
     window_samples,
 )
 from ethograph.labels.label_inputs import LabelInput, label_columns, render_label_inputs
-from ethograph.utils.paths import ethograph_home
+from ethograph.utils.paths import defaults_dir
 
 logger = logging.getLogger(__name__)
 
@@ -241,8 +241,8 @@ class OnsetModelConfig:
 
 
 def models_root() -> Path:
-    """The global model store, ``~/.ethograph/models``."""
-    return ethograph_home() / "models"
+    """The model store used while no project is open, ``~/.ethograph/defaults/runs/lightgbm``."""
+    return defaults_dir("runs") / "lightgbm"
 
 
 def model_dir(name: str) -> Path:

@@ -11,7 +11,7 @@ Open it from **Workflows…** at the bottom of the Curation section, or from
 **Model ▸ Curation workflows…** — a workflow usually starts with a prediction,
 so it sits next to *LightGBM: Predict…* as well.
 
-Workflows are stored as plain YAML in `~/.ethograph/workflows/{name}.yaml`,
+Workflows are stored as plain YAML in `~/.ethograph/defaults/workflows/{name}.yaml`,
 the same global store as the onset models they invoke — so a workflow written
 while curating one dataset is there for the next one.
 

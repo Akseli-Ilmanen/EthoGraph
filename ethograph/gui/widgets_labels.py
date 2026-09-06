@@ -72,7 +72,7 @@ _EVENT_TYPE_GLYPH = {
 _BRANCH_POSITION = {0: "main", 1: "top1", 2: "top2"}
 _BRANCH_POSITION_LABEL = {0: "Full", 1: "Top1", 2: "Top2"}
 MAX_LABEL_BRANCHES = 3
-from ethograph.utils.paths import ethograph_home, find_mapping_file  # noqa: E402
+from ethograph.utils.paths import defaults_dir, find_mapping_file  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -759,7 +759,7 @@ class LabelsWidget(QWidget):
     def _browse_mapping_file(self):
         """Browse for a mapping.txt file and reload mappings."""
         current = find_mapping_file()
-        start_dir = str(current.parent) if current else str(ethograph_home())
+        start_dir = str(current.parent) if current else str(defaults_dir())
         file_path, _ = QFileDialog.getOpenFileName(
             self,
             "Select mapping.txt file",

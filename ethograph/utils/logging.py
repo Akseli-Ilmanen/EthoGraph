@@ -109,9 +109,9 @@ def start_session_log(prefix: str = "session") -> Path:
     Path
         The log file's path (also printed to the console).
     """
-    from ethograph.utils.paths import ethograph_home
+    from ethograph.utils.paths import logs_dir as _logs_dir
 
-    logs_dir = ethograph_home() / "logs"
+    logs_dir = _logs_dir()
     logs_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now()
     path = logs_dir / f"{prefix}_{timestamp:%Y%m%d_%H%M%S}.log"

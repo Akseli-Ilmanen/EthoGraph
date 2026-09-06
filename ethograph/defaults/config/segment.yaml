@@ -1,0 +1,57 @@
+# Action segmentation — a starting config. Copy it into your project, list your
+# sessions, name the features you built into the session file, and run:
+#
+#   import ethograph as eto
+#   project = eto.segment.Project("config/segment.yaml")
+#   project.materialise()      # data/{features.name}/ in the literature layout
+#   project.train()            # runs/{run_name}/
+#   project.cross_validate()   # one fold per session, predictions the GUI opens
+#
+# Reference: docs/add_to_docs_later/segment/config.md. Every key is checked; a
+# typo is an error, never a silent default.
+
+root: ..                                   # data/ and runs/ land in the project folder
+
+sessions:
+  # One entry per session file. labels_path is the curated labels TSV the GUI
+  # writes beside the session; only manual/curated labels are training targets.
+  - source: /path/to/session_01/Trial_data.nc
+    labels_path: /path/to/session_01/Trial_data_labels.tsv
+  # - source: /path/to/session_02/Trial_data.nc
+  #   labels_path: /path/to/session_02/Trial_data_labels.tsv
+
+trials:
+  where: {}                                # metadata column -> allowed values; the one trial filter
+
+features:
+  name: default                            # materialised dataset -> data/default/
+  columns:                                 # feature -> dim -> values; the individual dim is pinned per sample
+    position: {space: [x, y], keypoint: [head, tail]}
+    velocity: {space: [x, y], keypoint: [head, tail]}
+    speed: {keypoint: [head, tail]}
+  preprocess:
+    clip_percentiles: [2, 98]
+    zscore: true                           # statistics from the training samples only
+  labels:
+    mapping: ../mapping.txt                # the project's label vocabulary
+    branch: 0                              # one model per branch
+
+model:
+  architecture: c2f_tcn                    # eto.segment.architectures() lists them
+  params: {}                               # upstream defaults; see model.params in the reference
+
+train:
+  split: {train_fraction: 0.6, val_fraction: 0.2, test_fraction: 0.2}
+  epochs: 100
+  eval_every: 5
+  select_on: f1@90
+  batch_size: 1
+
+infer:
+  postprocess:
+    gui_settings: false                    # true = read these numbers from the GUI's gui_settings.yaml instead
+    min_duration_s: 0.05                   # drop predicted segments shorter than this
+    stitch_gap_s: 0.015                    # join same-class segments separated by less
+    changepoint_correction: false          # snap boundaries to detected changepoints (needs `changepoints:`)
+    max_expansion_s: 0.05
+    max_shrink_s: 0.05
